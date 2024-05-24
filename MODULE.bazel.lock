@@ -1,6 +1,6 @@
 {
   "lockFileVersion": 6,
-  "moduleFileHash": "5ed1806039f2525739301fc2813c24e071dda051df3af0eef09dea71c4be975a",
+  "moduleFileHash": "82a51d040836a59b3bb2fd9a8de6b16dacb3105900288132b10957650c0e822d",
   "flags": {
     "cmdRegistries": [
       "https://bcr.bazel.build/"
@@ -23,7 +23,42 @@
       "repoName": "",
       "executionPlatformsToRegister": [],
       "toolchainsToRegister": [],
-      "extensionUsages": [],
+      "extensionUsages": [
+        {
+          "extensionBzlFile": "//:MODULE.bazel",
+          "extensionName": "_repo_rules",
+          "usingModule": "<root>",
+          "location": {
+            "file": "@@//:MODULE.bazel",
+            "line": 0,
+            "column": 0
+          },
+          "imports": {
+            "antlr4_jar": "antlr4_jar"
+          },
+          "devImports": [],
+          "tags": [
+            {
+              "tagName": "@bazel_tools//tools/build_defs/repo:http.bzl%http_jar",
+              "attributeValues": {
+                "urls": [
+                  "https://www.antlr.org/download/antlr-4.13.1-complete.jar"
+                ],
+                "sha256": "bc13a9c57a8dd7d5196888211e5ede657cb64a3ce968608697e4f668251a8487",
+                "name": "antlr4_jar"
+              },
+              "devDependency": false,
+              "location": {
+                "file": "@@//:MODULE.bazel",
+                "line": 24,
+                "column": 9
+              }
+            }
+          ],
+          "hasDevUseExtension": false,
+          "hasNonDevUseExtension": true
+        }
+      ],
       "deps": {
         "antlr4-cpp-runtime": "antlr4-cpp-runtime@4.12.0",
         "hedron_compile_commands": "hedron_compile_commands@_",

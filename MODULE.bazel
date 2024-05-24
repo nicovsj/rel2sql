@@ -6,6 +6,8 @@
 ###############################################################################
 "Module for com_foo_bar"
 
+ANTLR4_VERSION = "4.13.1"
+
 bazel_dep(name = "antlr4-cpp-runtime", version = "4.12.0")
 
 bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
@@ -15,4 +17,12 @@ git_override(
     commit = "a14ad3a64e7bf398ab48105aaa0348e032ac87f8",
     # Replace the commit hash (above) with the latest (https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main).
     # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
+)
+
+http_jar = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_jar")
+
+http_jar(
+    name = "antlr4_jar",
+    urls = ["https://www.antlr.org/download/antlr-" + ANTLR4_VERSION + "-complete.jar"],
+    sha256 = "bc13a9c57a8dd7d5196888211e5ede657cb64a3ce968608697e4f668251a8487",
 )
