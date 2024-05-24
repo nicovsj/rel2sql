@@ -1,4 +1,4 @@
-grammar rel;
+grammar Rel;
 
 // Parser rules
 

@@ -6,7 +6,7 @@ package(default_visibility = ["//visibility:public"])
 
 antlr_cc_library(
     name = "rel",
-    src = "src/Rel.g4",
+    src = "src/parser/Rel.g4",
     package = "rel_parser",
 )
 
