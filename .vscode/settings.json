@@ -1,6 +1,6 @@
 {
     "antlr4.generation": {
-        "mode": "none",
+        "mode": "internal",
         "outputDir": ".",
         "language": "Cpp",
         "listeners": false,
