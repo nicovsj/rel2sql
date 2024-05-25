@@ -1,6 +1,6 @@
 # rel-to-sql-semantics
 
-This repository contains a rel-to-sql translator experimental tool. This project is mainly implemented in C++ with ANTLR for parsing Rel queries. 
+This repository contains a rel-to-sql translator experimental tool. This project is mainly implemented in C++ with ANTLR for parsing Rel queries.
 
 ## Table of Contents
 
