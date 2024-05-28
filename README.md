@@ -22,8 +22,8 @@ To build the project, follow these steps:
 1. Clone the repository:
 
     ```sh
-    git clone https://github.com/yourusername/yourproject.git
-    cd yourproject
+    git clone https://github.com/RelationalAI/rel-to-sql-semantics.git
+    cd rel-to-sql-semantics
     ```
 
 2. Build the project using Bazel:
