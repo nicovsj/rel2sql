@@ -40,7 +40,6 @@ def antlr_cc_library(name, lexer_src, parser_src, package):
     )
 
 def _antlr_lexer_library(ctx):
-
     output_files = []
 
     for extension in [".h", ".cpp", ".tokens"]:
@@ -65,8 +64,23 @@ def _antlr_lexer_library(ctx):
         progress_message = "Processing ANTLR lexer tokens",
     )
 
-    compilation_context = cc_common.create_compilation_context(headers = depset(output_files))
-    return [DefaultInfo(files = depset(output_files)), CcInfo(compilation_context = compilation_context)]
+    copied_files = []
+
+    for output in output_files:
+
+        copied = ctx.actions.declare_file("parser/generated/" + output.basename)
+
+        ctx.actions.run_shell(
+            mnemonic = "CopyFile",
+            inputs = [output],
+            outputs = [copied],
+            command = 'cp "{generated}" "{out}"'.format(generated = output.path, out = copied.path),
+        )
+
+        copied_files.append(copied)
+
+    compilation_context = cc_common.create_compilation_context(headers = depset(copied_files))
+    return [DefaultInfo(files = depset(copied_files)), CcInfo(compilation_context = compilation_context)]
 
 def _antlr_parser_library(ctx):
     lexer_files = ctx.attr.lexer[DefaultInfo].files.to_list()
@@ -101,9 +115,23 @@ def _antlr_parser_library(ctx):
         progress_message = "Processing ANTLR lexer tokens",
     )
 
+    copied_files = []
 
-    compilation_context = cc_common.create_compilation_context(headers = depset(output_files))
-    return [DefaultInfo(files = depset(output_files)), CcInfo(compilation_context = compilation_context)]
+    for output in output_files:
+
+        copied = ctx.actions.declare_file("parser/generated/" + output.basename)
+
+        ctx.actions.run_shell(
+            mnemonic = "CopyFile",
+            inputs = [output],
+            outputs = [copied],
+            command = 'cp "{generated}" "{out}"'.format(generated = output.path, out = copied.path),
+        )
+
+        copied_files.append(copied)
+
+    compilation_context = cc_common.create_compilation_context(headers = depset(copied_files))
+    return [DefaultInfo(files = depset(copied_files)), CcInfo(compilation_context = compilation_context)]
 
 antlr_lexer_library = rule(
     implementation = _antlr_lexer_library,
