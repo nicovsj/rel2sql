@@ -1,8 +1,8 @@
 #include <fstream>
 
-#include "RelLexer.h"
-#include "RelParser.h"
 #include "antlr4-runtime.h"
+#include "parser/generated/CoreRelLexer.h"
+#include "parser/generated/CoreRelParser.h"
 
 int main(int argc, const char *argv[]) {
   if (argc < 2) {
@@ -16,11 +16,11 @@ int main(int argc, const char *argv[]) {
 
   antlr4::ANTLRInputStream input(input_file);
 
-  rel_parser::RelLexer lexer(&input);
+  rel_parser::CoreRelLexer lexer(&input);
   antlr4::CommonTokenStream tokens(&lexer);
-  rel_parser::RelParser parser(&tokens);
+  rel_parser::CoreRelParser parser(&tokens);
 
-  rel_parser::RelParser::ProgContext *tree = parser.prog();
+  rel_parser::CoreRelParser::ProgramContext *tree = parser.program();
 
   // Print the AST
   std::cout << tree->toStringTree(&parser, true) << std::endl;

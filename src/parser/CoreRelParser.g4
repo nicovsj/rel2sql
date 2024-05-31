@@ -1,5 +1,10 @@
-parser grammar RelParser;
-options { tokenVocab=RelLexer; }
+parser grammar CoreRelParser;
+
+
+options {
+    language=Cpp;
+    tokenVocab=CoreRelLexer;
+}
 
 program
     : declaration* EOF ;

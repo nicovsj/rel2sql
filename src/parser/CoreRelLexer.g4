@@ -1,4 +1,8 @@
-lexer grammar RelLexer;
+lexer grammar CoreRelLexer;
+
+options {
+    language = Cpp;
+}
 
 // Naming conventions:
 // * K_*: Keyword
