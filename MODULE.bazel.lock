@@ -1,6 +1,6 @@
 {
   "lockFileVersion": 6,
-  "moduleFileHash": "82a51d040836a59b3bb2fd9a8de6b16dacb3105900288132b10957650c0e822d",
+  "moduleFileHash": "930b7dfa19aec1b8f0300adbf28923176d3543f0ccb9088fd6e40e1e0c14afd6",
   "flags": {
     "cmdRegistries": [
       "https://bcr.bazel.build/"
@@ -62,6 +62,7 @@
       "deps": {
         "antlr4-cpp-runtime": "antlr4-cpp-runtime@4.12.0",
         "hedron_compile_commands": "hedron_compile_commands@_",
+        "googletest": "googletest@1.14.0.bcr.1",
         "bazel_tools": "bazel_tools@_",
         "local_config_platform": "local_config_platform@_"
       }
@@ -168,6 +169,38 @@
       "deps": {
         "bazel_tools": "bazel_tools@_",
         "local_config_platform": "local_config_platform@_"
+      }
+    },
+    "googletest@1.14.0.bcr.1": {
+      "name": "googletest",
+      "version": "1.14.0.bcr.1",
+      "key": "googletest@1.14.0.bcr.1",
+      "repoName": "googletest",
+      "executionPlatformsToRegister": [],
+      "toolchainsToRegister": [],
+      "extensionUsages": [],
+      "deps": {
+        "com_google_absl": "abseil-cpp@20240116.0",
+        "platforms": "platforms@0.0.8",
+        "rules_cc": "rules_cc@0.0.9",
+        "com_googlesource_code_re2": "re2@2023-09-01",
+        "bazel_tools": "bazel_tools@_",
+        "local_config_platform": "local_config_platform@_"
+      },
+      "repoSpec": {
+        "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
+        "ruleClassName": "http_archive",
+        "attributes": {
+          "urls": [
+            "https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz"
+          ],
+          "integrity": "sha256-itWYxzrXluDYKAsILOvYKmMNc+c808cAV5OKZQG7pdc=",
+          "strip_prefix": "googletest-1.14.0",
+          "remote_patches": {
+            "https://bcr.bazel.build/modules/googletest/1.14.0.bcr.1/patches/module_dot_bazel.patch": "sha256-jijctisPYOzP4X4cl0K7neRh/kqJB+yODNHf8V8heCE="
+          },
+          "remote_patch_strip": 0
+        }
       }
     },
     "bazel_tools@_": {
@@ -364,6 +397,33 @@
         }
       }
     },
+    "platforms@0.0.8": {
+      "name": "platforms",
+      "version": "0.0.8",
+      "key": "platforms@0.0.8",
+      "repoName": "platforms",
+      "executionPlatformsToRegister": [],
+      "toolchainsToRegister": [],
+      "extensionUsages": [],
+      "deps": {
+        "rules_license": "rules_license@0.0.7",
+        "bazel_tools": "bazel_tools@_",
+        "local_config_platform": "local_config_platform@_"
+      },
+      "repoSpec": {
+        "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
+        "ruleClassName": "http_archive",
+        "attributes": {
+          "urls": [
+            "https://github.com/bazelbuild/platforms/releases/download/0.0.8/platforms-0.0.8.tar.gz"
+          ],
+          "integrity": "sha256-gVBAZgU4ns7LbaB8vLUJ1WN6OrmiS8abEQFTE2fYnXQ=",
+          "strip_prefix": "",
+          "remote_patches": {},
+          "remote_patch_strip": 0
+        }
+      }
+    },
     "rules_cc@0.0.9": {
       "name": "rules_cc",
       "version": "0.0.9",
@@ -408,6 +468,71 @@
           "strip_prefix": "rules_cc-0.0.9",
           "remote_patches": {
             "https://bcr.bazel.build/modules/rules_cc/0.0.9/patches/module_dot_bazel_version.patch": "sha256-mM+qzOI0SgAdaJBlWOSMwMPKpaA9b7R37Hj/tp5bb4g="
+          },
+          "remote_patch_strip": 0
+        }
+      }
+    },
+    "re2@2023-09-01": {
+      "name": "re2",
+      "version": "2023-09-01",
+      "key": "re2@2023-09-01",
+      "repoName": "re2",
+      "executionPlatformsToRegister": [],
+      "toolchainsToRegister": [],
+      "extensionUsages": [
+        {
+          "extensionBzlFile": "@pybind11_bazel//:python_configure.bzl",
+          "extensionName": "extension",
+          "usingModule": "re2@2023-09-01",
+          "location": {
+            "file": "https://bcr.bazel.build/modules/re2/2023-09-01/MODULE.bazel",
+            "line": 22,
+            "column": 33
+          },
+          "imports": {
+            "local_config_python": "local_config_python",
+            "pybind11": "pybind11"
+          },
+          "devImports": [],
+          "tags": [
+            {
+              "tagName": "toolchain",
+              "attributeValues": {
+                "python_version": "3"
+              },
+              "devDependency": false,
+              "location": {
+                "file": "https://bcr.bazel.build/modules/re2/2023-09-01/MODULE.bazel",
+                "line": 23,
+                "column": 27
+              }
+            }
+          ],
+          "hasDevUseExtension": false,
+          "hasNonDevUseExtension": true
+        }
+      ],
+      "deps": {
+        "platforms": "platforms@0.0.8",
+        "rules_cc": "rules_cc@0.0.9",
+        "com_google_absl": "abseil-cpp@20240116.0",
+        "rules_python": "rules_python@0.25.0",
+        "pybind11_bazel": "pybind11_bazel@2.11.1",
+        "bazel_tools": "bazel_tools@_",
+        "local_config_platform": "local_config_platform@_"
+      },
+      "repoSpec": {
+        "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
+        "ruleClassName": "http_archive",
+        "attributes": {
+          "urls": [
+            "https://github.com/google/re2/releases/download/2023-09-01/re2-2023-09-01.zip"
+          ],
+          "integrity": "sha256-IkuDUdxGM7EBLb2EdWTgYKRr5goioUY9S1uZP9S/Wcw=",
+          "strip_prefix": "re2-2023-09-01",
+          "remote_patches": {
+            "https://bcr.bazel.build/modules/re2/2023-09-01/patches/module_dot_bazel.patch": "sha256-MUQkRNgPJ0lbYqOXoBu2m2vLH7IuKEbK/VWTw7WWrnA="
           },
           "remote_patch_strip": 0
         }
@@ -741,33 +866,6 @@
         }
       }
     },
-    "platforms@0.0.8": {
-      "name": "platforms",
-      "version": "0.0.8",
-      "key": "platforms@0.0.8",
-      "repoName": "platforms",
-      "executionPlatformsToRegister": [],
-      "toolchainsToRegister": [],
-      "extensionUsages": [],
-      "deps": {
-        "rules_license": "rules_license@0.0.7",
-        "bazel_tools": "bazel_tools@_",
-        "local_config_platform": "local_config_platform@_"
-      },
-      "repoSpec": {
-        "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
-        "ruleClassName": "http_archive",
-        "attributes": {
-          "urls": [
-            "https://github.com/bazelbuild/platforms/releases/download/0.0.8/platforms-0.0.8.tar.gz"
-          ],
-          "integrity": "sha256-gVBAZgU4ns7LbaB8vLUJ1WN6OrmiS8abEQFTE2fYnXQ=",
-          "strip_prefix": "",
-          "remote_patches": {},
-          "remote_patch_strip": 0
-        }
-      }
-    },
     "protobuf@21.7": {
       "name": "protobuf",
       "version": "21.7",
@@ -962,19 +1060,17 @@
         }
       }
     },
-    "googletest@1.14.0.bcr.1": {
-      "name": "googletest",
-      "version": "1.14.0.bcr.1",
-      "key": "googletest@1.14.0.bcr.1",
-      "repoName": "googletest",
+    "pybind11_bazel@2.11.1": {
+      "name": "pybind11_bazel",
+      "version": "2.11.1",
+      "key": "pybind11_bazel@2.11.1",
+      "repoName": "pybind11_bazel",
       "executionPlatformsToRegister": [],
       "toolchainsToRegister": [],
       "extensionUsages": [],
       "deps": {
-        "com_google_absl": "abseil-cpp@20240116.0",
         "platforms": "platforms@0.0.8",
         "rules_cc": "rules_cc@0.0.9",
-        "com_googlesource_code_re2": "re2@2023-09-01",
         "bazel_tools": "bazel_tools@_",
         "local_config_platform": "local_config_platform@_"
       },
@@ -983,13 +1079,11 @@
         "ruleClassName": "http_archive",
         "attributes": {
           "urls": [
-            "https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz"
+            "https://github.com/pybind/pybind11_bazel/releases/download/v2.11.1/pybind11_bazel-2.11.1.zip"
           ],
-          "integrity": "sha256-itWYxzrXluDYKAsILOvYKmMNc+c808cAV5OKZQG7pdc=",
-          "strip_prefix": "googletest-1.14.0",
-          "remote_patches": {
-            "https://bcr.bazel.build/modules/googletest/1.14.0.bcr.1/patches/module_dot_bazel.patch": "sha256-jijctisPYOzP4X4cl0K7neRh/kqJB+yODNHf8V8heCE="
-          },
+          "integrity": "sha256-LEZsmzzKeFK0fgeFADEomE/PDV1hoaLkxazu/ZNawiA=",
+          "strip_prefix": "pybind11_bazel-2.11.1",
+          "remote_patches": {},
           "remote_patch_strip": 0
         }
       }
@@ -1142,71 +1236,6 @@
         }
       }
     },
-    "re2@2023-09-01": {
-      "name": "re2",
-      "version": "2023-09-01",
-      "key": "re2@2023-09-01",
-      "repoName": "re2",
-      "executionPlatformsToRegister": [],
-      "toolchainsToRegister": [],
-      "extensionUsages": [
-        {
-          "extensionBzlFile": "@pybind11_bazel//:python_configure.bzl",
-          "extensionName": "extension",
-          "usingModule": "re2@2023-09-01",
-          "location": {
-            "file": "https://bcr.bazel.build/modules/re2/2023-09-01/MODULE.bazel",
-            "line": 22,
-            "column": 33
-          },
-          "imports": {
-            "local_config_python": "local_config_python",
-            "pybind11": "pybind11"
-          },
-          "devImports": [],
-          "tags": [
-            {
-              "tagName": "toolchain",
-              "attributeValues": {
-                "python_version": "3"
-              },
-              "devDependency": false,
-              "location": {
-                "file": "https://bcr.bazel.build/modules/re2/2023-09-01/MODULE.bazel",
-                "line": 23,
-                "column": 27
-              }
-            }
-          ],
-          "hasDevUseExtension": false,
-          "hasNonDevUseExtension": true
-        }
-      ],
-      "deps": {
-        "platforms": "platforms@0.0.8",
-        "rules_cc": "rules_cc@0.0.9",
-        "com_google_absl": "abseil-cpp@20240116.0",
-        "rules_python": "rules_python@0.25.0",
-        "pybind11_bazel": "pybind11_bazel@2.11.1",
-        "bazel_tools": "bazel_tools@_",
-        "local_config_platform": "local_config_platform@_"
-      },
-      "repoSpec": {
-        "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
-        "ruleClassName": "http_archive",
-        "attributes": {
-          "urls": [
-            "https://github.com/google/re2/releases/download/2023-09-01/re2-2023-09-01.zip"
-          ],
-          "integrity": "sha256-IkuDUdxGM7EBLb2EdWTgYKRr5goioUY9S1uZP9S/Wcw=",
-          "strip_prefix": "re2-2023-09-01",
-          "remote_patches": {
-            "https://bcr.bazel.build/modules/re2/2023-09-01/patches/module_dot_bazel.patch": "sha256-MUQkRNgPJ0lbYqOXoBu2m2vLH7IuKEbK/VWTw7WWrnA="
-          },
-          "remote_patch_strip": 0
-        }
-      }
-    },
     "stardoc@0.5.1": {
       "name": "stardoc",
       "version": "0.5.1",
@@ -1233,34 +1262,6 @@
           "remote_patches": {
             "https://bcr.bazel.build/modules/stardoc/0.5.1/patches/module_dot_bazel.patch": "sha256-UAULCuTpJE7SG0YrR9XLjMfxMRmbP+za3uW9ONZ5rjI="
           },
-          "remote_patch_strip": 0
-        }
-      }
-    },
-    "pybind11_bazel@2.11.1": {
-      "name": "pybind11_bazel",
-      "version": "2.11.1",
-      "key": "pybind11_bazel@2.11.1",
-      "repoName": "pybind11_bazel",
-      "executionPlatformsToRegister": [],
-      "toolchainsToRegister": [],
-      "extensionUsages": [],
-      "deps": {
-        "platforms": "platforms@0.0.8",
-        "rules_cc": "rules_cc@0.0.9",
-        "bazel_tools": "bazel_tools@_",
-        "local_config_platform": "local_config_platform@_"
-      },
-      "repoSpec": {
-        "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
-        "ruleClassName": "http_archive",
-        "attributes": {
-          "urls": [
-            "https://github.com/pybind/pybind11_bazel/releases/download/v2.11.1/pybind11_bazel-2.11.1.zip"
-          ],
-          "integrity": "sha256-LEZsmzzKeFK0fgeFADEomE/PDV1hoaLkxazu/ZNawiA=",
-          "strip_prefix": "pybind11_bazel-2.11.1",
-          "remote_patches": {},
           "remote_patch_strip": 0
         }
       }

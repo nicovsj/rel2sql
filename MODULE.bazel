@@ -26,3 +26,6 @@ http_jar(
     urls = ["https://www.antlr.org/download/antlr-" + ANTLR4_VERSION + "-complete.jar"],
     sha256 = "bc13a9c57a8dd7d5196888211e5ede657cb64a3ce968608697e4f668251a8487",
 )
+
+# Testing dependencies
+bazel_dep(name = "googletest", version = "1.14.0")
