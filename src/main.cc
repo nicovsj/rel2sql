@@ -1,6 +1,7 @@
+#include <antlr4-runtime.h>
+
 #include <fstream>
 
-#include "antlr4-runtime.h"
 #include "parser/generated/CoreRelLexer.h"
 #include "parser/generated/CoreRelParser.h"
 
