@@ -8,11 +8,11 @@ antlr_cc_library(
     name = "rel",
     lexer_src = "src/parser/CoreRelLexer.g4",
     package = "rel_parser",
-    parser_src = "src/parser/CoreRelParser.g4",
+    parser_src = "src/parser/RestrictedCoreRelParser.g4",
 )
 
 cc_binary(
-    name = "rel-to-sql",
+    name = "rel2sql",
     srcs = ["src/main.cc"],
     deps = [
         "//:rel_cc_parser",
