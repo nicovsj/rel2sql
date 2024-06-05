@@ -5,9 +5,9 @@ options {
 	tokenVocab = CoreRelLexer;
 }
 
-program: rel_def* EOF;
+program: relDef* EOF;
 
-rel_def: s = 'def' name = T_ID rel_abs;
+relDef: s = 'def' name = T_ID relAbs;
 
 // ========================================================================================
 
@@ -27,10 +27,10 @@ literal:
 	| T_DATE_LIT																# date_
 	| T_DATETIME_LIT															# datetime_
 	| meh = ('true' | 'false')													# bool_
-	| T_QUOTE (interpolation_part | ERR_INVALID_STR_LIT)+ T_QUOTE				# interpol_
-	| T_TRIPLE_QUOTE (interpolation_part | ERR_INVALID_STR_LIT)+ T_TRIPLE_QUOTE	# interpol_;
+	| T_QUOTE (interpolationPart | ERR_INVALID_STR_LIT)+ T_QUOTE				# interpol_
+	| T_TRIPLE_QUOTE (interpolationPart | ERR_INVALID_STR_LIT)+ T_TRIPLE_QUOTE	# interpol_;
 
-interpolation_part:
+interpolationPart:
 	T_STATIC_STR_PART
 	| T_STATIC_MSTR_PART T_MIDDLE_QUOTES?
 	| T_MIDDLE_QUOTES? T_STATIC_MSTR_PART
@@ -43,33 +43,33 @@ binding: literal | T_ID ('in' id_domain = T_ID)?;
 
 // ========================================================================================
 
-appl_base: T_ID | rel_abs;
+applBase: T_ID | relAbs;
 
-appl_param: underscore = '_' | expr;
+applParam: underscore = '_' | expr;
 
-appl_params: appl_param | appl_params ',' appl_param;
+applParams: applParam | applParams ',' applParam;
 
-product_inner: expr | product_inner ',' expr;
+productInner: (exprs = expr (',' exprs = expr)*)?;
 
-union_inner: expr | union_inner ';' expr;
+unionInner: (exprs = expr (';' exprs = expr)*)?;
 
-rel_abs: '{' union_inner ';'? '}' # union;
+relAbs: '{' unionInner '}' # union;
 
 // The order of the rules below matters for precedence.
 expr:
 	literal							# lit_expr
 	| T_ID							# id_expr
-	| '(' product_inner ','? ')'	# product
+	| '(' productInner ')'			# product
 	| expr 'where' expr				# condition
-	| rel_abs						# rel_abs_expr_rec
+	| relAbs						# rel_abs_expr_rec
 	| formula						# formula_expr
 	| '[' bindings ']' ':' expr		# bindings_expr
 	| '(' bindings ')' ':' formula	# bindings_formula
-	| appl_base '[' appl_params ']'	# partial_appl;
+	| applBase '[' applParams ']'	# partial_appl;
 
 formula:
 	'{' ('(' ')')? '}'										# rel_abs_true_false
-	| appl_base '(' appl_params? ')'						# full_appl
+	| applBase '(' applParams? ')'							# full_appl
 	| formula op = 'and' formula							# binop
 	| formula op = 'or' formula								# binop
 	| op = 'not' formula									# unop
