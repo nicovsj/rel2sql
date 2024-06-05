@@ -3,7 +3,7 @@
 #include <fstream>
 
 #include "parser/generated/CoreRelLexer.h"
-#include "parser/generated/RestrictedCoreRelParser.h"
+#include "parser/generated/PrunedCoreRelParser.h"
 
 int main(int argc, const char *argv[]) {
   if (argc < 2) {
@@ -19,9 +19,9 @@ int main(int argc, const char *argv[]) {
 
   rel_parser::CoreRelLexer lexer(&input);
   antlr4::CommonTokenStream tokens(&lexer);
-  rel_parser::RestrictedCoreRelParser parser(&tokens);
+  rel_parser::PrunedCoreRelParser parser(&tokens);
 
-  rel_parser::RestrictedCoreRelParser::ProgramContext *tree = parser.program();
+  rel_parser::PrunedCoreRelParser::ProgramContext *tree = parser.program();
 
   // Print the AST
   std::cout << tree->toStringTree(&parser, true) << std::endl;

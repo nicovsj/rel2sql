@@ -1,4 +1,4 @@
-parser grammar RestrictedCoreRelParser;
+parser grammar PrunedCoreRelParser;
 
 options {
 	language = Cpp;

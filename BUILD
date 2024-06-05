@@ -8,7 +8,7 @@ antlr_cc_library(
     name = "rel",
     lexer_src = "src/parser/CoreRelLexer.g4",
     package = "rel_parser",
-    parser_src = "src/parser/RestrictedCoreRelParser.g4",
+    parser_src = "src/parser/PrunedCoreRelParser.g4",
 )
 
 cc_binary(
