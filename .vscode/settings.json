@@ -5,5 +5,8 @@
         "language": "Cpp",
         "listeners": false,
         "visitors": true
-    }
+    },
+    "[cpp]": {
+        "editor.tabSize": 2
+    },
 }
