@@ -11,10 +11,21 @@ antlr_cc_library(
     parser_src = "src/parser/PrunedCoreRelParser.g4",
 )
 
+cc_library(
+    name = "rel2sql_lib",
+    srcs = ["src/parser/fv_visitor.cc"],
+    hdrs = ["src/parser/fv_visitor.h"],
+    deps = [
+        "//:rel_cc_parser",
+        "@antlr4-cpp-runtime//:antlr4-cpp-runtime",
+    ],
+)
+
 cc_binary(
     name = "rel2sql",
     srcs = ["src/main.cc"],
     deps = [
+        ":rel2sql_lib",
         "//:rel_cc_parser",
         "@antlr4-cpp-runtime//:antlr4-cpp-runtime",
     ],
