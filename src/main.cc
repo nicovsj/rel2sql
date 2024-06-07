@@ -4,6 +4,7 @@
 
 #include "parser/generated/CoreRelLexer.h"
 #include "parser/generated/PrunedCoreRelParser.h"
+#include "src/parser/fv_visitor.h"
 
 int main(int argc, const char *argv[]) {
   if (argc < 2) {
@@ -23,8 +24,14 @@ int main(int argc, const char *argv[]) {
 
   rel_parser::PrunedCoreRelParser::ProgramContext *tree = parser.program();
 
+  ExtendedASTVisitor visitor;
+
+  auto free_vars = std::any_cast<std::set<std::string>>(visitor.visit(tree));
+
   // Print the AST
-  std::cout << tree->toStringTree(&parser, true) << std::endl;
+  for (auto &var : free_vars) {
+    std::cout << var << std::endl;
+  }
 
   return 0;
 }
