@@ -28,10 +28,14 @@ int main(int argc, const char *argv[]) {
 
   auto free_vars = std::any_cast<std::set<std::string>>(visitor.visit(tree));
 
+  std::cout << "Free variables: {";
+
   // Print the AST
   for (auto &var : free_vars) {
-    std::cout << var << std::endl;
+    std::cout << var << ", ";
   }
+
+  std::cout << "}" << std::endl;
 
   return 0;
 }

@@ -1,7 +1,21 @@
 #include "fv_visitor.h"
 
+std::any ExtendedASTVisitor::visitProgram(rel_parser::PrunedCoreRelParser::ProgramContext *ctx) {
+  std::set<std::string> results;
+
+  for (auto &child : ctx->relDef()) {
+    auto result = std::any_cast<std::set<std::string>>(visit(child));
+
+    std::set_union(results.begin(), results.end(), result.begin(), result.end(), std::inserter(results, results.end()));
+  }
+
+  data_[ctx].free_variables = results;
+
+  return results;
+}
+
 std::any ExtendedASTVisitor::visitRelDef(rel_parser::PrunedCoreRelParser::RelDefContext *ctx) {
-  auto result = std::any_cast<std::set<std::string>>(visitChildren(ctx));
+  auto result = std::any_cast<std::set<std::string>>(visit(ctx->relAbs()));
 
   data_[ctx].free_variables = result;
 
@@ -16,6 +30,14 @@ std::any ExtendedASTVisitor::visitRelAbs(rel_parser::PrunedCoreRelParser::RelAbs
 
     std::set_union(results.begin(), results.end(), result.begin(), result.end(), std::inserter(results, results.end()));
   }
+
+  data_[ctx].free_variables = results;
+
+  return results;
+}
+
+std::any ExtendedASTVisitor::visitLitExpr(rel_parser::PrunedCoreRelParser::LitExprContext *ctx) {
+  std::set<std::string> results;
 
   data_[ctx].free_variables = results;
 
