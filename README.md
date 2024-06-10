@@ -44,3 +44,7 @@ bazel run @hedron_compile_commands//:refresh_all
 ```
 
 This will generate a `compile_commands.json` file in the root of the project and allow clangd to provide code completion and other features.
+
+### Extra Links
+
+- [Useful issue to make debugging work with Bazel and MacOS](https://github.com/bazelbuild/bazel/issues/6327)

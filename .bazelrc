@@ -4,3 +4,7 @@ build --cxxopt='-std=c++17'
 # Set the minimum macOS version to 10.14, otherwise ANTLR will not compile
 build --cxxopt=-mmacosx-version-min=10.14
 build --linkopt=-mmacosx-version-min=10.14
+
+build:debug -c dbg
+build:debug --features=oso_prefix_is_pwd
+build:debug --spawn_strategy=local
