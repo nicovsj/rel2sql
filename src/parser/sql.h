@@ -1,6 +1,8 @@
 #ifndef SQL_H
 #define SQL_H
 
+#include <fmt/core.h>
+
 #include <iostream>
 #include <optional>
 #include <string>
@@ -45,6 +47,7 @@ class Column : public Expression {
   std::optional<std::shared_ptr<Table>> table;
 
   Column(std::string name) : name(name) {}
+  Column(std::string name, std::shared_ptr<Table> table) : name(name), table(table) {}
 
   std::ostream& print(std::ostream& os) const override {
     if (table.has_value()) {
@@ -97,7 +100,7 @@ class ValueCondition : public Condition {
                        } else if constexpr (std::is_same_v<T, double>) {
                          return std::to_string(arg);
                        } else if constexpr (std::is_same_v<T, std::string>) {
-                         return arg;
+                         return fmt::format("'{}'", arg);
                        }
                      },
                      rhs);
