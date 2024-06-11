@@ -38,7 +38,7 @@ cc_binary(
 
 cc_test(
     name = "rel_test",
-    srcs = ["tests/test_sql.cc"],
+    srcs = ["tests/test_sql.cc", "tests/test_free_vars.cc"],
     deps = [
         ":rel2sql_lib",
         "@googletest//:gtest_main",
