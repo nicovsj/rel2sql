@@ -1,0 +1,12 @@
+{
+    "configurations": [
+        {
+            "name": "C++ Debug",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bazel-out/darwin_arm64-dbg/bin/rel2sql",
+            "args": ["example.relq"],
+            "cwd": "${workspaceFolder}",
+        }
+    ]
+}

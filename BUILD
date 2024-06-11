@@ -6,24 +6,41 @@ package(default_visibility = ["//visibility:public"])
 
 antlr_cc_library(
     name = "rel",
-    lexer_src = "src/parser/CoreRelLexer.g4",
+    lexer_src = "src/parser/grammar/CoreRelLexer.g4",
     package = "rel_parser",
-    parser_src = "src/parser/CoreRelParser.g4",
+    parser_src = "src/parser/grammar/PrunedCoreRelParser.g4",
 )
 
-cc_binary(
-    name = "rel-to-sql",
-    srcs = ["src/main.cc"],
+cc_library(
+    name = "rel2sql_lib",
+    srcs = ["src/parser/fv_visitor.cc"],
+    hdrs = [
+        "src/parser/fv_visitor.h",
+        "src/parser/sql.h",
+    ],
     deps = [
         "//:rel_cc_parser",
         "@antlr4-cpp-runtime//:antlr4-cpp-runtime",
+        "@fmt",
+    ],
+)
+
+cc_binary(
+    name = "rel2sql",
+    srcs = ["src/main.cc"],
+    deps = [
+        ":rel2sql_lib",
+        "//:rel_cc_parser",
+        "@antlr4-cpp-runtime//:antlr4-cpp-runtime",
+        "@fmt",
     ],
 )
 
 cc_test(
     name = "rel_test",
-    srcs = ["tests/my_test.cc"],
+    srcs = ["tests/test_sql.cc", "tests/test_free_vars.cc"],
     deps = [
-        "@googletest//:gtest",
+        ":rel2sql_lib",
+        "@googletest//:gtest_main",
     ],
 )
