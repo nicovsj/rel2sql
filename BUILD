@@ -41,6 +41,6 @@ cc_test(
     srcs = ["tests/test_sql.cc"],
     deps = [
         ":rel2sql_lib",
-        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
