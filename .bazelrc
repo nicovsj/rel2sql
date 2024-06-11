@@ -1,5 +1,5 @@
-# Set C++17 as the standard
-build --cxxopt='-std=c++17'
+# Set C++20 as the standard
+build --cxxopt='-std=c++20'
 
 # Set the minimum macOS version to 10.14, otherwise ANTLR will not compile
 build --cxxopt=-mmacosx-version-min=10.14
