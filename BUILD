@@ -18,6 +18,7 @@ cc_library(
         "src/parser/fv_visitor.h",
         "src/parser/sql.h",
     ],
+    strip_include_prefix = "src",
     deps = [
         "//:rel_cc_parser",
         "@antlr4-cpp-runtime//:antlr4-cpp-runtime",

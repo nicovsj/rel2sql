@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include "src/parser/sql.h"
+#include "parser/sql.h"
 
 TEST(SQLPrintingTest, TablePrint) {
   auto t1 = std::make_shared<Table>("T1");

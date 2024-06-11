@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
+#include "parser/fv_visitor.h"
 #include "parser/generated/CoreRelLexer.h"
 #include "parser/generated/PrunedCoreRelParser.h"
-#include "src/parser/fv_visitor.h"
 
 ExtendedAST get_extended_ast(std::string_view input) {
   antlr4::ANTLRInputStream input_stream(input.data());
