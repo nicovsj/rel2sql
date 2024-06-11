@@ -1,6 +1,6 @@
 {
   "lockFileVersion": 6,
-  "moduleFileHash": "930b7dfa19aec1b8f0300adbf28923176d3543f0ccb9088fd6e40e1e0c14afd6",
+  "moduleFileHash": "ce4d6f20e11d2e181844ed28f7c1951fda7b57666147a64496a6671d09cbb01c",
   "flags": {
     "cmdRegistries": [
       "https://bcr.bazel.build/"
@@ -62,6 +62,7 @@
       "deps": {
         "antlr4-cpp-runtime": "antlr4-cpp-runtime@4.12.0",
         "hedron_compile_commands": "hedron_compile_commands@_",
+        "fmt": "fmt@10.2.1",
         "googletest": "googletest@1.14.0.bcr.1",
         "bazel_tools": "bazel_tools@_",
         "local_config_platform": "local_config_platform@_"
@@ -169,6 +170,35 @@
       "deps": {
         "bazel_tools": "bazel_tools@_",
         "local_config_platform": "local_config_platform@_"
+      }
+    },
+    "fmt@10.2.1": {
+      "name": "fmt",
+      "version": "10.2.1",
+      "key": "fmt@10.2.1",
+      "repoName": "fmt",
+      "executionPlatformsToRegister": [],
+      "toolchainsToRegister": [],
+      "extensionUsages": [],
+      "deps": {
+        "bazel_tools": "bazel_tools@_",
+        "local_config_platform": "local_config_platform@_"
+      },
+      "repoSpec": {
+        "bzlFile": "@@bazel_tools//tools/build_defs/repo:http.bzl",
+        "ruleClassName": "http_archive",
+        "attributes": {
+          "urls": [
+            "https://github.com/fmtlib/fmt/releases/download/10.2.1/fmt-10.2.1.zip"
+          ],
+          "integrity": "sha256-MSFRotE8gyf1ycWGrGz3zdwWWOj1Ptrg7FZQnI+lFsk=",
+          "strip_prefix": "fmt-10.2.1",
+          "remote_patches": {
+            "https://bcr.bazel.build/modules/fmt/10.2.1/patches/add_build_file.patch": "sha256-bUYJz9G64DPC99/aSnVNx3JD1nStIA4zXK89OvIDmfY=",
+            "https://bcr.bazel.build/modules/fmt/10.2.1/patches/module_dot_bazel.patch": "sha256-m4qleWY1o+AaFXOMzRKM2X3yf+1K7I0+INR2NoKYYVk="
+          },
+          "remote_patch_strip": 0
+        }
       }
     },
     "googletest@1.14.0.bcr.1": {
