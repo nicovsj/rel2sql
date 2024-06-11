@@ -6,6 +6,10 @@ This repository contains a rel-to-sql translator experimental tool. This project
 
 - [Prerequisites](#prerequisites)
 - [Building the Project](#building-the-project)
+- [Development](#development)
+  - [Generating `compile_commands.json`](#generating-compile_commandsjson)
+  - [Testing](#testing)
+- [Extra Links](#extra-links)
 
 ## Prerequisites
 
@@ -37,6 +41,8 @@ To build the project, follow these steps:
 
 ## Development
 
+### Generating `compile_commands.json`
+
 To generate `compile_commands.json` for use with clangd, run the following command:
 
 ```sh
@@ -45,6 +51,15 @@ bazel run @hedron_compile_commands//:refresh_all
 
 This will generate a `compile_commands.json` file in the root of the project and allow clangd to provide code completion and other features.
 
-### Extra Links
+### Testing
+
+To run the tests, use the following command:
+
+```sh
+bazel test //...
+```
+
+
+## Extra Links
 
 - [Useful issue to make debugging work with Bazel and MacOS](https://github.com/bazelbuild/bazel/issues/6327)
