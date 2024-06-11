@@ -11,7 +11,7 @@ std::any ExtendedASTVisitor::visitProgram(rel_parser::PrunedCoreRelParser::Progr
 
   data_[ctx].free_variables = results;
 
-  return results;
+  return ExtendedAST{ctx, data_};
 }
 
 std::any ExtendedASTVisitor::visitRelDef(rel_parser::PrunedCoreRelParser::RelDefContext *ctx) {

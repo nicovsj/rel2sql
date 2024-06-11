@@ -32,6 +32,7 @@ cc_binary(
         ":rel2sql_lib",
         "//:rel_cc_parser",
         "@antlr4-cpp-runtime//:antlr4-cpp-runtime",
+        "@fmt",
     ],
 )
 

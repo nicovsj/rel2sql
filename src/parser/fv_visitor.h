@@ -10,9 +10,8 @@ struct ExtendedData {
 };
 
 struct ExtendedAST {
-  antlr4::ParserRuleContext *StartingRule() const;  // Returns the starting rule of the AST
-  std::unordered_map<antlr4::ParserRuleContext *, ExtendedData> ExtendedData()
-      const;  // Returns the data associated with each node in the AST
+  antlr4::ParserRuleContext *root;
+  std::unordered_map<antlr4::ParserRuleContext *, ExtendedData> extended_data;
 };
 
 class ExtendedASTVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
