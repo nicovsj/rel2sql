@@ -6,9 +6,9 @@ package(default_visibility = ["//visibility:public"])
 
 antlr_cc_library(
     name = "rel",
-    lexer_src = "src/parser/CoreRelLexer.g4",
+    lexer_src = "src/parser/internal/CoreRelLexer.g4",
     package = "rel_parser",
-    parser_src = "src/parser/PrunedCoreRelParser.g4",
+    parser_src = "src/parser/internal/PrunedCoreRelParser.g4",
 )
 
 cc_library(
