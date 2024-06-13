@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include "parser/sql.h"
+#include "sql.h"
 
 TEST(SQLPrintingTest, TablePrint) {
   auto t1 = std::make_shared<Table>("T1");
@@ -24,6 +24,18 @@ TEST(SQLPrintingTest, ColumnPrint) {
   os << *a1 << " " << *a2;
 
   EXPECT_EQ(os.str(), "A1 T1.A2");
+}
+
+TEST(SQLPrintingTest, ColumnAliasPrint) {
+  auto t1 = std::make_shared<Table>("T1", "T1_alias");
+  auto a1 = std::make_shared<Column>("A1");
+  auto a2 = std::make_shared<Column>("A2", t1);
+
+  std::ostringstream os;
+
+  os << *a1 << " " << *a2;
+
+  EXPECT_EQ(os.str(), "A1 T1_alias.A2");
 }
 
 TEST(SQLPrintingTest, ValueConditionPrint) {
@@ -90,11 +102,36 @@ TEST(SQLPrintingTest, SelectStatementPrint) {
   auto lc1 = std::make_shared<LogicalCondition>(std::vector<std::shared_ptr<Condition>>{vc1, vc2, cc1}, LogicalOp::AND);
 
   auto ss1 = std::make_shared<SelectStatement>(std::vector<std::shared_ptr<Column>>{a1, a2, a3},
-                                               std::vector<std::shared_ptr<Table>>{t1, t2}, lc1);
+                                               std::vector<std::shared_ptr<Source>>{t1, t2}, lc1);
 
   std::ostringstream os;
 
   os << *ss1;
 
   EXPECT_EQ(os.str(), "SELECT T1.A1, T1.A2, T2.A1 FROM T1, T2 WHERE T1.A1 = 1 AND T1.A2 = 'Smith' AND T1.A1 = T2.A1");
+}
+
+TEST(SQLPrintingTest, SelectSubqueryPrint) {
+  auto t1 = std::make_shared<Table>("T1");
+  auto a1 = std::make_shared<Column>("A1", t1);
+
+  auto vc1 = std::make_shared<ValueCondition>(a1, CompOp::EQ, 1);
+
+  auto ss1 = std::make_shared<SelectStatement>(std::vector<std::shared_ptr<Column>>{a1},
+                                               std::vector<std::shared_ptr<Source>>{t1}, vc1);
+
+  auto sq = std::make_shared<Subquery>(ss1, "subquery1");
+  auto sa1 = std::make_shared<Column>("A1", sq);
+
+  auto vc2 = std::make_shared<ValueCondition>(sa1, CompOp::GTE, 1);
+
+  auto ss2 = std::make_shared<SelectStatement>(std::vector<std::shared_ptr<Column>>{sa1},
+                                               std::vector<std::shared_ptr<Source>>{sq}, vc2);
+
+  std::ostringstream os;
+
+  os << *ss2;
+
+  EXPECT_EQ(os.str(),
+            "SELECT subquery1.A1 FROM (SELECT T1.A1 FROM T1 WHERE T1.A1 = 1) AS subquery1 WHERE subquery1.A1 >= 1");
 }
