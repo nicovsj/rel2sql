@@ -13,10 +13,14 @@ antlr_cc_library(
 
 cc_library(
     name = "rel2sql_lib",
-    srcs = ["src/parser/fv_visitor.cc"],
+    srcs = [
+        "src/parser/fv_visitor.cc",
+        "src/sql.cc",
+    ],
     hdrs = [
         "src/parser/fv_visitor.h",
-        "src/parser/sql.h",
+        "src/sql.h",
+        "src/utils.h",
     ],
     strip_include_prefix = "src",
     deps = [
@@ -39,7 +43,10 @@ cc_binary(
 
 cc_test(
     name = "rel_test",
-    srcs = ["tests/test_sql.cc", "tests/test_free_vars.cc"],
+    srcs = [
+        "tests/test_free_vars.cc",
+        "tests/test_sql_ast.cc",
+    ],
     deps = [
         ":rel2sql_lib",
         "@googletest//:gtest_main",
