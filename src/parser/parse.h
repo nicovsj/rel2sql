@@ -1,0 +1,34 @@
+#ifndef PARSE_H
+#define PARSE_H
+
+#include "parser/fv_visitor.h"
+#include "parser/generated/CoreRelLexer.h"
+#include "parser/generated/PrunedCoreRelParser.h"
+
+namespace rel_parser {
+
+inline std::unique_ptr<PrunedCoreRelParser> GetParser(std::string_view input) {
+  auto input_stream = new antlr4::ANTLRInputStream(input.data());
+  auto lexer = new CoreRelLexer(input_stream);
+  auto tokens = new antlr4::CommonTokenStream(lexer);
+
+  return std::make_unique<PrunedCoreRelParser>(tokens);
+}
+
+inline ExtendedAST GetExtendedASTFromTree(antlr4::ParserRuleContext* tree) {
+  ExtendedASTVisitor visitor;
+
+  return std::any_cast<ExtendedAST>(visitor.visit(tree));
+}
+
+inline ExtendedAST GetExtendedAST(std::string_view input) {
+  auto parser = GetParser(input);
+
+  auto tree = parser->program();
+
+  return GetExtendedASTFromTree(tree);
+};
+
+}  // namespace rel_parser
+
+#endif  // PARSE_H

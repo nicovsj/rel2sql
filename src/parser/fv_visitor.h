@@ -25,7 +25,9 @@ struct ExtendedData {
 
 struct ExtendedAST {
   antlr4::ParserRuleContext *root;
-  std::unordered_map<antlr4::ParserRuleContext *, ExtendedData> extended_data;
+  std::shared_ptr<std::unordered_map<antlr4::ParserRuleContext *, ExtendedData>> extended_data;
+
+  ExtendedData RootExtendedData() const { return (*extended_data)[root]; }
 };
 
 class ExtendedASTVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
@@ -81,7 +83,8 @@ class ExtendedASTVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
   std::any visitApplParam(rel_parser::PrunedCoreRelParser::ApplParamContext *ctx) override;
 
  private:
-  std::unordered_map<antlr4::ParserRuleContext *, ExtendedData> data_;
+  std::shared_ptr<std::unordered_map<antlr4::ParserRuleContext *, ExtendedData>> data_ =
+      std::make_shared<std::unordered_map<antlr4::ParserRuleContext *, ExtendedData>>();
 };
 
 #endif  // FV_VISITOR_H

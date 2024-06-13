@@ -19,6 +19,7 @@ cc_library(
     ],
     hdrs = [
         "src/parser/fv_visitor.h",
+        "src/parser/parse.h",
         "src/sql.h",
         "src/utils.h",
     ],
