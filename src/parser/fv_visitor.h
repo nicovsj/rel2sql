@@ -6,7 +6,21 @@
 #include "parser/generated/PrunedCoreRelParserBaseVisitor.h"
 
 struct ExtendedData {
+  std::set<std::string> variables;
   std::set<std::string> free_variables;
+
+  void InplaceUnion(const ExtendedData &other) {
+    variables.insert(other.variables.begin(), other.variables.end());
+    free_variables.insert(other.free_variables.begin(), other.free_variables.end());
+  }
+
+  void InplaceDifference(const ExtendedData &other) {
+    ExtendedData result;
+    variables.insert(other.variables.begin(), other.variables.end());
+    for (const auto &var : other.free_variables) {
+      free_variables.erase(var);
+    }
+  }
 };
 
 struct ExtendedAST {
