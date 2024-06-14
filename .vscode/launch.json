@@ -1,11 +1,19 @@
 {
     "configurations": [
         {
-            "name": "C++ Debug",
+            "name": "C++ Debug main.cc",
             "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/bazel-out/darwin_arm64-dbg/bin/rel2sql",
             "args": ["example.relq"],
+            "cwd": "${workspaceFolder}",
+        },
+        {
+            "name": "C++ Debug tests",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bazel-out/darwin_arm64-dbg/bin/rel_test",
+            "args": [],
             "cwd": "${workspaceFolder}",
         }
     ]
