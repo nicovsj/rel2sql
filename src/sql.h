@@ -234,6 +234,19 @@ class SelectStatement : public Expression {
   }
 };
 
+class Union : public Expression {
+ public:
+  std::shared_ptr<SelectStatement> lhs;
+  std::shared_ptr<SelectStatement> rhs;
+
+  Union(std::shared_ptr<SelectStatement> lhs, std::shared_ptr<SelectStatement> rhs) : lhs(lhs), rhs(rhs) {}
+
+  std::ostream& Print(std::ostream& os) const override {
+    os << *lhs << " UNION " << *rhs;
+    return os;
+  }
+};
+
 // UTILITY FUNCTIONS
 
 using ParserRuleContext = antlr4::ParserRuleContext;
