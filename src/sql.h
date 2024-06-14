@@ -200,11 +200,14 @@ class SelectStatement : public Expression {
  public:
   std::vector<std::shared_ptr<Column>> columns;
   std::vector<std::shared_ptr<Source>> sources;
-  std::shared_ptr<Condition> where;
+  std::optional<std::shared_ptr<Condition>> where;
 
   SelectStatement(std::vector<std::shared_ptr<Column>> columns, std::vector<std::shared_ptr<Source>> sources,
                   std::shared_ptr<Condition> where)
       : columns(columns), sources(sources), where(where) {}
+
+  SelectStatement(std::vector<std::shared_ptr<Column>> columns, std::vector<std::shared_ptr<Source>> sources)
+      : columns(columns), sources(sources) {}
 
   std::ostream& Print(std::ostream& os) const override {
     os << "SELECT ";
@@ -223,7 +226,7 @@ class SelectStatement : public Expression {
       }
     }
 
-    if (where != nullptr) {
+    if (where.has_value()) {
       os << " WHERE " << *where;
     }
 
