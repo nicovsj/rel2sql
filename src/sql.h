@@ -243,8 +243,7 @@ using ParserRuleContext = antlr4::ParserRuleContext;
  * @param source_map An unordered map with ParserRuleContext pointers as keys and Source objects as values.
  * @return A vector of shared pointers to Condition objects.
  */
-std::shared_ptr<Condition> EqualitySS(std::vector<ParserRuleContext*> children_ctx,
-                                      std::unordered_map<ParserRuleContext*, ExtendedData> extended_data_map,
-                                      std::unordered_map<ParserRuleContext*, std::shared_ptr<Source>> source_map);
+std::shared_ptr<Condition> EqualitySS(std::unordered_map<ParserRuleContext*, std::shared_ptr<Source>> input_map,
+                                      std::unordered_map<ParserRuleContext*, ExtendedData> extended_data_map);
 
 #endif  // SQL_H

@@ -15,9 +15,10 @@ TEST(TranslationUtilityFunctionsTest, EqualitySS) {
   auto table_F = std::make_shared<Table>("F");
   auto table_G = std::make_shared<Table>("G");
 
-  auto condition = EqualitySS(std::vector<antlr4::ParserRuleContext*>{tree->lhs, tree->rhs}, *ast.extended_data,
-                              std::unordered_map<antlr4::ParserRuleContext*, std::shared_ptr<Source>>{
-                                  {tree->lhs, table_F}, {tree->rhs, table_G}});
+  auto condition =
+      EqualitySS(std::unordered_map<antlr4::ParserRuleContext*, std::shared_ptr<Source>>{{tree->lhs, table_F},
+                                                                                         {tree->rhs, table_G}},
+                 *ast.extended_data);
 
   std::ostringstream os;
 
