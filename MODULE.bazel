@@ -28,7 +28,8 @@ http_jar(
 )
 
 # Utility dependencies
-bazel_dep(name = "fmt", version = "10.2.1")
+bazel_dep(name = "fmt", version = "10.2.1")  # Formatting strings
+bazel_dep(name = "spdlog", version = "1.13.0")  # Logging
 
 # Testing dependencies
 bazel_dep(name = "googletest", version = "1.14.0")

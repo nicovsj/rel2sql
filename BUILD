@@ -28,6 +28,7 @@ cc_library(
         "//:rel_cc_parser",
         "@antlr4-cpp-runtime//:antlr4-cpp-runtime",
         "@fmt",
+        "@spdlog",
     ],
 )
 
@@ -51,5 +52,6 @@ cc_test(
     deps = [
         ":rel2sql_lib",
         "@googletest//:gtest_main",
+        "@spdlog",
     ],
 )
