@@ -27,3 +27,22 @@ std::shared_ptr<Condition> EqualitySS(std::unordered_map<ParserRuleContext*, std
 
   return std::make_shared<LogicalCondition>(conditions, LogicalOp::AND);
 }
+
+std::vector<std::shared_ptr<Column>> VarListSS(
+    std::unordered_map<ParserRuleContext*, std::shared_ptr<Source>> input_map,
+    std::unordered_map<ParserRuleContext*, ExtendedData> extended_data_map) {
+  std::set<std::string> seen_vars;
+
+  std::vector<std::shared_ptr<Column>> columns;
+
+  for (auto const& [ctx, data] : input_map) {
+    for (auto const& var : extended_data_map[ctx].variables) {
+      if (seen_vars.find(var) != seen_vars.end()) continue;
+
+      columns.push_back(std::make_shared<Column>(var, data));
+      seen_vars.insert(var);
+    }
+  }
+
+  return columns;
+}

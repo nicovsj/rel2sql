@@ -246,4 +246,8 @@ using ParserRuleContext = antlr4::ParserRuleContext;
 std::shared_ptr<Condition> EqualitySS(std::unordered_map<ParserRuleContext*, std::shared_ptr<Source>> input_map,
                                       std::unordered_map<ParserRuleContext*, ExtendedData> extended_data_map);
 
+std::vector<std::shared_ptr<Column>> VarListSS(
+    std::unordered_map<ParserRuleContext*, std::shared_ptr<Source>> input_map,
+    std::unordered_map<ParserRuleContext*, ExtendedData> extended_data_map);
+
 #endif  // SQL_H
