@@ -1,14 +1,17 @@
 #ifndef SQL_H
 #define SQL_H
 
+#include <antlr4-runtime.h>
 #include <fmt/core.h>
 #include <spdlog/spdlog.h>
 
 #include <iostream>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "parser/fv_visitor.h"
 #include "utils.h"
 
 enum class CompOp {
@@ -227,5 +230,21 @@ class SelectStatement : public Expression {
     return os;
   }
 };
+
+// UTILITY FUNCTIONS
+
+using ParserRuleContext = antlr4::ParserRuleContext;
+
+/**
+ * Applies the EQ function to a vector of children context, an extended data map, and a source map.
+ *
+ * @param children_ctx A vector of ParserRuleContext pointers representing the children context.
+ * @param extended_data_map An unordered map with ParserRuleContext pointers as keys and ExtendedData objects as values.
+ * @param source_map An unordered map with ParserRuleContext pointers as keys and Source objects as values.
+ * @return A vector of shared pointers to Condition objects.
+ */
+std::shared_ptr<Condition> EqualitySS(std::vector<ParserRuleContext*> children_ctx,
+                                      std::unordered_map<ParserRuleContext*, ExtendedData> extended_data_map,
+                                      std::unordered_map<ParserRuleContext*, std::shared_ptr<Source>> source_map);
 
 #endif  // SQL_H
