@@ -48,6 +48,7 @@ cc_test(
     srcs = [
         "tests/test_free_vars.cc",
         "tests/test_sql_ast.cc",
+        "tests/test_translation.cc"
     ],
     deps = [
         ":rel2sql_lib",
