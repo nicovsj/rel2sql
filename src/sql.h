@@ -23,10 +23,7 @@ enum class CompOp {
   GTE,
 };
 
-enum class LogicalOp {
-  AND,
-  OR,
-};
+enum class LogicalOp { AND, OR, NOT };
 
 using value_t = std::variant<int, double, std::string>;
 
@@ -179,6 +176,8 @@ class LogicalCondition : public Condition {
         return "AND";
       case LogicalOp::OR:
         return "OR";
+      case LogicalOp::NOT:
+        return "NOT";
     }
   }
 
