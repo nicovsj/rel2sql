@@ -76,22 +76,61 @@ class Table : public Source {
   }
 };
 
-class Column : public Expression {
+class Selectable : public Expression {
+ public:
+  virtual ~Selectable() = default;
+  virtual std::ostream& Print(std::ostream& os) const = 0;
+
+  virtual std::string Alias() const = 0;
+};
+
+class Column : public Selectable {
  public:
   std::string name;
   std::optional<std::shared_ptr<Source>> source;
+  std::optional<std::string> alias;
 
   Column(std::string name) : name(name) {}
   Column(std::string name, std::shared_ptr<Source> source) : name(name), source(source) {}
+  Column(std::string name, std::shared_ptr<Source> source, std::string alias)
+      : name(name), source(source), alias(alias) {}
+
+  std::string Alias() const override {
+    if (alias.has_value()) {
+      return alias.value();
+    }
+
+    return name;
+  }
 
   std::ostream& Print(std::ostream& os) const override {
+    // TODO: Implement case A1 AS alias in the SQL AST
     if (source.has_value()) {
       auto table_ptr = source.value();
       return os << table_ptr->Alias() << "." << name;
     }
 
-    return os << name;
+    return os << Alias();
   }
+};
+
+class Wildcard : public Selectable {
+ public:
+  std::optional<std::shared_ptr<Source>> source;
+
+  Wildcard() = default;
+
+  Wildcard(std::shared_ptr<Source> source) : source(source) {}
+
+  std::ostream& Print(std::ostream& os) const override {
+    if (source.has_value()) {
+      return os << source.value()->Alias() << ".*";
+    }
+
+    return os << "*";
+  }
+
+  std::string Alias() const override { return ""; }
 };
 
 class Condition : public Expression {
@@ -195,17 +234,38 @@ class LogicalCondition : public Condition {
   LogicalCondition(std::vector<std::shared_ptr<Condition>> conditions, LogicalOp op) : conditions(conditions), op(op) {}
 };
 
-class SelectStatement : public Expression {
+class Inclusion : public Condition {
  public:
   std::vector<std::shared_ptr<Column>> columns;
+  std::shared_ptr<SelectStatement> select;
+  bool is_not;
+
+  Inclusion(std::vector<std::shared_ptr<Column>> columns, std::shared_ptr<SelectStatement> select, bool is_not = false)
+      : columns(columns), select(select), is_not(is_not) {}
+
+  std::ostream& Print(std::ostream& os) const override;
+};
+
+class Exists : public Condition {
+ public:
+  std::shared_ptr<SelectStatement> select;
+
+  Exists(std::shared_ptr<SelectStatement> select) : select(select) {}
+
+  std::ostream& Print(std::ostream& os) const override;
+};
+
+class SelectStatement : public Expression {
+ public:
+  std::vector<std::shared_ptr<Selectable>> columns;
   std::vector<std::shared_ptr<Source>> sources;
   std::optional<std::shared_ptr<Condition>> where;
 
-  SelectStatement(std::vector<std::shared_ptr<Column>> columns, std::vector<std::shared_ptr<Source>> sources,
+  SelectStatement(std::vector<std::shared_ptr<Selectable>> columns, std::vector<std::shared_ptr<Source>> sources,
                   std::shared_ptr<Condition> where)
       : columns(columns), sources(sources), where(where) {}
 
-  SelectStatement(std::vector<std::shared_ptr<Column>> columns, std::vector<std::shared_ptr<Source>> sources)
+  SelectStatement(std::vector<std::shared_ptr<Selectable>> columns, std::vector<std::shared_ptr<Source>> sources)
       : columns(columns), sources(sources) {}
 
   std::ostream& Print(std::ostream& os) const override {
@@ -226,7 +286,7 @@ class SelectStatement : public Expression {
     }
 
     if (where.has_value()) {
-      os << " WHERE " << *where;
+      os << " WHERE " << *where.value();
     }
 
     return os;
