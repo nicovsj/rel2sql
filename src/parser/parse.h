@@ -4,6 +4,7 @@
 #include "parser/fv_visitor.h"
 #include "parser/generated/CoreRelLexer.h"
 #include "parser/generated/PrunedCoreRelParser.h"
+#include "parser/sql_visitor.h"
 
 namespace rel_parser {
 
@@ -28,6 +29,22 @@ inline ExtendedAST GetExtendedAST(std::string_view input) {
 
   return GetExtendedASTFromTree(tree);
 };
+
+inline std::shared_ptr<sql::ast::Expression> GetSQLFromTree(antlr4::ParserRuleContext* tree) {
+  SQLVisitor visitor;
+
+  return std::any_cast<std::shared_ptr<sql::ast::Expression>>(visitor.visit(tree));
+}
+
+inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input) {
+  auto parser = GetParser(input);
+
+  auto tree = parser->formula();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  return GetSQLFromTree(tree);
+}
 
 }  // namespace rel_parser
 

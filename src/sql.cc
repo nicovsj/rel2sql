@@ -1,5 +1,7 @@
 #include "sql.h"
 
+namespace sql::ast {
+
 std::ostream& Subquery::Print(std::ostream& os) const { return os << "(" << *select << ") AS " << alias; }
 
 std::ostream& Exists::Print(std::ostream& os) const { return os << "EXISTS (" << *select << ")"; }
@@ -48,21 +50,23 @@ std::shared_ptr<Condition> EqualitySS(std::unordered_map<ParserRuleContext*, std
   return std::make_shared<LogicalCondition>(conditions, LogicalOp::AND);
 }
 
-std::vector<std::shared_ptr<Column>> VarListSS(
+std::vector<std::shared_ptr<Selectable>> VarListSS(
     std::unordered_map<ParserRuleContext*, std::shared_ptr<Source>> input_map,
     std::unordered_map<ParserRuleContext*, ExtendedData> extended_data_map) {
   std::set<std::string> seen_vars;
 
-  std::vector<std::shared_ptr<Column>> columns;
+  std::vector<std::shared_ptr<Selectable>> columns;
 
   for (auto const& [ctx, data] : input_map) {
     for (auto const& var : extended_data_map[ctx].variables) {
       if (seen_vars.find(var) != seen_vars.end()) continue;
 
-      columns.push_back(std::make_shared<Column>(var, data));
+      columns.push_back(std::static_pointer_cast<Selectable>(std::make_shared<Column>(var, data)));
       seen_vars.insert(var);
     }
   }
 
   return columns;
 }
+
+}  // namespace sql::ast
