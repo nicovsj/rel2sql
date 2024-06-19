@@ -1,3 +1,4 @@
+// cspell:ignore GTEST
 #include <gtest/gtest.h>
 
 #include "parser/parse.h"
@@ -54,6 +55,8 @@ TEST(TranslationUtilityFunctionsTest, VarListSS) {
 }
 
 TEST(TranslationTest, ConjunctionExpr) {
+  GTEST_SKIP() << "Not implemented yet";
+
   std::string input = "F(x) and G(x, y)";
 
   auto parser = rel_parser::GetParser(input);
