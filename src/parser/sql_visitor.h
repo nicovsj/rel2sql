@@ -5,9 +5,12 @@
 
 #include "parser/fv_visitor.h"
 #include "parser/generated/PrunedCoreRelParserBaseVisitor.h"
+#include "sql.h"
 
 class SQLVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
  public:
+  virtual ~SQLVisitor();
+
   std::any visitProgram(rel_parser::PrunedCoreRelParser::ProgramContext *ctx) override;
 
   std::any visitRelDef(rel_parser::PrunedCoreRelParser::RelDefContext *ctx) override;
@@ -63,7 +66,17 @@ class SQLVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
 
   std::any visitDisjunction(rel_parser::PrunedCoreRelParser::BinOpContext *ctx);
 
+  std::any visitExistential(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx);
+
+  std::any visitUniversal(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx);
+
+  std::string GenerateTableAlias();
+
+  int table_alias_counter_ = 0;
+
   std::shared_ptr<std::unordered_map<antlr4::ParserRuleContext *, ExtendedData>> extended_data_;
+
+  std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> table_index_;
 };
 
 #endif  // SQL_VISITOR_H

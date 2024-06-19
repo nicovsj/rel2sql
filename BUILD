@@ -15,10 +15,12 @@ cc_library(
     name = "rel2sql_lib",
     srcs = [
         "src/parser/fv_visitor.cc",
+        "src/parser/sql_visitor.cc",
         "src/sql.cc",
     ],
     hdrs = [
         "src/parser/fv_visitor.h",
+        "src/parser/sql_visitor.h",
         "src/parser/parse.h",
         "src/sql.h",
         "src/utils.h",

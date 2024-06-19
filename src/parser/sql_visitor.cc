@@ -2,49 +2,113 @@
 
 #include "sql.h"
 
-std::any SQLVisitor::visitConjunction(rel_parser::PrunedCoreRelParser::BinOpContext *ctx) {
+using namespace rel_parser;
+
+SQLVisitor::~SQLVisitor() = default;
+
+std::any SQLVisitor::visitProgram(PrunedCoreRelParser::ProgramContext *ctx) {
   /*
-   * Generates an SQL query from the conjunction of the two formulas.
+   * Generates an SQL query from the program.
    */
-  auto lhs_sql = std::any_cast<std::shared_ptr<SelectStatement>>(visit(ctx->lhs));
-  auto rhs_sql = std::any_cast<std::shared_ptr<SelectStatement>>(visit(ctx->rhs));
-
-  auto lhs_subquery = std::make_shared<Subquery>(lhs_sql, "T1");
-  auto rhs_subquery = std::make_shared<Subquery>(rhs_sql, "T2");
-
-  std::unordered_map<ParserRuleContext *, std::shared_ptr<Source>> input_map = {{ctx->lhs, lhs_subquery},
-                                                                                {ctx->rhs, rhs_subquery}};
-
-  auto condition = EqualitySS(input_map, *extended_data_);
-
-  auto select_columns = VarListSS(input_map, *extended_data_);
-
-  return std::make_shared<SelectStatement>(select_columns,
-                                           std::vector<std::shared_ptr<Source>>{lhs_subquery, rhs_subquery}, condition);
+  throw std::runtime_error("Not implemented yet");
 }
 
-std::any SQLVisitor::visitDisjunction(rel_parser::PrunedCoreRelParser::BinOpContext *ctx) {
+std::any SQLVisitor::visitRelDef(PrunedCoreRelParser::RelDefContext *ctx) {
   /*
-   * Generates an SQL query from the disjunction of the two formulas.
+   * Generates an SQL query from the relation definition.
    */
-  auto lhs_sql = std::any_cast<std::shared_ptr<SelectStatement>>(visit(ctx->lhs));
-  auto rhs_sql = std::any_cast<std::shared_ptr<SelectStatement>>(visit(ctx->rhs));
-
-  auto lhs_subquery = std::make_shared<Subquery>(lhs_sql, "T1");
-  auto rhs_subquery = std::make_shared<Subquery>(rhs_sql, "T2");
-
-  auto lhs_cols = VarListSS(std::unordered_map<ParserRuleContext *, std::shared_ptr<Source>>{{ctx->lhs, lhs_subquery}},
-                            *extended_data_);
-  auto rhs_cols = VarListSS(std::unordered_map<ParserRuleContext *, std::shared_ptr<Source>>{{ctx->rhs, rhs_subquery}},
-                            *extended_data_);
-
-  auto lhs_select = std::make_shared<SelectStatement>(lhs_cols, std::vector<std::shared_ptr<Source>>{lhs_subquery});
-  auto rhs_select = std::make_shared<SelectStatement>(rhs_cols, std::vector<std::shared_ptr<Source>>{rhs_subquery});
-
-  return std::make_shared<Union>(lhs_select, rhs_select);
+  throw std::runtime_error("Not implemented yet");
 }
 
-std::any SQLVisitor::visitBinOp(rel_parser::PrunedCoreRelParser::BinOpContext *ctx) {
+std::any SQLVisitor::visitRelAbs(PrunedCoreRelParser::RelAbsContext *ctx) {
+  /*
+   * Generates an SQL query from the relation abstraction.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitLitExpr(PrunedCoreRelParser::LitExprContext *ctx) {
+  /*
+   * Generates an SQL query from the literal expression.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitIDExpr(PrunedCoreRelParser::IDExprContext *ctx) {
+  /*
+   * Generates an SQL query from the identifier expression.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitProductExpr(PrunedCoreRelParser::ProductExprContext *ctx) {
+  /*
+   * Generates an SQL query from the product expression.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitConditionExpr(PrunedCoreRelParser::ConditionExprContext *ctx) {
+  /*
+   * Generates an SQL query from the condition expression.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitRelAbsExpr(PrunedCoreRelParser::RelAbsExprContext *ctx) {
+  /*
+   * Generates an SQL query from the relation abstraction expression.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitFormulaExpr(PrunedCoreRelParser::FormulaExprContext *ctx) {
+  /*
+   * Generates an SQL query from the formula expression.
+   */
+  return visit(ctx->formula());
+}
+
+std::any SQLVisitor::visitBindingsExpr(PrunedCoreRelParser::BindingsExprContext *ctx) {
+  /*
+   * Generates an SQL query from the bindings expression.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitBindingsFormula(PrunedCoreRelParser::BindingsFormulaContext *ctx) {
+  /*
+   * Generates an SQL query from the bindings formula.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitPartialAppl(PrunedCoreRelParser::PartialApplContext *ctx) {
+  /*
+   * Generates an SQL query from the partial application.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitFullAppl(rel_parser::PrunedCoreRelParser::FullApplContext *ctx) {
+  auto ra_sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->applBase()));
+
+  std::vector<PrunedCoreRelParser::ApplParamContext *> var_params, wildcard_params, other_params;
+
+  for (auto appl : ctx->applParams()->applParam()) {
+    auto appl_sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(appl));
+    if (appl->T_UNDERSCORE())
+      wildcard_params.push_back(appl);
+    else
+      // TODO: I think that here we need to visit the expression. However, this complicates a bit the decision
+      // of the expression beeing a variable or not.
+      throw std::runtime_error("Not implemented yet");
+  }
+
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitBinOp(PrunedCoreRelParser::BinOpContext *ctx) {
   if (ctx->K_and()) {
     return visitConjunction(ctx);
   } else if (ctx->K_or()) {
@@ -52,4 +116,234 @@ std::any SQLVisitor::visitBinOp(rel_parser::PrunedCoreRelParser::BinOpContext *c
   } else {
     throw std::runtime_error("Unknown binary operation");
   }
+}
+
+std::any SQLVisitor::visitUnOp(PrunedCoreRelParser::UnOpContext *ctx) {
+  /*
+   * Generates an SQL query from the unary operation.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitQuantification(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx) {
+  if (ctx->K_exists()) {
+    return visitExistential(ctx);
+  } else if (ctx->K_forall()) {
+    return visitUniversal(ctx);
+  } else {
+    throw std::runtime_error("Unknown quantification");
+  }
+}
+
+std::any SQLVisitor::visitParen(PrunedCoreRelParser::ParenContext *ctx) {
+  /*
+   * Generates an SQL query from the parenthesized expression.
+   */
+  return visit(ctx->formula());
+}
+
+std::any SQLVisitor::visitBindingInner(PrunedCoreRelParser::BindingInnerContext *ctx) {
+  /*
+   * Generates an SQL query from the inner binding.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitBinding(PrunedCoreRelParser::BindingContext *ctx) {
+  /*
+   * Generates an SQL query from the binding.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitApplBase(PrunedCoreRelParser::ApplBaseContext *ctx) {
+  /*
+   * Generates an SQL query from the application base.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitApplParams(PrunedCoreRelParser::ApplParamsContext *ctx) {
+  /*
+   * Generates an SQL query from the application parameters.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::any SQLVisitor::visitApplParam(PrunedCoreRelParser::ApplParamContext *ctx) {
+  /*
+   * Generates an SQL query from the application parameter.
+   */
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::string SQLVisitor::GenerateTableAlias() {
+  /*
+   * Generates a table alias.
+   */
+  return "T" + std::to_string(table_alias_counter_++);
+}
+
+std::any SQLVisitor::visitConjunction(PrunedCoreRelParser::BinOpContext *ctx) {
+  /*
+   * Generates an SQL query from the conjunction of the two formulas.
+   */
+  auto lhs_sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->lhs));
+  auto rhs_sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->rhs));
+
+  auto lhs_subquery = std::make_shared<sql::ast::Subquery>(lhs_sql, GenerateTableAlias());
+  auto rhs_subquery = std::make_shared<sql::ast::Subquery>(rhs_sql, GenerateTableAlias());
+
+  std::unordered_map<antlr4::ParserRuleContext *, std::shared_ptr<sql::ast::Source>> input_map = {
+      {ctx->lhs, lhs_subquery}, {ctx->rhs, rhs_subquery}};
+
+  auto condition = EqualitySS(input_map, *extended_data_);
+
+  auto select_columns = VarListSS(input_map, *extended_data_);
+
+  return std::make_shared<sql::ast::SelectStatement>(
+      select_columns, std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery, rhs_subquery}, condition);
+}
+
+std::any SQLVisitor::visitDisjunction(PrunedCoreRelParser::BinOpContext *ctx) {
+  /*
+   * Generates an SQL query from the disjunction of the two formulas.
+   */
+  auto lhs_sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->lhs));
+  auto rhs_sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->rhs));
+
+  auto lhs_subquery = std::make_shared<sql::ast::Subquery>(lhs_sql, GenerateTableAlias());
+  auto rhs_subquery = std::make_shared<sql::ast::Subquery>(rhs_sql, GenerateTableAlias());
+
+  auto lhs_cols = VarListSS(
+      std::unordered_map<antlr4::ParserRuleContext *, std::shared_ptr<sql::ast::Source>>{{ctx->lhs, lhs_subquery}},
+      *extended_data_);
+  auto rhs_cols = VarListSS(
+      std::unordered_map<antlr4::ParserRuleContext *, std::shared_ptr<sql::ast::Source>>{{ctx->rhs, rhs_subquery}},
+      *extended_data_);
+
+  auto lhs_select = std::make_shared<sql::ast::SelectStatement>(
+      lhs_cols, std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery});
+  auto rhs_select = std::make_shared<sql::ast::SelectStatement>(
+      rhs_cols, std::vector<std::shared_ptr<sql::ast::Source>>{rhs_subquery});
+
+  return std::make_shared<sql::ast::Union>(lhs_select, rhs_select);
+}
+
+std::any SQLVisitor::visitExistential(PrunedCoreRelParser::QuantificationContext *ctx) {
+  /*
+   * Generates an SQL query from the existence quantification.
+   */
+
+  std::vector<PrunedCoreRelParser::BindingContext *> bounded_bindings;
+
+  std::vector<PrunedCoreRelParser::BindingContext *> bindings = ctx->bindingInner()->binding();
+
+  auto free_vars = extended_data_->at(ctx).free_variables;
+
+  for (auto binding : bindings) {
+    if (binding->id_domain) {
+      bounded_bindings.push_back(binding);
+      auto id_domain = binding->id_domain->getText();
+      if (table_index_.find(id_domain) == table_index_.end()) {
+        table_index_[id_domain] = std::make_shared<sql::ast::Table>(id_domain);
+      }
+    }
+  }
+
+  auto sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->formula()));
+
+  auto subquery = std::make_shared<sql::ast::Subquery>(sql, GenerateTableAlias());
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
+
+  for (auto var : free_vars) {
+    select_columns.push_back(std::make_shared<sql::ast::Column>(var, subquery));
+  }
+
+  std::vector<std::shared_ptr<sql::ast::Source>> sources = {subquery};
+
+  for (auto binding : bounded_bindings) {
+    auto id_domain = binding->id_domain->getText();
+    sources.push_back(table_index_[id_domain]);
+  }
+
+  std::vector<std::shared_ptr<sql::ast::Condition>> conditions;
+
+  for (auto binding : bounded_bindings) {
+    auto id_domain = binding->id_domain->getText();
+    auto id = binding->id->getText();
+    auto bound_column = std::make_shared<sql::ast::Column>("A1", table_index_[id_domain]);
+    auto free_var_column = std::make_shared<sql::ast::Column>(id, subquery);
+    conditions.push_back(
+        std::make_shared<sql::ast::ColumnComparisonCondition>(free_var_column, sql::ast::CompOp::EQ, bound_column));
+  }
+
+  auto condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
+
+  return std::make_shared<sql::ast::SelectStatement>(select_columns, sources, condition);
+}
+
+std::any SQLVisitor::visitUniversal(PrunedCoreRelParser::QuantificationContext *ctx) {
+  /*
+   * Generates an SQL query from the universal quantification.
+   */
+
+  auto free_vars = extended_data_->at(ctx).free_variables;
+
+  std::vector<std::shared_ptr<sql::ast::Source>> bound_domain_sources;
+
+  for (auto binding : ctx->bindingInner()->binding()) {
+    if (!binding->id_domain) {
+      throw std::runtime_error("Universal quantification with no domain");
+    }
+    auto id_domain = binding->id_domain->getText();
+    if (table_index_.find(id_domain) == table_index_.end()) {
+      table_index_[id_domain] = std::make_shared<sql::ast::Table>(id_domain);
+    }
+    bound_domain_sources.push_back(table_index_[id_domain]);
+  }
+
+  auto sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->formula()));
+
+  auto subquery = std::make_shared<sql::ast::Subquery>(sql, GenerateTableAlias());
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
+
+  for (auto var : free_vars) {
+    select_columns.push_back(std::make_shared<sql::ast::Column>(var, subquery));
+  }
+
+  std::vector<std::shared_ptr<sql::ast::Source>> sources = {subquery};
+
+  auto wildcard = std::make_shared<sql::ast::Wildcard>();
+
+  auto inter_inner_select = std::make_shared<sql::ast::SelectStatement>(
+      std::vector<std::shared_ptr<sql::ast::Selectable>>{wildcard}, sources);
+
+  std::vector<std::shared_ptr<sql::ast::Column>> inclusion_tuple;
+
+  for (auto col : select_columns) {
+    inclusion_tuple.push_back(std::static_pointer_cast<sql::ast::Column>(col));
+  }
+
+  for (auto binding : ctx->bindingInner()->binding()) {
+    auto id_domain = binding->id_domain->getText();
+    auto bound_column = std::make_shared<sql::ast::Column>("A1", table_index_[id_domain]);
+    inclusion_tuple.push_back(bound_column);
+  }
+
+  auto inclusion = std::make_shared<sql::ast::Inclusion>(inclusion_tuple, inter_inner_select);
+
+  auto wildcard2 = std::make_shared<sql::ast::Wildcard>();
+
+  auto inner_select = std::make_shared<sql::ast::SelectStatement>(
+      std::vector<std::shared_ptr<sql::ast::Selectable>>{wildcard2}, bound_domain_sources, inclusion);
+
+  auto exists = std::make_shared<sql::ast::Exists>(inner_select);
+
+  auto not_exists = std::make_shared<sql::ast::LogicalCondition>(
+      std::vector<std::shared_ptr<sql::ast::Condition>>{exists}, sql::ast::LogicalOp::NOT);
+
+  return std::make_shared<sql::ast::SelectStatement>(select_columns, sources, not_exists);
 }
