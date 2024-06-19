@@ -84,6 +84,7 @@ class Selectable : public Expression {
   virtual std::ostream& Print(std::ostream& os) const = 0;
 
   virtual std::string Alias() const = 0;
+  virtual bool HasAlias() const = 0;
 };
 
 class Column : public Selectable {
@@ -105,14 +106,15 @@ class Column : public Selectable {
     return name;
   }
 
+  bool HasAlias() const override { return alias.has_value(); }
+
   std::ostream& Print(std::ostream& os) const override {
-    // TODO: Implement case A1 AS alias in the SQL AST
     if (source.has_value()) {
       auto table_ptr = source.value();
       return os << table_ptr->Alias() << "." << name;
     }
 
-    return os << Alias();
+    return os << name;
   }
 };
 
@@ -126,13 +128,15 @@ class Wildcard : public Selectable {
 
   std::ostream& Print(std::ostream& os) const override {
     if (source.has_value()) {
-      return os << source.value()->Alias() << ".*";
+      return os << source.value()->Alias() << "." << Alias();
     }
 
-    return os << "*";
+    return os << Alias();
   }
 
-  std::string Alias() const override { return ""; }
+  std::string Alias() const override { return "*"; }
+
+  bool HasAlias() const override { return false; }
 };
 
 class Condition : public Expression {
@@ -273,7 +277,11 @@ class SelectStatement : public Expression {
   std::ostream& Print(std::ostream& os) const override {
     os << "SELECT ";
     for (size_t i = 0; i < columns.size(); i++) {
-      os << *columns[i];
+      if (columns[i]->HasAlias()) {
+        os << *columns[i] << " AS " << columns[i]->Alias();
+      } else {
+        os << *columns[i];
+      }
       if (i < columns.size() - 1) {
         os << ", ";
       }
