@@ -246,3 +246,18 @@ TEST(SQLPrintingTest, WildcardColumnPrint) {
 
   EXPECT_EQ(os.str(), "T1.*");
 }
+
+TEST(SQLPrintingTest, SelectStatementWithColumnAlias) {
+  auto t1 = std::make_shared<sql::ast::Table>("T1");
+  auto a1 = std::make_shared<sql::ast::Column>("A1", t1, "X");
+  auto a2 = std::make_shared<sql::ast::Column>("A2", t1);
+
+  auto ss1 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1, a2},
+                                                         std::vector<std::shared_ptr<sql::ast::Source>>{t1});
+
+  std::ostringstream os;
+
+  os << *ss1;
+
+  EXPECT_EQ(os.str(), "SELECT T1.A1 AS X, T1.A2 FROM T1");
+}
