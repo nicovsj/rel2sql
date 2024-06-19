@@ -31,8 +31,7 @@ int main(int argc, const char* argv[]) {
 
   auto extended_ast = rel_parser::GetExtendedAST(input_file_str);
 
-  std::cout << fmt::format("Root: {{{}}}", fmt::join(extended_ast.extended_data[extended_ast.root].free_variables, ","))
-            << std::endl;
+  std::cout << fmt::format("Root: {{{}}}", fmt::join(extended_ast.RootExtendedData().free_variables, ",")) << std::endl;
 
   return 0;
 }
