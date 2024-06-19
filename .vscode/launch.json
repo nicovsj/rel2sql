@@ -5,16 +5,22 @@
             "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/bazel-out/darwin_arm64-dbg/bin/rel2sql",
-            "args": ["example.relq"],
+            "args": [
+                "example.relq"
+            ],
             "cwd": "${workspaceFolder}",
         },
         {
             "name": "C++ Debug tests",
+            "preLaunchTask": "build tests",
             "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/bazel-out/darwin_arm64-dbg/bin/rel_test",
             "args": [],
             "cwd": "${workspaceFolder}",
+            "sourceMap": {
+                "/private/var/tmp/_bazel_nicovsj/324f689d9818b83a06a3cb4ea073aa77/execroot/_main": "${workspaceFolder}"
+            }
         }
     ]
 }
