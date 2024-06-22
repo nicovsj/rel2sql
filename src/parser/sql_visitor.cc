@@ -112,9 +112,9 @@ std::any SQLVisitor::visitFullAppl(rel_parser::PrunedCoreRelParser::FullApplCont
 
 std::any SQLVisitor::visitBinOp(PrunedCoreRelParser::BinOpContext *ctx) {
   if (ctx->K_and()) {
-    return visitConjunction(ctx);
+    return VisitConjunction(ctx);
   } else if (ctx->K_or()) {
-    return visitDisjunction(ctx);
+    return VisitDisjunction(ctx);
   } else {
     throw std::runtime_error("Unknown binary operation");
   }
@@ -129,9 +129,9 @@ std::any SQLVisitor::visitUnOp(PrunedCoreRelParser::UnOpContext *ctx) {
 
 std::any SQLVisitor::visitQuantification(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx) {
   if (ctx->K_exists()) {
-    return visitExistential(ctx);
+    return VisitExistential(ctx);
   } else if (ctx->K_forall()) {
-    return visitUniversal(ctx);
+    return VisitUniversal(ctx);
   } else {
     throw std::runtime_error("Unknown quantification");
   }
@@ -186,7 +186,7 @@ std::string SQLVisitor::GenerateTableAlias() {
   return "T" + std::to_string(table_alias_counter_++);
 }
 
-std::any SQLVisitor::visitConjunction(PrunedCoreRelParser::BinOpContext *ctx) {
+std::any SQLVisitor::VisitConjunction(PrunedCoreRelParser::BinOpContext *ctx) {
   /*
    * Generates an SQL query from the conjunction of the two formulas.
    */
@@ -207,7 +207,7 @@ std::any SQLVisitor::visitConjunction(PrunedCoreRelParser::BinOpContext *ctx) {
       select_columns, std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery, rhs_subquery}, condition);
 }
 
-std::any SQLVisitor::visitDisjunction(PrunedCoreRelParser::BinOpContext *ctx) {
+std::any SQLVisitor::VisitDisjunction(PrunedCoreRelParser::BinOpContext *ctx) {
   /*
    * Generates an SQL query from the disjunction of the two formulas.
    */
@@ -230,7 +230,7 @@ std::any SQLVisitor::visitDisjunction(PrunedCoreRelParser::BinOpContext *ctx) {
   return std::make_shared<sql::ast::Union>(lhs_select, rhs_select);
 }
 
-std::any SQLVisitor::visitExistential(PrunedCoreRelParser::QuantificationContext *ctx) {
+std::any SQLVisitor::VisitExistential(PrunedCoreRelParser::QuantificationContext *ctx) {
   /*
    * Generates an SQL query from the existence quantification.
    */
@@ -284,7 +284,7 @@ std::any SQLVisitor::visitExistential(PrunedCoreRelParser::QuantificationContext
   return std::make_shared<sql::ast::SelectStatement>(select_columns, sources, condition);
 }
 
-std::any SQLVisitor::visitUniversal(PrunedCoreRelParser::QuantificationContext *ctx) {
+std::any SQLVisitor::VisitUniversal(PrunedCoreRelParser::QuantificationContext *ctx) {
   /*
    * Generates an SQL query from the universal quantification.
    */

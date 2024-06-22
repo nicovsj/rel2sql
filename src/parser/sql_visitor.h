@@ -63,13 +63,13 @@ class SQLVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
   std::any visitApplParam(rel_parser::PrunedCoreRelParser::ApplParamContext *ctx) override;
 
  private:
-  std::any visitConjunction(rel_parser::PrunedCoreRelParser::BinOpContext *ctx);
+  std::any VisitConjunction(rel_parser::PrunedCoreRelParser::BinOpContext *ctx);
 
-  std::any visitDisjunction(rel_parser::PrunedCoreRelParser::BinOpContext *ctx);
+  std::any VisitDisjunction(rel_parser::PrunedCoreRelParser::BinOpContext *ctx);
 
-  std::any visitExistential(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx);
+  std::any VisitExistential(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx);
 
-  std::any visitUniversal(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx);
+  std::any VisitUniversal(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx);
 
   // Utility functions
 
