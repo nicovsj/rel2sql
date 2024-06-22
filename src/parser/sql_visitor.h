@@ -10,6 +10,8 @@
 
 class SQLVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
  public:
+  SQLVisitor(ExtendedAST &extended_ast);
+
   virtual ~SQLVisitor();
 
   std::any visitProgram(rel_parser::PrunedCoreRelParser::ProgramContext *ctx) override;
