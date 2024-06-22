@@ -34,17 +34,6 @@ cc_library(
     ],
 )
 
-cc_binary(
-    name = "rel2sql",
-    srcs = ["src/main.cc"],
-    deps = [
-        ":rel2sql_lib",
-        "//:rel_cc_parser",
-        "@antlr4-cpp-runtime//:antlr4-cpp-runtime",
-        "@fmt",
-    ],
-)
-
 cc_test(
     name = "rel_test",
     srcs = [
