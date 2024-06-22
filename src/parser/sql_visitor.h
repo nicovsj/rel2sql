@@ -2,8 +2,9 @@
 #define SQL_VISITOR_H
 
 #include <antlr4-runtime.h>
+#include <gtest/gtest.h>
 
-#include "parser/fv_visitor.h"
+#include "parser/extended_ast.h"
 #include "parser/generated/PrunedCoreRelParserBaseVisitor.h"
 #include "sql.h"
 
@@ -70,13 +71,34 @@ class SQLVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
 
   std::any visitUniversal(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx);
 
+  // Utility functions
+
   std::string GenerateTableAlias();
+
+  std::shared_ptr<sql::ast::Condition> EqualitySpecialCondition(
+      std::unordered_map<antlr4::ParserRuleContext *, std::shared_ptr<sql::ast::Source>> input_map);
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> SpecialVarList(
+      std::unordered_map<antlr4::ParserRuleContext *, std::shared_ptr<sql::ast::Source>> input_map);
+
+  std::vector<std::shared_ptr<sql::ast::Condition>> FullApplicationVariableConditions(
+      rel_parser::PrunedCoreRelParser::FullApplContext *f_ctx,
+      std::vector<std::pair<rel_parser::PrunedCoreRelParser::ApplParamContext *, int>> e_ctx) const;
+
+  std::shared_ptr<sql::ast::Condition> FullApplicationCondition(
+      rel_parser::PrunedCoreRelParser::FullApplContext *f_ctx, rel_parser::PrunedCoreRelParser::ApplParamContext *e_ctx,
+      int index) const;
 
   int table_alias_counter_ = 0;
 
-  std::shared_ptr<std::unordered_map<antlr4::ParserRuleContext *, ExtendedData>> extended_data_;
+  ExtendedAST &extended_ast_;
 
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> table_index_;
+
+  // Testing bindings
+
+  FRIEND_TEST(SQLVisitorTest, EqualitySpecialCondition);
+  FRIEND_TEST(SQLVisitorTest, SpecialVarList);
 };
 
 #endif  // SQL_VISITOR_H

@@ -17,7 +17,7 @@ inline std::unique_ptr<PrunedCoreRelParser> GetParser(std::string_view input) {
 }
 
 inline ExtendedAST GetExtendedASTFromTree(antlr4::ParserRuleContext* tree) {
-  ExtendedASTVisitor visitor;
+  FreeVariablesVisitor visitor;
 
   return std::any_cast<ExtendedAST>(visitor.visit(tree));
 }
@@ -31,7 +31,9 @@ inline ExtendedAST GetExtendedAST(std::string_view input) {
 };
 
 inline std::shared_ptr<sql::ast::Expression> GetSQLFromTree(antlr4::ParserRuleContext* tree) {
-  SQLVisitor visitor;
+  ExtendedAST ast = GetExtendedASTFromTree(tree);
+
+  SQLVisitor visitor(ast);
 
   return std::any_cast<std::shared_ptr<sql::ast::Expression>>(visitor.visit(tree));
 }

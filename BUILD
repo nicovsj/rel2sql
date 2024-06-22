@@ -19,9 +19,10 @@ cc_library(
         "src/sql.cc",
     ],
     hdrs = [
+        "src/parser/extended_ast.h",
         "src/parser/fv_visitor.h",
-        "src/parser/sql_visitor.h",
         "src/parser/parse.h",
+        "src/parser/sql_visitor.h",
         "src/sql.h",
         "src/utils.h",
     ],
@@ -30,6 +31,7 @@ cc_library(
         "//:rel_cc_parser",
         "@antlr4-cpp-runtime//:antlr4-cpp-runtime",
         "@fmt",
+        "@googletest//:gtest",  # Needed for testing private member functions
         "@spdlog",
     ],
 )
@@ -39,7 +41,7 @@ cc_test(
     srcs = [
         "tests/test_free_vars.cc",
         "tests/test_sql_ast.cc",
-        "tests/test_translation.cc"
+        "tests/test_translation.cc",
     ],
     deps = [
         ":rel2sql_lib",

@@ -8,10 +8,8 @@
 #include <iostream>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
-#include "parser/fv_visitor.h"
 #include "utils.h"
 
 namespace sql::ast {
@@ -319,21 +317,6 @@ class Union : public Expression {
 // UTILITY FUNCTIONS
 
 using ParserRuleContext = antlr4::ParserRuleContext;
-
-/**
- * Applies the EQ function to a vector of children context, an extended data map, and a source map.
- *
- * @param children_ctx A vector of ParserRuleContext pointers representing the children context.
- * @param extended_data_map An unordered map with ParserRuleContext pointers as keys and ExtendedData objects as values.
- * @param source_map An unordered map with ParserRuleContext pointers as keys and Source objects as values.
- * @return A vector of shared pointers to Condition objects.
- */
-std::shared_ptr<Condition> EqualitySS(std::unordered_map<ParserRuleContext*, std::shared_ptr<Source>> input_map,
-                                      std::unordered_map<ParserRuleContext*, ExtendedData> extended_data_map);
-
-std::vector<std::shared_ptr<Selectable>> VarListSS(
-    std::unordered_map<ParserRuleContext*, std::shared_ptr<Source>> input_map,
-    std::unordered_map<ParserRuleContext*, ExtendedData> extended_data_map);
 
 }  // namespace sql::ast
 

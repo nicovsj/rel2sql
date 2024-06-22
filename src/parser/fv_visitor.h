@@ -3,34 +3,10 @@
 
 #include <antlr4-runtime.h>
 
+#include "parser/extended_ast.h"
 #include "parser/generated/PrunedCoreRelParserBaseVisitor.h"
 
-struct ExtendedData {
-  std::set<std::string> variables;
-  std::set<std::string> free_variables;
-
-  void InplaceUnion(const ExtendedData &other) {
-    variables.insert(other.variables.begin(), other.variables.end());
-    free_variables.insert(other.free_variables.begin(), other.free_variables.end());
-  }
-
-  void InplaceDifference(const ExtendedData &other) {
-    ExtendedData result;
-    variables.insert(other.variables.begin(), other.variables.end());
-    for (const auto &var : other.free_variables) {
-      free_variables.erase(var);
-    }
-  }
-};
-
-struct ExtendedAST {
-  antlr4::ParserRuleContext *root;
-  std::shared_ptr<std::unordered_map<antlr4::ParserRuleContext *, ExtendedData>> extended_data;
-
-  ExtendedData RootExtendedData() const { return (*extended_data)[root]; }
-};
-
-class ExtendedASTVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
+class FreeVariablesVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
  public:
   std::any visitProgram(rel_parser::PrunedCoreRelParser::ProgramContext *ctx) override;
 
@@ -83,8 +59,8 @@ class ExtendedASTVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
   std::any visitApplParam(rel_parser::PrunedCoreRelParser::ApplParamContext *ctx) override;
 
  private:
-  std::shared_ptr<std::unordered_map<antlr4::ParserRuleContext *, ExtendedData>> data_ =
-      std::make_shared<std::unordered_map<antlr4::ParserRuleContext *, ExtendedData>>();
+  std::shared_ptr<std::unordered_map<antlr4::ParserRuleContext *, ExtendedNode>> data_ =
+      std::make_shared<std::unordered_map<antlr4::ParserRuleContext *, ExtendedNode>>();
 };
 
 #endif  // FV_VISITOR_H
