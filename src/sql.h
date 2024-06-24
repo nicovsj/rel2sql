@@ -85,37 +85,6 @@ class Selectable : public Expression {
   virtual bool HasAlias() const = 0;
 };
 
-class Column : public Selectable {
- public:
-  std::string name;
-  std::optional<std::shared_ptr<Source>> source;
-  std::optional<std::string> alias;
-
-  Column(std::string name) : name(name) {}
-  Column(std::string name, std::shared_ptr<Source> source) : name(name), source(source) {}
-  Column(std::string name, std::shared_ptr<Source> source, std::string alias)
-      : name(name), source(source), alias(alias) {}
-
-  std::string Alias() const override {
-    if (alias.has_value()) {
-      return alias.value();
-    }
-
-    return name;
-  }
-
-  bool HasAlias() const override { return alias.has_value(); }
-
-  std::ostream& Print(std::ostream& os) const override {
-    if (source.has_value()) {
-      auto table_ptr = source.value();
-      return os << table_ptr->Alias() << "." << name;
-    }
-
-    return os << name;
-  }
-};
-
 class Wildcard : public Selectable {
  public:
   std::optional<std::shared_ptr<Source>> source;
@@ -126,7 +95,7 @@ class Wildcard : public Selectable {
 
   std::ostream& Print(std::ostream& os) const override {
     if (source.has_value()) {
-      return os << source.value()->Alias() << "." << Alias();
+      os << source.value()->Alias() << ".";
     }
 
     return os << Alias();
@@ -137,7 +106,35 @@ class Wildcard : public Selectable {
   bool HasAlias() const override { return false; }
 };
 
-class Constant : public Expression {
+class Term : public Expression {
+ public:
+  virtual ~Term() = default;
+  virtual std::ostream& Print(std::ostream& os) const = 0;
+
+  virtual std::string ToString() const = 0;
+};
+
+class TermSelectable : public Selectable {
+ public:
+  std::shared_ptr<Term> term;
+  std::optional<std::string> alias;
+
+  TermSelectable(std::shared_ptr<Term> term) : term(term) {}
+  TermSelectable(std::shared_ptr<Term> term, std::string alias) : term(term), alias(alias) {}
+
+  std::ostream& Print(std::ostream& os) const override { return os << *term; }
+
+  std::string Alias() const override {
+    if (alias.has_value())
+      return alias.value();
+    else
+      return term->ToString();
+  }
+
+  bool HasAlias() const override { return alias.has_value(); }
+};
+
+class Constant : public Term {
  public:
   constant_t value;
 
@@ -145,7 +142,7 @@ class Constant : public Expression {
 
   std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
 
-  std::string ToString() const {
+  std::string ToString() const override {
     return std::visit(
         utl::overloaded{[](int arg) { return std::to_string(arg); }, [](double arg) { return std::to_string(arg); },
                         [](std::string arg) { return fmt::format("'{}'", arg); }},
@@ -153,23 +150,25 @@ class Constant : public Expression {
   }
 };
 
-class SelectableConstant : public Selectable {
+class Column : public Term {
  public:
-  std::shared_ptr<Constant> constant;
-  std::optional<std::string> alias;
+  std::string name;
+  std::optional<std::shared_ptr<Source>> source;
 
-  SelectableConstant(std::shared_ptr<Constant> constant) : constant(constant) {}
+  Column(std::string name) : name(name) {}
+  Column(std::string name, std::shared_ptr<Source> source) : name(name), source(source) {}
 
-  std::ostream& Print(std::ostream& os) const override { return os << *constant; }
+  std::string ToString() const override {
+    std::string result = "";
 
-  std::string Alias() const override {
-    if (alias.has_value())
-      return alias.value();
-    else
-      return constant->ToString();
-  }
+    if (source.has_value()) {
+      result += source.value()->Alias() + ".";
+    }
 
-  bool HasAlias() const override { return alias.has_value(); }
+    return result + name;
+  };
+
+  std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
 };
 
 class Condition : public Expression {
@@ -178,17 +177,16 @@ class Condition : public Expression {
   virtual std::ostream& Print(std::ostream& os) const = 0;
 };
 
-class ValueCondition : public Condition {
+class ComparisonCondition : public Condition {
  public:
-  std::shared_ptr<Column> lhs;
+  std::shared_ptr<Term> lhs;
   CompOp op;
-  std::shared_ptr<Constant> rhs;
+  std::shared_ptr<Term> rhs;
 
-  ValueCondition(std::shared_ptr<Column> column, CompOp op, std::shared_ptr<Constant> value)
-      : lhs(column), op(op), rhs(value) {}
+  ComparisonCondition(std::shared_ptr<Term> lhs, CompOp op, std::shared_ptr<Term> rhs) : lhs(lhs), op(op), rhs(rhs) {}
 
-  ValueCondition(std::shared_ptr<Column> column, CompOp op, constant_t value)
-      : lhs(column), op(op), rhs(std::make_shared<Constant>(value)) {}
+  ComparisonCondition(std::shared_ptr<Term> lhs, CompOp op, constant_t value)
+      : lhs(lhs), op(op), rhs(std::make_shared<Constant>(value)) {}
 
   std::string get_operator_string(CompOp op) const {
     switch (op) {
@@ -210,37 +208,6 @@ class ValueCondition : public Condition {
   std::ostream& Print(std::ostream& os) const override {
     return os << *lhs << " " << get_operator_string(op) << " " << *rhs;
   }
-};
-
-class ColumnComparisonCondition : public Condition {
- public:
-  std::shared_ptr<Column> lhs;
-  CompOp op;
-  std::shared_ptr<Column> rhs;
-
-  std::string get_operator_string(CompOp op) const {
-    switch (op) {
-      case CompOp::EQ:
-        return "=";
-      case CompOp::NEQ:
-        return "!=";
-      case CompOp::LT:
-        return "<";
-      case CompOp::GT:
-        return ">";
-      case CompOp::LTE:
-        return "<=";
-      case CompOp::GTE:
-        return ">=";
-    }
-  }
-
-  std::ostream& Print(std::ostream& os) const override {
-    return os << *lhs << " " << get_operator_string(op) << " " << *rhs;
-  }
-
-  ColumnComparisonCondition(std::shared_ptr<Column> lhs, CompOp op, std::shared_ptr<Column> rhs)
-      : lhs(lhs), op(op), rhs(rhs) {}
 };
 
 class LogicalCondition : public Condition {

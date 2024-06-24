@@ -265,7 +265,8 @@ std::any SQLVisitor::VisitExistential(PrunedCoreRelParser::QuantificationContext
   std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
 
   for (auto var : free_vars) {
-    select_columns.push_back(std::make_shared<sql::ast::Column>(var, subquery));
+    auto column = std::make_shared<sql::ast::Column>(var, subquery);
+    select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(column));
   }
 
   std::vector<std::shared_ptr<sql::ast::Source>> sources = {subquery};
@@ -283,7 +284,7 @@ std::any SQLVisitor::VisitExistential(PrunedCoreRelParser::QuantificationContext
     auto bound_column = std::make_shared<sql::ast::Column>("A1", table_index_[id_domain]);
     auto free_var_column = std::make_shared<sql::ast::Column>(id, subquery);
     conditions.push_back(
-        std::make_shared<sql::ast::ColumnComparisonCondition>(free_var_column, sql::ast::CompOp::EQ, bound_column));
+        std::make_shared<sql::ast::ComparisonCondition>(free_var_column, sql::ast::CompOp::EQ, bound_column));
   }
 
   auto condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
@@ -317,10 +318,13 @@ std::any SQLVisitor::VisitUniversal(PrunedCoreRelParser::QuantificationContext *
 
   auto subquery = std::make_shared<sql::ast::Subquery>(sql, GenerateTableAlias());
 
+  std::vector<std::shared_ptr<sql::ast::Term>> columns;
   std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
 
   for (auto var : free_vars) {
-    select_columns.push_back(std::make_shared<sql::ast::Column>(var, subquery));
+    auto column = std::make_shared<sql::ast::Column>(var, subquery);
+    columns.push_back(column);
+    select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(column));
   }
 
   std::vector<std::shared_ptr<sql::ast::Source>> sources = {subquery};
@@ -330,11 +334,11 @@ std::any SQLVisitor::VisitUniversal(PrunedCoreRelParser::QuantificationContext *
   auto inter_inner_from = std::make_shared<sql::ast::FromStatement>(sources);
 
   auto inter_inner_select = std::make_shared<sql::ast::SelectStatement>(
-      std::vector<std::shared_ptr<sql::ast::Selectable>>{wildcard}, sources);
+      std::vector<std::shared_ptr<sql::ast::Selectable>>{wildcard}, inter_inner_from);
 
   std::vector<std::shared_ptr<sql::ast::Column>> inclusion_tuple;
 
-  for (auto col : select_columns) {
+  for (auto col : columns) {
     inclusion_tuple.push_back(std::static_pointer_cast<sql::ast::Column>(col));
   }
 
@@ -431,7 +435,7 @@ std::shared_ptr<sql::ast::Condition> SQLVisitor::EqualitySpecialCondition(
       for (size_t j = i + 1; j < ctxs.size(); j++) {
         auto lhs = std::make_shared<sql::ast::Column>(var, input_map[ctxs[i]]);
         auto rhs = std::make_shared<sql::ast::Column>(var, input_map[ctxs[j]]);
-        conditions.push_back(std::make_shared<sql::ast::ColumnComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs));
+        conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs));
       }
     }
   }
@@ -449,7 +453,10 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialVarList(
     for (auto const &var : extended_ast_.Get(ctx).variables) {
       if (seen_vars.find(var) != seen_vars.end()) continue;
 
-      columns.push_back(std::static_pointer_cast<sql::ast::Selectable>(std::make_shared<sql::ast::Column>(var, data)));
+      auto column = std::make_shared<sql::ast::Column>(var, data);
+      auto selectable = std::make_shared<sql::ast::TermSelectable>(column);
+
+      columns.push_back(selectable);
       seen_vars.insert(var);
     }
   }
