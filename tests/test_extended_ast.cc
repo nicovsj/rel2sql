@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <variant>
+
 #include "parser/parse.h"
 
 using namespace rel_parser;
@@ -99,4 +101,132 @@ TEST(FreeVarsTest, ConditionExpr) {
   EXPECT_EQ(free_vars.size(), 2);
   EXPECT_NE(free_vars.find("x"), free_vars.end());
   EXPECT_NE(free_vars.find("y"), free_vars.end());
+}
+
+TEST(LiteralVisitorTest, Int) {
+  std::string input = "1";
+
+  auto parser = GetParser(input);
+
+  auto tree = parser->literal();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  EXPECT_TRUE(ast.Root().constant.has_value());
+
+  EXPECT_TRUE(std::holds_alternative<int>(ast.Root().constant.value()));
+
+  EXPECT_EQ(std::get<int>(ast.Root().constant.value()), 1);
+}
+
+TEST(LiteralVisitorTest, NegInt) {
+  std::string input = "-1";
+
+  auto parser = GetParser(input);
+
+  auto tree = parser->literal();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  EXPECT_TRUE(ast.Root().constant.has_value());
+
+  EXPECT_TRUE(std::holds_alternative<int>(ast.Root().constant.value()));
+
+  EXPECT_EQ(std::get<int>(ast.Root().constant.value()), -1);
+}
+
+TEST(LiteralVisitorTest, Float) {
+  std::string input = "1.0";
+
+  auto parser = GetParser(input);
+
+  auto tree = parser->literal();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  EXPECT_TRUE(ast.Root().constant.has_value());
+
+  EXPECT_TRUE(std::holds_alternative<double>(ast.Root().constant.value()));
+
+  EXPECT_EQ(std::get<double>(ast.Root().constant.value()), 1.0);
+}
+
+TEST(LiteralVisitorTest, NegFloat) {
+  std::string input = "-1.0";
+
+  auto parser = GetParser(input);
+
+  auto tree = parser->literal();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  EXPECT_TRUE(ast.Root().constant.has_value());
+
+  EXPECT_TRUE(std::holds_alternative<double>(ast.Root().constant.value()));
+
+  EXPECT_EQ(std::get<double>(ast.Root().constant.value()), -1.0);
+}
+
+TEST(LiteralVisitorTest, Char) {
+  std::string input = "'a'";
+
+  auto parser = GetParser(input);
+
+  auto tree = parser->literal();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  EXPECT_TRUE(ast.Root().constant.has_value());
+
+  EXPECT_TRUE(std::holds_alternative<std::string>(ast.Root().constant.value()));
+
+  EXPECT_EQ(std::get<std::string>(ast.Root().constant.value()), "a");
+}
+
+TEST(LiteralVisitorTest, Str) {
+  std::string input = "\"abc\"";
+
+  auto parser = GetParser(input);
+
+  auto tree = parser->literal();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  EXPECT_TRUE(ast.Root().constant.has_value());
+
+  EXPECT_TRUE(std::holds_alternative<std::string>(ast.Root().constant.value()));
+
+  EXPECT_EQ(std::get<std::string>(ast.Root().constant.value()), "abc");
+}
+
+TEST(LiteralVisitorTest, Bool) {
+  std::string input = "true";
+
+  auto parser = GetParser(input);
+
+  auto tree = parser->literal();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  EXPECT_TRUE(ast.Root().constant.has_value());
+
+  EXPECT_TRUE(std::holds_alternative<bool>(ast.Root().constant.value()));
+
+  EXPECT_EQ(std::get<bool>(ast.Root().constant.value()), true);
+}
+
+TEST(LiteralVisitorTest, BoolFalse) {
+  std::string input = "false";
+
+  auto parser = GetParser(input);
+
+  auto tree = parser->literal();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  EXPECT_TRUE(ast.Root().constant.has_value());
+
+  EXPECT_TRUE(std::holds_alternative<bool>(ast.Root().constant.value()));
+
+  EXPECT_EQ(std::get<bool>(ast.Root().constant.value()), false);
 }
