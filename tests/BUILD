@@ -2,9 +2,9 @@
 package(default_visibility = ["//visibility:public"])
 
 cc_test(
-    name = "test_free_vars",
+    name = "test_extended_ast",
     srcs = [
-        "test_free_vars.cc"
+        "test_extended_ast.cc"
     ],
     deps = [
         "//:rel2sql_lib",
