@@ -11,11 +11,11 @@
             "cwd": "${workspaceFolder}",
         },
         {
-            "name": "C++ Debug tests",
+            "name": "C++ Debug extended ast",
             "preLaunchTask": "build tests",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/bazel-out/darwin_arm64-dbg/bin/rel_test",
+            "program": "${workspaceFolder}/bazel-out/darwin_arm64-dbg/bin/tests/test_extended_ast",
             "args": [],
             "cwd": "${workspaceFolder}",
             "sourceMap": {

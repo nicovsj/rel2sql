@@ -4,7 +4,7 @@
         {
             "label": "build tests",
             "type": "shell",
-            "command": "bazel build --config debug //:rel_test",
+            "command": "bazel build --config debug //tests:all",
             "group": {
                 "kind": "build",
                 "isDefault": false
