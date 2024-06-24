@@ -33,14 +33,22 @@ std::any SQLVisitor::visitLitExpr(PrunedCoreRelParser::LitExprContext *ctx) {
   /*
    * Generates an SQL query from the literal expression.
    */
-  throw std::runtime_error("Not implemented yet");
 }
 
 std::any SQLVisitor::visitIDExpr(PrunedCoreRelParser::IDExprContext *ctx) {
   /*
    * Generates an SQL query from the identifier expression.
    */
-  throw std::runtime_error("Not implemented yet");
+  std::string id = ctx->T_ID()->getText();
+
+  auto extended_data = extended_ast_.Get(ctx);
+
+  // Check if it is a variable
+  if (extended_data.variables.find(id) != extended_data.variables.end()) {
+    return std::make_shared<sql::ast::Column>(id);
+  }
+
+  return std::make_shared<sql::ast::Table>(id);
 }
 
 std::any SQLVisitor::visitProductExpr(PrunedCoreRelParser::ProductExprContext *ctx) {
@@ -95,16 +103,27 @@ std::any SQLVisitor::visitPartialAppl(PrunedCoreRelParser::PartialApplContext *c
 std::any SQLVisitor::visitFullAppl(rel_parser::PrunedCoreRelParser::FullApplContext *ctx) {
   auto ra_sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->applBase()));
 
-  std::vector<PrunedCoreRelParser::ApplParamContext *> var_params, wildcard_params, other_params;
+  auto ra_subquery = std::make_shared<sql::ast::Subquery>(ra_sql, GenerateTableAlias());
 
-  for (auto appl : ctx->applParams()->applParam()) {
-    auto appl_sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(appl));
+  std::vector<std::pair<PrunedCoreRelParser::ApplParamContext *, int>> var_params, wildcard_params, other_params;
+
+  for (int i = 0; i < ctx->applParams()->applParam().size(); i++) {
+    auto appl = ctx->applParams()->applParam(i);
     if (appl->T_UNDERSCORE())
-      wildcard_params.push_back(appl);
-    else
-      // TODO: I think that here we need to visit the expression. However, this complicates a bit the decision
-      // of the expression beeing a variable or not.
-      throw std::runtime_error("Not implemented yet");
+      wildcard_params.push_back({appl, i});
+    else {
+      auto abstract_sql = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(appl));
+      if (auto variable_sql = std::dynamic_pointer_cast<sql::ast::Column>(abstract_sql)) {
+        var_params.push_back({appl, i});
+      } else {
+        other_params.push_back({appl, i});
+      }
+    }
+
+    auto special_conditions = FullApplicationVariableConditions(ctx, var_params);
+
+    // of the expression beeing a variable or not.
+    throw std::runtime_error("Not implemented yet");
   }
 
   throw std::runtime_error("Not implemented yet");

@@ -1,11 +1,11 @@
 #ifndef PARSE_H
 #define PARSE_H
 
-#include "parser/fv_visitor.h"
 #include "parser/generated/CoreRelLexer.h"
 #include "parser/generated/PrunedCoreRelParser.h"
-#include "parser/lit_visitor.h"
-#include "parser/sql_visitor.h"
+#include "parser/visitors/fv_visitor.h"
+#include "parser/visitors/lit_visitor.h"
+#include "parser/visitors/sql_visitor.h"
 
 namespace rel_parser {
 
