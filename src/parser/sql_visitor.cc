@@ -203,8 +203,10 @@ std::any SQLVisitor::VisitConjunction(PrunedCoreRelParser::BinOpContext *ctx) {
 
   auto select_columns = SpecialVarList(input_map);
 
-  return std::make_shared<sql::ast::SelectStatement>(
-      select_columns, std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery, rhs_subquery}, condition);
+  auto from = std::make_shared<sql::ast::FromStatement>(
+      std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery, rhs_subquery}, condition);
+
+  return std::make_shared<sql::ast::SelectStatement>(select_columns, from);
 }
 
 std::any SQLVisitor::VisitDisjunction(PrunedCoreRelParser::BinOpContext *ctx) {
@@ -222,10 +224,15 @@ std::any SQLVisitor::VisitDisjunction(PrunedCoreRelParser::BinOpContext *ctx) {
   auto rhs_cols = SpecialVarList(
       std::unordered_map<antlr4::ParserRuleContext *, std::shared_ptr<sql::ast::Source>>{{ctx->rhs, rhs_subquery}});
 
-  auto lhs_select = std::make_shared<sql::ast::SelectStatement>(
-      lhs_cols, std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery});
-  auto rhs_select = std::make_shared<sql::ast::SelectStatement>(
-      rhs_cols, std::vector<std::shared_ptr<sql::ast::Source>>{rhs_subquery});
+  auto lhs_from =
+      std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery});
+
+  auto rhs_from =
+      std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{rhs_subquery});
+
+  auto lhs_select = std::make_shared<sql::ast::SelectStatement>(lhs_cols, lhs_from);
+
+  auto rhs_select = std::make_shared<sql::ast::SelectStatement>(rhs_cols, rhs_from);
 
   return std::make_shared<sql::ast::Union>(lhs_select, rhs_select);
 }
@@ -281,7 +288,9 @@ std::any SQLVisitor::VisitExistential(PrunedCoreRelParser::QuantificationContext
 
   auto condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
 
-  return std::make_shared<sql::ast::SelectStatement>(select_columns, sources, condition);
+  auto from = std::make_shared<sql::ast::FromStatement>(sources, condition);
+
+  return std::make_shared<sql::ast::SelectStatement>(select_columns, from);
 }
 
 std::any SQLVisitor::VisitUniversal(PrunedCoreRelParser::QuantificationContext *ctx) {
@@ -318,6 +327,8 @@ std::any SQLVisitor::VisitUniversal(PrunedCoreRelParser::QuantificationContext *
 
   auto wildcard = std::make_shared<sql::ast::Wildcard>();
 
+  auto inter_inner_from = std::make_shared<sql::ast::FromStatement>(sources);
+
   auto inter_inner_select = std::make_shared<sql::ast::SelectStatement>(
       std::vector<std::shared_ptr<sql::ast::Selectable>>{wildcard}, sources);
 
@@ -337,15 +348,19 @@ std::any SQLVisitor::VisitUniversal(PrunedCoreRelParser::QuantificationContext *
 
   auto wildcard2 = std::make_shared<sql::ast::Wildcard>();
 
+  auto inner_from = std::make_shared<sql::ast::FromStatement>(bound_domain_sources, inclusion);
+
   auto inner_select = std::make_shared<sql::ast::SelectStatement>(
-      std::vector<std::shared_ptr<sql::ast::Selectable>>{wildcard2}, bound_domain_sources, inclusion);
+      std::vector<std::shared_ptr<sql::ast::Selectable>>{wildcard2}, inner_from);
 
   auto exists = std::make_shared<sql::ast::Exists>(inner_select);
 
   auto not_exists = std::make_shared<sql::ast::LogicalCondition>(
       std::vector<std::shared_ptr<sql::ast::Condition>>{exists}, sql::ast::LogicalOp::NOT);
 
-  return std::make_shared<sql::ast::SelectStatement>(select_columns, sources, not_exists);
+  auto outer_from = std::make_shared<sql::ast::FromStatement>(sources, not_exists);
+
+  return std::make_shared<sql::ast::SelectStatement>(select_columns, outer_from);
 }
 
 std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::FullApplicationVariableConditions(

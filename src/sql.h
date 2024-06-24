@@ -25,7 +25,7 @@ enum class CompOp {
 
 enum class LogicalOp { AND, OR, NOT };
 
-using value_t = std::variant<int, double, std::string>;
+using constant_t = std::variant<int, double, std::string>;
 
 class SelectStatement;
 
@@ -137,6 +137,41 @@ class Wildcard : public Selectable {
   bool HasAlias() const override { return false; }
 };
 
+class Constant : public Expression {
+ public:
+  constant_t value;
+
+  Constant(constant_t value) : value(value) {}
+
+  std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
+
+  std::string ToString() const {
+    return std::visit(
+        utl::overloaded{[](int arg) { return std::to_string(arg); }, [](double arg) { return std::to_string(arg); },
+                        [](std::string arg) { return fmt::format("'{}'", arg); }},
+        value);
+  }
+};
+
+class SelectableConstant : public Selectable {
+ public:
+  std::shared_ptr<Constant> constant;
+  std::optional<std::string> alias;
+
+  SelectableConstant(std::shared_ptr<Constant> constant) : constant(constant) {}
+
+  std::ostream& Print(std::ostream& os) const override { return os << *constant; }
+
+  std::string Alias() const override {
+    if (alias.has_value())
+      return alias.value();
+    else
+      return constant->ToString();
+  }
+
+  bool HasAlias() const override { return alias.has_value(); }
+};
+
 class Condition : public Expression {
  public:
   virtual ~Condition() = default;
@@ -147,9 +182,13 @@ class ValueCondition : public Condition {
  public:
   std::shared_ptr<Column> lhs;
   CompOp op;
-  value_t rhs;
+  std::shared_ptr<Constant> rhs;
 
-  ValueCondition(std::shared_ptr<Column> column, CompOp op, value_t value) : lhs(column), op(op), rhs(value) {}
+  ValueCondition(std::shared_ptr<Column> column, CompOp op, std::shared_ptr<Constant> value)
+      : lhs(column), op(op), rhs(value) {}
+
+  ValueCondition(std::shared_ptr<Column> column, CompOp op, constant_t value)
+      : lhs(column), op(op), rhs(std::make_shared<Constant>(value)) {}
 
   std::string get_operator_string(CompOp op) const {
     switch (op) {
@@ -169,11 +208,7 @@ class ValueCondition : public Condition {
   }
 
   std::ostream& Print(std::ostream& os) const override {
-    std::string value_str = std::visit(
-        utl::overloaded{[](int arg) { return std::to_string(arg); }, [](double arg) { return std::to_string(arg); },
-                        [](std::string arg) { return fmt::format("'{}'", arg); }},
-        rhs);
-    return os << *lhs << " " << get_operator_string(op) << " " << value_str;
+    return os << *lhs << " " << get_operator_string(op) << " " << *rhs;
   }
 };
 
@@ -259,18 +294,42 @@ class Exists : public Condition {
   std::ostream& Print(std::ostream& os) const override;
 };
 
-class SelectStatement : public Expression {
+class FromStatement : public Expression {
  public:
-  std::vector<std::shared_ptr<Selectable>> columns;
   std::vector<std::shared_ptr<Source>> sources;
   std::optional<std::shared_ptr<Condition>> where;
 
-  SelectStatement(std::vector<std::shared_ptr<Selectable>> columns, std::vector<std::shared_ptr<Source>> sources,
-                  std::shared_ptr<Condition> where)
-      : columns(columns), sources(sources), where(where) {}
+  FromStatement(std::vector<std::shared_ptr<Source>> sources) : sources(sources) {}
 
-  SelectStatement(std::vector<std::shared_ptr<Selectable>> columns, std::vector<std::shared_ptr<Source>> sources)
-      : columns(columns), sources(sources) {}
+  FromStatement(std::vector<std::shared_ptr<Source>> sources, std::shared_ptr<Condition> where)
+      : sources(sources), where(where) {}
+
+  std::ostream& Print(std::ostream& os) const override {
+    os << "FROM ";
+    for (size_t i = 0; i < sources.size(); i++) {
+      os << *sources[i];
+      if (i < sources.size() - 1) {
+        os << ", ";
+      }
+    }
+
+    if (where.has_value()) {
+      os << " WHERE " << *where.value();
+    }
+
+    return os;
+  }
+};
+
+class SelectStatement : public Expression {
+ public:
+  std::vector<std::shared_ptr<Selectable>> columns;
+  std::optional<std::shared_ptr<FromStatement>> from;
+
+  SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns) : columns(columns) {}
+
+  SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from)
+      : columns(columns), from(from) {}
 
   std::ostream& Print(std::ostream& os) const override {
     os << "SELECT ";
@@ -285,16 +344,8 @@ class SelectStatement : public Expression {
       }
     }
 
-    os << " FROM ";
-    for (size_t i = 0; i < sources.size(); i++) {
-      os << *sources[i];
-      if (i < sources.size() - 1) {
-        os << ", ";
-      }
-    }
-
-    if (where.has_value()) {
-      os << " WHERE " << *where.value();
+    if (from.has_value()) {
+      os << " " << *from.value();
     }
 
     return os;

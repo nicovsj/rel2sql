@@ -102,8 +102,10 @@ TEST(SQLPrintingTest, SelectStatementPrint) {
   auto lc1 = std::make_shared<sql::ast::LogicalCondition>(
       std::vector<std::shared_ptr<sql::ast::Condition>>{vc1, vc2, cc1}, sql::ast::LogicalOp::AND);
 
-  auto ss1 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1, a2, a3},
-                                                         std::vector<std::shared_ptr<sql::ast::Source>>{t1, t2}, lc1);
+  auto f1 = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{t1, t2}, lc1);
+
+  auto ss1 =
+      std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1, a2, a3}, f1);
 
   std::ostringstream os;
 
@@ -118,16 +120,18 @@ TEST(SQLPrintingTest, SelectSubqueryPrint) {
 
   auto vc1 = std::make_shared<sql::ast::ValueCondition>(a1, sql::ast::CompOp::EQ, 1);
 
-  auto ss1 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1},
-                                                         std::vector<std::shared_ptr<sql::ast::Source>>{t1}, vc1);
+  auto f1 = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{t1}, vc1);
+
+  auto ss1 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1}, f1);
 
   auto sq = std::make_shared<sql::ast::Subquery>(ss1, "subquery1");
   auto sa1 = std::make_shared<sql::ast::Column>("A1", sq);
 
   auto vc2 = std::make_shared<sql::ast::ValueCondition>(sa1, sql::ast::CompOp::GTE, 1);
 
-  auto ss2 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{sa1},
-                                                         std::vector<std::shared_ptr<sql::ast::Source>>{sq}, vc2);
+  auto f2 = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{sq}, vc2);
+
+  auto ss2 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{sa1}, f2);
 
   std::ostringstream os;
 
@@ -142,8 +146,10 @@ TEST(SQLPrintingTest, SelectStatementWithoutConditionPrint) {
   auto a1 = std::make_shared<sql::ast::Column>("A1", t1);
   auto a2 = std::make_shared<sql::ast::Column>("A2", t1);
 
-  auto ss1 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1, a2},
-                                                         std::vector<std::shared_ptr<sql::ast::Source>>{t1});
+  auto f1 = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{t1});
+
+  auto ss1 =
+      std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1, a2}, f1);
 
   std::ostringstream os;
 
@@ -158,8 +164,9 @@ TEST(SQLPrintingTest, ExistsPrint) {
 
   auto vc1 = std::make_shared<sql::ast::ValueCondition>(a1, sql::ast::CompOp::EQ, 1);
 
-  auto ss1 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1},
-                                                         std::vector<std::shared_ptr<sql::ast::Source>>{t1}, vc1);
+  auto f1 = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{t1}, vc1);
+
+  auto ss1 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1}, f1);
 
   auto e1 = std::make_shared<sql::ast::Exists>(ss1);
 
@@ -176,8 +183,9 @@ TEST(SQLPrintingTest, InclusionPrint) {
 
   auto vc1 = std::make_shared<sql::ast::ValueCondition>(a1, sql::ast::CompOp::EQ, 1);
 
-  auto ss1 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1},
-                                                         std::vector<std::shared_ptr<sql::ast::Source>>{t1}, vc1);
+  auto f1 = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{t1}, vc1);
+
+  auto ss1 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1}, f1);
 
   auto i1 = std::make_shared<sql::ast::Inclusion>(std::vector<std::shared_ptr<sql::ast::Column>>{a1}, ss1, false);
 
@@ -194,8 +202,9 @@ TEST(SQLPrintingTest, NotInclusionPrint) {
 
   auto vc1 = std::make_shared<sql::ast::ValueCondition>(a1, sql::ast::CompOp::EQ, 1);
 
-  auto ss1 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1},
-                                                         std::vector<std::shared_ptr<sql::ast::Source>>{t1}, vc1);
+  auto f1 = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{t1}, vc1);
+
+  auto ss1 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1}, f1);
 
   auto i1 = std::make_shared<sql::ast::Inclusion>(std::vector<std::shared_ptr<sql::ast::Column>>{a1}, ss1, true);
 
@@ -214,8 +223,10 @@ TEST(SQLPrintingTest, TupleInclusionPrint) {
   auto vc1 = std::make_shared<sql::ast::ValueCondition>(a1, sql::ast::CompOp::EQ, 1);
   auto vc2 = std::make_shared<sql::ast::ValueCondition>(a2, sql::ast::CompOp::EQ, "Smith");
 
-  auto ss1 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1, a2},
-                                                         std::vector<std::shared_ptr<sql::ast::Source>>{t1}, vc1);
+  auto f1 = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{t1}, vc1);
+
+  auto ss1 =
+      std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1, a2}, f1);
 
   auto i1 = std::make_shared<sql::ast::Inclusion>(std::vector<std::shared_ptr<sql::ast::Column>>{a1, a2}, ss1, false);
 
@@ -252,12 +263,25 @@ TEST(SQLPrintingTest, SelectStatementWithColumnAlias) {
   auto a1 = std::make_shared<sql::ast::Column>("A1", t1, "X");
   auto a2 = std::make_shared<sql::ast::Column>("A2", t1);
 
-  auto ss1 = std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1, a2},
-                                                         std::vector<std::shared_ptr<sql::ast::Source>>{t1});
+  auto f1 = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{t1});
+
+  auto ss1 =
+      std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{a1, a2}, f1);
 
   std::ostringstream os;
 
   os << *ss1;
 
   EXPECT_EQ(os.str(), "SELECT T1.A1 AS X, T1.A2 FROM T1");
+}
+
+TEST(SQLPrintingTest, SelectConstantPrint) {
+  auto c1 = std::make_shared<sql::ast::Constant>(1);
+  auto c2 = std::make_shared<sql::ast::Constant>("Smith");
+
+  std::ostringstream os;
+
+  os << *c1 << " " << *c2;
+
+  EXPECT_EQ(os.str(), "1 'Smith'");
 }
