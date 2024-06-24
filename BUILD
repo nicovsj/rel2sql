@@ -14,12 +14,14 @@ cc_library(
     name = "rel2sql_lib",
     srcs = [
         "src/parser/fv_visitor.cc",
+        "src/parser/lit_visitor.cc",
         "src/parser/sql_visitor.cc",
         "src/sql.cc",
     ],
     hdrs = [
         "src/parser/extended_ast.h",
         "src/parser/fv_visitor.h",
+        "src/parser/lit_visitor.h",
         "src/parser/parse.h",
         "src/parser/sql_visitor.h",
         "src/sql.h",

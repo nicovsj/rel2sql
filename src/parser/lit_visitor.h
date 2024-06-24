@@ -1,14 +1,14 @@
-#ifndef FV_VISITOR_H
-#define FV_VISITOR_H
+#ifndef LIT_VISITOR_H
+#define LIT_VISITOR_H
 
 #include <antlr4-runtime.h>
 
 #include "parser/extended_ast.h"
 #include "parser/generated/PrunedCoreRelParserBaseVisitor.h"
 
-class FreeVariablesVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
+class LiteralVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
  public:
-  FreeVariablesVisitor(std::shared_ptr<ExtendedASTIndex> extended_ast);
+  LiteralVisitor(std::shared_ptr<ExtendedASTIndex> index);
 
   std::any visitProgram(rel_parser::PrunedCoreRelParser::ProgramContext *ctx) override;
 
@@ -60,8 +60,42 @@ class FreeVariablesVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
 
   std::any visitApplParam(rel_parser::PrunedCoreRelParser::ApplParamContext *ctx) override;
 
+  // # Literal branches
+
+  std::any visitInt(rel_parser::PrunedCoreRelParser::IntContext *ctx) override;
+
+  std::any visitNegInt(rel_parser::PrunedCoreRelParser::NegIntContext *ctx) override;
+
+  // std::any visitMetaInt(rel_parser::PrunedCoreRelParser::MetaIntContext *ctx) override;
+
+  std::any visitFloat(rel_parser::PrunedCoreRelParser::FloatContext *ctx) override;
+
+  std::any visitNegFloat(rel_parser::PrunedCoreRelParser::NegFloatContext *ctx) override;
+
+  // std::any visitRelName(rel_parser::PrunedCoreRelParser::RelNameContext *ctx) override;
+
+  // std::any visitRelNameStr(rel_parser::PrunedCoreRelParser::RelNameStrContext *ctx) override;
+
+  // std::any visitRelNameMstr(rel_parser::PrunedCoreRelParser::RelNameMstrContext *ctx) override;
+
+  std::any visitChar(rel_parser::PrunedCoreRelParser::CharContext *ctx) override;
+
+  std::any visitStr(rel_parser::PrunedCoreRelParser::StrContext *ctx) override;
+
+  // std::any visitMstr(rel_parser::PrunedCoreRelParser::MstrContext *ctx) override;
+
+  // std::any visitRawstr(rel_parser::PrunedCoreRelParser::RawstrContext *ctx) override;
+
+  // std::any visitDate(rel_parser::PrunedCoreRelParser::DateContext *ctx) override;
+
+  // std::any visitDatetime(rel_parser::PrunedCoreRelParser::DatetimeContext *ctx) override;
+
+  std::any visitBool(rel_parser::PrunedCoreRelParser::BoolContext *ctx) override;
+
+  // std::any visitInterpol(rel_parser::PrunedCoreRelParser::InterpolContext *ctx) override;
+
  private:
   std::shared_ptr<ExtendedASTIndex> extended_ast_index_;
 };
 
-#endif  // FV_VISITOR_H
+#endif  // LIT_VISITOR_H

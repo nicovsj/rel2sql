@@ -25,7 +25,7 @@ enum class CompOp {
 
 enum class LogicalOp { AND, OR, NOT };
 
-using constant_t = std::variant<int, double, std::string>;
+using constant_t = std::variant<int, double, std::string, bool>;
 
 class SelectStatement;
 
@@ -145,7 +145,8 @@ class Constant : public Term {
   std::string ToString() const override {
     return std::visit(
         utl::overloaded{[](int arg) { return std::to_string(arg); }, [](double arg) { return std::to_string(arg); },
-                        [](std::string arg) { return fmt::format("'{}'", arg); }},
+                        [](std::string arg) { return fmt::format("'{}'", arg); },
+                        [](bool arg) { return arg ? std::string("TRUE") : std::string("FALSE"); }},
         value);
   }
 };

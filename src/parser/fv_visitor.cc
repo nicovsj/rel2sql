@@ -1,5 +1,8 @@
 #include "fv_visitor.h"
 
+FreeVariablesVisitor::FreeVariablesVisitor(std::shared_ptr<ExtendedASTIndex> extended_ast)
+    : extended_ast_index_(extended_ast) {}
+
 std::any FreeVariablesVisitor::visitProgram(rel_parser::PrunedCoreRelParser::ProgramContext *ctx) {
   ExtendedNode data;
 
@@ -10,18 +13,18 @@ std::any FreeVariablesVisitor::visitProgram(rel_parser::PrunedCoreRelParser::Pro
     data.InplaceUnion(child_data);
   }
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitRelDef(rel_parser::PrunedCoreRelParser::RelDefContext *ctx) {
   auto ast = std::any_cast<ExtendedAST>(visit(ctx->relAbs()));
   auto data = ast.Root();
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitRelAbs(rel_parser::PrunedCoreRelParser::RelAbsContext *ctx) {
@@ -33,17 +36,17 @@ std::any FreeVariablesVisitor::visitRelAbs(rel_parser::PrunedCoreRelParser::RelA
     data.InplaceUnion(child_data);
   }
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitLitExpr(rel_parser::PrunedCoreRelParser::LitExprContext *ctx) {
   ExtendedNode data;
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitIDExpr(rel_parser::PrunedCoreRelParser::IDExprContext *ctx) {
@@ -54,9 +57,9 @@ std::any FreeVariablesVisitor::visitIDExpr(rel_parser::PrunedCoreRelParser::IDEx
   data.free_variables.insert(id);
   data.variables.insert(id);
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitProductExpr(rel_parser::PrunedCoreRelParser::ProductExprContext *ctx) {
@@ -68,9 +71,9 @@ std::any FreeVariablesVisitor::visitProductExpr(rel_parser::PrunedCoreRelParser:
     data.InplaceUnion(child_data);
   }
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitConditionExpr(rel_parser::PrunedCoreRelParser::ConditionExprContext *ctx) {
@@ -85,27 +88,27 @@ std::any FreeVariablesVisitor::visitConditionExpr(rel_parser::PrunedCoreRelParse
   data.InplaceUnion(lh_data);
   data.InplaceUnion(rh_data);
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitRelAbsExpr(rel_parser::PrunedCoreRelParser::RelAbsExprContext *ctx) {
   auto ast = std::any_cast<ExtendedAST>(visit(ctx->relAbs()));
   auto data = ast.Root();
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitFormulaExpr(rel_parser::PrunedCoreRelParser::FormulaExprContext *ctx) {
   auto ast = std::any_cast<ExtendedAST>(visit(ctx->formula()));
   auto data = ast.Root();
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitBindingsExpr(rel_parser::PrunedCoreRelParser::BindingsExprContext *ctx) {
@@ -117,9 +120,9 @@ std::any FreeVariablesVisitor::visitBindingsExpr(rel_parser::PrunedCoreRelParser
 
   expr_data.InplaceDifference(bindings_data);
 
-  (*data_)[ctx] = expr_data;
+  (*extended_ast_index_)[ctx] = expr_data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitBindingsFormula(rel_parser::PrunedCoreRelParser::BindingsFormulaContext *ctx) {
@@ -131,9 +134,9 @@ std::any FreeVariablesVisitor::visitBindingsFormula(rel_parser::PrunedCoreRelPar
 
   formula_data.InplaceDifference(bindings_data);
 
-  (*data_)[ctx] = formula_data;
+  (*extended_ast_index_)[ctx] = formula_data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitPartialAppl(rel_parser::PrunedCoreRelParser::PartialApplContext *ctx) {
@@ -145,9 +148,9 @@ std::any FreeVariablesVisitor::visitPartialAppl(rel_parser::PrunedCoreRelParser:
 
   base_data.InplaceUnion(params_data);
 
-  (*data_)[ctx] = base_data;
+  (*extended_ast_index_)[ctx] = base_data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitFullAppl(rel_parser::PrunedCoreRelParser::FullApplContext *ctx) {
@@ -159,9 +162,9 @@ std::any FreeVariablesVisitor::visitFullAppl(rel_parser::PrunedCoreRelParser::Fu
 
   base_data.InplaceUnion(params_data);
 
-  (*data_)[ctx] = base_data;
+  (*extended_ast_index_)[ctx] = base_data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitBinOp(rel_parser::PrunedCoreRelParser::BinOpContext *ctx) {
@@ -173,18 +176,18 @@ std::any FreeVariablesVisitor::visitBinOp(rel_parser::PrunedCoreRelParser::BinOp
 
   lhs_data.InplaceUnion(rhs_data);
 
-  (*data_)[ctx] = lhs_data;
+  (*extended_ast_index_)[ctx] = lhs_data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitUnOp(rel_parser::PrunedCoreRelParser::UnOpContext *ctx) {
   auto ast = std::any_cast<ExtendedAST>(visit(ctx->formula()));
   auto data = ast.Root();
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitQuantification(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx) {
@@ -196,18 +199,18 @@ std::any FreeVariablesVisitor::visitQuantification(rel_parser::PrunedCoreRelPars
 
   formula_data.InplaceDifference(bindings_data);
 
-  (*data_)[ctx] = formula_data;
+  (*extended_ast_index_)[ctx] = formula_data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitParen(rel_parser::PrunedCoreRelParser::ParenContext *ctx) {
   auto ast = std::any_cast<ExtendedAST>(visit(ctx->formula()));
   auto data = ast.Root();
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitBindingInner(rel_parser::PrunedCoreRelParser::BindingInnerContext *ctx) {
@@ -219,9 +222,9 @@ std::any FreeVariablesVisitor::visitBindingInner(rel_parser::PrunedCoreRelParser
     data.InplaceUnion(child_data);
   }
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitBinding(rel_parser::PrunedCoreRelParser::BindingContext *ctx) {
@@ -233,9 +236,9 @@ std::any FreeVariablesVisitor::visitBinding(rel_parser::PrunedCoreRelParser::Bin
     data.free_variables.insert(id);
   }
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitApplBase(rel_parser::PrunedCoreRelParser::ApplBaseContext *ctx) {
@@ -248,9 +251,9 @@ std::any FreeVariablesVisitor::visitApplBase(rel_parser::PrunedCoreRelParser::Ap
 
   // Do nothing in the other case because the ID is not a variable
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitApplParams(rel_parser::PrunedCoreRelParser::ApplParamsContext *ctx) {
@@ -263,9 +266,9 @@ std::any FreeVariablesVisitor::visitApplParams(rel_parser::PrunedCoreRelParser::
     data.InplaceUnion(child_data);
   }
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }
 
 std::any FreeVariablesVisitor::visitApplParam(rel_parser::PrunedCoreRelParser::ApplParamContext *ctx) {
@@ -276,7 +279,7 @@ std::any FreeVariablesVisitor::visitApplParam(rel_parser::PrunedCoreRelParser::A
     data = ast.Root();
   }
 
-  (*data_)[ctx] = data;
+  (*extended_ast_index_)[ctx] = data;
 
-  return ExtendedAST{ctx, data_};
+  return ExtendedAST{ctx, extended_ast_index_};
 }

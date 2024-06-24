@@ -4,6 +4,7 @@
 #include "parser/fv_visitor.h"
 #include "parser/generated/CoreRelLexer.h"
 #include "parser/generated/PrunedCoreRelParser.h"
+#include "parser/lit_visitor.h"
 #include "parser/sql_visitor.h"
 
 namespace rel_parser {
@@ -17,9 +18,15 @@ inline std::unique_ptr<PrunedCoreRelParser> GetParser(std::string_view input) {
 }
 
 inline ExtendedAST GetExtendedASTFromTree(antlr4::ParserRuleContext* tree) {
-  FreeVariablesVisitor visitor;
+  auto index = std::make_shared<ExtendedASTIndex>();
 
-  return std::any_cast<ExtendedAST>(visitor.visit(tree));
+  FreeVariablesVisitor free_vars_visitor(index);
+
+  LiteralVisitor literal_visitor(index);
+
+  free_vars_visitor.visit(tree);
+
+  return std::any_cast<ExtendedAST>(literal_visitor.visit(tree));
 }
 
 inline ExtendedAST GetExtendedAST(std::string_view input) {
