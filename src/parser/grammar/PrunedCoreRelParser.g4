@@ -12,23 +12,23 @@ relDef: s = 'def' name = T_ID relAbs;
 // ========================================================================================
 
 literal:
-	T_INT_LIT																	# int_
-	| T_NEG_INT_LIT																# neg_int_
-	| T_META_INT_LIT															# meta_int_
-	| T_FLOAT_LIT																# float_
-	| T_NEG_FLOAT_LIT															# neg_float_
-	| T_RELNAME_LIT																# relname_
-	| T_RELNAME_STR_LIT															# relname_str_
-	| T_RELNAME_MSTR_LIT														# relname_mstr_
-	| T_CHAR_LIT																# char_
-	| T_STATIC_STR_LIT															# str_
-	| T_STATIC_MSTR_LIT															# mstr_
-	| T_RAWSTRING_LIT															# rawstr_
-	| T_DATE_LIT																# date_
-	| T_DATETIME_LIT															# datetime_
-	| meh = ('true' | 'false')													# bool_
-	| T_QUOTE (interpolationPart | ERR_INVALID_STR_LIT)+ T_QUOTE				# interpol_
-	| T_TRIPLE_QUOTE (interpolationPart | ERR_INVALID_STR_LIT)+ T_TRIPLE_QUOTE	# interpol_;
+	T_INT_LIT																	# int
+	| T_NEG_INT_LIT																# negInt
+	| T_META_INT_LIT															# metaInt
+	| T_FLOAT_LIT																# float
+	| T_NEG_FLOAT_LIT															# negFloat
+	| T_RELNAME_LIT																# relName
+	| T_RELNAME_STR_LIT															# relNameStr
+	| T_RELNAME_MSTR_LIT														# relNameMstr
+	| T_CHAR_LIT																# Char
+	| T_STATIC_STR_LIT															# Str
+	| T_STATIC_MSTR_LIT															# Mstr
+	| T_RAWSTRING_LIT															# Rawstr
+	| T_DATE_LIT																# Date
+	| T_DATETIME_LIT															# Datetime
+	| meh = ('true' | 'false')													# bool
+	| T_QUOTE (interpolationPart | ERR_INVALID_STR_LIT)+ T_QUOTE				# interpol
+	| T_TRIPLE_QUOTE (interpolationPart | ERR_INVALID_STR_LIT)+ T_TRIPLE_QUOTE	# interpol;
 
 interpolationPart:
 	T_STATIC_STR_PART
