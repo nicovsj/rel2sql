@@ -1,5 +1,4 @@
 # BUILD
-load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("//bazel:antlr.bzl", "antlr_cc_library")
 
 package(default_visibility = ["//visibility:public"])
@@ -32,20 +31,6 @@ cc_library(
         "@antlr4-cpp-runtime//:antlr4-cpp-runtime",
         "@fmt",
         "@googletest//:gtest",  # Needed for testing private member functions
-        "@spdlog",
-    ],
-)
-
-cc_test(
-    name = "rel_test",
-    srcs = [
-        "tests/test_free_vars.cc",
-        "tests/test_sql_ast.cc",
-        "tests/test_translation.cc",
-    ],
-    deps = [
-        ":rel2sql_lib",
-        "@googletest//:gtest_main",
         "@spdlog",
     ],
 )

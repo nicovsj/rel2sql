@@ -1,0 +1,38 @@
+
+package(default_visibility = ["//visibility:public"])
+
+cc_test(
+    name = "test_free_vars",
+    srcs = [
+        "test_free_vars.cc"
+    ],
+    deps = [
+        "//:rel2sql_lib",
+        "@googletest//:gtest_main",
+        "@spdlog",
+    ],
+)
+
+cc_test(
+    name = "test_translation",
+    srcs = [
+        "test_translation.cc"
+    ],
+    deps = [
+        "//:rel2sql_lib",
+        "@googletest//:gtest_main",
+        "@spdlog",
+    ],
+
+)
+cc_test(
+    name = "test_sql_ast",
+    srcs = [
+        "test_sql_ast.cc"
+    ],
+    deps = [
+        "//:rel2sql_lib",
+        "@googletest//:gtest_main",
+        "@spdlog",
+    ],
+)
