@@ -16,17 +16,18 @@ TEST(SQLVisitorTest, EqualitySpecialCondition) {
   auto table_F = std::make_shared<sql::ast::Table>("F");
   auto table_G = std::make_shared<sql::ast::Table>("G");
 
+  ast.Get(tree->lhs).sql_expression = table_F;
+  ast.Get(tree->rhs).sql_expression = table_G;
+
   auto visitor = SQLVisitor(ast);
 
-  auto condition = visitor.EqualitySpecialCondition(
-      std::unordered_map<antlr4::ParserRuleContext*, std::shared_ptr<sql::ast::Source>>{{tree->lhs, table_F},
-                                                                                        {tree->rhs, table_G}});
+  auto condition = visitor.EqualitySpecialCondition(std::vector<antlr4::ParserRuleContext*>{tree->lhs, tree->rhs});
 
   std::ostringstream os;
 
   os << *condition;
 
-  EXPECT_EQ(os.str(), "G.x = F.x");
+  EXPECT_EQ(os.str(), "F.x = G.x");
 }
 
 TEST(SQLVisitorTest, SpecialVarList) {
@@ -41,11 +42,12 @@ TEST(SQLVisitorTest, SpecialVarList) {
   auto table_F = std::make_shared<sql::ast::Table>("F");
   auto table_G = std::make_shared<sql::ast::Table>("G");
 
+  ast.Get(tree->lhs).sql_expression = table_F;
+  ast.Get(tree->rhs).sql_expression = table_G;
+
   auto visitor = SQLVisitor(ast);
 
-  auto var_list =
-      visitor.SpecialVarList(std::unordered_map<antlr4::ParserRuleContext*, std::shared_ptr<sql::ast::Source>>{
-          {tree->lhs, table_F}, {tree->rhs, table_G}});
+  auto var_list = visitor.SpecialVarList(std::vector<antlr4::ParserRuleContext*>{tree->lhs, tree->rhs});
 
   std::ostringstream os;
 
@@ -53,7 +55,7 @@ TEST(SQLVisitorTest, SpecialVarList) {
     os << *col << " ";
   }
 
-  EXPECT_EQ(os.str(), "G.x G.y ");
+  EXPECT_EQ(os.str(), "F.x G.y ");
 }
 
 TEST(TranslationTest, ConjunctionExpr) {

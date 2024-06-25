@@ -10,86 +10,91 @@
 
 class SQLVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
  public:
+  using psr = rel_parser::PrunedCoreRelParser;
+
+  struct NumberedContext {
+    antlr4::ParserRuleContext *ctx;
+    int index;
+  };
+
   SQLVisitor(ExtendedAST &extended_ast);
 
   virtual ~SQLVisitor();
 
-  std::any visitProgram(rel_parser::PrunedCoreRelParser::ProgramContext *ctx) override;
+  std::any visitProgram(psr::ProgramContext *ctx) override;
 
-  std::any visitRelDef(rel_parser::PrunedCoreRelParser::RelDefContext *ctx) override;
+  std::any visitRelDef(psr::RelDefContext *ctx) override;
 
-  std::any visitRelAbs(rel_parser::PrunedCoreRelParser::RelAbsContext *ctx) override;
+  std::any visitRelAbs(psr::RelAbsContext *ctx) override;
 
   // Expression branches
 
-  std::any visitLitExpr(rel_parser::PrunedCoreRelParser::LitExprContext *ctx) override;
+  std::any visitLitExpr(psr::LitExprContext *ctx) override;
 
-  std::any visitIDExpr(rel_parser::PrunedCoreRelParser::IDExprContext *ctx) override;
+  std::any visitIDExpr(psr::IDExprContext *ctx) override;
 
-  std::any visitProductExpr(rel_parser::PrunedCoreRelParser::ProductExprContext *ctx) override;
+  std::any visitProductExpr(psr::ProductExprContext *ctx) override;
 
-  std::any visitConditionExpr(rel_parser::PrunedCoreRelParser::ConditionExprContext *ctx) override;
+  std::any visitConditionExpr(psr::ConditionExprContext *ctx) override;
 
-  std::any visitRelAbsExpr(rel_parser::PrunedCoreRelParser::RelAbsExprContext *ctx) override;
+  std::any visitRelAbsExpr(psr::RelAbsExprContext *ctx) override;
 
-  std::any visitFormulaExpr(rel_parser::PrunedCoreRelParser::FormulaExprContext *ctx) override;
+  std::any visitFormulaExpr(psr::FormulaExprContext *ctx) override;
 
-  std::any visitBindingsExpr(rel_parser::PrunedCoreRelParser::BindingsExprContext *ctx) override;
+  std::any visitBindingsExpr(psr::BindingsExprContext *ctx) override;
 
-  std::any visitBindingsFormula(rel_parser::PrunedCoreRelParser::BindingsFormulaContext *ctx) override;
+  std::any visitBindingsFormula(psr::BindingsFormulaContext *ctx) override;
 
-  std::any visitPartialAppl(rel_parser::PrunedCoreRelParser::PartialApplContext *ctx) override;
+  std::any visitPartialAppl(psr::PartialApplContext *ctx) override;
 
   //  Formula branches
 
-  std::any visitFullAppl(rel_parser::PrunedCoreRelParser::FullApplContext *ctx) override;
+  std::any visitFullAppl(psr::FullApplContext *ctx) override;
 
-  std::any visitBinOp(rel_parser::PrunedCoreRelParser::BinOpContext *ctx) override;
+  std::any visitBinOp(psr::BinOpContext *ctx) override;
 
-  std::any visitUnOp(rel_parser::PrunedCoreRelParser::UnOpContext *ctx) override;
+  std::any visitUnOp(psr::UnOpContext *ctx) override;
 
-  std::any visitQuantification(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx) override;
+  std::any visitQuantification(psr::QuantificationContext *ctx) override;
 
-  std::any visitParen(rel_parser::PrunedCoreRelParser::ParenContext *ctx) override;
+  std::any visitParen(psr::ParenContext *ctx) override;
 
   //  Binding branches
 
-  std::any visitBindingInner(rel_parser::PrunedCoreRelParser::BindingInnerContext *ctx) override;
+  std::any visitBindingInner(psr::BindingInnerContext *ctx) override;
 
-  std::any visitBinding(rel_parser::PrunedCoreRelParser::BindingContext *ctx) override;
+  std::any visitBinding(psr::BindingContext *ctx) override;
 
-  std::any visitApplBase(rel_parser::PrunedCoreRelParser::ApplBaseContext *ctx) override;
+  std::any visitApplBase(psr::ApplBaseContext *ctx) override;
 
-  std::any visitApplParams(rel_parser::PrunedCoreRelParser::ApplParamsContext *ctx) override;
+  std::any visitApplParams(psr::ApplParamsContext *ctx) override;
 
-  std::any visitApplParam(rel_parser::PrunedCoreRelParser::ApplParamContext *ctx) override;
+  std::any visitApplParam(psr::ApplParamContext *ctx) override;
 
  private:
-  std::any VisitConjunction(rel_parser::PrunedCoreRelParser::BinOpContext *ctx);
+  std::any VisitConjunction(psr::BinOpContext *ctx);
 
-  std::any VisitDisjunction(rel_parser::PrunedCoreRelParser::BinOpContext *ctx);
+  std::any VisitDisjunction(psr::BinOpContext *ctx);
 
-  std::any VisitExistential(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx);
+  std::any VisitExistential(psr::QuantificationContext *ctx);
 
-  std::any VisitUniversal(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx);
+  std::any VisitUniversal(psr::QuantificationContext *ctx);
 
   // Utility functions
 
   std::string GenerateTableAlias();
 
-  std::shared_ptr<sql::ast::Condition> EqualitySpecialCondition(
-      std::unordered_map<antlr4::ParserRuleContext *, std::shared_ptr<sql::ast::Source>> input_map);
+  std::shared_ptr<sql::ast::Condition> EqualitySpecialCondition(std::vector<antlr4::ParserRuleContext *> ctxs);
 
-  std::vector<std::shared_ptr<sql::ast::Selectable>> SpecialVarList(
-      std::unordered_map<antlr4::ParserRuleContext *, std::shared_ptr<sql::ast::Source>> input_map);
+  std::vector<std::shared_ptr<sql::ast::Selectable>> SpecialVarList(std::vector<antlr4::ParserRuleContext *> ctxs);
 
   std::vector<std::shared_ptr<sql::ast::Condition>> FullApplicationVariableConditions(
-      rel_parser::PrunedCoreRelParser::FullApplContext *f_ctx,
-      std::vector<std::pair<rel_parser::PrunedCoreRelParser::ApplParamContext *, int>> e_ctx) const;
+      psr::FullApplContext *formula_ctx, std::vector<NumberedContext> var_param_ctxs,
+      std::vector<NumberedContext> other_param_ctxs) const;
 
-  std::shared_ptr<sql::ast::Condition> FullApplicationCondition(
-      rel_parser::PrunedCoreRelParser::FullApplContext *f_ctx, rel_parser::PrunedCoreRelParser::ApplParamContext *e_ctx,
-      int index) const;
+  std::vector<std::shared_ptr<sql::ast::Selectable>> SpecialAppliedVarList(
+      psr::FullApplContext *formula_ctx, std::vector<NumberedContext> input_ctxs,
+      std::vector<NumberedContext> variable_param_ctxs) const;
 
   int table_alias_counter_ = 0;
 
