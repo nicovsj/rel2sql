@@ -13,8 +13,8 @@ TEST(SQLVisitorTest, EqualitySpecialCondition) {
 
   auto ast = rel_parser::GetExtendedASTFromTree(tree);
 
-  auto table_F = std::make_shared<sql::ast::Table>("F");
-  auto table_G = std::make_shared<sql::ast::Table>("G");
+  auto table_F = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("F"));
+  auto table_G = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("G"));
 
   ast.Get(tree->lhs).sql_expression = table_F;
   ast.Get(tree->rhs).sql_expression = table_G;
@@ -39,8 +39,8 @@ TEST(SQLVisitorTest, SpecialVarList) {
 
   auto ast = rel_parser::GetExtendedASTFromTree(tree);
 
-  auto table_F = std::make_shared<sql::ast::Table>("F");
-  auto table_G = std::make_shared<sql::ast::Table>("G");
+  auto table_F = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("F"));
+  auto table_G = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("G"));
 
   ast.Get(tree->lhs).sql_expression = table_F;
   ast.Get(tree->rhs).sql_expression = table_G;
@@ -59,9 +59,7 @@ TEST(SQLVisitorTest, SpecialVarList) {
 }
 
 TEST(TranslationTest, ConjunctionExpr) {
-  GTEST_SKIP() << "Not implemented yet";
-
-  std::string input = "F(x) and G(x, y)";
+  std::string input = "F(x) and G(x)";
 
   auto parser = rel_parser::GetParser(input);
 

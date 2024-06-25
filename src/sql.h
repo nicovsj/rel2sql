@@ -37,43 +37,65 @@ class Expression {
   friend std::ostream& operator<<(std::ostream& os, const Expression& expr) { return expr.Print(os); }
 };
 
+class Sourceable : public Expression {
+ public:
+  virtual ~Sourceable() = default;
+  virtual std::ostream& Print(std::ostream& os) const = 0;
+};
+
 class Source : public Expression {
  public:
-  virtual ~Source() = default;
-  virtual std::ostream& Print(std::ostream& os) const = 0;
-
-  virtual std::string Alias() const = 0;
-};
-
-class Subquery : public Source {
- public:
-  std::shared_ptr<SelectStatement> select;
-  std::string alias;
-
-  Subquery(std::shared_ptr<SelectStatement> select, std::string alias) : select(select), alias(alias) {}
-
-  std::ostream& Print(std::ostream& os) const override;
-
-  std::string Alias() const override { return alias; }
-};
-
-class Table : public Source {
- public:
-  std::string name;
+  std::shared_ptr<Sourceable> sourceable;
   std::optional<std::string> alias;
+  bool is_subquery;
 
-  Table(std::string name) : name(name) {}
-  Table(std::string name, std::string alias) : name(name), alias(alias) {}
+  Source(std::shared_ptr<Sourceable> sourceable)
+      : sourceable(sourceable), is_subquery(std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr) {
+    if (is_subquery) {
+      throw std::runtime_error("Subquery must have an alias");
+    }
+  }
 
-  std::ostream& Print(std::ostream& os) const override { return os << Alias(); };
+  Source(std::shared_ptr<Sourceable> sourceable, std::string alias)
+      : sourceable(sourceable),
+        alias(alias),
+        is_subquery(std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr) {}
 
-  std::string Alias() const override {
-    if (alias.has_value()) {
-      return alias.value();
+  virtual std::ostream& Print(std::ostream& os) const {
+    bool is_subquery = std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr;
+
+    if (is_subquery) {
+      os << "(" << *sourceable << ")";
+    } else {
+      os << *sourceable;
     }
 
-    return name;
+    if (alias.has_value()) {
+      os << " AS " << alias.value();
+    }
+
+    return os;
   }
+
+  virtual std::string Alias() const {
+    std::stringstream os;
+
+    if (alias.has_value()) {
+      os << alias.value();
+    } else {
+      os << *sourceable;
+    }
+    return os.str();
+  }
+};
+
+class Table : public Sourceable {
+ public:
+  std::string name;
+
+  Table(std::string name) : name(name) {}
+
+  std::ostream& Print(std::ostream& os) const override { return os << name; };
 };
 
 class Selectable : public Expression {
@@ -289,7 +311,7 @@ class FromStatement : public Expression {
   }
 };
 
-class SelectStatement : public Expression {
+class SelectStatement : public Sourceable {
  public:
   std::vector<std::shared_ptr<Selectable>> columns;
   std::optional<std::shared_ptr<FromStatement>> from;

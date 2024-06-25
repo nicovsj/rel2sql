@@ -42,7 +42,10 @@ std::any SQLVisitor::visitLitExpr(psr::LitExprContext *ctx) {
 
   auto selectable = std::make_shared<sql::ast::TermSelectable>(constant, "A1");
 
-  return std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable});
+  auto select_statement =
+      std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable});
+
+  return std::static_pointer_cast<sql::ast::Expression>(select_statement);
 }
 
 std::any SQLVisitor::visitIDExpr(psr::IDExprContext *ctx) {
@@ -51,14 +54,7 @@ std::any SQLVisitor::visitIDExpr(psr::IDExprContext *ctx) {
    */
   std::string id = ctx->T_ID()->getText();
 
-  auto extended_data = extended_ast_.Get(ctx);
-
-  // Check if it is a variable
-  if (extended_data.variables.find(id) != extended_data.variables.end()) {
-    return std::make_shared<sql::ast::Column>(id);
-  }
-
-  return std::make_shared<sql::ast::Table>(id);
+  return GetExpressionFromID(ctx, id);
 }
 
 std::any SQLVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
@@ -111,13 +107,13 @@ std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
 }
 
 std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
-  auto ra_sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->applBase()));
+  auto ra_sql = std::any_cast<std::shared_ptr<sql::ast::Sourceable>>(visit(ctx->applBase()));
 
-  auto ra_subquery = std::make_shared<sql::ast::Subquery>(ra_sql, GenerateTableAlias());
+  auto ra_source = std::make_shared<sql::ast::Source>(ra_sql, GenerateTableAlias());
 
-  extended_ast_.Get(ctx).sql_expression = ra_subquery;
+  extended_ast_.Get(ctx->applBase()).sql_expression = ra_source;
 
-  auto sources = std::vector<std::shared_ptr<sql::ast::Source>>{ra_subquery};
+  auto sources = std::vector<std::shared_ptr<sql::ast::Source>>{ra_source};
 
   std::vector<NumberedContext> var_params, other_params;
 
@@ -132,7 +128,7 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
         var_params.push_back({appl, i});
       } else if (auto subquery_sql = std::dynamic_pointer_cast<sql::ast::SelectStatement>(param_sql)) {
         // Then the parameter is not a variable
-        auto param_subquery = std::make_shared<sql::ast::Subquery>(subquery_sql, GenerateTableAlias());
+        auto param_subquery = std::make_shared<sql::ast::Source>(subquery_sql, GenerateTableAlias());
         extended_ast_.Get(appl).sql_expression = param_subquery;
 
         sources.push_back(param_subquery);
@@ -152,7 +148,7 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
   std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
 
   for (auto &ctx : source_ctxs) {
-    auto source_subquery = std::dynamic_pointer_cast<sql::ast::Subquery>(extended_ast_.Get(ctx).sql_expression);
+    auto source_subquery = std::dynamic_pointer_cast<sql::ast::Source>(extended_ast_.Get(ctx).sql_expression);
     from_sources.push_back(source_subquery);
   }
 
@@ -170,7 +166,9 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
 
   auto from_statement = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
 
-  return std::make_shared<sql::ast::SelectStatement>(select_cols, from_statement);
+  auto select_statement = std::make_shared<sql::ast::SelectStatement>(select_cols, from_statement);
+
+  return select_statement;
 }
 
 std::any SQLVisitor::visitBinOp(psr::BinOpContext *ctx) {
@@ -225,7 +223,13 @@ std::any SQLVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
   /*
    * Generates an SQL query from the application base.
    */
-  throw std::runtime_error("Not implemented yet");
+  if (ctx->T_ID()) {
+    return std::dynamic_pointer_cast<sql::ast::Sourceable>(GetExpressionFromID(ctx, ctx->T_ID()->getText()));
+  } else if (ctx->relAbs()) {
+    throw std::runtime_error("Not implemented yet");
+  }
+
+  throw std::runtime_error("Unknown application base");
 }
 
 std::any SQLVisitor::visitApplParams(psr::ApplParamsContext *ctx) {
@@ -239,7 +243,12 @@ std::any SQLVisitor::visitApplParam(psr::ApplParamContext *ctx) {
   /*
    * Generates an SQL query from the application parameter.
    */
-  throw std::runtime_error("Not implemented yet");
+  if (ctx->expr()) {
+    auto ret = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->expr()));
+    return ret;
+  }
+
+  throw std::runtime_error("Unknown application parameter");
 }
 
 std::string SQLVisitor::GenerateTableAlias() {
@@ -256,8 +265,8 @@ std::any SQLVisitor::VisitConjunction(psr::BinOpContext *ctx) {
   auto lhs_sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->lhs));
   auto rhs_sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->rhs));
 
-  auto lhs_subquery = std::make_shared<sql::ast::Subquery>(lhs_sql, GenerateTableAlias());
-  auto rhs_subquery = std::make_shared<sql::ast::Subquery>(rhs_sql, GenerateTableAlias());
+  auto lhs_subquery = std::make_shared<sql::ast::Source>(lhs_sql, GenerateTableAlias());
+  auto rhs_subquery = std::make_shared<sql::ast::Source>(rhs_sql, GenerateTableAlias());
 
   extended_ast_.Get(ctx->lhs).sql_expression = lhs_subquery;
   extended_ast_.Get(ctx->rhs).sql_expression = rhs_subquery;
@@ -281,8 +290,8 @@ std::any SQLVisitor::VisitDisjunction(psr::BinOpContext *ctx) {
   auto lhs_sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->lhs));
   auto rhs_sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->rhs));
 
-  auto lhs_subquery = std::make_shared<sql::ast::Subquery>(lhs_sql, GenerateTableAlias());
-  auto rhs_subquery = std::make_shared<sql::ast::Subquery>(rhs_sql, GenerateTableAlias());
+  auto lhs_subquery = std::make_shared<sql::ast::Source>(lhs_sql, GenerateTableAlias());
+  auto rhs_subquery = std::make_shared<sql::ast::Source>(rhs_sql, GenerateTableAlias());
 
   extended_ast_.Get(ctx->lhs).sql_expression = lhs_subquery;
   extended_ast_.Get(ctx->rhs).sql_expression = rhs_subquery;
@@ -319,14 +328,15 @@ std::any SQLVisitor::VisitExistential(psr::QuantificationContext *ctx) {
       bounded_bindings.push_back(binding);
       auto id_domain = binding->id_domain->getText();
       if (table_index_.find(id_domain) == table_index_.end()) {
-        table_index_[id_domain] = std::make_shared<sql::ast::Table>(id_domain);
+        auto table = std::make_shared<sql::ast::Table>(id_domain);
+        table_index_[id_domain] = std::make_shared<sql::ast::Source>(table);
       }
     }
   }
 
   auto sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->formula()));
 
-  auto subquery = std::make_shared<sql::ast::Subquery>(sql, GenerateTableAlias());
+  auto subquery = std::make_shared<sql::ast::Source>(sql, GenerateTableAlias());
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
 
@@ -375,14 +385,15 @@ std::any SQLVisitor::VisitUniversal(psr::QuantificationContext *ctx) {
     }
     auto id_domain = binding->id_domain->getText();
     if (table_index_.find(id_domain) == table_index_.end()) {
-      table_index_[id_domain] = std::make_shared<sql::ast::Table>(id_domain);
+      auto table = std::make_shared<sql::ast::Table>(id_domain);
+      table_index_[id_domain] = std::make_shared<sql::ast::Source>(table);
     }
     bound_domain_sources.push_back(table_index_[id_domain]);
   }
 
   auto sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->formula()));
 
-  auto subquery = std::make_shared<sql::ast::Subquery>(sql, GenerateTableAlias());
+  auto subquery = std::make_shared<sql::ast::Source>(sql, GenerateTableAlias());
 
   std::vector<std::shared_ptr<sql::ast::Term>> columns;
   std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
@@ -453,10 +464,10 @@ std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::FullApplicationVar
     search_space.push_back(numbered_ctx.ctx);
   }
 
-  std::unordered_map<std::string, std::shared_ptr<sql::ast::Subquery>> seen_vars;
+  std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> seen_vars;
 
   auto ra_subquery =
-      std::dynamic_pointer_cast<sql::ast::Subquery>(extended_ast_.Get(formula_ctx->applBase()).sql_expression);
+      std::dynamic_pointer_cast<sql::ast::Source>(extended_ast_.Get(formula_ctx->applBase()).sql_expression);
 
   for (auto [variable, params] : params_by_variable) {
     if (formula_free_variables.find(variable) != formula_free_variables.end()) {
@@ -467,8 +478,9 @@ std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::FullApplicationVar
         for (auto ctx : search_space) {
           // The subquery was already generated for each context in the search space, so we just need to check if the
           // variable is in the variables set and retrieve the subquery
-          if (extended_ast_.Get(ctx).variables.find(variable) != extended_ast_.Get(ctx).variables.end()) {
-            auto subquery = std::dynamic_pointer_cast<sql::ast::Subquery>(extended_ast_.Get(ctx).sql_expression);
+          auto context_variables = extended_ast_.Get(ctx).variables;
+          if (context_variables.find(variable) != context_variables.end()) {
+            auto subquery = std::dynamic_pointer_cast<sql::ast::Source>(extended_ast_.Get(ctx).sql_expression);
             seen_vars[variable] = subquery;
           }
         }
@@ -603,7 +615,7 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVar
   std::sort(final_ctxs.begin(), final_ctxs.end(), [](auto const &a, auto const &b) { return a.index < b.index; });
 
   auto ra_subquery =
-      std::dynamic_pointer_cast<sql::ast::Subquery>(extended_ast_.Get(formula_ctx->applBase()).sql_expression);
+      std::dynamic_pointer_cast<sql::ast::Source>(extended_ast_.Get(formula_ctx->applBase()).sql_expression);
 
   for (auto const &[ctx, index] : final_ctxs) {
     for (auto const &var : extended_ast_.Get(ctx).variables) {
@@ -617,7 +629,7 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVar
         auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", index), ra_subquery);
         selectable = std::make_shared<sql::ast::TermSelectable>(column, bound_var);
       } else {
-        auto subquery = std::dynamic_pointer_cast<sql::ast::Subquery>(extended_ast_.Get(ctx).sql_expression);
+        auto subquery = std::dynamic_pointer_cast<sql::ast::Source>(extended_ast_.Get(ctx).sql_expression);
 
         auto column = std::make_shared<sql::ast::Column>(var, subquery);
         selectable = std::make_shared<sql::ast::TermSelectable>(column);
@@ -629,4 +641,16 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVar
   }
 
   return columns;
+}
+
+std::shared_ptr<sql::ast::Expression> SQLVisitor::GetExpressionFromID(antlr4::ParserRuleContext *ctx,
+                                                                      std::string id) const {
+  auto extended_data = extended_ast_.Get(ctx);
+
+  // Check if it is a variable
+  if (extended_data.variables.find(id) != extended_data.variables.end()) {
+    return std::make_shared<sql::ast::Column>(id);
+  }
+
+  return std::make_shared<sql::ast::Table>(id);
 }

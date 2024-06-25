@@ -96,6 +96,8 @@ class SQLVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
       psr::FullApplContext *formula_ctx, std::vector<NumberedContext> input_ctxs,
       std::vector<NumberedContext> variable_param_ctxs) const;
 
+  std::shared_ptr<sql::ast::Expression> GetExpressionFromID(antlr4::ParserRuleContext *ctx, std::string id) const;
+
   int table_alias_counter_ = 0;
 
   ExtendedAST &extended_ast_;

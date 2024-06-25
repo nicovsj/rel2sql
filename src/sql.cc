@@ -2,8 +2,6 @@
 
 namespace sql::ast {
 
-std::ostream& Subquery::Print(std::ostream& os) const { return os << "(" << *select << ") AS " << alias; }
-
 std::ostream& Exists::Print(std::ostream& os) const { return os << "EXISTS (" << *select << ")"; }
 
 std::ostream& Inclusion::Print(std::ostream& os) const {
