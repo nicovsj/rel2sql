@@ -1,175 +1,173 @@
 #include "lit_visitor.h"
 
-LiteralVisitor::LiteralVisitor(std::shared_ptr<ExtendedASTIndex> index) : extended_ast_index_(index) {}
+LiteralVisitor::LiteralVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
 
-std::any LiteralVisitor::visitLitExpr(rel_parser::PrunedCoreRelParser::LitExprContext *ctx) {
-  auto result = std::any_cast<ExtendedAST>(visit(ctx->literal()));
+std::any LiteralVisitor::visitLitExpr(psr::LitExprContext *ctx) {
+  visit(ctx->literal());
 
-  extended_ast_index_->at(ctx).constant = result.Root().constant;
+  GetNode(ctx).constant = GetNode(ctx->literal()).constant;
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitInt(rel_parser::PrunedCoreRelParser::IntContext *ctx) {
+std::any LiteralVisitor::visitInt(psr::IntContext *ctx) {
   int constant = std::stoi(ctx->getText());
 
-  (*extended_ast_index_)[ctx].constant = constant;
+  GetNode(ctx).constant = constant;
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitNegInt(rel_parser::PrunedCoreRelParser::NegIntContext *ctx) {
+std::any LiteralVisitor::visitNegInt(psr::NegIntContext *ctx) {
   int constant = std::stoi(ctx->getText());
 
-  (*extended_ast_index_)[ctx].constant = constant;
+  GetNode(ctx).constant = constant;
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitFloat(rel_parser::PrunedCoreRelParser::FloatContext *ctx) {
+std::any LiteralVisitor::visitFloat(psr::FloatContext *ctx) {
   float constant = std::stof(ctx->getText());
 
-  (*extended_ast_index_)[ctx].constant = constant;
+  GetNode(ctx).constant = constant;
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitNegFloat(rel_parser::PrunedCoreRelParser::NegFloatContext *ctx) {
+std::any LiteralVisitor::visitNegFloat(psr::NegFloatContext *ctx) {
   float constant = std::stof(ctx->getText());
 
-  (*extended_ast_index_)[ctx].constant = constant;
+  GetNode(ctx).constant = constant;
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitChar(rel_parser::PrunedCoreRelParser::CharContext *ctx) {
+std::any LiteralVisitor::visitChar(psr::CharContext *ctx) {
   std::string constant = ctx->getText();
 
   constant.erase(std::remove(constant.begin(), constant.end(), '\''), constant.end());
 
-  (*extended_ast_index_)[ctx].constant = constant;
+  GetNode(ctx).constant = constant;
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitStr(rel_parser::PrunedCoreRelParser::StrContext *ctx) {
+std::any LiteralVisitor::visitStr(psr::StrContext *ctx) {
   std::string constant = ctx->getText();
 
   constant.erase(std::remove(constant.begin(), constant.end(), '\"'), constant.end());
 
-  (*extended_ast_index_)[ctx].constant = constant;
+  GetNode(ctx).constant = constant;
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitBool(rel_parser::PrunedCoreRelParser::BoolContext *ctx) {
+std::any LiteralVisitor::visitBool(psr::BoolContext *ctx) {
   bool constant = ctx->getText() == "true";
 
-  (*extended_ast_index_)[ctx].constant = constant;
+  GetNode(ctx).constant = constant;
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitProgram(rel_parser::PrunedCoreRelParser::ProgramContext *ctx) {
+std::any LiteralVisitor::visitProgram(psr::ProgramContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitRelDef(rel_parser::PrunedCoreRelParser::RelDefContext *ctx) {
+std::any LiteralVisitor::visitRelDef(psr::RelDefContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitRelAbs(rel_parser::PrunedCoreRelParser::RelAbsContext *ctx) {
+std::any LiteralVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitIDExpr(rel_parser::PrunedCoreRelParser::IDExprContext *ctx) {
-  return ExtendedAST(ctx, extended_ast_index_);
-}
+std::any LiteralVisitor::visitIDExpr(psr::IDExprContext *ctx) { return {}; }
 
-std::any LiteralVisitor::visitProductExpr(rel_parser::PrunedCoreRelParser::ProductExprContext *ctx) {
+std::any LiteralVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitConditionExpr(rel_parser::PrunedCoreRelParser::ConditionExprContext *ctx) {
+std::any LiteralVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitRelAbsExpr(rel_parser::PrunedCoreRelParser::RelAbsExprContext *ctx) {
+std::any LiteralVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitFormulaExpr(rel_parser::PrunedCoreRelParser::FormulaExprContext *ctx) {
+std::any LiteralVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitBindingsExpr(rel_parser::PrunedCoreRelParser::BindingsExprContext *ctx) {
+std::any LiteralVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitBindingsFormula(rel_parser::PrunedCoreRelParser::BindingsFormulaContext *ctx) {
+std::any LiteralVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitPartialAppl(rel_parser::PrunedCoreRelParser::PartialApplContext *ctx) {
+std::any LiteralVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitFullAppl(rel_parser::PrunedCoreRelParser::FullApplContext *ctx) {
+std::any LiteralVisitor::visitFullAppl(psr::FullApplContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitBinOp(rel_parser::PrunedCoreRelParser::BinOpContext *ctx) {
+std::any LiteralVisitor::visitBinOp(psr::BinOpContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitUnOp(rel_parser::PrunedCoreRelParser::UnOpContext *ctx) {
+std::any LiteralVisitor::visitUnOp(psr::UnOpContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitQuantification(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx) {
+std::any LiteralVisitor::visitQuantification(psr::QuantificationContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitParen(rel_parser::PrunedCoreRelParser::ParenContext *ctx) {
+std::any LiteralVisitor::visitParen(psr::ParenContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitBindingInner(rel_parser::PrunedCoreRelParser::BindingInnerContext *ctx) {
+std::any LiteralVisitor::visitBindingInner(psr::BindingInnerContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitBinding(rel_parser::PrunedCoreRelParser::BindingContext *ctx) {
+std::any LiteralVisitor::visitBinding(psr::BindingContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitApplBase(rel_parser::PrunedCoreRelParser::ApplBaseContext *ctx) {
+std::any LiteralVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitApplParams(rel_parser::PrunedCoreRelParser::ApplParamsContext *ctx) {
+std::any LiteralVisitor::visitApplParams(psr::ApplParamsContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any LiteralVisitor::visitApplParam(rel_parser::PrunedCoreRelParser::ApplParamContext *ctx) {
+std::any LiteralVisitor::visitApplParam(psr::ApplParamContext *ctx) {
   visitChildren(ctx);
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }

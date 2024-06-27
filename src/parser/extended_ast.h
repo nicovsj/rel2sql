@@ -18,12 +18,12 @@ struct ExtendedNode {
 
   std::optional<sql::ast::constant_t> constant;
 
-  void InplaceUnion(const ExtendedNode &other) {
+  void VariablesInplaceUnion(const ExtendedNode &other) {
     variables.insert(other.variables.begin(), other.variables.end());
     free_variables.insert(other.free_variables.begin(), other.free_variables.end());
   }
 
-  void InplaceDifference(const ExtendedNode &other) {
+  void VariablesInplaceDifference(const ExtendedNode &other) {
     ExtendedNode result;
     variables.insert(other.variables.begin(), other.variables.end());
     for (const auto &var : other.free_variables) {
@@ -32,27 +32,28 @@ struct ExtendedNode {
   }
 };
 
-using ExtendedASTIndex = std::unordered_map<antlr4::ParserRuleContext *, ExtendedNode>;
+struct ExtendedASTData {
+  std::unordered_map<antlr4::ParserRuleContext *, ExtendedNode> index;
+  std::unordered_map<std::string, int> arity_by_id;  // Maintain arity by id for fixed-point computation
+};
 
 class ExtendedAST {
  public:
-  ExtendedAST(antlr4::ParserRuleContext *root, std::shared_ptr<ExtendedASTIndex> data) : root_(root), data_(data) {}
+  ExtendedAST(antlr4::ParserRuleContext *root, std::shared_ptr<ExtendedASTData> data) : root_(root), data_(data) {}
 
-  ExtendedNode Root() const { return (*data_)[root_]; }
-
-  void Set(antlr4::ParserRuleContext *ctx, ExtendedNode data) { (*data_)[ctx] = data; }
+  ExtendedNode Root() const { return data_->index[root_]; }
 
   ExtendedNode &Get(antlr4::ParserRuleContext *ctx) {
-    auto it = data_->find(ctx);
-    if (it == data_->end()) {
-      (*data_)[ctx] = ExtendedNode{};
+    auto it = data_->index.find(ctx);
+    if (it == data_->index.end()) {
+      data_->index[ctx] = ExtendedNode{};
     }
     return it->second;
   }
 
  private:
   antlr4::ParserRuleContext *root_;
-  std::shared_ptr<ExtendedASTIndex> data_;
+  std::shared_ptr<ExtendedASTData> data_;
 };
 
 #endif  // EXTENDED_DATA_H

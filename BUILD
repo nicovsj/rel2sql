@@ -20,9 +20,10 @@ cc_library(
     ],
     hdrs = [
         "src/parser/extended_ast.h",
+        "src/parser/parse.h",
+        "src/parser/visitors/base_visitor.h",
         "src/parser/visitors/fv_visitor.h",
         "src/parser/visitors/lit_visitor.h",
-        "src/parser/parse.h",
         "src/parser/visitors/sql_visitor.h",
         "src/sql.h",
         "src/utils.h",

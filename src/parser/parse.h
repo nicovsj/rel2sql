@@ -18,15 +18,17 @@ inline std::unique_ptr<PrunedCoreRelParser> GetParser(std::string_view input) {
 }
 
 inline ExtendedAST GetExtendedASTFromTree(antlr4::ParserRuleContext* tree) {
-  auto index = std::make_shared<ExtendedASTIndex>();
+  auto extended_ast_data = std::make_shared<ExtendedASTData>();
 
-  FreeVariablesVisitor free_vars_visitor(index);
+  FreeVariablesVisitor free_vars_visitor(extended_ast_data);
 
-  LiteralVisitor literal_visitor(index);
+  LiteralVisitor literal_visitor(extended_ast_data);
 
   free_vars_visitor.visit(tree);
 
-  return std::any_cast<ExtendedAST>(literal_visitor.visit(tree));
+  literal_visitor.visit(tree);
+
+  return ExtendedAST{tree, extended_ast_data};
 }
 
 inline ExtendedAST GetExtendedAST(std::string_view input) {

@@ -1,285 +1,234 @@
 #include "fv_visitor.h"
 
-FreeVariablesVisitor::FreeVariablesVisitor(std::shared_ptr<ExtendedASTIndex> extended_ast)
-    : extended_ast_index_(extended_ast) {}
+FreeVariablesVisitor::FreeVariablesVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
 
-std::any FreeVariablesVisitor::visitProgram(rel_parser::PrunedCoreRelParser::ProgramContext *ctx) {
-  ExtendedNode data;
+std::any FreeVariablesVisitor::visitProgram(psr::ProgramContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
-  for (auto &child : ctx->relDef()) {
-    auto child_ast = std::any_cast<ExtendedAST>(visit(child));
-    auto child_data = child_ast.Root();
-
-    data.InplaceUnion(child_data);
+  for (auto &child_ctx : ctx->relDef()) {
+    visit(child_ctx);
+    node.VariablesInplaceUnion(GetNode(child_ctx));
   }
 
-  (*extended_ast_index_)[ctx] = data;
-
-  return ExtendedAST{ctx, extended_ast_index_};
+  return node;
 }
 
-std::any FreeVariablesVisitor::visitRelDef(rel_parser::PrunedCoreRelParser::RelDefContext *ctx) {
-  auto ast = std::any_cast<ExtendedAST>(visit(ctx->relAbs()));
-  auto data = ast.Root();
+std::any FreeVariablesVisitor::visitRelDef(psr::RelDefContext *ctx) {
+  visit(ctx->relAbs());
 
-  (*extended_ast_index_)[ctx] = data;
+  GetNode(ctx) = GetNode(ctx->relAbs());
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitRelAbs(rel_parser::PrunedCoreRelParser::RelAbsContext *ctx) {
-  ExtendedNode data;
+std::any FreeVariablesVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
-  for (auto &child : ctx->expr()) {
-    auto child_ast = std::any_cast<ExtendedAST>(visit(child));
-    auto child_data = child_ast.Root();
-    data.InplaceUnion(child_data);
+  for (auto &child_ctx : ctx->expr()) {
+    visit(child_ctx);
+    node.VariablesInplaceUnion(GetNode(child_ctx));
   }
 
-  (*extended_ast_index_)[ctx] = data;
-
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitLitExpr(rel_parser::PrunedCoreRelParser::LitExprContext *ctx) {
-  ExtendedNode data;
-
-  (*extended_ast_index_)[ctx] = data;
-
-  return ExtendedAST{ctx, extended_ast_index_};
-}
-
-std::any FreeVariablesVisitor::visitIDExpr(rel_parser::PrunedCoreRelParser::IDExprContext *ctx) {
-  ExtendedNode data;
+std::any FreeVariablesVisitor::visitIDExpr(psr::IDExprContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
   std::string id = ctx->T_ID()->getText();
 
-  data.free_variables.insert(id);
-  data.variables.insert(id);
+  node.free_variables.insert(id);
+  node.variables.insert(id);
 
-  (*extended_ast_index_)[ctx] = data;
-
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitProductExpr(rel_parser::PrunedCoreRelParser::ProductExprContext *ctx) {
-  ExtendedNode data;
+std::any FreeVariablesVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
   for (auto &child : ctx->productInner()->expr()) {
-    auto child_ast = std::any_cast<ExtendedAST>(visit(child));
-    auto child_data = child_ast.Root();
-    data.InplaceUnion(child_data);
+    visit(child);
+    node.VariablesInplaceUnion(GetNode(child));
   }
 
-  (*extended_ast_index_)[ctx] = data;
-
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitConditionExpr(rel_parser::PrunedCoreRelParser::ConditionExprContext *ctx) {
-  ExtendedNode data;
+std::any FreeVariablesVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
-  auto lh_ast = std::any_cast<ExtendedAST>(visit(ctx->lhs));
-  auto lh_data = lh_ast.Root();
+  visit(ctx->lhs);
+  visit(ctx->rhs);
 
-  auto rh_ast = std::any_cast<ExtendedAST>(visit(ctx->rhs));
-  auto rh_data = rh_ast.Root();
+  node.VariablesInplaceUnion(GetNode(ctx->lhs));
+  node.VariablesInplaceUnion(GetNode(ctx->rhs));
 
-  data.InplaceUnion(lh_data);
-  data.InplaceUnion(rh_data);
-
-  (*extended_ast_index_)[ctx] = data;
-
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitRelAbsExpr(rel_parser::PrunedCoreRelParser::RelAbsExprContext *ctx) {
-  auto ast = std::any_cast<ExtendedAST>(visit(ctx->relAbs()));
-  auto data = ast.Root();
+std::any FreeVariablesVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
+  visit(ctx->relAbs());
 
-  (*extended_ast_index_)[ctx] = data;
+  GetNode(ctx) = GetNode(ctx->relAbs());
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitFormulaExpr(rel_parser::PrunedCoreRelParser::FormulaExprContext *ctx) {
-  auto ast = std::any_cast<ExtendedAST>(visit(ctx->formula()));
-  auto data = ast.Root();
+std::any FreeVariablesVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
+  visit(ctx->formula());
 
-  (*extended_ast_index_)[ctx] = data;
+  GetNode(ctx) = GetNode(ctx->formula());
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitBindingsExpr(rel_parser::PrunedCoreRelParser::BindingsExprContext *ctx) {
-  auto bindings_ast = std::any_cast<ExtendedAST>(visit(ctx->bindingInner()));
-  auto bindings_data = bindings_ast.Root();
+std::any FreeVariablesVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
-  auto expr_ast = std::any_cast<ExtendedAST>(visit(ctx->expr()));
-  auto expr_data = expr_ast.Root();
+  visit(ctx->expr());
+  visit(ctx->bindingInner());
 
-  expr_data.InplaceDifference(bindings_data);
+  node = GetNode(ctx->expr());
 
-  (*extended_ast_index_)[ctx] = expr_data;
+  node.VariablesInplaceDifference(GetNode(ctx->bindingInner()));
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitBindingsFormula(rel_parser::PrunedCoreRelParser::BindingsFormulaContext *ctx) {
-  auto bindings_ast = std::any_cast<ExtendedAST>(visit(ctx->bindingInner()));
-  auto bindings_data = bindings_ast.Root();
+std::any FreeVariablesVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
-  auto formula_ast = std::any_cast<ExtendedAST>(visit(ctx->formula()));
-  auto formula_data = formula_ast.Root();
+  visit(ctx->formula());
+  visit(ctx->bindingInner());
 
-  formula_data.InplaceDifference(bindings_data);
+  node = GetNode(ctx->formula());
 
-  (*extended_ast_index_)[ctx] = formula_data;
+  node.VariablesInplaceDifference(GetNode(ctx->bindingInner()));
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitPartialAppl(rel_parser::PrunedCoreRelParser::PartialApplContext *ctx) {
-  auto base_ast = std::any_cast<ExtendedAST>(visit(ctx->applBase()));
-  auto base_data = base_ast.Root();
+std::any FreeVariablesVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
-  auto params_ast = std::any_cast<ExtendedAST>(visit(ctx->applParams()));
-  auto params_data = params_ast.Root();
+  visit(ctx->applBase());
+  visit(ctx->applParams());
 
-  base_data.InplaceUnion(params_data);
+  node = GetNode(ctx->applBase());
 
-  (*extended_ast_index_)[ctx] = base_data;
+  node.VariablesInplaceUnion(GetNode(ctx->applParams()));
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitFullAppl(rel_parser::PrunedCoreRelParser::FullApplContext *ctx) {
-  auto base_ast = std::any_cast<ExtendedAST>(visit(ctx->applBase()));
-  auto base_data = base_ast.Root();
+std::any FreeVariablesVisitor::visitFullAppl(psr::FullApplContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
-  auto params_ast = std::any_cast<ExtendedAST>(visit(ctx->applParams()));
-  auto params_data = params_ast.Root();
+  visit(ctx->applBase());
+  visit(ctx->applParams());
 
-  base_data.InplaceUnion(params_data);
+  node = GetNode(ctx->applBase());
 
-  (*extended_ast_index_)[ctx] = base_data;
+  node.VariablesInplaceUnion(GetNode(ctx->applParams()));
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitBinOp(rel_parser::PrunedCoreRelParser::BinOpContext *ctx) {
-  auto lhs_ast = std::any_cast<ExtendedAST>(visit(ctx->lhs));
-  auto lhs_data = lhs_ast.Root();
+std::any FreeVariablesVisitor::visitBinOp(psr::BinOpContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
-  auto rhs_ast = std::any_cast<ExtendedAST>(visit(ctx->rhs));
-  auto rhs_data = rhs_ast.Root();
+  visit(ctx->lhs);
+  visit(ctx->rhs);
 
-  lhs_data.InplaceUnion(rhs_data);
+  node = GetNode(ctx->lhs);
 
-  (*extended_ast_index_)[ctx] = lhs_data;
+  node.VariablesInplaceUnion(GetNode(ctx->rhs));
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitUnOp(rel_parser::PrunedCoreRelParser::UnOpContext *ctx) {
-  auto ast = std::any_cast<ExtendedAST>(visit(ctx->formula()));
-  auto data = ast.Root();
+std::any FreeVariablesVisitor::visitUnOp(psr::UnOpContext *ctx) {
+  visit(ctx->formula());
 
-  (*extended_ast_index_)[ctx] = data;
+  GetNode(ctx) = GetNode(ctx->formula());
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitQuantification(rel_parser::PrunedCoreRelParser::QuantificationContext *ctx) {
-  auto formula_ast = std::any_cast<ExtendedAST>(visit(ctx->formula()));
-  auto formula_data = formula_ast.Root();
+std::any FreeVariablesVisitor::visitQuantification(psr::QuantificationContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
-  auto bindings_ast = std::any_cast<ExtendedAST>(visit(ctx->bindingInner()));
-  auto bindings_data = bindings_ast.Root();
+  visit(ctx->formula());
+  visit(ctx->bindingInner());
 
-  formula_data.InplaceDifference(bindings_data);
+  node = GetNode(ctx->formula());
 
-  (*extended_ast_index_)[ctx] = formula_data;
+  node.VariablesInplaceDifference(GetNode(ctx->bindingInner()));
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitParen(rel_parser::PrunedCoreRelParser::ParenContext *ctx) {
-  auto ast = std::any_cast<ExtendedAST>(visit(ctx->formula()));
-  auto data = ast.Root();
+std::any FreeVariablesVisitor::visitParen(psr::ParenContext *ctx) {
+  visit(ctx->formula());
 
-  (*extended_ast_index_)[ctx] = data;
+  GetNode(ctx) = GetNode(ctx->formula());
 
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitBindingInner(rel_parser::PrunedCoreRelParser::BindingInnerContext *ctx) {
-  ExtendedNode data;
+std::any FreeVariablesVisitor::visitBindingInner(psr::BindingInnerContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
-  for (auto &child : ctx->binding()) {
-    auto child_ast = std::any_cast<ExtendedAST>(visit(child));
-    auto child_data = child_ast.Root();
-    data.InplaceUnion(child_data);
+  for (auto &child_ctx : ctx->binding()) {
+    visit(child_ctx);
+    node.VariablesInplaceUnion(GetNode(child_ctx));
   }
 
-  (*extended_ast_index_)[ctx] = data;
-
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitBinding(rel_parser::PrunedCoreRelParser::BindingContext *ctx) {
-  ExtendedNode data;
+std::any FreeVariablesVisitor::visitBinding(psr::BindingContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
   if (ctx->id) {
     std::string id = ctx->id->getText();
-    data.variables.insert(id);
-    data.free_variables.insert(id);
+    node.variables.insert(id);
+    node.free_variables.insert(id);
   }
 
-  (*extended_ast_index_)[ctx] = data;
-
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitApplBase(rel_parser::PrunedCoreRelParser::ApplBaseContext *ctx) {
-  ExtendedNode data;
+std::any FreeVariablesVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
   if (ctx->relAbs()) {
-    auto ast = std::any_cast<ExtendedAST>(visit(ctx->relAbs()));
-    data = ast.Root();
+    visit(ctx->relAbs());
+    node = GetNode(ctx->relAbs());
   }
-
   // Do nothing in the other case because the ID is not a variable
 
-  (*extended_ast_index_)[ctx] = data;
-
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitApplParams(rel_parser::PrunedCoreRelParser::ApplParamsContext *ctx) {
-  ExtendedNode data;
+std::any FreeVariablesVisitor::visitApplParams(psr::ApplParamsContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
-  for (auto &child : ctx->applParam()) {
-    auto child_ast = std::any_cast<ExtendedAST>(visit(child));
-    auto child_data = child_ast.Root();
-
-    data.InplaceUnion(child_data);
+  for (auto &child_ctx : ctx->applParam()) {
+    visit(child_ctx);
+    node.VariablesInplaceUnion(GetNode(child_ctx));
   }
 
-  (*extended_ast_index_)[ctx] = data;
-
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
 
-std::any FreeVariablesVisitor::visitApplParam(rel_parser::PrunedCoreRelParser::ApplParamContext *ctx) {
-  ExtendedNode data;
+std::any FreeVariablesVisitor::visitApplParam(psr::ApplParamContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
 
   if (ctx->expr()) {
-    auto ast = std::any_cast<ExtendedAST>(visit(ctx->expr()));
-    data = ast.Root();
+    visit(ctx->expr());
+    node = GetNode(ctx->expr());
   }
 
-  (*extended_ast_index_)[ctx] = data;
-
-  return ExtendedAST{ctx, extended_ast_index_};
+  return {};
 }
