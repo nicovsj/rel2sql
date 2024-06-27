@@ -19,7 +19,7 @@ TEST(SQLVisitorTest, EqualitySpecialCondition) {
   ast.Get(tree->lhs).sql_expression = table_F;
   ast.Get(tree->rhs).sql_expression = table_G;
 
-  auto visitor = SQLVisitor(ast);
+  auto visitor = SQLVisitor(ast.Data());
 
   auto condition = visitor.EqualitySpecialCondition(std::vector<antlr4::ParserRuleContext*>{tree->lhs, tree->rhs});
 
@@ -45,7 +45,7 @@ TEST(SQLVisitorTest, SpecialVarList) {
   ast.Get(tree->lhs).sql_expression = table_F;
   ast.Get(tree->rhs).sql_expression = table_G;
 
-  auto visitor = SQLVisitor(ast);
+  auto visitor = SQLVisitor(ast.Data());
 
   auto var_list = visitor.SpecialVarList(std::vector<antlr4::ParserRuleContext*>{tree->lhs, tree->rhs});
 

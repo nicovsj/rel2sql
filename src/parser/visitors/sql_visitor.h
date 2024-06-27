@@ -5,10 +5,10 @@
 #include <gtest/gtest.h>
 
 #include "parser/extended_ast.h"
-#include "parser/generated/PrunedCoreRelParserBaseVisitor.h"
+#include "parser/visitors/base_visitor.h"
 #include "sql.h"
 
-class SQLVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
+class SQLVisitor : public BaseVisitor {
  public:
   using psr = rel_parser::PrunedCoreRelParser;
 
@@ -17,7 +17,7 @@ class SQLVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
     int index;
   };
 
-  SQLVisitor(ExtendedAST &extended_ast);
+  SQLVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
 
   virtual ~SQLVisitor();
 
@@ -99,8 +99,6 @@ class SQLVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
   std::shared_ptr<sql::ast::Expression> GetExpressionFromID(antlr4::ParserRuleContext *ctx, std::string id) const;
 
   int table_alias_counter_ = 0;
-
-  ExtendedAST &extended_ast_;
 
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> table_index_;
 

@@ -20,6 +20,8 @@ class BaseVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
  protected:
   ExtendedNode& GetNode(antlr4::ParserRuleContext* ctx) { return ast_data_->index[ctx]; }
 
+  const ExtendedNode& GetNode(antlr4::ParserRuleContext* ctx) const { return ast_data_->index.at(ctx); }
+
   std::shared_ptr<ExtendedASTData> ast_data_;
 };
 

@@ -42,7 +42,7 @@ inline ExtendedAST GetExtendedAST(std::string_view input) {
 inline std::shared_ptr<sql::ast::Expression> GetSQLFromTree(antlr4::ParserRuleContext* tree) {
   ExtendedAST ast = GetExtendedASTFromTree(tree);
 
-  SQLVisitor visitor(ast);
+  SQLVisitor visitor(ast.Data());
 
   return std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visitor.visit(tree));
 }

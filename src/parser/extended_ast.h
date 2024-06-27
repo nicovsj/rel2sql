@@ -43,6 +43,8 @@ class ExtendedAST {
 
   ExtendedNode Root() const { return data_->index[root_]; }
 
+  std::shared_ptr<ExtendedASTData> Data() const { return data_; }
+
   ExtendedNode &Get(antlr4::ParserRuleContext *ctx) {
     auto it = data_->index.find(ctx);
     if (it == data_->index.end()) {
