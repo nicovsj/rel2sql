@@ -4,6 +4,19 @@
 #include "parser/parse.h"
 #include "sql.h"
 
+std::string TranslateRelFormula(const std::string& input) {
+  /*
+   * This function takes a string CoreRel formula input and returns the SQL translation.
+   */
+  auto parser = rel_parser::GetParser(input);
+  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::FormulaContext*>(parser->formula());
+  auto ast = rel_parser::GetExtendedASTFromTree(tree);
+  auto result = rel_parser::GetSQLFromTree(tree);
+  std::ostringstream os;
+  os << *result;
+  return os.str();
+}
+
 TEST(SQLVisitorTest, EqualitySpecialCondition) {
   std::string input = "F(x) and G(x)";
 
@@ -59,95 +72,25 @@ TEST(SQLVisitorTest, SpecialVarList) {
 }
 
 TEST(TranslationTest, FullApplicationFormula) {
-  std::string input = "F(x)";
-
-  auto parser = rel_parser::GetParser(input);
-
-  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::FormulaContext*>(parser->formula());
-
-  auto ast = rel_parser::GetExtendedASTFromTree(tree);
-
-  auto result = rel_parser::GetSQLFromTree(tree);
-
-  std::ostringstream os;
-
-  os << *result;
-
-  EXPECT_EQ(os.str(), "SELECT T0.A1 AS x FROM F AS T0");
+  EXPECT_EQ(TranslateRelFormula("F(x)"), "SELECT T0.A1 AS x FROM F AS T0");
 }
 
 TEST(TranslationTest, DoubleFullApplication) {
-  std::string input = "F(x,y)";
+  EXPECT_EQ(TranslateRelFormula("F(x,y)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0");
+}
 
-  auto parser = rel_parser::GetParser(input);
-
-  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::FormulaContext*>(parser->formula());
-
-  auto ast = rel_parser::GetExtendedASTFromTree(tree);
-
-  auto result = rel_parser::GetSQLFromTree(tree);
-
-  std::ostringstream os;
-
-  os << *result;
-
-  EXPECT_EQ(os.str(), "SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0");
+TEST(TranslationTest, CompositionFormula) {
+  EXPECT_EQ(TranslateRelFormula("F(G(x))"), "SELECT T2.x FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2");
 }
 
 TEST(TranslationTest, ConjunctionFormula) {
-  std::string input = "F(x) and G(x)";
-
-  auto parser = rel_parser::GetParser(input);
-
-  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::FormulaContext*>(parser->formula());
-
-  auto ast = rel_parser::GetExtendedASTFromTree(tree);
-
-  auto result = rel_parser::GetSQLFromTree(tree);
-
-  std::ostringstream os;
-
-  os << *result;
-
-  EXPECT_EQ(os.str(),
+  EXPECT_EQ(TranslateRelFormula("F(x) and G(x)"),
             "SELECT T2.x FROM (SELECT T0.A1 AS x FROM F AS T0) AS T2, (SELECT T1.A1 AS x FROM G AS T1) AS T3 WHERE "
             "T2.x = T3.x");
 }
 
 TEST(TranslationTest, DisjunctionFormula) {
-  std::string input = "F(x) or G(x)";
-
-  auto parser = rel_parser::GetParser(input);
-
-  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::FormulaContext*>(parser->formula());
-
-  auto ast = rel_parser::GetExtendedASTFromTree(tree);
-
-  auto result = rel_parser::GetSQLFromTree(tree);
-
-  std::ostringstream os;
-
-  os << *result;
-
-  EXPECT_EQ(os.str(),
+  EXPECT_EQ(TranslateRelFormula("F(x) or G(x)"),
             "SELECT T2.x FROM (SELECT T0.A1 AS x FROM F AS T0) AS T2 UNION SELECT T3.x FROM (SELECT T1.A1 AS x FROM G "
             "AS T1) AS T3");
-}
-
-TEST(TranslationTest, CompositionFormula) {
-  std::string input = "F(G(x))";
-
-  auto parser = rel_parser::GetParser(input);
-
-  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::FormulaContext*>(parser->formula());
-
-  auto ast = rel_parser::GetExtendedASTFromTree(tree);
-
-  auto result = rel_parser::GetSQLFromTree(tree);
-
-  std::ostringstream os;
-
-  os << *result;
-
-  EXPECT_EQ(os.str(), "SELECT T2.x FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2");
 }
