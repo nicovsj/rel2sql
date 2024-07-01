@@ -198,6 +198,8 @@ class Condition : public Expression {
  public:
   virtual ~Condition() = default;
   virtual std::ostream& Print(std::ostream& os) const = 0;
+
+  virtual bool IsEmpty() const = 0;
 };
 
 class ComparisonCondition : public Condition {
@@ -231,6 +233,8 @@ class ComparisonCondition : public Condition {
   std::ostream& Print(std::ostream& os) const override {
     return os << *lhs << " " << get_operator_string(op) << " " << *rhs;
   }
+
+  bool IsEmpty() const override { return false; }
 };
 
 class LogicalCondition : public Condition {
@@ -261,6 +265,11 @@ class LogicalCondition : public Condition {
   }
 
   LogicalCondition(std::vector<std::shared_ptr<Condition>> conditions, LogicalOp op) : conditions(conditions), op(op) {}
+
+  bool IsEmpty() const override {
+    return std::all_of(conditions.begin(), conditions.end(),
+                       [](std::shared_ptr<Condition> cond) { return cond->IsEmpty(); });
+  }
 };
 
 class Inclusion : public Condition {
@@ -273,6 +282,8 @@ class Inclusion : public Condition {
       : columns(columns), select(select), is_not(is_not) {}
 
   std::ostream& Print(std::ostream& os) const override;
+
+  bool IsEmpty() const override { return false; }
 };
 
 class Exists : public Condition {
@@ -282,6 +293,8 @@ class Exists : public Condition {
   Exists(std::shared_ptr<SelectStatement> select) : select(select) {}
 
   std::ostream& Print(std::ostream& os) const override;
+
+  bool IsEmpty() const override { return false; }
 };
 
 class FromStatement : public Expression {
@@ -303,7 +316,7 @@ class FromStatement : public Expression {
       }
     }
 
-    if (where.has_value()) {
+    if (where.has_value() && !where.value()->IsEmpty()) {
       os << " WHERE " << *where.value();
     }
 
@@ -342,7 +355,7 @@ class SelectStatement : public Sourceable {
   }
 };
 
-class Union : public Expression {
+class Union : public Sourceable {
  public:
   std::shared_ptr<SelectStatement> lhs;
   std::shared_ptr<SelectStatement> rhs;
