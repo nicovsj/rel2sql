@@ -58,7 +58,7 @@ TEST(SQLVisitorTest, SpecialVarList) {
   EXPECT_EQ(os.str(), "F.x G.y ");
 }
 
-TEST(TranslationTest, SimpleFormula) {
+TEST(TranslationTest, FullApplicationFormula) {
   std::string input = "F(x)";
 
   auto parser = rel_parser::GetParser(input);
@@ -73,7 +73,25 @@ TEST(TranslationTest, SimpleFormula) {
 
   os << *result;
 
-  EXPECT_EQ(os.str(), "SELECT T0.A0 AS x FROM F AS T0");
+  EXPECT_EQ(os.str(), "SELECT T0.A1 AS x FROM F AS T0");
+}
+
+TEST(TranslationTest, DoubleFullApplication) {
+  std::string input = "F(x,y)";
+
+  auto parser = rel_parser::GetParser(input);
+
+  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::FormulaContext*>(parser->formula());
+
+  auto ast = rel_parser::GetExtendedASTFromTree(tree);
+
+  auto result = rel_parser::GetSQLFromTree(tree);
+
+  std::ostringstream os;
+
+  os << *result;
+
+  EXPECT_EQ(os.str(), "SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0");
 }
 
 TEST(TranslationTest, ConjunctionFormula) {
@@ -92,7 +110,7 @@ TEST(TranslationTest, ConjunctionFormula) {
   os << *result;
 
   EXPECT_EQ(os.str(),
-            "SELECT T2.x FROM (SELECT T0.A0 AS x FROM F AS T0) AS T2, (SELECT T1.A0 AS x FROM G AS T1) AS T3 WHERE "
+            "SELECT T2.x FROM (SELECT T0.A1 AS x FROM F AS T0) AS T2, (SELECT T1.A1 AS x FROM G AS T1) AS T3 WHERE "
             "T2.x = T3.x");
 }
 
@@ -112,7 +130,7 @@ TEST(TranslationTest, DisjunctionFormula) {
   os << *result;
 
   EXPECT_EQ(os.str(),
-            "SELECT T2.x FROM (SELECT T0.A0 AS x FROM F AS T0) AS T2 UNION SELECT T3.x FROM (SELECT T1.A0 AS x FROM G "
+            "SELECT T2.x FROM (SELECT T0.A1 AS x FROM F AS T0) AS T2 UNION SELECT T3.x FROM (SELECT T1.A1 AS x FROM G "
             "AS T1) AS T3");
 }
 
@@ -131,5 +149,5 @@ TEST(TranslationTest, CompositionFormula) {
 
   os << *result;
 
-  EXPECT_EQ(os.str(), "SELECT T2.x FROM F AS T0, (SELECT T1.A0 AS x FROM G AS T1) AS T2");
+  EXPECT_EQ(os.str(), "SELECT T2.x FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2");
 }
