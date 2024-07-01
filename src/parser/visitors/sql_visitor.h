@@ -12,9 +12,11 @@ class SQLVisitor : public BaseVisitor {
  public:
   using psr = rel_parser::PrunedCoreRelParser;
 
-  struct NumberedContext {
+  struct IndexedContext {
     antlr4::ParserRuleContext *ctx;
     int index;
+
+    bool operator<(const IndexedContext &other) const { return index < other.index; }
   };
 
   SQLVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
@@ -89,14 +91,18 @@ class SQLVisitor : public BaseVisitor {
   std::vector<std::shared_ptr<sql::ast::Selectable>> SpecialVarList(std::vector<antlr4::ParserRuleContext *> ctxs);
 
   std::vector<std::shared_ptr<sql::ast::Condition>> FullApplicationVariableConditions(
-      psr::FullApplContext *formula_ctx, std::vector<NumberedContext> var_param_ctxs,
-      std::vector<NumberedContext> other_param_ctxs) const;
+      psr::ApplBaseContext *base_appl_ctx, std::vector<IndexedContext> var_param_ctxs,
+      std::unordered_map<std::string, IndexedContext> mini_non_variable_param_numbered_ctx_by_free_variable) const;
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> SpecialAppliedVarList(
-      psr::FullApplContext *formula_ctx, std::vector<NumberedContext> input_ctxs,
-      std::vector<NumberedContext> variable_param_ctxs) const;
+      psr::FullApplContext *formula_ctx, std::vector<IndexedContext> input_ctxs,
+      std::vector<IndexedContext> variable_param_ctxs,
+      std::unordered_map<std::string, IndexedContext> free_vars_in_non_variable_params) const;
 
   std::shared_ptr<sql::ast::Expression> GetExpressionFromID(antlr4::ParserRuleContext *ctx, std::string id) const;
+
+  std::unordered_map<std::string, IndexedContext> GetMinimumContextByFreeVariables(
+      const std::vector<IndexedContext> &other_param_ctxs);
 
   int table_alias_counter_ = 0;
 

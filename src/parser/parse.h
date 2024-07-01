@@ -44,7 +44,7 @@ inline std::shared_ptr<sql::ast::Expression> GetSQLFromTree(antlr4::ParserRuleCo
 
   SQLVisitor visitor(ast.Data());
 
-  return std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visitor.visit(tree));
+  return std::any_cast<std::shared_ptr<sql::ast::Expression>>(visitor.visit(tree));
 }
 
 inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input) {
