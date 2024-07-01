@@ -127,7 +127,7 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
       if (auto variable_sql = std::dynamic_pointer_cast<sql::ast::Column>(param_sql)) {
         // Then the parameter is a variable
         GetNode(appl).sql_expression = variable_sql;
-        var_params.push_back({appl, i});
+        var_params.push_back({appl, i + 1});
       } else if (auto subquery_sql = std::dynamic_pointer_cast<sql::ast::SelectStatement>(param_sql)) {
         // Then the parameter is not a variable
         auto param_subquery = std::make_shared<sql::ast::Source>(subquery_sql, GenerateTableAlias());
@@ -135,7 +135,7 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
 
         sources.push_back(param_subquery);
 
-        other_params.push_back({appl, i});
+        other_params.push_back({appl, i + 1});
       }
     }
   }
@@ -577,7 +577,7 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVar
 
   std::unordered_map<int, std::string> bound_variable_ctxs_by_index;
 
-  // Remove variable parameters that are free in the formula
+  // Remove variable parameters that are already part of the free variables of non-variable parameters
   variable_param_ctxs.erase(
       std::remove_if(variable_param_ctxs.begin(), variable_param_ctxs.end(),
                      [this, &free_vars_in_non_variable_params](auto const &ctx) {
