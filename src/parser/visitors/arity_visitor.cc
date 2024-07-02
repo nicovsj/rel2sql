@@ -1,0 +1,162 @@
+#include "arity_visitor.h"
+
+ArityVisitor::ArityVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
+
+std::any ArityVisitor::visitProgram(psr::ProgramContext *ctx) {
+  // Suppose that we can order the definitions of each relation by the inverse
+  // topological order of the dependencies between them.
+  for (auto &child_ctx : ctx->relDef()) {
+    visit(child_ctx);
+  }
+
+  return {};
+}
+
+std::any ArityVisitor::visitRelDef(psr::RelDefContext *ctx) {
+  visit(ctx->relAbs());
+
+  GetNode(ctx).arity = GetNode(ctx->relAbs()).arity;
+
+  ast_data_->arity_by_id[ctx->name->getText()] = GetNode(ctx).arity;
+
+  return {};
+}
+
+std::any ArityVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
+  visit(ctx->expr(0));
+
+  int common_arity = GetNode(ctx->expr(0)).arity;
+
+  for (int i = 1; i < ctx->expr().size(); i++) {
+    visit(ctx->expr(i));
+
+    if (GetNode(ctx->expr(i)).arity != common_arity) {
+      throw std::runtime_error("Not every member with the same arity in relational abstraction");
+    }
+  }
+
+  GetNode(ctx).arity = common_arity;
+
+  return {};
+}
+
+std::any ArityVisitor::visitLitExpr(psr::LitExprContext *ctx) {
+  GetNode(ctx).arity = 1;
+  return {};
+}
+
+std::any ArityVisitor::visitIDExpr(psr::IDExprContext *ctx) {
+  std::string id = ctx->T_ID()->getText();
+
+  if (auto found = ast_data_->arity_by_id.find(id); found != ast_data_->arity_by_id.end()) {
+    GetNode(ctx).arity = found->second;
+  } else {
+    GetNode(ctx).arity = 1;
+  }
+
+  return {};
+}
+
+std::any ArityVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
+
+  for (auto &child : ctx->productInner()->expr()) {
+    visit(child);
+    node.arity += GetNode(child).arity;
+  }
+
+  return {};
+}
+
+std::any ArityVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
+
+  visit(ctx->lhs);
+
+  node.arity = GetNode(ctx->lhs).arity;
+
+  return {};
+}
+
+std::any ArityVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
+
+  visit(ctx->relAbs());
+
+  node.arity = GetNode(ctx->relAbs()).arity;
+
+  return {};
+}
+
+std::any ArityVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
+
+  node.arity = 0;
+
+  return {};
+}
+
+std::any ArityVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
+
+  visit(ctx->expr());
+
+  node.arity = GetNode(ctx->expr()).arity;
+
+  return {};
+}
+
+std::any ArityVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
+
+  node.arity = ctx->bindingInner()->binding().size();
+
+  return {};
+}
+
+std::any ArityVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
+  visit(ctx->applBase());
+  auto base_arity = GetNode(ctx->applBase()).arity;
+
+  for (auto &child : ctx->applParams()->applParam()) {
+    visit(child);
+    base_arity -= GetNode(child).arity;
+  }
+
+  GetNode(ctx).arity = base_arity;
+
+  if (base_arity < 0) {
+    throw std::runtime_error("Partial application overflows the arity of the base expression");
+  }
+
+  return {};
+}
+
+std::any ArityVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
+  if (ctx->T_ID()) {
+    std::string id = ctx->T_ID()->getText();
+    if (auto found = ast_data_->arity_by_id.find(id); found != ast_data_->arity_by_id.end()) {
+      GetNode(ctx).arity = found->second;
+    } else {
+      GetNode(ctx).arity = 1;
+    }
+  } else {
+    visit(ctx->relAbs());
+    GetNode(ctx).arity = GetNode(ctx->relAbs()).arity;
+  }
+
+  return {};
+}
+
+std::any ArityVisitor::visitApplParams(psr::ApplParamsContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
+
+  node.arity = 0;
+
+  for (auto &child : ctx->applParam()) {
+    visit(child->expr());
+    node.arity += GetNode(child).arity;
+  }
+
+  return {};
+}

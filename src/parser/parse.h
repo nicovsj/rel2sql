@@ -3,6 +3,7 @@
 
 #include "parser/generated/CoreRelLexer.h"
 #include "parser/generated/PrunedCoreRelParser.h"
+#include "parser/visitors/arity_visitor.h"
 #include "parser/visitors/lit_visitor.h"
 #include "parser/visitors/sql_visitor.h"
 #include "parser/visitors/vars_visitor.h"
@@ -20,9 +21,13 @@ inline std::unique_ptr<PrunedCoreRelParser> GetParser(std::string_view input) {
 inline ExtendedAST GetExtendedASTFromTree(antlr4::ParserRuleContext* tree) {
   auto extended_ast_data = std::make_shared<ExtendedASTData>();
 
+  ArityVisitor arity_visitor(extended_ast_data);
+
   FreeVariablesVisitor free_vars_visitor(extended_ast_data);
 
   LiteralVisitor literal_visitor(extended_ast_data);
+
+  arity_visitor.visit(tree);
 
   free_vars_visitor.visit(tree);
 

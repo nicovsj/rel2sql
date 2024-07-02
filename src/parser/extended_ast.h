@@ -18,6 +18,8 @@ struct ExtendedNode {
 
   std::optional<sql::ast::constant_t> constant;
 
+  int arity;
+
   void VariablesInplaceUnion(const ExtendedNode &other) {
     variables.insert(other.variables.begin(), other.variables.end());
     free_variables.insert(other.free_variables.begin(), other.free_variables.end());
@@ -32,9 +34,18 @@ struct ExtendedNode {
   }
 };
 
+struct RelationDepsNode {
+  std::string id;
+  std::vector<std::shared_ptr<RelationDepsNode>> deps_on;
+};
+
+struct RelationDeps {
+  std::unordered_map<std::string, std::shared_ptr<RelationDepsNode>> index;
+};
+
 struct ExtendedASTData {
   std::unordered_map<antlr4::ParserRuleContext *, ExtendedNode> index;
-  std::unordered_map<std::string, int> arity_by_id;  // Maintain arity by id for fixed-point computation
+  std::unordered_map<std::string, int> arity_by_id;
 };
 
 class ExtendedAST {

@@ -13,18 +13,20 @@ antlr_cc_library(
 cc_library(
     name = "rel2sql_lib",
     srcs = [
-        "src/parser/visitors/vars_visitor.cc",
+        "src/parser/visitors/arity_visitor.cc",
         "src/parser/visitors/lit_visitor.cc",
         "src/parser/visitors/sql_visitor.cc",
+        "src/parser/visitors/vars_visitor.cc",
         "src/sql.cc",
     ],
     hdrs = [
         "src/parser/extended_ast.h",
         "src/parser/parse.h",
+        "src/parser/visitors/arity_visitor.h",
         "src/parser/visitors/base_visitor.h",
-        "src/parser/visitors/vars_visitor.h",
         "src/parser/visitors/lit_visitor.h",
         "src/parser/visitors/sql_visitor.h",
+        "src/parser/visitors/vars_visitor.h",
         "src/sql.h",
         "src/utils.h",
     ],
