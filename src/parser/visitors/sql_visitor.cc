@@ -377,7 +377,8 @@ std::any SQLVisitor::VisitUniversal(psr::QuantificationContext *ctx) {
     bound_domain_sources.push_back(table_index_[id_domain]);
   }
 
-  auto sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->formula()));
+  auto sql = std::static_pointer_cast<sql::ast::Sourceable>(
+      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->formula())));
 
   auto subquery = std::make_shared<sql::ast::Source>(sql, GenerateTableAlias());
 
@@ -411,7 +412,7 @@ std::any SQLVisitor::VisitUniversal(psr::QuantificationContext *ctx) {
     inclusion_tuple.push_back(bound_column);
   }
 
-  auto inclusion = std::make_shared<sql::ast::Inclusion>(inclusion_tuple, inter_inner_select);
+  auto inclusion = std::make_shared<sql::ast::Inclusion>(inclusion_tuple, inter_inner_select, true);
 
   auto wildcard2 = std::make_shared<sql::ast::Wildcard>();
 

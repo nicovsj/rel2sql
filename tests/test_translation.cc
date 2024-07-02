@@ -128,3 +128,15 @@ TEST(TranslationTest, ExistentialFormula) {
   EXPECT_EQ(TranslateRelFormula("exists (y in G, z | F(x, y, z))"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1, G WHERE T1.y = G.A1");
 }
+
+TEST(TranslationTest, UniversalFormula) {
+  // TODO: Must remove inner-most FROM subquery alias (final "AS T1")
+  EXPECT_EQ(TranslateRelFormula("forall (y in G | F(x, y))"),
+            "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1 WHERE EXISTS (SELECT * FROM G WHERE "
+            "(T1.x, G.A1) NOT IN (SELECT * FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1))");
+
+  EXPECT_EQ(TranslateRelFormula("forall (y in G, z in H | F(x, y, z))"),
+            "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1 WHERE EXISTS (SELECT * "
+            "FROM G, H WHERE (T1.x, G.A1, H.A1) NOT IN (SELECT * FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM "
+            "F AS T0) AS T1))");
+}
