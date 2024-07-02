@@ -100,7 +100,32 @@ std::any SQLVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
   /*
    * Generates an SQL query from the condition expression.
    */
-  throw std::runtime_error("Not implemented yet");
+  auto lhs_sql = std::static_pointer_cast<sql::ast::Sourceable>(
+      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->lhs)));
+  auto rhs_sql = std::static_pointer_cast<sql::ast::Sourceable>(
+      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->rhs)));
+
+  auto lhs_subquery = std::make_shared<sql::ast::Source>(lhs_sql, GenerateTableAlias());
+  auto rhs_subquery = std::make_shared<sql::ast::Source>(rhs_sql, GenerateTableAlias());
+
+  GetNode(ctx->lhs).sql_expression = lhs_subquery;
+  GetNode(ctx->rhs).sql_expression = rhs_subquery;
+
+  auto condition = EqualityShorthand({ctx->lhs, ctx->rhs});
+
+  auto select_columns = VarListShorthand({ctx->lhs, ctx->rhs});
+
+  for (int i = 1; i <= GetNode(ctx->lhs).arity; i++) {
+    auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", i), lhs_subquery);
+    select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(column));
+  }
+
+  auto from_statement = std::make_shared<sql::ast::FromStatement>(
+      std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery, rhs_subquery}, condition);
+
+  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from_statement);
+
+  return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
 std::any SQLVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
