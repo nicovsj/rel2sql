@@ -1,5 +1,5 @@
-#ifndef FV_VISITOR_H
-#define FV_VISITOR_H
+#ifndef VARS_VISITOR_H
+#define VARS_VISITOR_H
 
 #include <antlr4-runtime.h>
 
@@ -59,4 +59,4 @@ class FreeVariablesVisitor : public BaseVisitor {
   std::any visitApplParam(psr::ApplParamContext *ctx) override;
 };
 
-#endif  // FV_VISITOR_H
+#endif  // VARS_VISITOR_H

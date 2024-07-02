@@ -1,4 +1,4 @@
-#include "fv_visitor.h"
+#include "vars_visitor.h"
 
 FreeVariablesVisitor::FreeVariablesVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
 

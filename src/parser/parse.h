@@ -3,9 +3,9 @@
 
 #include "parser/generated/CoreRelLexer.h"
 #include "parser/generated/PrunedCoreRelParser.h"
-#include "parser/visitors/fv_visitor.h"
 #include "parser/visitors/lit_visitor.h"
 #include "parser/visitors/sql_visitor.h"
+#include "parser/visitors/vars_visitor.h"
 
 namespace rel_parser {
 
