@@ -61,7 +61,39 @@ std::any SQLVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
   /*
    * Generates an SQL query from the product expression.
    */
-  throw std::runtime_error("Not implemented yet");
+
+  std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
+
+  auto expr_ctxs = ctx->productInner()->expr();
+
+  for (auto &child_ctx : expr_ctxs) {
+    auto child_sql = std::static_pointer_cast<sql::ast::Sourceable>(
+        std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(child_ctx)));
+    auto child_subquery = std::make_shared<sql::ast::Source>(child_sql, GenerateTableAlias());
+    GetNode(child_ctx).sql_expression = child_subquery;
+    from_sources.push_back(child_subquery);
+  }
+
+  std::vector<antlr4::ParserRuleContext *> source_ctxs{expr_ctxs.begin(), expr_ctxs.end()};
+
+  auto condition = EqualityShorthand(source_ctxs);
+
+  auto select_columns = VarListShorthand(source_ctxs);
+
+  for (auto &child_ctx : ctx->productInner()->expr()) {
+    auto child_source = std::static_pointer_cast<sql::ast::Source>(GetNode(child_ctx).sql_expression);
+    int child_arity = GetNode(child_ctx).arity;
+    for (int i = 1; i <= child_arity; i++) {
+      auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", i), child_source);
+      select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(column));
+    }
+  }
+
+  auto from_statement = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
+
+  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from_statement);
+
+  return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
 std::any SQLVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
