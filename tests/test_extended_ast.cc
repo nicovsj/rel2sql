@@ -41,7 +41,7 @@ TEST(FreeVarsTest, UnionExpr) {
 }
 
 TEST(FreeVarsTest, ExistenceQuantificationExpr) {
-  auto ast = GetExtendedAST("def R { exists ((x) | F(x)) }");
+  auto ast = GetExtendedAST("def R { exists (x | F(x)) }");
 
   auto free_vars = ast.Root().free_variables;
 
@@ -49,7 +49,7 @@ TEST(FreeVarsTest, ExistenceQuantificationExpr) {
 }
 
 TEST(FreeVarsTest, UniversalQuantificationExpr) {
-  auto ast = GetExtendedAST("def R { forall ((x) | F(x)) }");
+  auto ast = GetExtendedAST("def R { forall (x | F(x)) }");
 
   auto free_vars = ast.Root().free_variables;
 

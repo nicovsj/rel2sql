@@ -37,9 +37,9 @@ interpolationPart:
 	| T_INTERPOL_ID
 	| T_INTERPOL_START expr ')';
 
-bindingInner: bindings=binding (',' bindings=binding)*;
+bindingInner: bindings = binding (',' bindings = binding)*;
 
-binding: literal | id=T_ID ('in' id_domain = T_ID)?;
+binding: literal | id = T_ID ('in' id_domain = T_ID)?;
 
 // ========================================================================================
 
@@ -55,22 +55,22 @@ relAbs: '{' (exprs = expr (';' exprs = expr)*)? '}';
 
 // The order of the rules below matters for precedence.
 expr:
-	literal							# litExpr
-	| T_ID							# IDExpr
-	| '(' productInner ')'			# productExpr
-	| lhs = expr 'where' rhs = expr	# conditionExpr
-	| relAbs						# relAbsExpr
-	| formula						# formulaExpr
+	literal								# litExpr
+	| T_ID								# IDExpr
+	| '(' productInner ')'				# productExpr
+	| lhs = expr 'where' rhs = formula	# conditionExpr
+	| relAbs							# relAbsExpr
+	| formula							# formulaExpr
 	| '[' bindingInner ']' ':' expr		# bindingsExpr
 	| '(' bindingInner ')' ':' formula	# bindingsFormula
-	| applBase '[' applParams ']'	# partialAppl;
+	| applBase '[' applParams ']'		# partialAppl;
 
 formula:
-	'{' ('(' ')')? '}'										# formulaBool
-	| applBase '(' applParams? ')'							# FullAppl
-	| lhs = formula op = 'and' rhs = formula				# binOp
-	| lhs = formula op = 'or' rhs = formula					# binOp
-	| op = 'not' formula									# unOp
-	| op = 'exists' '('  bindingInner  '|' formula ')'	# quantification
-	| op = 'forall' '('  bindingInner  '|' formula ')'	# quantification
-	| '(' formula ')'										# paren;
+	'{' ('(' ')')? '}'									# formulaBool
+	| applBase '(' applParams? ')'						# FullAppl
+	| lhs = formula op = 'and' rhs = formula			# binOp
+	| lhs = formula op = 'or' rhs = formula				# binOp
+	| op = 'not' formula								# unOp
+	| op = 'exists' '(' bindingInner '|' formula ')'	# quantification
+	| op = 'forall' '(' bindingInner '|' formula ')'	# quantification
+	| '(' formula ')'									# paren;
