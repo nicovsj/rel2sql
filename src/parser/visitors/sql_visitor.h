@@ -95,7 +95,7 @@ class SQLVisitor : public BaseVisitor {
       const std::unordered_map<std::string, IndexedContext> &params_by_free_vars) const;
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> SpecialAppliedVarList(
-      psr::FullApplContext *formula_ctx, std::vector<IndexedContext> input_ctxs,
+      psr::ApplBaseContext *base_ctx, std::vector<IndexedContext> input_ctxs,
       std::vector<IndexedContext> variable_param_ctxs,
       std::unordered_map<std::string, IndexedContext> free_vars_in_non_variable_params) const;
 
@@ -105,7 +105,7 @@ class SQLVisitor : public BaseVisitor {
       const std::vector<IndexedContext> &other_param_ctxs);
 
   std::pair<std::vector<IndexedContext>, std::vector<IndexedContext>> GetVariableAndNonVariableParams(
-      psr::FullApplContext *ctx);
+      psr::ApplBaseContext *base, const std::vector<psr::ApplParamContext *> &params);
 
   int table_alias_counter_ = 0;
 

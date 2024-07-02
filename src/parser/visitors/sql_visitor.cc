@@ -148,7 +148,7 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
 
   GetNode(ctx->applBase()).sql_expression = ra_source;
 
-  auto [var_params, non_var_params] = GetVariableAndNonVariableParams(ctx);
+  auto [var_params, non_var_params] = GetVariableAndNonVariableParams(ctx->applBase(), ctx->applParams()->applParam());
 
   auto non_var_param_by_free_vars = GetFirstNonVarParamByFreeVariables(non_var_params);
 
@@ -170,7 +170,7 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
 
   auto condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
 
-  auto select_cols = SpecialAppliedVarList(ctx, non_var_params, var_params, non_var_param_by_free_vars);
+  auto select_cols = SpecialAppliedVarList(ctx->applBase(), non_var_params, var_params, non_var_param_by_free_vars);
   auto from_statement = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
 
   auto query = std::make_shared<sql::ast::SelectStatement>(select_cols, from_statement);
@@ -573,7 +573,7 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::VarListShorthand(
 }
 
 std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVarList(
-    psr::FullApplContext *formula_ctx, std::vector<IndexedContext> input_ctxs,
+    psr::ApplBaseContext *base_ctx, std::vector<IndexedContext> input_ctxs,
     std::vector<IndexedContext> variable_param_ctxs,
     std::unordered_map<std::string, IndexedContext> free_vars_in_non_variable_params) const {
   std::unordered_set<std::string> seen_vars;
@@ -611,7 +611,7 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVar
 
   std::sort(final_ctxs.begin(), final_ctxs.end(), [](auto const &a, auto const &b) { return a.index < b.index; });
 
-  auto ra_subquery = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(formula_ctx->applBase()).sql_expression);
+  auto ra_subquery = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(base_ctx).sql_expression);
 
   for (auto const &[ctx, index] : final_ctxs) {
     for (auto const &var : GetNode(ctx).variables) {
@@ -669,14 +669,15 @@ std::unordered_map<std::string, SQLVisitor::IndexedContext> SQLVisitor::GetFirst
 }
 
 std::pair<std::vector<SQLVisitor::IndexedContext>, std::vector<SQLVisitor::IndexedContext>>
-SQLVisitor::GetVariableAndNonVariableParams(psr::FullApplContext *ctx) {
+SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext *base,
+                                            const std::vector<psr::ApplParamContext *> &params) {
   /*
    * Splits the parameters of the full application into variable and non-variable parameters.
    */
-  std::vector<IndexedContext> var_params, non_var_params = {{ctx->applBase(), 0}};
+  std::vector<IndexedContext> var_params, non_var_params = {{base, 0}};
 
-  for (int i = 0; i < ctx->applParams()->applParam().size(); i++) {
-    auto appl = ctx->applParams()->applParam(i);
+  for (int i = 0; i < params.size(); i++) {
+    auto appl = params[i];
     if (!appl->T_UNDERSCORE()) {
       auto param_sql = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(appl));
 
