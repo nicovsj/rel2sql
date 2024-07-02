@@ -34,7 +34,7 @@ TEST(SQLVisitorTest, EqualitySpecialCondition) {
 
   auto visitor = SQLVisitor(ast.Data());
 
-  auto condition = visitor.EqualitySpecialCondition(std::vector<antlr4::ParserRuleContext*>{tree->lhs, tree->rhs});
+  auto condition = visitor.EqualityShorthand(std::vector<antlr4::ParserRuleContext*>{tree->lhs, tree->rhs});
 
   std::ostringstream os;
 
@@ -75,12 +75,31 @@ TEST(TranslationTest, FullApplicationFormula) {
   EXPECT_EQ(TranslateRelFormula("F(x)"), "SELECT T0.A1 AS x FROM F AS T0");
 }
 
-TEST(TranslationTest, DoubleFullApplication) {
-  EXPECT_EQ(TranslateRelFormula("F(x,y)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0");
+TEST(TranslationTest, FullApplicationFormulaMultipleParams) {
+  EXPECT_EQ(TranslateRelFormula("F(x, y)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0");
+  EXPECT_EQ(TranslateRelFormula("F(x, y, z)"), "SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0");
 }
 
-TEST(TranslationTest, CompositionFormula) {
+TEST(TranslationTest, NestedFullApplicationFormula) {
   EXPECT_EQ(TranslateRelFormula("F(G(x))"), "SELECT T2.x FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2");
+  EXPECT_EQ(TranslateRelFormula("F(G(H(x)))"),
+            "SELECT T4.x FROM F AS T0, (SELECT T3.x FROM G AS T1, (SELECT T2.A1 AS x FROM H AS T2) AS T3) AS T4");
+}
+
+TEST(TranslationTest, FullApplicationFormulaMultipleMixedParams) {
+  EXPECT_EQ(TranslateRelFormula("F(G(x), y)"),
+            "SELECT T2.x, T0.A2 AS y FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2");
+  EXPECT_EQ(TranslateRelFormula("F(x, G(y))"),
+            "SELECT T0.A1 AS x, T2.y FROM F AS T0, (SELECT T1.A1 AS y FROM G AS T1) AS T2");
+  EXPECT_EQ(
+      TranslateRelFormula("F(G(x), H(y))"),
+      "SELECT T2.x, T4.y FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2, (SELECT T3.A1 AS y FROM H AS T3) AS T4");
+}
+
+TEST(TranslationTest, RepeatedVariableFormula) {
+  EXPECT_EQ(TranslateRelFormula("F(x, x)"), "SELECT T0.A1 AS x FROM F AS T0 WHERE T0.A1 = T0.A2");
+  EXPECT_EQ(TranslateRelFormula("F(x, x, x)"), "SELECT T0.A1 AS x FROM F AS T0 WHERE T0.A1 = T0.A2 AND T0.A2 = T0.A3");
+  EXPECT_EQ(TranslateRelFormula("F(x, y, x)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0 WHERE T0.A1 = T0.A3");
 }
 
 TEST(TranslationTest, ConjunctionFormula) {
@@ -93,4 +112,19 @@ TEST(TranslationTest, DisjunctionFormula) {
   EXPECT_EQ(TranslateRelFormula("F(x) or G(x)"),
             "SELECT T2.x FROM (SELECT T0.A1 AS x FROM F AS T0) AS T2 UNION SELECT T3.x FROM (SELECT T1.A1 AS x FROM G "
             "AS T1) AS T3");
+}
+
+TEST(TranslationTest, ExistentialFormula) {
+  EXPECT_EQ(TranslateRelFormula("exists (y | F(x, y))"),
+            "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1");
+  EXPECT_EQ(TranslateRelFormula("exists (y, z | F(x, y, z))"),
+            "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1");
+
+  EXPECT_EQ(TranslateRelFormula("exists (y in G | F(x, y))"),
+            "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1, G WHERE T1.y = G.A1");
+  EXPECT_EQ(TranslateRelFormula("exists (y in G, z in H | F(x, y, z))"),
+            "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1, G, H WHERE T1.y = G.A1 "
+            "AND T1.z = H.A1");
+  EXPECT_EQ(TranslateRelFormula("exists (y in G, z | F(x, y, z))"),
+            "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1, G WHERE T1.y = G.A1");
 }

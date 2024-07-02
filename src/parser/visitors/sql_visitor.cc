@@ -107,46 +107,23 @@ std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
 }
 
 std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
-  auto text = ctx->getText();
-
+  /*
+   * Generates an SQL query from the full application.
+   */
   auto ra_sql = std::any_cast<std::shared_ptr<sql::ast::Sourceable>>(visit(ctx->applBase()));
 
   auto ra_source = std::make_shared<sql::ast::Source>(ra_sql, GenerateTableAlias());
 
   GetNode(ctx->applBase()).sql_expression = ra_source;
 
-  auto sources = std::vector<std::shared_ptr<sql::ast::Source>>{ra_source};
+  auto [var_params, non_var_params] = GetVariableAndNonVariableParams(ctx);
 
-  std::vector<IndexedContext> var_params, other_params = {{ctx->applBase(), 0}};
+  auto non_var_param_by_free_vars = GetFirstNonVarParamByFreeVariables(non_var_params);
 
-  for (int i = 0; i < ctx->applParams()->applParam().size(); i++) {
-    auto appl = ctx->applParams()->applParam(i);
-    if (!appl->T_UNDERSCORE()) {
-      auto param_sql = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(appl));
-
-      if (auto variable_sql = std::dynamic_pointer_cast<sql::ast::Column>(param_sql)) {
-        // Then the parameter is a variable
-        GetNode(appl).sql_expression = variable_sql;
-        var_params.push_back({appl, i + 1});
-      } else if (auto subquery_sql = std::dynamic_pointer_cast<sql::ast::SelectStatement>(param_sql)) {
-        // Then the parameter is not a variable
-        auto param_subquery = std::make_shared<sql::ast::Source>(subquery_sql, GenerateTableAlias());
-        GetNode(appl).sql_expression = param_subquery;
-
-        sources.push_back(param_subquery);
-
-        other_params.push_back({appl, i + 1});
-      }
-    }
-  }
-
-  auto min_non_variable_param_numbered_ctx_by_free_variable = GetMinimumContextByFreeVariables(other_params);
-
-  auto conditions = FullApplicationVariableConditions(ctx->applBase(), var_params,
-                                                      min_non_variable_param_numbered_ctx_by_free_variable);
+  auto conditions = FullApplicationVariableConditions(ctx->applBase(), var_params, non_var_param_by_free_vars);
 
   std::vector<antlr4::ParserRuleContext *> source_ctxs;
-  for (auto [param, _] : other_params) {
+  for (auto [param, _] : non_var_params) {
     source_ctxs.push_back(param);
   }
 
@@ -157,19 +134,11 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
     from_sources.push_back(source_subquery);
   }
 
-  auto eq_condition = EqualitySpecialCondition(source_ctxs);
-
-  conditions.push_back(eq_condition);
+  conditions.push_back(EqualityShorthand(source_ctxs));
 
   auto condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
 
-  std::vector<IndexedContext> numbered_source_ctxs = {{ctx->applBase(), 0}};
-
-  numbered_source_ctxs.insert(numbered_source_ctxs.end(), other_params.begin(), other_params.end());
-
-  auto select_cols = SpecialAppliedVarList(ctx, numbered_source_ctxs, var_params,
-                                           min_non_variable_param_numbered_ctx_by_free_variable);
-
+  auto select_cols = SpecialAppliedVarList(ctx, non_var_params, var_params, non_var_param_by_free_vars);
   auto from_statement = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
 
   auto query = std::make_shared<sql::ast::SelectStatement>(select_cols, from_statement);
@@ -281,7 +250,7 @@ std::any SQLVisitor::VisitConjunction(psr::BinOpContext *ctx) {
 
   std::vector<antlr4::ParserRuleContext *> input_ctxs = {ctx->lhs, ctx->rhs};
 
-  auto condition = EqualitySpecialCondition(input_ctxs);
+  auto condition = EqualityShorthand(input_ctxs);
 
   auto select_columns = SpecialVarList(input_ctxs);
 
@@ -348,7 +317,8 @@ std::any SQLVisitor::VisitExistential(psr::QuantificationContext *ctx) {
     }
   }
 
-  auto sql = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->formula()));
+  auto sql = std::static_pointer_cast<sql::ast::Sourceable>(
+      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->formula())));
 
   auto subquery = std::make_shared<sql::ast::Source>(sql, GenerateTableAlias());
 
@@ -381,7 +351,9 @@ std::any SQLVisitor::VisitExistential(psr::QuantificationContext *ctx) {
 
   auto from = std::make_shared<sql::ast::FromStatement>(sources, condition);
 
-  return std::make_shared<sql::ast::SelectStatement>(select_columns, from);
+  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from);
+
+  return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
 std::any SQLVisitor::VisitUniversal(psr::QuantificationContext *ctx) {
@@ -455,12 +427,14 @@ std::any SQLVisitor::VisitUniversal(psr::QuantificationContext *ctx) {
 
   auto outer_from = std::make_shared<sql::ast::FromStatement>(sources, not_exists);
 
-  return std::make_shared<sql::ast::SelectStatement>(select_columns, outer_from);
+  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, outer_from);
+
+  return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
 std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::FullApplicationVariableConditions(
-    psr::ApplBaseContext *base_appl_ctx, std::vector<IndexedContext> variable_param_ctxs,
-    std::unordered_map<std::string, IndexedContext> mini_non_variable_param_numbered_ctx_by_free_variable) const {
+    psr::ApplBaseContext *base_appl_ctx, const std::vector<IndexedContext> &variable_param_ctxs,
+    const std::unordered_map<std::string, IndexedContext> &params_by_free_vars) const {
   std::vector<std::shared_ptr<sql::ast::Condition>> conditions;
 
   // Map the singled-out variables that are parameters to the set of parameter contexts
@@ -476,9 +450,9 @@ std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::FullApplicationVar
 
   auto ra_subquery = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(base_appl_ctx).sql_expression);
 
-  for (auto [explicit_variable, ctxs_that_are_the_variable] : params_by_variable) {
-    auto found = mini_non_variable_param_numbered_ctx_by_free_variable.find(explicit_variable);
-    if (found != mini_non_variable_param_numbered_ctx_by_free_variable.end()) {
+  for (auto [explicit_variable, variable_params] : params_by_variable) {
+    auto found = params_by_free_vars.find(explicit_variable);
+    if (found != params_by_free_vars.end()) {
       // Then the variable is also in one of the sub queries, and we need to equate the respective columns
       auto found_numbered_ctx = found->second;
 
@@ -488,19 +462,17 @@ std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::FullApplicationVar
 
       // The ctxs_that_are_the_variable set is ordered by the index of the parameter context
       // so we can just take the first one to do the equality
-      auto min_parameter_variable_index = ctxs_that_are_the_variable.begin()->index;
+      auto min_parameter_variable_index = variable_params.begin()->index;
       auto rhs = std::make_shared<sql::ast::Column>(fmt::format("A{}", min_parameter_variable_index), ra_subquery);
 
       conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs));
     }
-    if (ctxs_that_are_the_variable.size() > 1) {
+    if (variable_params.size() > 1) {
       // Then the variable is repeated as a parameter multiple times, and we need to equate those columns
-      for (auto it1 = ctxs_that_are_the_variable.begin(); it1 != ctxs_that_are_the_variable.end(); it1++) {
-        for (auto it2 = std::next(it1); it2 != ctxs_that_are_the_variable.end(); it2++) {
-          auto lhs = std::make_shared<sql::ast::Column>(fmt::format("A{}", it1->index), ra_subquery);
-          auto rhs = std::make_shared<sql::ast::Column>(fmt::format("A{}", it2->index), ra_subquery);
-          conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs));
-        }
+      for (auto it1 = variable_params.begin(), it2 = std::next(it1); it2 != variable_params.end(); it1++, it2++) {
+        auto lhs = std::make_shared<sql::ast::Column>(fmt::format("A{}", it1->index), ra_subquery);
+        auto rhs = std::make_shared<sql::ast::Column>(fmt::format("A{}", it2->index), ra_subquery);
+        conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs));
       }
     }
   }
@@ -508,7 +480,7 @@ std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::FullApplicationVar
   return conditions;
 }
 
-std::shared_ptr<sql::ast::Condition> SQLVisitor::EqualitySpecialCondition(
+std::shared_ptr<sql::ast::Condition> SQLVisitor::EqualityShorthand(
     std::vector<antlr4::ParserRuleContext *> input_ctxs) {
   /*
    * Generates a condition that equates all the repeated variables in the input map. This is the EQ function
@@ -646,11 +618,11 @@ std::shared_ptr<sql::ast::Expression> SQLVisitor::GetExpressionFromID(antlr4::Pa
   return std::make_shared<sql::ast::Table>(id);
 }
 
-std::unordered_map<std::string, SQLVisitor::IndexedContext> SQLVisitor::GetMinimumContextByFreeVariables(
-    const std::vector<IndexedContext> &other_param_ctxs) {
+std::unordered_map<std::string, SQLVisitor::IndexedContext> SQLVisitor::GetFirstNonVarParamByFreeVariables(
+    const std::vector<IndexedContext> &non_var_params) {
   std::unordered_map<std::string, IndexedContext> minimum_context_by_free_variable;
 
-  for (auto indexed_ctx : other_param_ctxs) {
+  for (auto indexed_ctx : non_var_params) {
     for (auto var : GetNode(indexed_ctx.ctx).free_variables) {
       if (minimum_context_by_free_variable.find(var) == minimum_context_by_free_variable.end()) {
         minimum_context_by_free_variable[var] = indexed_ctx;
@@ -661,4 +633,33 @@ std::unordered_map<std::string, SQLVisitor::IndexedContext> SQLVisitor::GetMinim
   }
 
   return minimum_context_by_free_variable;
+}
+
+std::pair<std::vector<SQLVisitor::IndexedContext>, std::vector<SQLVisitor::IndexedContext>>
+SQLVisitor::GetVariableAndNonVariableParams(psr::FullApplContext *ctx) {
+  /*
+   * Splits the parameters of the full application into variable and non-variable parameters.
+   */
+  std::vector<IndexedContext> var_params, non_var_params = {{ctx->applBase(), 0}};
+
+  for (int i = 0; i < ctx->applParams()->applParam().size(); i++) {
+    auto appl = ctx->applParams()->applParam(i);
+    if (!appl->T_UNDERSCORE()) {
+      auto param_sql = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(appl));
+
+      if (auto variable_sql = std::dynamic_pointer_cast<sql::ast::Column>(param_sql)) {
+        // Then the parameter is a variable
+        GetNode(appl).sql_expression = variable_sql;
+        var_params.push_back({appl, i + 1});
+      } else if (auto subquery_sql = std::dynamic_pointer_cast<sql::ast::SelectStatement>(param_sql)) {
+        // Then the parameter is not a variable
+        auto param_subquery = std::make_shared<sql::ast::Source>(subquery_sql, GenerateTableAlias());
+        GetNode(appl).sql_expression = param_subquery;
+
+        non_var_params.push_back({appl, i + 1});
+      }
+    }
+  }
+
+  return std::make_pair(var_params, non_var_params);
 }

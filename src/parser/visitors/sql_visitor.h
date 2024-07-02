@@ -86,13 +86,13 @@ class SQLVisitor : public BaseVisitor {
 
   std::string GenerateTableAlias();
 
-  std::shared_ptr<sql::ast::Condition> EqualitySpecialCondition(std::vector<antlr4::ParserRuleContext *> ctxs);
+  std::shared_ptr<sql::ast::Condition> EqualityShorthand(std::vector<antlr4::ParserRuleContext *> ctxs);
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> SpecialVarList(std::vector<antlr4::ParserRuleContext *> ctxs);
 
   std::vector<std::shared_ptr<sql::ast::Condition>> FullApplicationVariableConditions(
-      psr::ApplBaseContext *base_appl_ctx, std::vector<IndexedContext> var_param_ctxs,
-      std::unordered_map<std::string, IndexedContext> mini_non_variable_param_numbered_ctx_by_free_variable) const;
+      psr::ApplBaseContext *base_appl_ctx, const std::vector<IndexedContext> &var_param_ctxs,
+      const std::unordered_map<std::string, IndexedContext> &params_by_free_vars) const;
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> SpecialAppliedVarList(
       psr::FullApplContext *formula_ctx, std::vector<IndexedContext> input_ctxs,
@@ -101,8 +101,11 @@ class SQLVisitor : public BaseVisitor {
 
   std::shared_ptr<sql::ast::Expression> GetExpressionFromID(antlr4::ParserRuleContext *ctx, std::string id) const;
 
-  std::unordered_map<std::string, IndexedContext> GetMinimumContextByFreeVariables(
+  std::unordered_map<std::string, IndexedContext> GetFirstNonVarParamByFreeVariables(
       const std::vector<IndexedContext> &other_param_ctxs);
+
+  std::pair<std::vector<IndexedContext>, std::vector<IndexedContext>> GetVariableAndNonVariableParams(
+      psr::FullApplContext *ctx);
 
   int table_alias_counter_ = 0;
 

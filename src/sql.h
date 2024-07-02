@@ -264,7 +264,11 @@ class LogicalCondition : public Condition {
     return os;
   }
 
-  LogicalCondition(std::vector<std::shared_ptr<Condition>> conditions, LogicalOp op) : conditions(conditions), op(op) {}
+  LogicalCondition(std::vector<std::shared_ptr<Condition>> conditions, LogicalOp op) : conditions(conditions), op(op) {
+    this->conditions.erase(std::remove_if(this->conditions.begin(), this->conditions.end(),
+                                          [](const std::shared_ptr<Condition>& cond) { return cond->IsEmpty(); }),
+                           this->conditions.end());
+  }
 
   bool IsEmpty() const override {
     return std::all_of(conditions.begin(), conditions.end(),
