@@ -96,6 +96,21 @@ TEST(TranslationTest, FullApplicationFormulaMultipleMixedParams) {
       "SELECT T2.x, T4.y FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2, (SELECT T3.A1 AS y FROM H AS T3) AS T4");
 }
 
+TEST(TranslationTest, FullApplicationFormulaMultipleParamsSharingVariables) {
+  EXPECT_EQ(TranslateRelFormula("F(G(x), H(x))"),
+            "SELECT T2.x FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2, (SELECT T3.A1 AS x FROM H AS T3) AS T4 "
+            "WHERE T2.x = T4.x");
+  EXPECT_EQ(TranslateRelFormula("F(G(x, y), H(y, z))"),
+            "SELECT T2.x, T2.y, T4.z FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS y FROM G AS T1) AS T2, (SELECT T3.A1 "
+            "AS y, T3.A2 AS z FROM H AS T3) AS T4 WHERE T2.y = T4.y");
+
+  EXPECT_EQ(TranslateRelFormula("F(G(x), x)"),
+            "SELECT T2.x FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2 WHERE T2.x = T0.A2");
+
+  EXPECT_EQ(TranslateRelFormula("F(G(x), x, y)"),
+            "SELECT T2.x, T0.A3 AS y FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2 WHERE T2.x = T0.A2");
+}
+
 TEST(TranslationTest, RepeatedVariableFormula) {
   EXPECT_EQ(TranslateRelFormula("F(x, x)"), "SELECT T0.A1 AS x FROM F AS T0 WHERE T0.A1 = T0.A2");
   EXPECT_EQ(TranslateRelFormula("F(x, x, x)"), "SELECT T0.A1 AS x FROM F AS T0 WHERE T0.A1 = T0.A2 AND T0.A2 = T0.A3");
