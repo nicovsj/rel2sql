@@ -17,6 +17,19 @@ std::string TranslateRelFormula(const std::string& input) {
   return os.str();
 }
 
+std::string TranslateRelExpression(const std::string& input) {
+  /*
+   * This function takes a string CoreRel expression input and returns the SQL translation.
+   */
+  auto parser = rel_parser::GetParser(input);
+  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ExprContext*>(parser->expr());
+  auto ast = rel_parser::GetExtendedASTFromTree(tree);
+  auto result = rel_parser::GetSQLFromTree(tree);
+  std::ostringstream os;
+  os << *result;
+  return os.str();
+}
+
 TEST(SQLVisitorTest, EqualitySpecialCondition) {
   std::string input = "F(x) and G(x)";
 
@@ -154,4 +167,9 @@ TEST(TranslationTest, UniversalFormula) {
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1 WHERE EXISTS (SELECT * "
             "FROM G, H WHERE (T1.x, G.A1, H.A1) NOT IN (SELECT * FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM "
             "F AS T0) AS T1))");
+}
+
+TEST(TranslationTest, ProductExpression) {
+  EXPECT_EQ(TranslateRelExpression("(1, 2)"),
+            "SELECT T0.A1, T1.A1 FROM (SELECT 1 AS A1) AS T0, (SELECT 2 AS A1) AS T1");
 }
