@@ -230,3 +230,51 @@ TEST(LiteralVisitorTest, BoolFalse) {
 
   EXPECT_EQ(std::get<bool>(ast.Root().constant.value()), false);
 }
+
+TEST(ArityVisitorTest, LitExpr) {
+  std::string input = "def R { 1 }";
+
+  auto parser = GetParser(input);
+
+  auto tree = parser->program();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  EXPECT_EQ(ast.Data()->arity_by_id["R"], 1);
+}
+
+TEST(ArityVisitorTest, ProductExpr) {
+  std::string input = "def R { (1, 2) }";
+
+  auto parser = GetParser(input);
+
+  auto tree = parser->program();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  EXPECT_EQ(ast.Data()->arity_by_id["R"], 2);
+}
+
+TEST(ArityVisitorTest, FormulaExpr) {
+  std::string input = "def R { F(x) }";
+
+  auto parser = GetParser(input);
+
+  auto tree = parser->program();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  EXPECT_EQ(ast.Data()->arity_by_id["R"], 0);
+}
+
+TEST(ArityVisitorTest, RelAbsExpr) {
+  std::string input = "def R {(1, 1); (2, 2); (3, 3)}";
+
+  auto parser = GetParser(input);
+
+  auto tree = parser->program();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  EXPECT_EQ(ast.Data()->arity_by_id["R"], 2);
+}
