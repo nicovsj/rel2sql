@@ -160,7 +160,48 @@ std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
   /*
    * Generates an SQL query from the partial application.
    */
-  throw std::runtime_error("Not implemented yet");
+  auto ra_sql = std::any_cast<std::shared_ptr<sql::ast::Sourceable>>(visit(ctx->applBase()));
+
+  auto ra_source = std::make_shared<sql::ast::Source>(ra_sql, GenerateTableAlias());
+
+  GetNode(ctx->applBase()).sql_expression = ra_source;
+
+  auto [var_params, non_var_params] = GetVariableAndNonVariableParams(ctx->applBase(), ctx->applParams()->applParam());
+
+  auto non_var_param_by_free_vars = GetFirstNonVarParamByFreeVariables(non_var_params);
+
+  auto conditions = FullApplicationVariableConditions(ctx->applBase(), var_params, non_var_param_by_free_vars);
+
+  std::vector<antlr4::ParserRuleContext *> source_ctxs;
+  for (auto [param, _] : non_var_params) {
+    source_ctxs.push_back(param);
+  }
+
+  std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
+
+  for (auto &ctx : source_ctxs) {
+    auto source_subquery = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(ctx).sql_expression);
+    from_sources.push_back(source_subquery);
+  }
+
+  conditions.push_back(EqualityShorthand(source_ctxs));
+
+  auto condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
+
+  auto select_cols = SpecialAppliedVarList(ctx->applBase(), non_var_params, var_params, non_var_param_by_free_vars);
+
+  int m = ctx->applParams()->applParam().size();
+
+  for (int i = 1; i <= GetNode(ctx->applBase()).arity; i++) {
+    auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", m + i), ra_source);
+    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, fmt::format("A{}", i)));
+  }
+
+  auto from_statement = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
+
+  auto query = std::make_shared<sql::ast::SelectStatement>(select_cols, from_statement);
+
+  return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
 std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
