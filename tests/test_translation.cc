@@ -60,7 +60,7 @@ TEST(SQLVisitorTest, SpecialVarList) {
 
   auto visitor = SQLVisitor(ast.Data());
 
-  auto var_list = visitor.SpecialVarList(std::vector<antlr4::ParserRuleContext*>{tree->lhs, tree->rhs});
+  auto var_list = visitor.VarListShorthand(std::vector<antlr4::ParserRuleContext*>{tree->lhs, tree->rhs});
 
   std::ostringstream os;
 

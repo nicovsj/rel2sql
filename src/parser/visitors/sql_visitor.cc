@@ -252,7 +252,7 @@ std::any SQLVisitor::VisitConjunction(psr::BinOpContext *ctx) {
 
   auto condition = EqualityShorthand(input_ctxs);
 
-  auto select_columns = SpecialVarList(input_ctxs);
+  auto select_columns = VarListShorthand(input_ctxs);
 
   auto from = std::make_shared<sql::ast::FromStatement>(
       std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery, rhs_subquery}, condition);
@@ -277,8 +277,8 @@ std::any SQLVisitor::VisitDisjunction(psr::BinOpContext *ctx) {
   GetNode(ctx->lhs).sql_expression = lhs_subquery;
   GetNode(ctx->rhs).sql_expression = rhs_subquery;
 
-  auto lhs_cols = SpecialVarList(std::vector<antlr4::ParserRuleContext *>{ctx->lhs});
-  auto rhs_cols = SpecialVarList(std::vector<antlr4::ParserRuleContext *>{ctx->rhs});
+  auto lhs_cols = VarListShorthand(std::vector<antlr4::ParserRuleContext *>{ctx->lhs});
+  auto rhs_cols = VarListShorthand(std::vector<antlr4::ParserRuleContext *>{ctx->rhs});
 
   auto lhs_from =
       std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery});
@@ -517,7 +517,7 @@ std::shared_ptr<sql::ast::Condition> SQLVisitor::EqualityShorthand(
   return std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
 }
 
-std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialVarList(
+std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::VarListShorthand(
     std::vector<antlr4::ParserRuleContext *> input_ctxs) {
   std::unordered_set<std::string> seen_vars;
 
@@ -573,7 +573,7 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVar
 
   // Zip both input_ctxs and final_ctxs
   std::vector<IndexedContext> final_ctxs;
-
+  final_ctxs.reserve(variable_param_ctxs.size() + input_ctxs.size());
   final_ctxs.insert(final_ctxs.end(), variable_param_ctxs.begin(), variable_param_ctxs.end());
   final_ctxs.insert(final_ctxs.end(), input_ctxs.begin(), input_ctxs.end());
 

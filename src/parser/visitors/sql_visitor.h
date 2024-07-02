@@ -88,7 +88,7 @@ class SQLVisitor : public BaseVisitor {
 
   std::shared_ptr<sql::ast::Condition> EqualityShorthand(std::vector<antlr4::ParserRuleContext *> ctxs);
 
-  std::vector<std::shared_ptr<sql::ast::Selectable>> SpecialVarList(std::vector<antlr4::ParserRuleContext *> ctxs);
+  std::vector<std::shared_ptr<sql::ast::Selectable>> VarListShorthand(std::vector<antlr4::ParserRuleContext *> ctxs);
 
   std::vector<std::shared_ptr<sql::ast::Condition>> FullApplicationVariableConditions(
       psr::ApplBaseContext *base_appl_ctx, const std::vector<IndexedContext> &var_param_ctxs,
