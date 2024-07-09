@@ -14,6 +14,7 @@ cc_library(
     name = "rel2sql_lib",
     srcs = [
         "src/parser/visitors/arity_visitor.cc",
+        "src/parser/visitors/ids_visitor.cc",
         "src/parser/visitors/lit_visitor.cc",
         "src/parser/visitors/sql_visitor.cc",
         "src/parser/visitors/vars_visitor.cc",
@@ -24,6 +25,7 @@ cc_library(
         "src/parser/parse.h",
         "src/parser/visitors/arity_visitor.h",
         "src/parser/visitors/base_visitor.h",
+        "src/parser/visitors/ids_visitor.h",
         "src/parser/visitors/lit_visitor.h",
         "src/parser/visitors/sql_visitor.h",
         "src/parser/visitors/vars_visitor.h",
@@ -36,6 +38,16 @@ cc_library(
         "@antlr4-cpp-runtime//:antlr4-cpp-runtime",
         "@fmt",
         "@googletest//:gtest",  # Needed for testing private member functions
+        "@spdlog",
+    ],
+)
+
+cc_binary(
+    name = "rel2sql",
+    srcs = ["main/main.cc"],
+    deps = [
+        ":rel2sql_lib",
+        "@fmt",
         "@spdlog",
     ],
 )

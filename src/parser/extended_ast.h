@@ -34,18 +34,56 @@ struct ExtendedNode {
   }
 };
 
-struct RelationDepsNode {
-  std::string id;
-  std::vector<std::shared_ptr<RelationDepsNode>> deps_on;
-};
-
-struct RelationDeps {
-  std::unordered_map<std::string, std::shared_ptr<RelationDepsNode>> index;
-};
-
 struct ExtendedASTData {
   std::unordered_map<antlr4::ParserRuleContext *, ExtendedNode> index;
   std::unordered_map<std::string, int> arity_by_id;
+
+  std::unordered_map<std::string, std::vector<std::string>> ids_dependencies;
+
+  std::unordered_set<std::string> ids;
+  std::unordered_set<std::string> internal_dbs;
+  std::unordered_set<std::string> external_dbs;
+  std::unordered_set<std::string> vars;
+
+  std::vector<std::string> sorted_ids;
+
+  void AddIDB(const std::string &id) {
+    ids.insert(id);
+
+    if (external_dbs.find(id) != external_dbs.end()) {
+      throw std::runtime_error("IDB " + id + " already in the set of EDBs");
+    }
+
+    vars.erase(id);
+    internal_dbs.insert(id);
+  }
+
+  void AddEDB(const std::string &edb, int arity) {
+    if (internal_dbs.find(edb) != internal_dbs.end()) {
+      throw std::runtime_error("EDB " + edb + " already in the set of IDBs");
+    }
+
+    if (vars.find(edb) != vars.end()) {
+      throw std::runtime_error("EDB " + edb + " already in the set of variables");
+    }
+
+    ids.insert(edb);
+    external_dbs.insert(edb);
+
+    arity_by_id[edb] = arity;
+  }
+
+  void AddVar(const std::string &var) {
+    if (internal_dbs.find(var) != internal_dbs.end() || external_dbs.find(var) != external_dbs.end()) {
+      // ID is already in the set of IDBs or EDBs then do nothing
+      return;
+    }
+
+    ids.insert(var);
+    vars.insert(var);
+  }
+
+  void AddDependency(const std::string &id, const std::string &dep) { ids_dependencies[id].push_back(dep); }
 };
 
 class ExtendedAST {
