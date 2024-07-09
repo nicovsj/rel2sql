@@ -26,7 +26,7 @@ inline ExtendedAST GetExtendedASTFromTree(
 
   ArityVisitor arity_visitor(extended_ast_data);
 
-  FreeVariablesVisitor free_vars_visitor(extended_ast_data);
+  VariablesVisitor free_vars_visitor(extended_ast_data);
 
   LiteralVisitor literal_visitor(extended_ast_data);
 

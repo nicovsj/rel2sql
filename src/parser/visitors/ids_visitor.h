@@ -7,6 +7,10 @@
 #include "parser/visitors/base_visitor.h"
 
 class IDsVisitor : public BaseVisitor {
+  /*
+   * Visitor that computes the dependency graph between IDs in the Rel program
+   * and generates a topological order of the IDs.
+   */
  public:
   IDsVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
 

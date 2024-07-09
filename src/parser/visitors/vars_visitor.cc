@@ -1,8 +1,8 @@
 #include "vars_visitor.h"
 
-FreeVariablesVisitor::FreeVariablesVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
+VariablesVisitor::VariablesVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
 
-std::any FreeVariablesVisitor::visitProgram(psr::ProgramContext *ctx) {
+std::any VariablesVisitor::visitProgram(psr::ProgramContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   for (auto &child_ctx : ctx->relDef()) {
@@ -13,7 +13,7 @@ std::any FreeVariablesVisitor::visitProgram(psr::ProgramContext *ctx) {
   return node;
 }
 
-std::any FreeVariablesVisitor::visitRelDef(psr::RelDefContext *ctx) {
+std::any VariablesVisitor::visitRelDef(psr::RelDefContext *ctx) {
   visit(ctx->relAbs());
 
   GetNode(ctx) = GetNode(ctx->relAbs());
@@ -21,7 +21,7 @@ std::any FreeVariablesVisitor::visitRelDef(psr::RelDefContext *ctx) {
   return {};
 }
 
-std::any FreeVariablesVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
+std::any VariablesVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   for (auto &child_ctx : ctx->expr()) {
@@ -32,7 +32,7 @@ std::any FreeVariablesVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
   return {};
 }
 
-std::any FreeVariablesVisitor::visitIDExpr(psr::IDExprContext *ctx) {
+std::any VariablesVisitor::visitIDExpr(psr::IDExprContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   std::string id = ctx->T_ID()->getText();
@@ -45,7 +45,7 @@ std::any FreeVariablesVisitor::visitIDExpr(psr::IDExprContext *ctx) {
   return {};
 }
 
-std::any FreeVariablesVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
+std::any VariablesVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   for (auto &child : ctx->productInner()->expr()) {
@@ -56,7 +56,7 @@ std::any FreeVariablesVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
   return {};
 }
 
-std::any FreeVariablesVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
+std::any VariablesVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   visit(ctx->lhs);
@@ -68,7 +68,7 @@ std::any FreeVariablesVisitor::visitConditionExpr(psr::ConditionExprContext *ctx
   return {};
 }
 
-std::any FreeVariablesVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
+std::any VariablesVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
   visit(ctx->relAbs());
 
   GetNode(ctx) = GetNode(ctx->relAbs());
@@ -76,7 +76,7 @@ std::any FreeVariablesVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
   return {};
 }
 
-std::any FreeVariablesVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
+std::any VariablesVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
   visit(ctx->formula());
 
   GetNode(ctx) = GetNode(ctx->formula());
@@ -84,7 +84,7 @@ std::any FreeVariablesVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
   return {};
 }
 
-std::any FreeVariablesVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
+std::any VariablesVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   visit(ctx->expr());
@@ -97,7 +97,7 @@ std::any FreeVariablesVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) 
   return {};
 }
 
-std::any FreeVariablesVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
+std::any VariablesVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   visit(ctx->formula());
@@ -110,7 +110,7 @@ std::any FreeVariablesVisitor::visitBindingsFormula(psr::BindingsFormulaContext 
   return {};
 }
 
-std::any FreeVariablesVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
+std::any VariablesVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   visit(ctx->applBase());
@@ -123,7 +123,7 @@ std::any FreeVariablesVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
   return {};
 }
 
-std::any FreeVariablesVisitor::visitFullAppl(psr::FullApplContext *ctx) {
+std::any VariablesVisitor::visitFullAppl(psr::FullApplContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   visit(ctx->applBase());
@@ -136,7 +136,7 @@ std::any FreeVariablesVisitor::visitFullAppl(psr::FullApplContext *ctx) {
   return {};
 }
 
-std::any FreeVariablesVisitor::visitBinOp(psr::BinOpContext *ctx) {
+std::any VariablesVisitor::visitBinOp(psr::BinOpContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   visit(ctx->lhs);
@@ -149,7 +149,7 @@ std::any FreeVariablesVisitor::visitBinOp(psr::BinOpContext *ctx) {
   return {};
 }
 
-std::any FreeVariablesVisitor::visitUnOp(psr::UnOpContext *ctx) {
+std::any VariablesVisitor::visitUnOp(psr::UnOpContext *ctx) {
   visit(ctx->formula());
 
   GetNode(ctx) = GetNode(ctx->formula());
@@ -157,7 +157,7 @@ std::any FreeVariablesVisitor::visitUnOp(psr::UnOpContext *ctx) {
   return {};
 }
 
-std::any FreeVariablesVisitor::visitQuantification(psr::QuantificationContext *ctx) {
+std::any VariablesVisitor::visitQuantification(psr::QuantificationContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   visit(ctx->formula());
@@ -170,7 +170,7 @@ std::any FreeVariablesVisitor::visitQuantification(psr::QuantificationContext *c
   return {};
 }
 
-std::any FreeVariablesVisitor::visitParen(psr::ParenContext *ctx) {
+std::any VariablesVisitor::visitParen(psr::ParenContext *ctx) {
   visit(ctx->formula());
 
   GetNode(ctx) = GetNode(ctx->formula());
@@ -178,7 +178,7 @@ std::any FreeVariablesVisitor::visitParen(psr::ParenContext *ctx) {
   return {};
 }
 
-std::any FreeVariablesVisitor::visitBindingInner(psr::BindingInnerContext *ctx) {
+std::any VariablesVisitor::visitBindingInner(psr::BindingInnerContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   for (auto &child_ctx : ctx->binding()) {
@@ -189,7 +189,7 @@ std::any FreeVariablesVisitor::visitBindingInner(psr::BindingInnerContext *ctx) 
   return {};
 }
 
-std::any FreeVariablesVisitor::visitBinding(psr::BindingContext *ctx) {
+std::any VariablesVisitor::visitBinding(psr::BindingContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   if (ctx->id) {
@@ -201,7 +201,7 @@ std::any FreeVariablesVisitor::visitBinding(psr::BindingContext *ctx) {
   return {};
 }
 
-std::any FreeVariablesVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
+std::any VariablesVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   if (ctx->relAbs()) {
@@ -213,7 +213,7 @@ std::any FreeVariablesVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
   return {};
 }
 
-std::any FreeVariablesVisitor::visitApplParams(psr::ApplParamsContext *ctx) {
+std::any VariablesVisitor::visitApplParams(psr::ApplParamsContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   for (auto &child_ctx : ctx->applParam()) {
@@ -224,7 +224,7 @@ std::any FreeVariablesVisitor::visitApplParams(psr::ApplParamsContext *ctx) {
   return {};
 }
 
-std::any FreeVariablesVisitor::visitApplParam(psr::ApplParamContext *ctx) {
+std::any VariablesVisitor::visitApplParam(psr::ApplParamContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
   if (ctx->expr()) {

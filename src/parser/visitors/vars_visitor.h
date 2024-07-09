@@ -6,9 +6,13 @@
 #include "parser/extended_ast.h"
 #include "parser/visitors/base_visitor.h"
 
-class FreeVariablesVisitor : public BaseVisitor {
+class VariablesVisitor : public BaseVisitor {
+  /*
+   * Visitor that computes the free variables and variables in scope
+   * for each node in the AST.
+   */
  public:
-  FreeVariablesVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
+  VariablesVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
 
   std::any visitProgram(psr::ProgramContext *ctx) override;
 

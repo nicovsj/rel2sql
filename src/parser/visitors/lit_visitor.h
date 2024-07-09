@@ -7,6 +7,10 @@
 #include "parser/visitors/base_visitor.h"
 
 class LiteralVisitor : public BaseVisitor {
+  /*
+   * Utility visitor that computes the literal values of the Rel program and
+   * stores them in the LitExprContext nodes.
+   */
  public:
   LiteralVisitor(std::shared_ptr<ExtendedASTData> ast_data);
 
