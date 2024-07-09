@@ -296,26 +296,47 @@ TEST(ArityVisitorTest, LitExpr) {
   EXPECT_EQ(ast.Arity("R"), 1);
 }
 
-TEST(ArityVisitorTest, ProductExpr) {
+TEST(ArityVisitorTest, SingleVariable) {
+  auto ast = GetExtendedAST("def R { x }");
+
+  EXPECT_EQ(ast.Arity("R"), 1);
+}
+
+TEST(ArityVisitorTest, SimpleAbstraction) {
+  auto ast = GetExtendedAST("def R { 1; 2; 3 }");
+
+  EXPECT_EQ(ast.Arity("R"), 1);
+}
+
+TEST(ArityVisitorTest, Product) {
   auto ast = GetExtendedAST("def R { (1, 2) }");
 
   EXPECT_EQ(ast.Arity("R"), 2);
 }
 
-TEST(ArityVisitorTest, FormulaExpr) {
-  auto ast = GetExtendedAST("def R { F(x) }");
-
-  EXPECT_EQ(ast.Arity("R"), 0);
-}
-
-TEST(ArityVisitorTest, RelAbsExpr) {
+TEST(ArityVisitorTest, Abstraction) {
   auto ast = GetExtendedAST("def R {(1, 1); (2, 2); (3, 3)}");
 
   EXPECT_EQ(ast.Arity("R"), 2);
+}
+
+TEST(ArityVisitorTest, Formula) {
+  // NOTE: Formulas are hardcoded to have 0-arity regardless of evaluation
+  auto ast = GetExtendedAST("def R { F(1) and G(2,3) }");
+
+  EXPECT_EQ(ast.Arity("R"), 0);
 }
 
 TEST(ArityVisitorTest, PartialApplication) {
   auto ast = GetExtendedAST("def R { F[1] }\n def F { (1, 2, 3) }");
 
   EXPECT_EQ(ast.Arity("R"), 2);
+}
+
+TEST(ArityVisitorTest, Binding) {
+  std::unordered_map<std::string, int> arity_map = {{"F", 2}};
+
+  auto ast = GetExtendedAST("def R { [x in F]: { x } }", arity_map);
+
+  EXPECT_EQ(ast.Arity("R"), 1);
 }
