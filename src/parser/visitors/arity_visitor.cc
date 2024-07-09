@@ -3,10 +3,17 @@
 ArityVisitor::ArityVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
 
 std::any ArityVisitor::visitProgram(psr::ProgramContext *ctx) {
-  // Suppose that we can order the definitions of each relation by the inverse
-  // topological order of the dependencies between them.
+  std::unordered_map<std::string, psr::RelDefContext *> defs_by_id;
+
   for (auto &child_ctx : ctx->relDef()) {
-    visit(child_ctx);
+    defs_by_id[child_ctx->name->getText()] = child_ctx;
+  }
+
+  for (auto &id : ast_data_->internal_dbs) {
+    if (defs_by_id.find(id) == defs_by_id.end()) {
+      throw std::runtime_error("IDB " + id + " is not defined");
+    }
+    visit(defs_by_id[id]);
   }
 
   return {};
@@ -119,8 +126,9 @@ std::any ArityVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
   auto base_arity = GetNode(ctx->applBase()).arity;
 
   for (auto &child : ctx->applParams()->applParam()) {
-    visit(child);
-    base_arity -= GetNode(child).arity;
+    visit(child->expr());
+    auto param_arity = GetNode(child->expr()).arity;
+    base_arity -= param_arity;
   }
 
   GetNode(ctx).arity = base_arity;

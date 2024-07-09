@@ -23,6 +23,9 @@ std::string TranslateRelExpression(const std::string& input) {
    */
   auto parser = rel_parser::GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ExprContext*>(parser->expr());
+  auto ast_data = std::make_shared<ExtendedASTData>();
+  ast_data->AddEDB("F", 1);
+  ast_data->AddEDB("G", 2);
   auto ast = rel_parser::GetExtendedASTFromTree(tree);
   auto result = rel_parser::GetSQLFromTree(tree);
   std::ostringstream os;
@@ -172,4 +175,9 @@ TEST(TranslationTest, UniversalFormula) {
 TEST(TranslationTest, ProductExpression) {
   EXPECT_EQ(TranslateRelExpression("(1, 2)"),
             "SELECT T0.A1, T1.A1 FROM (SELECT 1 AS A1) AS T0, (SELECT 2 AS A1) AS T1");
+}
+
+TEST(TranslationTest, PartialApplication) {
+  EXPECT_EQ(TranslateRelExpression("F[2]"), "SELECT T0.A2 AS A1 FROM F AS T0, (SELECT 2 AS A1) AS T1");
+  EXPECT_EQ(TranslateRelExpression("F[x]"), "SELECT T0.A1 AS x, T0.A2 AS A1 FROM F AS T0");
 }

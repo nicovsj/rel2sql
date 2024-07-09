@@ -328,3 +328,15 @@ TEST(ArityVisitorTest, RelAbsExpr) {
 
   EXPECT_EQ(ast.Data()->arity_by_id["R"], 2);
 }
+
+TEST(ArityVisitorTest, PartialApplication) {
+  std::string input = "def R { F[1] }\n def F { (1, 2, 3) }";
+
+  auto parser = GetParser(input);
+
+  auto tree = parser->program();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  EXPECT_EQ(ast.Data()->arity_by_id["R"], 2);
+}
