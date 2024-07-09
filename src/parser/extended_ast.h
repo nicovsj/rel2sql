@@ -47,6 +47,14 @@ struct ExtendedASTData {
 
   std::vector<std::string> sorted_ids;
 
+  ExtendedASTData() = default;
+
+  ExtendedASTData(std::unordered_map<std::string, int> external_arity_map) {
+    for (const auto &[id, arity] : external_arity_map) {
+      AddEDB(id, arity);
+    }
+  }
+
   void AddIDB(const std::string &id) {
     ids.insert(id);
 

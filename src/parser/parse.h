@@ -49,6 +49,16 @@ inline ExtendedAST GetExtendedAST(std::string_view input) {
   return GetExtendedASTFromTree(tree);
 };
 
+inline ExtendedAST GetExtendedAST(std::string_view input, std::unordered_map<std::string, int> extended_arity_map) {
+  auto parser = GetParser(input);
+
+  auto tree = parser->program();
+
+  auto extended_ast_data = std::make_shared<ExtendedASTData>(extended_arity_map);
+
+  return GetExtendedASTFromTree(tree, extended_ast_data);
+};
+
 inline std::shared_ptr<sql::ast::Expression> GetSQLFromTree(antlr4::ParserRuleContext* tree) {
   ExtendedAST ast = GetExtendedASTFromTree(tree);
 
