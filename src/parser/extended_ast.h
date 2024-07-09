@@ -102,6 +102,8 @@ class ExtendedAST {
     return it->second;
   }
 
+  int Arity(const std::string &id) const { return data_->arity_by_id.at(id); }
+
  private:
   antlr4::ParserRuleContext *root_;
   std::shared_ptr<ExtendedASTData> data_;
