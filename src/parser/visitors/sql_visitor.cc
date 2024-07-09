@@ -17,14 +17,70 @@ std::any SQLVisitor::visitRelDef(psr::RelDefContext *ctx) {
   /*
    * Generates an SQL query from the relation definition.
    */
-  throw std::runtime_error("Not implemented yet");
+
+  auto child_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
+      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->relAbs())));
+
+  auto view = std::make_shared<sql::ast::View>(child_sql, ctx->T_ID()->getText());
+
+  return std::static_pointer_cast<sql::ast::Expression>(view);
 }
 
 std::any SQLVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
   /*
    * Generates an SQL query from the relation abstraction.
    */
-  throw std::runtime_error("Not implemented yet");
+
+  std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
+  std::vector<std::vector<sql::ast::constant_t>> values;
+
+  int arity = -1;
+
+  for (int i = 0; i < ctx->expr().size(); i++) {
+    auto child_ctx = ctx->expr(i);
+    if (arity > -1 && GetNode(child_ctx).arity != arity) {
+      throw std::runtime_error("Inconsistent arity in relation abstraction");
+    } else {
+      arity = GetNode(child_ctx).arity;
+    }
+    auto child_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
+        std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(child_ctx)));
+    GetNode(child_ctx).sql_expression = child_sql;
+    from_sources.push_back(std::make_shared<sql::ast::Source>(child_sql, GenerateTableAlias()));
+    values.push_back({i + 1});
+  }
+
+  std::vector<antlr4::ParserRuleContext *> source_ctxs{ctx->expr().begin(), ctx->expr().end()};
+
+  auto condition = EqualityShorthand(source_ctxs);
+
+  auto selects = VarListShorthand(source_ctxs);
+
+  auto values_expr = std::make_shared<sql::ast::Values>(values);
+  auto values_alias =
+      std::make_shared<sql::ast::AliasStatement>(GenerateTableAlias("Ind"), std::vector<std::string>{"I"});
+  auto values_source = std::make_shared<sql::ast::Source>(values_expr, values_alias);
+  auto values_col = std::make_shared<sql::ast::Column>("I", values_source);
+
+  for (int i = 0; i < arity; i++) {
+    std::vector<std::pair<std::shared_ptr<sql::ast::Condition>, std::shared_ptr<sql::ast::Term>>> cases;
+    for (int j = 0; j < ctx->expr().size(); j++) {
+      auto child_ctx = ctx->expr(j);
+      auto child_source = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(child_ctx).sql_expression);
+      auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", i + 1), child_source);
+      auto comparison = std::make_shared<sql::ast::ComparisonCondition>(values_col, sql::ast::CompOp::EQ, i + 1);
+      cases.push_back({comparison, column});
+    }
+    auto case_when = std::make_shared<sql::ast::CaseWhen>(cases);
+    auto term_selectable = std::make_shared<sql::ast::TermSelectable>(case_when, fmt::format("A{}", i + 1));
+    selects.push_back(term_selectable);
+  }
+
+  auto from_statement = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
+
+  auto query = std::make_shared<sql::ast::SelectStatement>(selects, from_statement);
+
+  return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
 std::any SQLVisitor::visitLitExpr(psr::LitExprContext *ctx) {
@@ -324,13 +380,6 @@ std::any SQLVisitor::visitApplParam(psr::ApplParamContext *ctx) {
   throw std::runtime_error("Unknown application parameter");
 }
 
-std::string SQLVisitor::GenerateTableAlias() {
-  /*
-   * Generates a table alias.
-   */
-  return "T" + std::to_string(table_alias_counter_++);
-}
-
 std::any SQLVisitor::VisitConjunction(psr::BinOpContext *ctx) {
   /*
    * Generates an SQL query from the conjunction of the two formulas.
@@ -529,6 +578,13 @@ std::any SQLVisitor::VisitUniversal(psr::QuantificationContext *ctx) {
   auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, outer_from);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
+}
+
+std::string SQLVisitor::GenerateTableAlias(std::string prefix) {
+  /*
+   * Generates a table alias.
+   */
+  return prefix + std::to_string(table_alias_counter_++);
 }
 
 std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::FullApplicationVariableConditions(

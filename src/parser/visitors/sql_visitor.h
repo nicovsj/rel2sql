@@ -87,7 +87,7 @@ class SQLVisitor : public BaseVisitor {
 
   // Utility functions
 
-  std::string GenerateTableAlias();
+  std::string GenerateTableAlias(std::string prefix = "T");
 
   std::shared_ptr<sql::ast::Condition> EqualityShorthand(std::vector<antlr4::ParserRuleContext *> ctxs);
 
