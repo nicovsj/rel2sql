@@ -36,8 +36,10 @@ std::any SQLVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
 
   int arity = -1;
 
-  for (int i = 0; i < ctx->expr().size(); i++) {
-    auto child_ctx = ctx->expr(i);
+  auto expr_ctxs = ctx->expr();
+
+  for (int i = 0; i < expr_ctxs.size(); i++) {
+    auto child_ctx = expr_ctxs[i];
     if (arity > -1 && GetNode(child_ctx).arity != arity) {
       throw std::runtime_error("Inconsistent arity in relation abstraction");
     } else {
@@ -50,24 +52,25 @@ std::any SQLVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
     values.push_back({i + 1});
   }
 
-  std::vector<antlr4::ParserRuleContext *> source_ctxs{ctx->expr().begin(), ctx->expr().end()};
+  std::vector<antlr4::ParserRuleContext *> source_ctxs{expr_ctxs.begin(), expr_ctxs.end()};
 
   auto condition = EqualityShorthand(source_ctxs);
 
   auto selects = VarListShorthand(source_ctxs);
 
+  // Define the VALUES expression used in the FROM clause
   auto values_expr = std::make_shared<sql::ast::Values>(values);
   auto values_alias =
       std::make_shared<sql::ast::AliasStatement>(GenerateTableAlias("Ind"), std::vector<std::string>{"I"});
   auto values_source = std::make_shared<sql::ast::Source>(values_expr, values_alias);
+  from_sources.push_back(values_source);
   auto values_col = std::make_shared<sql::ast::Column>("I", values_source);
 
+  // Define every CASE WHEN in the SELECT clause
   for (int i = 0; i < arity; i++) {
     std::vector<std::pair<std::shared_ptr<sql::ast::Condition>, std::shared_ptr<sql::ast::Term>>> cases;
     for (int j = 0; j < ctx->expr().size(); j++) {
-      auto child_ctx = ctx->expr(j);
-      auto child_source = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(child_ctx).sql_expression);
-      auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", i + 1), child_source);
+      auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", i + 1), from_sources[j]);
       auto comparison = std::make_shared<sql::ast::ComparisonCondition>(values_col, sql::ast::CompOp::EQ, i + 1);
       cases.push_back({comparison, column});
     }
@@ -188,7 +191,11 @@ std::any SQLVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
   /*
    * Generates an SQL query from the relation abstraction expression.
    */
-  throw std::runtime_error("Not implemented yet");
+  auto child_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
+      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->relAbs())));
+  GetNode(ctx->relAbs()).sql_expression = child_sql;
+
+  return std::dynamic_pointer_cast<sql::ast::Expression>(child_sql);
 }
 
 std::any SQLVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
@@ -584,7 +591,11 @@ std::string SQLVisitor::GenerateTableAlias(std::string prefix) {
   /*
    * Generates a table alias.
    */
-  return prefix + std::to_string(table_alias_counter_++);
+  if (table_alias_prefix_counter_.find(prefix) == table_alias_prefix_counter_.end()) {
+    table_alias_prefix_counter_[prefix] = 0;
+  }
+
+  return fmt::format("{}{}", prefix, table_alias_prefix_counter_[prefix]++);
 }
 
 std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::FullApplicationVariableConditions(

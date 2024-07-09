@@ -17,15 +17,14 @@ std::string TranslateRelFormula(const std::string& input) {
   return os.str();
 }
 
-std::string TranslateRelExpression(const std::string& input) {
+std::string TranslateRelExpression(const std::string& input,
+                                   std::unordered_map<std::string, int> external_arity_map = {}) {
   /*
    * This function takes a string CoreRel expression input and returns the SQL translation.
    */
   auto parser = rel_parser::GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ExprContext*>(parser->expr());
-  auto ast_data = std::make_shared<ExtendedASTData>();
-  ast_data->AddEDB("F", 1);
-  ast_data->AddEDB("G", 2);
+  auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
   auto ast = rel_parser::GetExtendedASTFromTree(tree);
   auto result = rel_parser::GetSQLFromTree(tree);
   std::ostringstream os;
@@ -177,7 +176,20 @@ TEST(TranslationTest, ProductExpression) {
             "SELECT T0.A1, T1.A1 FROM (SELECT 1 AS A1) AS T0, (SELECT 2 AS A1) AS T1");
 }
 
+TEST(TranslationTest, ConditionExpression) {
+  EXPECT_EQ(TranslateRelExpression("F[x] where G(x)", {{"F", 2}, {"G", 1}}),
+            "SELECT T2.x, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM F AS T0) AS T2, (SELECT T1.A1 AS x FROM G AS "
+            "T1) AS T3 WHERE T2.x = T3.x");
+}
+
 TEST(TranslationTest, PartialApplication) {
-  EXPECT_EQ(TranslateRelExpression("F[2]"), "SELECT T0.A2 AS A1 FROM F AS T0, (SELECT 2 AS A1) AS T1");
+  EXPECT_EQ(TranslateRelExpression("F[9]", {{"F", 2}}),
+            "SELECT T0.A2 AS A1 FROM F AS T0, (SELECT 9 AS A1) AS T1 WHERE T0.A1 = T1.A1");
   EXPECT_EQ(TranslateRelExpression("F[x]"), "SELECT T0.A1 AS x, T0.A2 AS A1 FROM F AS T0");
+}
+
+TEST(TranslationTest, RelationalAbstraction) {
+  EXPECT_EQ(TranslateRelExpression("{\"a\" ; \"b\"}"),
+            "SELECT CASE WHEN Ind0.I = 1 THEN T0.A1 WHEN Ind0.I = 1 THEN T1.A1 AS A1 FROM (SELECT 'a' AS A1) AS T0, "
+            "(SELECT 'b' AS A1) AS T1, VALUES (1), (2) AS Ind0(I)");
 }

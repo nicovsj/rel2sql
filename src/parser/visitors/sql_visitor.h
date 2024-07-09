@@ -110,7 +110,7 @@ class SQLVisitor : public BaseVisitor {
   std::pair<std::vector<IndexedContext>, std::vector<IndexedContext>> GetVariableAndNonVariableParams(
       psr::ApplBaseContext *base, const std::vector<psr::ApplParamContext *> &params);
 
-  int table_alias_counter_ = 0;
+  std::unordered_map<std::string, int> table_alias_prefix_counter_;
 
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> table_index_;
 

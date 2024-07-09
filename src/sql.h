@@ -398,7 +398,8 @@ class CaseWhen : public Term {
     std::stringstream ss;
     ss << "CASE";
     for (auto& [condition, term] : cases) {
-      ss << " WHEN " << *condition << " THEN " << *term;
+      ss << " WHEN " << *condition;
+      ss << " THEN " << *term;
     }
     return ss.str();
   }
