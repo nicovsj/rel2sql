@@ -6,6 +6,56 @@
 
 using namespace rel_parser;
 
+TEST(SortedIDsTest, DefaultOrder) {
+  std::string input = "def R{S}\ndef S{T}\n";
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = GetExtendedASTFromTree(tree);
+  auto data = ast.Data();
+  std::vector<std::string> expected_order = {"S", "R"};
+  EXPECT_EQ(data->sorted_ids, expected_order);
+}
+
+TEST(SortedIDsTest, ReverseOrder) {
+  std::string input = "def S{T}\ndef R{S}\n";
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = GetExtendedASTFromTree(tree);
+  auto data = ast.Data();
+  std::vector<std::string> expected_order = {"S", "R"};
+  EXPECT_EQ(data->sorted_ids, expected_order);
+}
+
+TEST(SortedIDsTest, RandomOrder) {
+  std::string input = "def S{T}\ndef R{S}\ndef T{1}\n";
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = GetExtendedASTFromTree(tree);
+  auto data = ast.Data();
+  std::vector<std::string> expected_order = {"T", "S", "R"};
+  EXPECT_EQ(data->sorted_ids, expected_order);
+}
+
+TEST(SortedIDsTest, BranchingOrder) {
+  std::string input = "def S{T;U}\ndef R{S;T}\ndef T{U}\ndef U{1}\n";
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = GetExtendedASTFromTree(tree);
+  auto data = ast.Data();
+  std::vector<std::string> expected_order = {"U", "T", "S", "R"};
+  EXPECT_EQ(data->sorted_ids, expected_order);
+}
+
+TEST(SortedIDsTest, AmbiguousOrder) {
+  std::string input = "def S{T;U}\ndef R{S;U}\ndef T{U}\ndef U{1}\n";
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = GetExtendedASTFromTree(tree);
+  auto data = ast.Data();
+  std::vector<std::string> expected_order = {"U", "T", "S", "R"};
+  EXPECT_EQ(data->sorted_ids, expected_order);
+}
+
 TEST(FreeVarsTest, LitExpr) {
   auto ast = GetExtendedAST("def R { 1 }");
 
@@ -86,7 +136,7 @@ TEST(FreeVarsTest, NegationExpr) {
 }
 
 TEST(FreeVarsTest, BindingsExpr) {
-  auto ast = GetExtendedAST("def R { [x, y]:  F[x, y] }");
+  auto ast = GetExtendedAST("def R { [x]:  F[x]}");
 
   auto free_vars = ast.Root().free_variables;
 
