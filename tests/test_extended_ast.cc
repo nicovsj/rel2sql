@@ -153,6 +153,15 @@ TEST(FreeVarsTest, ConditionExpr) {
   EXPECT_NE(free_vars.find("y"), free_vars.end());
 }
 
+TEST(FreeVarsTest, RelationTest) {
+  auto ast = GetExtendedAST("def F { 1 }\ndef R { F; 1; x }");
+
+  auto free_vars = ast.Root().free_variables;
+
+  EXPECT_EQ(free_vars.size(), 1);
+  EXPECT_NE(free_vars.find("x"), free_vars.end());
+}
+
 TEST(LiteralVisitorTest, Int) {
   std::string input = "1";
 
