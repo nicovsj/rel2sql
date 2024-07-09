@@ -37,8 +37,10 @@ std::any FreeVariablesVisitor::visitIDExpr(psr::IDExprContext *ctx) {
 
   std::string id = ctx->T_ID()->getText();
 
-  node.free_variables.insert(id);
-  node.variables.insert(id);
+  if (ast_data_->vars.find(id) != ast_data_->vars.end()) {
+    node.free_variables.insert(id);
+    node.variables.insert(id);
+  }
 
   return {};
 }
