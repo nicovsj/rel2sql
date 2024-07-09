@@ -350,3 +350,114 @@ TEST(SQLPrintingTest, SelectConstantPrint) {
 
   EXPECT_EQ(os.str(), "1 'Smith'");
 }
+
+TEST(SQLPrintingTest, Values) {
+  auto v = std::make_shared<Values>(std::vector<std::vector<constant_t>>{{1, 2}, {3, 4}});
+
+  std::ostringstream os;
+
+  os << *v;
+
+  EXPECT_EQ(os.str(), "VALUES (1, 2), (3, 4)");
+}
+
+TEST(SQLPrintingTest, FromValues) {
+  auto v = std::make_shared<Values>(std::vector<std::vector<constant_t>>{{1, 2}, {3, 4}});
+  auto s = std::make_shared<Source>(v, "R(A, B)");
+  auto f = std::make_shared<FromStatement>(std::vector<std::shared_ptr<Source>>{s});
+
+  std::ostringstream os;
+
+  os << *f;
+
+  EXPECT_EQ(os.str(), "FROM VALUES (1, 2), (3, 4) AS R(A, B)");
+}
+
+TEST(SQLPrintingTest, CaseWhen) {
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T"));
+  auto col1 = std::make_shared<Column>("I", t1);
+
+  auto t2 = std::make_shared<Source>(std::make_shared<Table>("R"));
+  auto col2 = std::make_shared<Column>("A1", t2);
+  auto col3 = std::make_shared<Column>("A2", t2);
+
+  auto a1 = std::dynamic_pointer_cast<Term>(col2);
+  auto a2 = std::dynamic_pointer_cast<Term>(col3);
+
+  auto c1 = std::dynamic_pointer_cast<Condition>(std::make_shared<ComparisonCondition>(col1, CompOp::EQ, 1));
+  auto c2 = std::dynamic_pointer_cast<Condition>(std::make_shared<ComparisonCondition>(col1, CompOp::EQ, 2));
+
+  std::vector<std::pair<std::shared_ptr<Condition>, std::shared_ptr<Term>>> cases = {{c1, a1}, {c2, a2}};
+
+  auto w1 = std::make_shared<CaseWhen>(cases);
+
+  std::ostringstream os;
+
+  os << *w1;
+
+  EXPECT_EQ(os.str(), "CASE WHEN T.I = 1 THEN R.A1 WHEN T.I = 2 THEN R.A2");
+}
+
+TEST(SQLPrintingTest, CTEs) {
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto c1 = std::make_shared<Column>("A1", t1);
+
+  auto a1 = std::make_shared<TermSelectable>(c1);
+
+  auto vc1 = std::make_shared<ComparisonCondition>(c1, CompOp::EQ, 1);
+
+  auto f1 = std::make_shared<FromStatement>(std::vector<std::shared_ptr<Source>>{t1}, vc1);
+
+  auto ss1 = std::make_shared<SelectStatement>(std::vector<std::shared_ptr<Selectable>>{a1}, f1);
+
+  auto cte = std::make_shared<Source>(ss1, std::make_shared<AliasStatement>("S1", std::vector<std::string>{"A1"}));
+
+  auto c4 = std::make_shared<Column>("A1", cte);
+
+  auto t2 = std::make_shared<Source>(std::make_shared<Table>("T2"));
+
+  auto c2 = std::make_shared<Column>("A1", t2);
+  auto c3 = std::make_shared<Column>("A2", t2);
+
+  auto a2 = std::make_shared<TermSelectable>(c2);
+  auto a3 = std::make_shared<TermSelectable>(c3);
+
+  auto vc2 = std::make_shared<ComparisonCondition>(c2, CompOp::EQ, 2);
+  auto vc3 = std::make_shared<ComparisonCondition>(c4, CompOp::EQ, 1);
+
+  auto lc1 = std::make_shared<LogicalCondition>(std::vector<std::shared_ptr<Condition>>{vc2, vc3}, LogicalOp::AND);
+
+  auto f2 = std::make_shared<FromStatement>(std::vector<std::shared_ptr<Source>>{t2}, lc1);
+
+  auto ss2 = std::make_shared<SelectStatement>(std::vector<std::shared_ptr<Selectable>>{a2, a3}, f2,
+                                               std::vector<std::shared_ptr<Source>>{cte});
+
+  std::ostringstream os;
+
+  os << *ss2;
+
+  EXPECT_EQ(os.str(),
+            "WITH S1(A1) AS (SELECT T1.A1 FROM T1 WHERE T1.A1 = 1) SELECT T2.A1, T2.A2 FROM T2 WHERE T2.A1 = 2 AND "
+            "S1.A1 = 1");
+}
+
+TEST(SQLPrintingTest, View) {
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto c1 = std::make_shared<Column>("A1", t1);
+
+  auto a1 = std::make_shared<TermSelectable>(c1);
+
+  auto vc1 = std::make_shared<ComparisonCondition>(c1, CompOp::EQ, 1);
+
+  auto f1 = std::make_shared<FromStatement>(std::vector<std::shared_ptr<Source>>{t1}, vc1);
+
+  auto ss1 = std::make_shared<SelectStatement>(std::vector<std::shared_ptr<Selectable>>{a1}, f1);
+
+  auto v1 = std::make_shared<View>(ss1, "V1");
+
+  std::ostringstream os;
+
+  os << *v1;
+
+  EXPECT_EQ(os.str(), "CREATE VIEW V1 AS (SELECT T1.A1 FROM T1 WHERE T1.A1 = 1)");
+}

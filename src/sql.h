@@ -43,10 +43,40 @@ class Sourceable : public Expression {
   virtual std::ostream& Print(std::ostream& os) const = 0;
 };
 
+class AliasStatement : public Expression {
+ public:
+  std::string name;
+  std::vector<std::string> columns;
+
+  AliasStatement(std::string name) : name(name) {}
+
+  AliasStatement(std::string name, std::vector<std::string> columns) : name(name), columns(columns) {}
+
+  std::ostream& Print(std::ostream& os) const override { return os << Access(); }
+
+  std::string Declaration() const {
+    std::stringstream os;
+    os << name;
+    if (!columns.empty()) {
+      os << "(";
+      for (size_t i = 0; i < columns.size(); i++) {
+        os << columns[i];
+        if (i < columns.size() - 1) {
+          os << ", ";
+        }
+      }
+      os << ")";
+    }
+    return os.str();
+  }
+
+  std::string Access() const { return name; }
+};
+
 class Source : public Expression {
  public:
   std::shared_ptr<Sourceable> sourceable;
-  std::optional<std::string> alias;
+  std::optional<std::shared_ptr<AliasStatement>> alias;
   bool is_subquery;
 
   Source(std::shared_ptr<Sourceable> sourceable)
@@ -58,20 +88,19 @@ class Source : public Expression {
 
   Source(std::shared_ptr<Sourceable> sourceable, std::string alias)
       : sourceable(sourceable),
+        alias(std::make_shared<AliasStatement>(alias)),
+        is_subquery(std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr) {}
+
+  Source(std::shared_ptr<Sourceable> sourceable, std::shared_ptr<AliasStatement> alias)
+      : sourceable(sourceable),
         alias(alias),
         is_subquery(std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr) {}
 
   virtual std::ostream& Print(std::ostream& os) const {
-    bool is_subquery = std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr;
-
-    if (is_subquery) {
-      os << "(" << *sourceable << ")";
-    } else {
-      os << *sourceable;
-    }
+    os << Definition();
 
     if (alias.has_value()) {
-      os << " AS " << alias.value();
+      os << " AS " << alias.value()->Declaration();
     }
 
     return os;
@@ -81,11 +110,31 @@ class Source : public Expression {
     std::stringstream os;
 
     if (alias.has_value()) {
-      os << alias.value();
+      os << *(alias.value());
     } else {
       os << *sourceable;
     }
     return os.str();
+  }
+
+  virtual std::string Definition() const {
+    std::stringstream os;
+
+    if (is_subquery) {
+      os << "(" << *sourceable << ")";
+    } else {
+      os << *sourceable;
+    }
+
+    return os.str();
+  }
+
+  virtual std::string Declaration() const {
+    if (alias.has_value()) {
+      return alias.value()->Declaration();
+    } else {
+      return Definition();
+    }
   }
 };
 
@@ -192,6 +241,42 @@ class Column : public Term {
   };
 
   std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
+};
+
+class Values : public Sourceable {
+ public:
+  std::vector<std::vector<Constant>> values;
+
+  Values(std::vector<std::vector<Constant>> values) : values(values) {}
+
+  Values(std::vector<std::vector<constant_t>> values) {
+    for (auto& row : values) {
+      std::vector<Constant> row_constants;
+      for (auto& value : row) {
+        row_constants.push_back(Constant(value));
+      }
+      this->values.push_back(row_constants);
+    }
+  }
+
+  std::ostream& Print(std::ostream& os) const override {
+    os << "VALUES ";
+    for (size_t i = 0; i < values.size(); i++) {
+      auto row = values[i];
+      os << "(";
+      for (size_t j = 0; j < row.size(); j++) {
+        os << row[j];
+        if (j < row.size() - 1) {
+          os << ", ";
+        }
+      }
+      os << ")";
+      if (i < values.size() - 1) {
+        os << ", ";
+      }
+    }
+    return os;
+  }
 };
 
 class Condition : public Expression {
@@ -301,6 +386,24 @@ class Exists : public Condition {
   bool IsEmpty() const override { return false; }
 };
 
+class CaseWhen : public Term {
+ public:
+  std::vector<std::pair<std::shared_ptr<Condition>, std::shared_ptr<Term>>> cases;
+
+  CaseWhen(std::vector<std::pair<std::shared_ptr<Condition>, std::shared_ptr<Term>>> cases) : cases(cases) {};
+
+  std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
+
+  std::string ToString() const override {
+    std::stringstream ss;
+    ss << "CASE";
+    for (auto& [condition, term] : cases) {
+      ss << " WHEN " << *condition << " THEN " << *term;
+    }
+    return ss.str();
+  }
+};
+
 class FromStatement : public Expression {
  public:
   std::vector<std::shared_ptr<Source>> sources;
@@ -328,17 +431,39 @@ class FromStatement : public Expression {
   }
 };
 
+class View : public Expression {
+ public:
+  std::shared_ptr<Source> source;
+
+  View(std::shared_ptr<Source> source) : source(source) {}
+
+  View(std::shared_ptr<Sourceable> sourceable, std::string alias)
+      : source(std::make_shared<Source>(sourceable, alias)) {}
+
+  std::ostream& Print(std::ostream& os) const override {
+    return os << "CREATE VIEW " << source->Declaration() << " AS " << source->Definition();
+  }
+};
+
 class SelectStatement : public Sourceable {
  public:
   std::vector<std::shared_ptr<Selectable>> columns;
   std::optional<std::shared_ptr<FromStatement>> from;
+  std::vector<std::shared_ptr<Source>> ctes;
 
   SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns) : columns(columns) {}
 
   SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from)
       : columns(columns), from(from) {}
 
+  SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from,
+                  std::vector<std::shared_ptr<Source>> ctes)
+      : columns(columns), from(from), ctes(ctes) {}
+
   std::ostream& Print(std::ostream& os) const override {
+    for (auto& cte : ctes) {
+      os << "WITH " << cte->Declaration() << " AS " << cte->Definition() << " ";
+    }
     os << "SELECT ";
     for (size_t i = 0; i < columns.size(); i++) {
       if (columns[i]->HasAlias()) {
