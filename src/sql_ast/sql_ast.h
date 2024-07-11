@@ -3,14 +3,13 @@
 
 #include <antlr4-runtime.h>
 #include <fmt/core.h>
-#include <spdlog/spdlog.h>
 
 #include <iostream>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "utils.h"
+#include "utils/utils.h"
 
 namespace sql::ast {
 

@@ -2,7 +2,7 @@
 
 #include <variant>
 
-#include "parser/parse.h"
+#include "visitors/parse.h"
 
 using namespace rel_parser;
 

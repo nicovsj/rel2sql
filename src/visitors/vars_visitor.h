@@ -1,18 +1,18 @@
-#ifndef LIT_VISITOR_H
-#define LIT_VISITOR_H
+#ifndef VARS_VISITOR_H
+#define VARS_VISITOR_H
 
 #include <antlr4-runtime.h>
 
 #include "parser/extended_ast.h"
-#include "parser/visitors/base_visitor.h"
+#include "visitors/base_visitor.h"
 
-class LiteralVisitor : public BaseVisitor {
+class VariablesVisitor : public BaseVisitor {
   /*
-   * Utility visitor that computes the literal values of the Rel program and
-   * stores them in the LitExprContext nodes.
+   * Visitor that computes the free variables and variables in scope
+   * for each node in the AST.
    */
  public:
-  LiteralVisitor(std::shared_ptr<ExtendedASTData> ast_data);
+  VariablesVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
 
   std::any visitProgram(psr::ProgramContext *ctx) override;
 
@@ -21,8 +21,6 @@ class LiteralVisitor : public BaseVisitor {
   std::any visitRelAbs(psr::RelAbsContext *ctx) override;
 
   // Expression branches
-
-  std::any visitLitExpr(psr::LitExprContext *ctx) override;
 
   std::any visitIDExpr(psr::IDExprContext *ctx) override;
 
@@ -63,40 +61,6 @@ class LiteralVisitor : public BaseVisitor {
   std::any visitApplParams(psr::ApplParamsContext *ctx) override;
 
   std::any visitApplParam(psr::ApplParamContext *ctx) override;
-
-  // # Literal branches
-
-  std::any visitInt(psr::IntContext *ctx) override;
-
-  std::any visitNegInt(psr::NegIntContext *ctx) override;
-
-  // std::any visitMetaInt(psr::MetaIntContext *ctx) override;
-
-  std::any visitFloat(psr::FloatContext *ctx) override;
-
-  std::any visitNegFloat(psr::NegFloatContext *ctx) override;
-
-  // std::any visitRelName(psr::RelNameContext *ctx) override;
-
-  // std::any visitRelNameStr(psr::RelNameStrContext *ctx) override;
-
-  // std::any visitRelNameMstr(psr::RelNameMstrContext *ctx) override;
-
-  std::any visitChar(psr::CharContext *ctx) override;
-
-  std::any visitStr(psr::StrContext *ctx) override;
-
-  // std::any visitMstr(psr::MstrContext *ctx) override;
-
-  // std::any visitRawstr(psr::RawstrContext *ctx) override;
-
-  // std::any visitDate(psr::DateContext *ctx) override;
-
-  // std::any visitDatetime(psr::DatetimeContext *ctx) override;
-
-  std::any visitBool(psr::BoolContext *ctx) override;
-
-  // std::any visitInterpol(psr::InterpolContext *ctx) override;
 };
 
-#endif  // LIT_VISITOR_H
+#endif  // VARS_VISITOR_H

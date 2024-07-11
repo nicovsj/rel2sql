@@ -1,8 +1,8 @@
 // cspell:ignore GTEST
 #include <gtest/gtest.h>
 
-#include "parser/parse.h"
-#include "sql.h"
+#include "sql_ast/sql_ast.h"
+#include "visitors/parse.h"
 
 std::string TranslateRelFormula(const std::string& input) {
   /*

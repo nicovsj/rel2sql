@@ -5,8 +5,8 @@
 #include <gtest/gtest.h>
 
 #include "parser/extended_ast.h"
-#include "parser/visitors/base_visitor.h"
-#include "sql.h"
+#include "sql_ast/sql_ast.h"
+#include "visitors/base_visitor.h"
 
 class SQLVisitor : public BaseVisitor {
   /*

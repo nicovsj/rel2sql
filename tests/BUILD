@@ -9,7 +9,6 @@ cc_test(
     deps = [
         "//:rel2sql_lib",
         "@googletest//:gtest_main",
-        "@spdlog",
     ],
 )
 
@@ -21,7 +20,6 @@ cc_test(
     deps = [
         "//:rel2sql_lib",
         "@googletest//:gtest_main",
-        "@spdlog",
     ],
 
 )
@@ -33,6 +31,5 @@ cc_test(
     deps = [
         "//:rel2sql_lib",
         "@googletest//:gtest_main",
-        "@spdlog",
     ],
 )

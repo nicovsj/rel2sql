@@ -1,6 +1,6 @@
 #include "sql_visitor.h"
 
-#include "sql.h"
+#include "sql_ast/sql_ast.h"
 
 SQLVisitor::SQLVisitor(std::shared_ptr<ExtendedASTData> ast) : BaseVisitor(ast) {}
 

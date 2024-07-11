@@ -4,7 +4,7 @@
 #include <antlr4-runtime.h>
 
 #include "parser/extended_ast.h"
-#include "parser/visitors/base_visitor.h"
+#include "visitors/base_visitor.h"
 
 class IDsVisitor : public BaseVisitor {
   /*

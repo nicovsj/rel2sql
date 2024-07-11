@@ -6,7 +6,7 @@
 #include <set>
 #include <string>
 
-#include "sql.h"
+#include "sql_ast/sql_ast.h"
 
 struct ExtendedNode {
   // Variables are the variables that are bound in the current context

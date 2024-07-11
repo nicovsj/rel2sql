@@ -1,13 +1,13 @@
 #ifndef PARSE_H
 #define PARSE_H
 
-#include "parser/generated/CoreRelLexer.h"
-#include "parser/generated/PrunedCoreRelParser.h"
-#include "parser/visitors/arity_visitor.h"
-#include "parser/visitors/ids_visitor.h"
-#include "parser/visitors/lit_visitor.h"
-#include "parser/visitors/sql_visitor.h"
-#include "parser/visitors/vars_visitor.h"
+#include "CoreRelLexer.h"
+#include "PrunedCoreRelParser.h"
+#include "visitors/arity_visitor.h"
+#include "visitors/ids_visitor.h"
+#include "visitors/lit_visitor.h"
+#include "visitors/sql_visitor.h"
+#include "visitors/vars_visitor.h"
 
 namespace rel_parser {
 
