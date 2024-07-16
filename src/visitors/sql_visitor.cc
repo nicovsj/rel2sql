@@ -10,7 +10,16 @@ std::any SQLVisitor::visitProgram(psr::ProgramContext *ctx) {
   /*
    * Generates an SQL query from the program.
    */
-  throw std::runtime_error("Not implemented yet");
+
+  std::vector<std::shared_ptr<sql::ast::View>> views;
+
+  for (auto &child_ctx : ctx->relDef()) {
+    auto view = std::dynamic_pointer_cast<sql::ast::View>(
+        std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(child_ctx)));
+    views.push_back(view);
+  }
+
+  return views;
 }
 
 std::any SQLVisitor::visitRelDef(psr::RelDefContext *ctx) {
