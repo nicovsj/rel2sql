@@ -16,7 +16,10 @@ std::any VariablesVisitor::visitProgram(psr::ProgramContext *ctx) {
 std::any VariablesVisitor::visitRelDef(psr::RelDefContext *ctx) {
   visit(ctx->relAbs());
 
-  GetNode(ctx) = GetNode(ctx->relAbs());
+  auto child_node = GetNode(ctx->relAbs());
+
+  GetNode(ctx).variables = child_node.variables;
+  GetNode(ctx).free_variables = child_node.free_variables;
 
   return {};
 }
@@ -71,7 +74,10 @@ std::any VariablesVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
 std::any VariablesVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
   visit(ctx->relAbs());
 
-  GetNode(ctx) = GetNode(ctx->relAbs());
+  auto child_node = GetNode(ctx->relAbs());
+
+  GetNode(ctx).variables = child_node.variables;
+  GetNode(ctx).free_variables = child_node.free_variables;
 
   return {};
 }
@@ -79,7 +85,10 @@ std::any VariablesVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
 std::any VariablesVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
   visit(ctx->formula());
 
-  GetNode(ctx) = GetNode(ctx->formula());
+  auto child_node = GetNode(ctx->formula());
+
+  GetNode(ctx).variables = child_node.variables;
+  GetNode(ctx).free_variables = child_node.free_variables;
 
   return {};
 }
@@ -90,7 +99,10 @@ std::any VariablesVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
   visit(ctx->expr());
   visit(ctx->bindingInner());
 
-  node = GetNode(ctx->expr());
+  auto child_node = GetNode(ctx->expr());
+
+  node.variables = child_node.variables;
+  node.free_variables = child_node.free_variables;
 
   node.VariablesInplaceDifference(GetNode(ctx->bindingInner()));
 
@@ -103,7 +115,10 @@ std::any VariablesVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx
   visit(ctx->formula());
   visit(ctx->bindingInner());
 
-  node = GetNode(ctx->formula());
+  auto child_node = GetNode(ctx->formula());
+
+  node.variables = child_node.variables;
+  node.free_variables = child_node.free_variables;
 
   node.VariablesInplaceDifference(GetNode(ctx->bindingInner()));
 
@@ -116,7 +131,10 @@ std::any VariablesVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
   visit(ctx->applBase());
   visit(ctx->applParams());
 
-  node = GetNode(ctx->applBase());
+  auto base_node = GetNode(ctx->applBase());
+
+  node.variables = base_node.variables;
+  node.free_variables = base_node.free_variables;
 
   node.VariablesInplaceUnion(GetNode(ctx->applParams()));
 
@@ -129,7 +147,10 @@ std::any VariablesVisitor::visitFullAppl(psr::FullApplContext *ctx) {
   visit(ctx->applBase());
   visit(ctx->applParams());
 
-  node = GetNode(ctx->applBase());
+  auto base_node = GetNode(ctx->applBase());
+
+  node.variables = base_node.variables;
+  node.free_variables = base_node.free_variables;
 
   node.VariablesInplaceUnion(GetNode(ctx->applParams()));
 
@@ -142,7 +163,8 @@ std::any VariablesVisitor::visitBinOp(psr::BinOpContext *ctx) {
   visit(ctx->lhs);
   visit(ctx->rhs);
 
-  node = GetNode(ctx->lhs);
+  node.variables = GetNode(ctx->lhs).variables;
+  node.free_variables = GetNode(ctx->lhs).free_variables;
 
   node.VariablesInplaceUnion(GetNode(ctx->rhs));
 
@@ -152,7 +174,8 @@ std::any VariablesVisitor::visitBinOp(psr::BinOpContext *ctx) {
 std::any VariablesVisitor::visitUnOp(psr::UnOpContext *ctx) {
   visit(ctx->formula());
 
-  GetNode(ctx) = GetNode(ctx->formula());
+  GetNode(ctx).variables = GetNode(ctx->formula()).variables;
+  GetNode(ctx).free_variables = GetNode(ctx->formula()).free_variables;
 
   return {};
 }
@@ -163,7 +186,8 @@ std::any VariablesVisitor::visitQuantification(psr::QuantificationContext *ctx) 
   visit(ctx->formula());
   visit(ctx->bindingInner());
 
-  node = GetNode(ctx->formula());
+  node.variables = GetNode(ctx->formula()).variables;
+  node.free_variables = GetNode(ctx->formula()).free_variables;
 
   node.VariablesInplaceDifference(GetNode(ctx->bindingInner()));
 
@@ -173,7 +197,8 @@ std::any VariablesVisitor::visitQuantification(psr::QuantificationContext *ctx) 
 std::any VariablesVisitor::visitParen(psr::ParenContext *ctx) {
   visit(ctx->formula());
 
-  GetNode(ctx) = GetNode(ctx->formula());
+  GetNode(ctx).variables = GetNode(ctx->formula()).variables;
+  GetNode(ctx).free_variables = GetNode(ctx->formula()).free_variables;
 
   return {};
 }
@@ -206,7 +231,8 @@ std::any VariablesVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
 
   if (ctx->relAbs()) {
     visit(ctx->relAbs());
-    node = GetNode(ctx->relAbs());
+    node.variables = GetNode(ctx->relAbs()).variables;
+    node.free_variables = GetNode(ctx->relAbs()).free_variables;
   }
   // Do nothing in the other case because the ID is not a variable
 
@@ -229,7 +255,8 @@ std::any VariablesVisitor::visitApplParam(psr::ApplParamContext *ctx) {
 
   if (ctx->expr()) {
     visit(ctx->expr());
-    node = GetNode(ctx->expr());
+    node.variables = GetNode(ctx->expr()).variables;
+    node.free_variables = GetNode(ctx->expr()).free_variables;
   }
 
   return {};

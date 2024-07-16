@@ -209,14 +209,76 @@ std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
   /*
    * Generates an SQL query from the bindings expression.
    */
-  throw std::runtime_error("Not implemented yet");
+
+  auto expr_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
+      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->expr())));
+
+  auto expr_source = std::make_shared<sql::ast::Source>(expr_sql, GenerateTableAlias());
+
+  GetNode(ctx->expr()).sql_expression = expr_source;
+
+  auto safe_result = SafeFunction(ctx->bindingInner(), ctx->expr());
+
+  auto ctes = ComputeBindingsCTEs(safe_result);
+
+  auto select_columns = VarListShorthand({ctx->expr()});
+
+  auto binding_output = ComputeBindingsOutput(safe_result);
+
+  select_columns.insert(select_columns.end(), binding_output.begin(), binding_output.end());
+
+  int expr_arity = GetNode(ctx->expr()).arity;
+
+  for (int i = 1; i <= expr_arity; i++) {
+    auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", i), expr_source);
+    select_columns.push_back(
+        std::make_shared<sql::ast::TermSelectable>(column, fmt::format("A{}", binding_output.size() + i)));
+  }
+
+  std::vector<std::shared_ptr<sql::ast::Source>> from_sources = {expr_source};
+
+  from_sources.insert(from_sources.end(), ctes.begin(), ctes.end());
+
+  auto condition = BindingsEqualityShorthand(ctx->expr(), safe_result);
+
+  auto from = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
+
+  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from, ctes);
+
+  return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
 std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
   /*
    * Generates an SQL query from the bindings formula.
    */
-  throw std::runtime_error("Not implemented yet");
+  auto formula_sql = std::any_cast<std::shared_ptr<sql::ast::Sourceable>>(visit(ctx->formula()));
+
+  auto formula_source = std::make_shared<sql::ast::Source>(formula_sql, GenerateTableAlias());
+
+  GetNode(ctx->formula()).sql_expression = formula_source;
+
+  auto safe_result = SafeFunction(ctx->bindingInner(), ctx->formula());
+
+  auto ctes = ComputeBindingsCTEs(safe_result);
+
+  auto select_columns = VarListShorthand({ctx->formula()});
+
+  auto binding_output = ComputeBindingsOutput(safe_result);
+
+  select_columns.insert(select_columns.end(), binding_output.begin(), binding_output.end());
+
+  std::vector<std::shared_ptr<sql::ast::Source>> from_sources = {formula_source};
+
+  from_sources.insert(from_sources.end(), ctes.begin(), ctes.end());
+
+  auto condition = BindingsEqualityShorthand(ctx->formula(), safe_result);
+
+  auto from = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
+
+  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from);
+
+  return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
 std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
@@ -341,20 +403,6 @@ std::any SQLVisitor::visitParen(psr::ParenContext *ctx) {
   return visit(ctx->formula());
 }
 
-std::any SQLVisitor::visitBindingInner(psr::BindingInnerContext *ctx) {
-  /*
-   * Generates an SQL query from the inner binding.
-   */
-  throw std::runtime_error("Not implemented yet");
-}
-
-std::any SQLVisitor::visitBinding(psr::BindingContext *ctx) {
-  /*
-   * Generates an SQL query from the binding.
-   */
-  throw std::runtime_error("Not implemented yet");
-}
-
 std::any SQLVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
   /*
    * Generates an SQL query from the application base.
@@ -362,17 +410,10 @@ std::any SQLVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
   if (ctx->T_ID()) {
     return std::dynamic_pointer_cast<sql::ast::Sourceable>(GetExpressionFromID(ctx, ctx->T_ID()->getText()));
   } else if (ctx->relAbs()) {
-    throw std::runtime_error("Not implemented yet");
+    return visit(ctx->relAbs());
   }
 
   throw std::runtime_error("Unknown application base");
-}
-
-std::any SQLVisitor::visitApplParams(psr::ApplParamsContext *ctx) {
-  /*
-   * Generates an SQL query from the application parameters.
-   */
-  throw std::runtime_error("Not implemented yet");
 }
 
 std::any SQLVisitor::visitApplParam(psr::ApplParamContext *ctx) {
@@ -829,4 +870,147 @@ SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext *base,
   }
 
   return std::make_pair(var_params, non_var_params);
+}
+
+std::vector<SQLVisitor::TupleBinding> SQLVisitor::SafeFunction(psr::BindingInnerContext *binding_ctx,
+                                                               antlr4::ParserRuleContext *expr_ctx) {
+  /*
+   * Computes the safe function from the paper.
+   */
+
+  std::vector<TupleBinding> safe_result;
+
+  auto binding_vars = GetNode(binding_ctx).variables;
+
+  for (auto binding : binding_ctx->binding()) {
+    if (binding->id_domain) {
+      safe_result.push_back({{binding->id->getText()}, {binding->id_domain->getText()}, std::nullopt});
+      binding_vars.erase(binding->id->getText());
+    }
+  }
+
+  if (binding_vars.empty()) {
+    return safe_result;
+  }
+
+  throw std::runtime_error("Not implemented yet");
+}
+
+std::vector<std::shared_ptr<sql::ast::Source>> SQLVisitor::ComputeBindingsCTEs(std::vector<TupleBinding> &safe_result) {
+  /*
+   * Computes the CTEs for the bindings. Associates each safe result with the CTE that it generates for after use.
+   */
+  std::vector<std::shared_ptr<sql::ast::Source>> ctes;
+
+  for (auto &elem : safe_result) {
+    if (elem.union_domain.size() > 1) {
+      std::vector<std::shared_ptr<sql::ast::SelectStatement>> selects;
+
+      for (auto domain : elem.union_domain) {
+        auto table = std::make_shared<sql::ast::Table>(domain);
+        auto source = std::make_shared<sql::ast::Source>(table);
+        auto from = std::make_shared<sql::ast::FromStatement>(source);
+        auto select = std::make_shared<sql::ast::SelectStatement>(
+            std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::Wildcard>()}, from);
+        selects.push_back(select);
+      }
+
+      auto union_cte = std::make_shared<sql::ast::Union>(selects);
+
+      // TODO: Generate a correct CTE alias
+      auto source = std::make_shared<sql::ast::Source>(union_cte, GenerateTableAlias("S"), true);
+
+      elem.cte = source;
+
+      ctes.push_back(source);
+    } else if (elem.union_domain.size() == 1) {
+      auto table = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>(elem.union_domain[0]));
+      auto from = std::make_shared<sql::ast::FromStatement>(table);
+      auto select = std::make_shared<sql::ast::SelectStatement>(
+          std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::Wildcard>()}, from);
+
+      // TODO: Generate a correct CTE alias
+      auto source = std::make_shared<sql::ast::Source>(select, GenerateTableAlias("S"), true);
+
+      elem.cte = source;
+
+      ctes.push_back(source);
+    } else {
+      throw std::runtime_error("Empty union domain");
+    }
+  }
+
+  return ctes;
+}
+
+std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::ComputeBindingsOutput(
+    const std::vector<TupleBinding> &safe_result) {
+  /*
+   * Computes the output for the bindings.
+   */
+  std::vector<std::shared_ptr<sql::ast::Selectable>> output;
+  std::unordered_set<std::string> seen_vars;
+
+  for (auto [vars, union_domain, cte] : safe_result) {
+    for (auto var : vars) {
+      if (seen_vars.find(var) != seen_vars.end()) continue;
+
+      if (!cte.has_value()) {
+        // If not set then something went wrong
+        throw std::runtime_error("CTE not set");
+      }
+
+      auto column = std::make_shared<sql::ast::Column>(var, cte.value());
+      auto selectable = std::make_shared<sql::ast::TermSelectable>(column, fmt::format("A{}", output.size() + 1));
+
+      output.push_back(selectable);
+      seen_vars.insert(var);
+    }
+  }
+
+  return output;
+}
+
+std::shared_ptr<sql::ast::Condition> SQLVisitor::BindingsEqualityShorthand(
+    antlr4::ParserRuleContext *expr, const std::vector<TupleBinding> &safe_result) {
+  /*
+   * Generates a condition that equates all the repeated variables in the input map. This is the EQ function
+   * in the paper.
+   */
+
+  auto expr_free_vars = GetNode(expr).free_variables;
+
+  auto expr_source = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(expr).sql_expression);
+
+  std::unordered_map<std::string, std::vector<std::shared_ptr<sql::ast::Source>>> repetition_map;
+
+  std::vector<std::shared_ptr<sql::ast::Condition>> conditions;
+
+  for (auto const &[vars, union_domain, cte] : safe_result) {
+    for (auto const &var : vars) {
+      if (expr_free_vars.find(var) != expr_free_vars.end()) {
+        auto condition = std::make_shared<sql::ast::ComparisonCondition>(
+            std::make_shared<sql::ast::Column>(var, cte.value()), sql::ast::CompOp::EQ,
+            std::make_shared<sql::ast::Column>(var, expr_source));
+
+        conditions.push_back(condition);
+      }
+      repetition_map[var].push_back(cte.value());
+    }
+  }
+
+  for (auto const &[var, sources] : repetition_map) {
+    if (sources.size() < 2) continue;
+
+    for (size_t i = 0; i < sources.size(); i++) {
+      for (size_t j = i + 1; j < sources.size(); j++) {
+        auto lhs = std::make_shared<sql::ast::Column>(var, sources[i]);
+        auto rhs = std::make_shared<sql::ast::Column>(var, sources[j]);
+
+        conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs));
+      }
+    }
+  }
+
+  return std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
 }

@@ -15,6 +15,12 @@ class SQLVisitor : public BaseVisitor {
  public:
   using psr = rel_parser::PrunedCoreRelParser;
 
+  struct TupleBinding {
+    std::vector<std::string> tuple;
+    std::vector<std::string> union_domain;
+    std::optional<std::shared_ptr<sql::ast::Source>> cte;
+  };
+
   struct IndexedContext {
     antlr4::ParserRuleContext *ctx;
     int index;
@@ -66,13 +72,13 @@ class SQLVisitor : public BaseVisitor {
 
   //  Binding branches
 
-  std::any visitBindingInner(psr::BindingInnerContext *ctx) override;
+  // std::any visitBindingInner(psr::BindingInnerContext *ctx) override;
 
-  std::any visitBinding(psr::BindingContext *ctx) override;
+  // std::any visitBinding(psr::BindingContext *ctx) override;
 
   std::any visitApplBase(psr::ApplBaseContext *ctx) override;
 
-  std::any visitApplParams(psr::ApplParamsContext *ctx) override;
+  // std::any visitApplParams(psr::ApplParamsContext *ctx) override;
 
   std::any visitApplParam(psr::ApplParamContext *ctx) override;
 
@@ -109,6 +115,16 @@ class SQLVisitor : public BaseVisitor {
 
   std::pair<std::vector<IndexedContext>, std::vector<IndexedContext>> GetVariableAndNonVariableParams(
       psr::ApplBaseContext *base, const std::vector<psr::ApplParamContext *> &params);
+
+  std::vector<TupleBinding> SafeFunction(psr::BindingInnerContext *binding_ctx, antlr4::ParserRuleContext *expr_ctx);
+
+  std::vector<std::shared_ptr<sql::ast::Source>> ComputeBindingsCTEs(std::vector<TupleBinding> &safe_result);
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> ComputeBindingsOutput(
+      const std::vector<TupleBinding> &safe_result);
+
+  std::shared_ptr<sql::ast::Condition> BindingsEqualityShorthand(antlr4::ParserRuleContext *expr,
+                                                                 const std::vector<TupleBinding> &safe_result);
 
   std::unordered_map<std::string, int> table_alias_prefix_counter_;
 

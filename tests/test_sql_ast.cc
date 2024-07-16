@@ -410,7 +410,8 @@ TEST(SQLPrintingTest, CTEs) {
 
   auto ss1 = std::make_shared<SelectStatement>(std::vector<std::shared_ptr<Selectable>>{a1}, f1);
 
-  auto cte = std::make_shared<Source>(ss1, std::make_shared<AliasStatement>("S1", std::vector<std::string>{"A1"}));
+  auto cte =
+      std::make_shared<Source>(ss1, std::make_shared<AliasStatement>("S1", std::vector<std::string>{"A1"}), true);
 
   auto c4 = std::make_shared<Column>("A1", cte);
 
@@ -427,7 +428,7 @@ TEST(SQLPrintingTest, CTEs) {
 
   auto lc1 = std::make_shared<LogicalCondition>(std::vector<std::shared_ptr<Condition>>{vc2, vc3}, LogicalOp::AND);
 
-  auto f2 = std::make_shared<FromStatement>(std::vector<std::shared_ptr<Source>>{t2}, lc1);
+  auto f2 = std::make_shared<FromStatement>(std::vector<std::shared_ptr<Source>>{t2, cte}, lc1);
 
   auto ss2 = std::make_shared<SelectStatement>(std::vector<std::shared_ptr<Selectable>>{a2, a3}, f2,
                                                std::vector<std::shared_ptr<Source>>{cte});
@@ -437,7 +438,7 @@ TEST(SQLPrintingTest, CTEs) {
   os << *ss2;
 
   EXPECT_EQ(os.str(),
-            "WITH S1(A1) AS (SELECT T1.A1 FROM T1 WHERE T1.A1 = 1) SELECT T2.A1, T2.A2 FROM T2 WHERE T2.A1 = 2 AND "
+            "WITH S1(A1) AS (SELECT T1.A1 FROM T1 WHERE T1.A1 = 1) SELECT T2.A1, T2.A2 FROM T2, S1 WHERE T2.A1 = 2 AND "
             "S1.A1 = 1");
 }
 

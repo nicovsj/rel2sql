@@ -77,6 +77,7 @@ class Source : public Expression {
   std::shared_ptr<Sourceable> sourceable;
   std::optional<std::shared_ptr<AliasStatement>> alias;
   bool is_subquery;
+  bool is_cte;
 
   Source(std::shared_ptr<Sourceable> sourceable)
       : sourceable(sourceable), is_subquery(std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr) {
@@ -85,17 +86,24 @@ class Source : public Expression {
     }
   }
 
-  Source(std::shared_ptr<Sourceable> sourceable, std::string alias)
+  Source(std::shared_ptr<Sourceable> sourceable, std::string alias, bool is_cte = false)
       : sourceable(sourceable),
         alias(std::make_shared<AliasStatement>(alias)),
-        is_subquery(std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr) {}
+        is_subquery(std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr),
+        is_cte(is_cte) {}
 
-  Source(std::shared_ptr<Sourceable> sourceable, std::shared_ptr<AliasStatement> alias)
+  Source(std::shared_ptr<Sourceable> sourceable, std::shared_ptr<AliasStatement> alias, bool is_cte = false)
       : sourceable(sourceable),
         alias(alias),
-        is_subquery(std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr) {}
+        is_subquery(std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr),
+        is_cte(is_cte) {}
 
   virtual std::ostream& Print(std::ostream& os) const {
+    if (is_cte) {
+      os << alias.value()->Access();
+      return os;
+    }
+
     os << Definition();
 
     if (alias.has_value()) {
@@ -409,6 +417,10 @@ class FromStatement : public Expression {
   std::vector<std::shared_ptr<Source>> sources;
   std::optional<std::shared_ptr<Condition>> where;
 
+  FromStatement(std::shared_ptr<Source> source) : sources({source}) {}
+
+  FromStatement(std::shared_ptr<Source> source, std::shared_ptr<Condition> where) : sources({source}), where(where) {}
+
   FromStatement(std::vector<std::shared_ptr<Source>> sources) : sources(sources) {}
 
   FromStatement(std::vector<std::shared_ptr<Source>> sources, std::shared_ptr<Condition> where)
@@ -486,13 +498,19 @@ class SelectStatement : public Sourceable {
 
 class Union : public Sourceable {
  public:
-  std::shared_ptr<SelectStatement> lhs;
-  std::shared_ptr<SelectStatement> rhs;
+  std::vector<std::shared_ptr<SelectStatement>> members;
 
-  Union(std::shared_ptr<SelectStatement> lhs, std::shared_ptr<SelectStatement> rhs) : lhs(lhs), rhs(rhs) {}
+  Union(std::shared_ptr<SelectStatement> lhs, std::shared_ptr<SelectStatement> rhs) : members({lhs, rhs}) {}
+
+  Union(std::vector<std::shared_ptr<SelectStatement>> members) : members(members) {}
 
   std::ostream& Print(std::ostream& os) const override {
-    os << *lhs << " UNION " << *rhs;
+    for (size_t i = 0; i < members.size(); i++) {
+      os << *members[i];
+      if (i < members.size() - 1) {
+        os << " UNION ";
+      }
+    }
     return os;
   }
 };

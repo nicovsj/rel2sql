@@ -59,10 +59,13 @@ inline ExtendedAST GetExtendedAST(std::string_view input, std::unordered_map<std
   return GetExtendedASTFromTree(tree, extended_ast_data);
 };
 
-inline std::shared_ptr<sql::ast::Expression> GetSQLFromTree(antlr4::ParserRuleContext* tree) {
-  ExtendedAST ast = GetExtendedASTFromTree(tree);
+inline std::shared_ptr<sql::ast::Expression> GetSQLFromTree(antlr4::ParserRuleContext* tree,
+                                                            std::optional<ExtendedAST> ast = std::nullopt) {
+  if (!ast) {
+    ast = GetExtendedASTFromTree(tree);
+  }
 
-  SQLVisitor visitor(ast.Data());
+  SQLVisitor visitor(ast.value().Data());
 
   return std::any_cast<std::shared_ptr<sql::ast::Expression>>(visitor.visit(tree));
 }

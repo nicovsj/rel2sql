@@ -16,8 +16,10 @@ struct ExtendedNode {
   // SQL expression is the SQL expression that corresponds to the current context
   std::shared_ptr<sql::ast::Expression> sql_expression;
 
+  // Constant value that unambiguously corresponds to the current context
   std::optional<sql::ast::constant_t> constant;
 
+  // Arity of the current context
   int arity;
 
   void VariablesInplaceUnion(const ExtendedNode &other) {
@@ -49,7 +51,7 @@ struct ExtendedASTData {
 
   ExtendedASTData() = default;
 
-  ExtendedASTData(std::unordered_map<std::string, int> external_arity_map) {
+  ExtendedASTData(const std::unordered_map<std::string, int> &external_arity_map) {
     for (const auto &[id, arity] : external_arity_map) {
       AddEDB(id, arity);
     }
