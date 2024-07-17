@@ -27,6 +27,7 @@ enum class LogicalOp { AND, OR, NOT };
 using constant_t = std::variant<int, double, std::string, bool>;
 
 class SelectStatement;
+class Values;
 
 class Expression {
  public:
@@ -79,8 +80,13 @@ class Source : public Expression {
   bool is_subquery;
   bool is_cte;
 
+  static bool CheckIsSubquery(std::shared_ptr<Sourceable> sourceable) {
+    return std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr ||
+           std::dynamic_pointer_cast<Values>(sourceable) != nullptr;
+  }
+
   Source(std::shared_ptr<Sourceable> sourceable)
-      : sourceable(sourceable), is_subquery(std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr) {
+      : sourceable(sourceable), is_subquery(CheckIsSubquery(sourceable)), is_cte(false) {
     if (is_subquery) {
       throw std::runtime_error("Subquery must have an alias");
     }
@@ -89,14 +95,11 @@ class Source : public Expression {
   Source(std::shared_ptr<Sourceable> sourceable, std::string alias, bool is_cte = false)
       : sourceable(sourceable),
         alias(std::make_shared<AliasStatement>(alias)),
-        is_subquery(std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr),
+        is_subquery(CheckIsSubquery(sourceable)),
         is_cte(is_cte) {}
 
   Source(std::shared_ptr<Sourceable> sourceable, std::shared_ptr<AliasStatement> alias, bool is_cte = false)
-      : sourceable(sourceable),
-        alias(alias),
-        is_subquery(std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr),
-        is_cte(is_cte) {}
+      : sourceable(sourceable), alias(alias), is_subquery(CheckIsSubquery(sourceable)), is_cte(is_cte) {}
 
   virtual std::ostream& Print(std::ostream& os) const {
     if (is_cte) {
@@ -408,6 +411,7 @@ class CaseWhen : public Term {
       ss << " WHEN " << *condition;
       ss << " THEN " << *term;
     }
+    ss << " END";
     return ss.str();
   }
 };

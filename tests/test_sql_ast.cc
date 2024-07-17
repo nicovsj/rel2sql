@@ -370,7 +370,7 @@ TEST(SQLPrintingTest, FromValues) {
 
   os << *f;
 
-  EXPECT_EQ(os.str(), "FROM VALUES (1, 2), (3, 4) AS R(A, B)");
+  EXPECT_EQ(os.str(), "FROM (VALUES (1, 2), (3, 4)) AS R(A, B)");
 }
 
 TEST(SQLPrintingTest, CaseWhen) {
@@ -395,7 +395,7 @@ TEST(SQLPrintingTest, CaseWhen) {
 
   os << *w1;
 
-  EXPECT_EQ(os.str(), "CASE WHEN T.I = 1 THEN R.A1 WHEN T.I = 2 THEN R.A2");
+  EXPECT_EQ(os.str(), "CASE WHEN T.I = 1 THEN R.A1 WHEN T.I = 2 THEN R.A2 END");
 }
 
 TEST(SQLPrintingTest, CTEs) {

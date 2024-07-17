@@ -190,9 +190,11 @@ TEST(TranslationTest, PartialApplication) {
 }
 
 TEST(TranslationTest, RelationalAbstraction) {
-  EXPECT_EQ(TranslateRelExpression("{\"a\" ; \"b\"}"),
-            "SELECT CASE WHEN Ind0.I = 1 THEN T0.A1 WHEN Ind0.I = 1 THEN T1.A1 AS A1 FROM (SELECT 'a' AS A1) AS T0, "
-            "(SELECT 'b' AS A1) AS T1, VALUES (1), (2) AS Ind0(I)");
+  EXPECT_EQ(TranslateRelExpression("{(1,2); (3,4)}"),
+            "SELECT CASE WHEN Ind0.I = 1 THEN T2.A1 WHEN Ind0.I = 1 THEN T5.A1 END AS A1, CASE WHEN Ind0.I = 2 THEN "
+            "T2.A2 WHEN Ind0.I = 2 THEN T5.A2 END AS A2 FROM (SELECT T0.A1, T1.A1 FROM (SELECT 1 AS A1) AS T0, (SELECT "
+            "2 AS A1) AS T1) AS T2, (SELECT T3.A1, T4.A1 FROM (SELECT 3 AS A1) AS T3, (SELECT 4 AS A1) AS T4) AS T5, "
+            "(VALUES (1), (2)) AS Ind0(I)");
 }
 
 TEST(TranslationTest, BindingExpression) {
