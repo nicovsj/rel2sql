@@ -43,20 +43,38 @@ std::any SQLVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
   std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
   std::vector<std::vector<sql::ast::constant_t>> values;
 
-  int arity = -1;
-
   auto expr_ctxs = ctx->expr();
 
-  for (int i = 0; i < expr_ctxs.size(); i++) {
+  if (expr_ctxs.size() < 1) {
+    throw std::runtime_error("Relation abstraction with no member");
+  }
+
+  auto first_ctx = expr_ctxs[0];
+
+  auto first_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
+      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(first_ctx)));
+  GetNode(first_ctx).sql_expression = first_sql;
+
+  if (expr_ctxs.size() == 1) {  // Single member relation abstraction
+    return std::dynamic_pointer_cast<sql::ast::Expression>(first_sql);
+  }
+
+  from_sources.push_back(std::make_shared<sql::ast::Source>(first_sql, GenerateTableAlias()));
+  values.push_back({1});
+
+  int arity = GetNode(first_ctx).arity;
+
+  for (int i = 1; i < expr_ctxs.size(); i++) {
     auto child_ctx = expr_ctxs[i];
-    if (arity > -1 && GetNode(child_ctx).arity != arity) {
+
+    if (GetNode(child_ctx).arity != arity) {
       throw std::runtime_error("Inconsistent arity in relation abstraction");
-    } else {
-      arity = GetNode(child_ctx).arity;
     }
+
     auto child_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
         std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(child_ctx)));
     GetNode(child_ctx).sql_expression = child_sql;
+
     from_sources.push_back(std::make_shared<sql::ast::Source>(child_sql, GenerateTableAlias()));
     values.push_back({i + 1});
   }
@@ -739,7 +757,7 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::VarListShorthand(
   std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
 
   for (auto const &ctx : input_ctxs) {
-    for (auto const &var : GetNode(ctx).variables) {
+    for (auto const &var : GetNode(ctx).free_variables) {
       if (seen_vars.find(var) != seen_vars.end()) continue;
 
       auto source = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(ctx).sql_expression);

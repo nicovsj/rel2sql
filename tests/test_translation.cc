@@ -4,6 +4,21 @@
 #include "sql_ast/sql_ast.h"
 #include "visitors/parse.h"
 
+std::string TranslateRelProgram(const std::string& input,
+                                std::unordered_map<std::string, int> external_arity_map = {}) {
+  /*
+   * This function takes a string CoreRel program input and returns the SQL translation.
+   */
+  auto parser = rel_parser::GetParser(input);
+  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::RelDefContext*>(parser->relDef());
+  auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
+  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
+  auto result = rel_parser::GetSQLFromTree(tree, ast);
+  std::ostringstream os;
+  os << *result;
+  return os.str();
+}
+
 std::string TranslateRelFormula(const std::string& input) {
   /*
    * This function takes a string CoreRel formula input and returns the SQL translation.
@@ -208,4 +223,10 @@ TEST(TranslationTest, BindingFormula) {
   EXPECT_EQ(TranslateRelExpression("[x in T, y in R]: F(x, y)"),
             "WITH S0 AS (SELECT * FROM T) WITH S1 AS (SELECT * FROM R) SELECT T1.x, T1.y, S0.x AS A1, S1.y AS A2 FROM "
             "(SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1, S0, S1 WHERE S0.x = T1.x AND S1.y = T1.y");
+}
+
+TEST(TranslationTest, Program) {
+  EXPECT_EQ(TranslateRelProgram("def F {[x in H]: G[x]}", {{"H", 1}, {"G", 2}}),
+            "CREATE VIEW F AS (WITH S0 AS (SELECT * FROM H) SELECT T1.x, S0.x AS A1, T1.A1 AS A2 FROM (SELECT T0.A1 AS "
+            "x, T0.A2 AS A1, T0.A3 AS A2 FROM G AS T0) AS T1, S0 WHERE S0.x = T1.x)");
 }
