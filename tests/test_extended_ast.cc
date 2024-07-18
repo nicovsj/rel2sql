@@ -334,9 +334,9 @@ TEST(ArityVisitorTest, PartialApplication) {
 }
 
 TEST(ArityVisitorTest, Binding) {
-  std::unordered_map<std::string, int> arity_map = {{"F", 2}};
+  std::unordered_map<std::string, int> arity_map = {{"F", 1}, {"G", 2}};
 
-  auto ast = GetExtendedAST("def R { [x in F]: { x } }", arity_map);
+  auto ast = GetExtendedAST("def R { [x in F]: G[x] }", arity_map);
 
-  EXPECT_EQ(ast.Arity("R"), 1);
+  EXPECT_EQ(ast.Arity("R"), 2);
 }

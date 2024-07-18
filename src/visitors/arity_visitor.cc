@@ -108,7 +108,7 @@ std::any ArityVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
 
   visit(ctx->expr());
 
-  node.arity = GetNode(ctx->expr()).arity;
+  node.arity = GetNode(ctx->expr()).arity + ctx->bindingInner()->binding().size();
 
   return {};
 }
