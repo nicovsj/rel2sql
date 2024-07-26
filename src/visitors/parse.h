@@ -6,6 +6,7 @@
 #include "visitors/arity_visitor.h"
 #include "visitors/ids_visitor.h"
 #include "visitors/lit_visitor.h"
+#include "visitors/safe_visitor.h"
 #include "visitors/sql_visitor.h"
 #include "visitors/vars_visitor.h"
 
@@ -30,6 +31,8 @@ inline ExtendedAST GetExtendedASTFromTree(
 
   LiteralVisitor literal_visitor(extended_ast_data);
 
+  SafeVisitor safeness_visitor(extended_ast_data);
+
   ids_visitor.visit(tree);
 
   arity_visitor.visit(tree);
@@ -37,6 +40,8 @@ inline ExtendedAST GetExtendedASTFromTree(
   free_vars_visitor.visit(tree);
 
   literal_visitor.visit(tree);
+
+  safeness_visitor.visit(tree);
 
   return ExtendedAST{tree, extended_ast_data};
 }
@@ -73,7 +78,7 @@ inline std::shared_ptr<sql::ast::Expression> GetSQLFromTree(antlr4::ParserRuleCo
 inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input) {
   auto parser = GetParser(input);
 
-  auto tree = parser->formula();
+  auto tree = parser->relDef();
 
   auto ast = GetExtendedASTFromTree(tree);
 
