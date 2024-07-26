@@ -9,4 +9,15 @@
     "[cpp]": {
         "editor.tabSize": 2
     },
+    "files.exclude" : {
+        "**/bazel-*": true,
+        "**/external": true,
+    },
+    "search.exclude": {
+        "**/bazel-*": true,
+        "**/external": true,
+    },
+    "cSpell.words": [
+        "ctes"
+    ],
 }
