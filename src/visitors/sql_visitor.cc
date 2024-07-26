@@ -915,7 +915,7 @@ std::unordered_set<TupleBinding> SQLVisitor::SafeFunction(psr::BindingInnerConte
 
   std::unordered_set<TupleBinding> safe_result;
 
-  auto binding_vars = GetNode(binding_ctx).variables;
+  std::set<std::string> binding_vars(GetNode(binding_ctx).variables);
 
   for (auto binding : binding_ctx->binding()) {
     if (binding->id_domain) {
@@ -928,7 +928,26 @@ std::unordered_set<TupleBinding> SQLVisitor::SafeFunction(psr::BindingInnerConte
     return safe_result;
   }
 
-  throw std::runtime_error("Not implemented yet");
+  auto safeness = GetNode(expr_ctx).safeness;
+
+  if (!safeness.has_value()) {
+    throw std::runtime_error("No safeness value for expression");
+  }
+
+  for (auto [vars, union_domain] : safeness.value()) {
+    for (auto var : vars) {
+      if (binding_vars.find(var) != binding_vars.end()) {
+        binding_vars.erase(var);
+      }
+    }
+  }
+
+  if (binding_vars.empty()) {
+    safe_result.insert(safeness.value().begin(), safeness.value().end());
+    return safe_result;
+  }
+
+  throw std::runtime_error("Not all variables are bound");
 }
 
 std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::ComputeBindingsCTEs(

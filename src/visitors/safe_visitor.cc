@@ -26,27 +26,21 @@ std::any SafeVisitor::visitIDExpr(psr::IDExprContext *ctx) {
 }
 
 std::any SafeVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
-  visit(ctx->productInner()->expr(0));
-
-  for (int i = 1; i < ctx->productInner()->expr().size(); i++) {
-    visit(ctx->productInner()->expr(i));
-  }
+  visitChildren(ctx);
 
   return {};
 }
 
 std::any SafeVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
-  visit(ctx->expr());
+  visitChildren(ctx);
 
-  GetNode(ctx).safeness = GetNode(ctx->expr()).safeness;
+  GetNode(ctx).safeness = GetNode(ctx->formula()).safeness;
 
   return {};
 }
 
 std::any SafeVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
-  visit(ctx->relAbs());
-
-  GetNode(ctx).safeness = GetNode(ctx->relAbs()).safeness;
+  visitChildren(ctx);
 
   return {};
 }
@@ -84,15 +78,32 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
     visit(param);
   }
 
-  GetNode(ctx).safeness = GetNode(ctx->applBase()).safeness;
-
   return {};
 }
 
 std::any SafeVisitor::visitFullAppl(psr::FullApplContext *ctx) {
   visit(ctx->applBase());
 
-  GetNode(ctx).safeness = GetNode(ctx->applBase()).safeness;
+  if (!ctx->applBase()->T_ID()) {
+    return {};
+  }
+
+  TupleBinding tuple_binding;
+
+  tuple_binding.union_domain.insert(ctx->applBase()->T_ID()->getText());
+
+  for (auto &param : ctx->applParams()->applParam()) {
+    auto id_expr = dynamic_cast<psr::IDExprContext *>(param->expr());
+    if (!id_expr) {
+      return {};
+    }
+
+    auto variable = id_expr->T_ID()->getText();
+
+    tuple_binding.vars_tuple.push_back(variable);
+  }
+
+  GetNode(ctx).safeness = {tuple_binding};
 
   return {};
 }
@@ -121,7 +132,7 @@ std::any SafeVisitor::VisitConjunction(psr::BinOpContext *ctx) {
     return {};
   }
 
-  current_node.safeness = {};
+  current_node.safeness = std::unordered_set<TupleBinding>();
 
   current_node.safeness.value().insert(lhs_safeness.value().begin(), lhs_safeness.value().end());
   current_node.safeness.value().insert(rhs_safeness.value().begin(), rhs_safeness.value().end());
@@ -136,7 +147,7 @@ std::any SafeVisitor::VisitDisjunction(psr::BinOpContext *ctx) {
   auto lhs_safeness = GetNode(ctx->lhs).safeness;
   auto rhs_safeness = GetNode(ctx->rhs).safeness;
 
-  GetNode(ctx).safeness = {};
+  GetNode(ctx).safeness = std::unordered_set<TupleBinding>();
 
   if (!lhs_safeness.has_value() || !rhs_safeness.has_value()) {
     GetNode(ctx).safeness = std::nullopt;

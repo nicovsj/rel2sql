@@ -219,6 +219,14 @@ TEST(TranslationTest, BindingExpression) {
             "T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
 }
 
+TEST(TranslationTest, BindingExpressionBounded) {
+  EXPECT_EQ(TranslateRelExpression("[x in T, y]: F[x, y] where R(y)", {{"T", 1}, {"R", 1}, {"F", 3}}),
+            "WITH S1 AS (SELECT * FROM T) WITH S0 AS (SELECT * FROM R) SELECT T4.x, T4.y, S1.x AS A1, S0.y AS A2, "
+            "T4.A1 AS A3 FROM (SELECT T2.x, T2.y, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1, T0.A4 AS A2, "
+            "T0.A5 AS A3 FROM F AS T0) AS T2, (SELECT T1.A1 AS y FROM R AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S1, S0 "
+            "WHERE S1.x = T4.x AND S0.y = T4.y");
+}
+
 TEST(TranslationTest, BindingFormula) {
   EXPECT_EQ(TranslateRelExpression("[x in T, y in R]: F(x, y)"),
             "WITH S1 AS (SELECT * FROM T) WITH S0 AS (SELECT * FROM R) SELECT T1.x, T1.y, S1.x AS A1, S0.y AS A2 FROM "
