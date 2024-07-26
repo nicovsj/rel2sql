@@ -214,15 +214,15 @@ TEST(TranslationTest, RelationalAbstraction) {
 
 TEST(TranslationTest, BindingExpression) {
   EXPECT_EQ(TranslateRelExpression("[x in T, y in R]: F[x, y]", {{"T", 1}, {"R", 1}, {"F", 3}}),
-            "WITH S0 AS (SELECT * FROM T) WITH S1 AS (SELECT * FROM R) SELECT T1.x, T1.y, S0.x AS A1, S1.y AS A2, "
+            "WITH S1 AS (SELECT * FROM T) WITH S0 AS (SELECT * FROM R) SELECT T1.x, T1.y, S1.x AS A1, S0.y AS A2, "
             "T1.A1 AS A3 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1, T0.A4 AS A2, T0.A5 AS A3 FROM F AS T0) AS "
-            "T1, S0, S1 WHERE S0.x = T1.x AND S1.y = T1.y");
+            "T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
 }
 
 TEST(TranslationTest, BindingFormula) {
   EXPECT_EQ(TranslateRelExpression("[x in T, y in R]: F(x, y)"),
-            "WITH S0 AS (SELECT * FROM T) WITH S1 AS (SELECT * FROM R) SELECT T1.x, T1.y, S0.x AS A1, S1.y AS A2 FROM "
-            "(SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1, S0, S1 WHERE S0.x = T1.x AND S1.y = T1.y");
+            "WITH S1 AS (SELECT * FROM T) WITH S0 AS (SELECT * FROM R) SELECT T1.x, T1.y, S1.x AS A1, S0.y AS A2 FROM "
+            "(SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
 }
 
 TEST(TranslationTest, Program) {

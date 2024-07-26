@@ -7,6 +7,28 @@
 #include <string>
 
 #include "sql_ast/sql_ast.h"
+#include "utils/utils.h"
+
+struct TupleBinding {
+  std::vector<std::string> vars_tuple;
+  std::unordered_set<std::string> union_domain;
+
+  bool operator==(const TupleBinding &other) const {
+    return vars_tuple == other.vars_tuple && union_domain == other.union_domain;
+  }
+};
+
+namespace std {
+template <>
+struct hash<TupleBinding> {
+  std::size_t operator()(const TupleBinding &tb) const {
+    std::size_t seed = 0;
+    utl::hash_range(seed, tb.vars_tuple.begin(), tb.vars_tuple.end());
+    utl::hash_range(seed, tb.union_domain.begin(), tb.union_domain.end());
+    return seed;
+  }
+};
+}  // namespace std
 
 struct ExtendedNode {
   // Variables are the variables that are bound in the current context
@@ -21,6 +43,9 @@ struct ExtendedNode {
 
   // Arity of the current context
   int arity;
+
+  // Output of the safeness analysis
+  std::optional<std::unordered_set<TupleBinding>> safeness;
 
   void VariablesInplaceUnion(const ExtendedNode &other) {
     variables.insert(other.variables.begin(), other.variables.end());
