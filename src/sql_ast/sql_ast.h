@@ -461,16 +461,40 @@ class View : public Expression {
   }
 };
 
+class GroupBy : public Expression {
+ public:
+  std::vector<std::shared_ptr<Column>> columns;
+
+  GroupBy(std::vector<std::shared_ptr<Column>> columns) : columns(columns) {}
+
+  std::ostream& Print(std::ostream& os) const override {
+    os << "GROUP BY ";
+    for (size_t i = 0; i < columns.size(); i++) {
+      os << *columns[i];
+      if (i < columns.size() - 1) {
+        os << ", ";
+      }
+    }
+
+    return os;
+  }
+};
+
 class SelectStatement : public Sourceable {
  public:
   std::vector<std::shared_ptr<Selectable>> columns;
   std::optional<std::shared_ptr<FromStatement>> from;
   std::vector<std::shared_ptr<Source>> ctes;
+  std::optional<std::shared_ptr<GroupBy>> group_by;
 
   SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns) : columns(columns) {}
 
   SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from)
       : columns(columns), from(from) {}
+
+  SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from,
+                  std::shared_ptr<GroupBy> group_by)
+      : columns(columns), from(from), group_by(group_by) {}
 
   SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from,
                   std::vector<std::shared_ptr<Source>> ctes)
@@ -494,6 +518,10 @@ class SelectStatement : public Sourceable {
 
     if (from.has_value()) {
       os << " " << *from.value();
+    }
+
+    if (group_by.has_value()) {
+      os << " " << *group_by.value();
     }
 
     return os;

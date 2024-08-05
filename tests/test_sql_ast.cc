@@ -462,3 +462,25 @@ TEST(SQLPrintingTest, View) {
 
   EXPECT_EQ(os.str(), "CREATE VIEW V1 AS (SELECT T1.A1 FROM T1 WHERE T1.A1 = 1)");
 }
+
+TEST(SQLPrintingTest, GroupBy) {
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto c1 = std::make_shared<Column>("A1", t1);
+  auto c2 = std::make_shared<Column>("A2", t1);
+
+  auto a1 = std::make_shared<TermSelectable>(c1);
+
+  auto vc1 = std::make_shared<ComparisonCondition>(c1, CompOp::EQ, 1);
+
+  auto f1 = std::make_shared<FromStatement>(std::vector<std::shared_ptr<Source>>{t1}, vc1);
+
+  auto g1 = std::make_shared<GroupBy>(std::vector<std::shared_ptr<Column>>{c2});
+
+  auto ss1 = std::make_shared<SelectStatement>(std::vector<std::shared_ptr<Selectable>>{a1}, f1, g1);
+
+  std::ostringstream os;
+
+  os << *ss1;
+
+  EXPECT_EQ(os.str(), "SELECT T1.A1 FROM T1 WHERE T1.A1 = 1 GROUP BY T1.A2");
+}
