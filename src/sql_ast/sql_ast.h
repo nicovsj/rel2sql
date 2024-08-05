@@ -22,6 +22,8 @@ enum class CompOp {
   GTE,
 };
 
+enum class AggregateFunction { COUNT, SUM, AVG, MIN, MAX };
+
 enum class LogicalOp { AND, OR, NOT };
 
 using constant_t = std::variant<int, double, std::string, bool>;
@@ -229,6 +231,39 @@ class Constant : public Term {
                         [](std::string arg) { return fmt::format("'{}'", arg); },
                         [](bool arg) { return arg ? std::string("TRUE") : std::string("FALSE"); }},
         value);
+  }
+};
+
+class Function : public Term {
+ public:
+  AggregateFunction name;
+  std::shared_ptr<Term> arg;
+
+  Function(AggregateFunction name, std::shared_ptr<Term> arg) : name(name), arg(arg) {}
+
+  std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
+
+  std::string ToString() const override {
+    std::string result = "";
+    switch (name) {
+      case AggregateFunction::COUNT:
+        result += "COUNT";
+        break;
+      case AggregateFunction::SUM:
+        result += "SUM";
+        break;
+      case AggregateFunction::AVG:
+        result += "AVG";
+        break;
+      case AggregateFunction::MIN:
+        result += "MIN";
+        break;
+      case AggregateFunction::MAX:
+        result += "MAX";
+        break;
+    }
+
+    return result + "(" + arg->ToString() + ")";
   }
 };
 
