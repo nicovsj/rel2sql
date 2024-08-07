@@ -70,6 +70,38 @@ std::any LiteralVisitor::visitBool(psr::BoolContext *ctx) {
   return {};
 }
 
+std::any LiteralVisitor::visitNumInt(psr::NumIntContext *ctx) {
+  int constant = std::stoi(ctx->getText());
+
+  GetNode(ctx).constant = constant;
+
+  return {};
+}
+
+std::any LiteralVisitor::visitNumNegInt(psr::NumNegIntContext *ctx) {
+  int constant = std::stoi(ctx->getText());
+
+  GetNode(ctx).constant = constant;
+
+  return {};
+}
+
+std::any LiteralVisitor::visitNumFloat(psr::NumFloatContext *ctx) {
+  float constant = std::stof(ctx->getText());
+
+  GetNode(ctx).constant = constant;
+
+  return {};
+}
+
+std::any LiteralVisitor::visitNumNegFloat(psr::NumNegFloatContext *ctx) {
+  float constant = std::stof(ctx->getText());
+
+  GetNode(ctx).constant = constant;
+
+  return {};
+}
+
 std::any LiteralVisitor::visitProgram(psr::ProgramContext *ctx) {
   visitChildren(ctx);
   return {};
@@ -168,6 +200,21 @@ std::any LiteralVisitor::visitApplParams(psr::ApplParamsContext *ctx) {
 }
 
 std::any LiteralVisitor::visitApplParam(psr::ApplParamContext *ctx) {
+  visitChildren(ctx);
+  return {};
+}
+
+std::any LiteralVisitor::visitComparison(psr::ComparisonContext *ctx) {
+  visitChildren(ctx);
+  return {};
+}
+
+std::any LiteralVisitor::visitNumTerm(psr::NumTermContext *ctx) {
+  visitChildren(ctx);
+  return {};
+}
+
+std::any LiteralVisitor::visitOpTerm(psr::OpTermContext *ctx) {
   visitChildren(ctx);
   return {};
 }

@@ -20,6 +20,12 @@ class IDsVisitor : public BaseVisitor {
 
   std::any visitRelAbs(psr::RelAbsContext *ctx) override;
 
+  std::any visitIDTerm(psr::IDTermContext *ctx) override;
+
+  std::any visitNumTerm(psr::NumTermContext *ctx) override;
+
+  std::any visitOpTerm(psr::OpTermContext *ctx) override;
+
   // Expression branches
 
   std::any visitLitExpr(psr::LitExprContext *ctx) override;
@@ -51,6 +57,8 @@ class IDsVisitor : public BaseVisitor {
   std::any visitQuantification(psr::QuantificationContext *ctx) override;
 
   std::any visitParen(psr::ParenContext *ctx) override;
+
+  std::any visitComparison(psr::ComparisonContext *ctx) override;
 
   //  Binding branches
 

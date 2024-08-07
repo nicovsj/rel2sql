@@ -44,6 +44,28 @@ std::any IDsVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
   return deps;
 }
 
+std::any IDsVisitor::visitIDTerm(psr::IDTermContext *ctx) {
+  std::string id = ctx->T_ID()->getText();
+
+  ast_data_->AddVar(id);
+
+  return str_set{id};
+}
+
+std::any IDsVisitor::visitNumTerm(psr::NumTermContext *ctx) { return str_set{}; }
+
+std::any IDsVisitor::visitOpTerm(psr::OpTermContext *ctx) {
+  str_set deps;
+
+  auto lhs_deps = std::any_cast<str_set>(visit(ctx->lhs));
+  std::set_union(deps.begin(), deps.end(), lhs_deps.begin(), lhs_deps.end(), std::inserter(deps, deps.begin()));
+
+  auto rhs_deps = std::any_cast<str_set>(visit(ctx->rhs));
+  std::set_union(deps.begin(), deps.end(), rhs_deps.begin(), rhs_deps.end(), std::inserter(deps, deps.begin()));
+
+  return deps;
+}
+
 std::any IDsVisitor::visitLitExpr(psr::LitExprContext *ctx) { return str_set{}; }
 
 std::any IDsVisitor::visitIDExpr(psr::IDExprContext *ctx) {
@@ -133,6 +155,18 @@ std::any IDsVisitor::visitUnOp(psr::UnOpContext *ctx) { return visit(ctx->formul
 std::any IDsVisitor::visitQuantification(psr::QuantificationContext *ctx) { return visit(ctx->formula()); }
 
 std::any IDsVisitor::visitParen(psr::ParenContext *ctx) { return visit(ctx->formula()); }
+
+std::any IDsVisitor::visitComparison(psr::ComparisonContext *ctx) {
+  str_set deps;
+
+  auto lhs_deps = std::any_cast<str_set>(visit(ctx->lhs));
+  std::set_union(deps.begin(), deps.end(), deps.begin(), deps.end(), std::inserter(deps, deps.begin()));
+
+  auto rhs_deps = std::any_cast<str_set>(visit(ctx->rhs));
+  std::set_union(deps.begin(), deps.end(), deps.begin(), deps.end(), std::inserter(deps, deps.begin()));
+
+  return deps;
+}
 
 std::any IDsVisitor::visitBindingInner(psr::BindingInnerContext *ctx) {
   str_set deps;

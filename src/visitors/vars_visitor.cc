@@ -35,6 +35,33 @@ std::any VariablesVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
   return {};
 }
 
+std::any VariablesVisitor::visitIDTerm(psr::IDTermContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
+
+  std::string id = ctx->T_ID()->getText();
+
+  if (ast_data_->vars.find(id) != ast_data_->vars.end()) {
+    node.free_variables.insert(id);
+    node.variables.insert(id);
+  }
+
+  return {};
+}
+
+std::any VariablesVisitor::visitOpTerm(psr::OpTermContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
+
+  visit(ctx->lhs);
+  visit(ctx->rhs);
+
+  node.variables = GetNode(ctx->lhs).variables;
+  node.free_variables = GetNode(ctx->lhs).free_variables;
+
+  node.VariablesInplaceUnion(GetNode(ctx->rhs));
+
+  return {};
+}
+
 std::any VariablesVisitor::visitIDExpr(psr::IDExprContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
 
@@ -199,6 +226,20 @@ std::any VariablesVisitor::visitParen(psr::ParenContext *ctx) {
 
   GetNode(ctx).variables = GetNode(ctx->formula()).variables;
   GetNode(ctx).free_variables = GetNode(ctx->formula()).free_variables;
+
+  return {};
+}
+
+std::any VariablesVisitor::visitComparison(psr::ComparisonContext *ctx) {
+  ExtendedNode &node = GetNode(ctx);
+
+  visit(ctx->lhs);
+  visit(ctx->rhs);
+
+  node.variables = GetNode(ctx->lhs).variables;
+  node.free_variables = GetNode(ctx->lhs).free_variables;
+
+  node.VariablesInplaceUnion(GetNode(ctx->rhs));
 
   return {};
 }

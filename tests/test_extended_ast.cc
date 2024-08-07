@@ -162,6 +162,15 @@ TEST(FreeVarsTest, RelationTest) {
   EXPECT_NE(free_vars.find("x"), free_vars.end());
 }
 
+TEST(FreeVarsTest, Terms) {
+  auto ast = GetExtendedAST("def F { x+x < 5 }");
+
+  auto free_vars = ast.Root().free_variables;
+
+  EXPECT_EQ(free_vars.size(), 1);
+  EXPECT_NE(free_vars.find("x"), free_vars.end());
+}
+
 TEST(LiteralVisitorTest, Int) {
   std::string input = "1";
 
@@ -288,6 +297,22 @@ TEST(LiteralVisitorTest, BoolFalse) {
   EXPECT_TRUE(std::holds_alternative<bool>(ast.Root().constant.value()));
 
   EXPECT_EQ(std::get<bool>(ast.Root().constant.value()), false);
+}
+
+TEST(LiteralVisitorTest, NumericalConstantInt) {
+  std::string input = "1";
+
+  auto parser = GetParser(input);
+
+  auto tree = parser->numericalConstant();
+
+  auto ast = GetExtendedASTFromTree(tree);
+
+  EXPECT_TRUE(ast.Root().constant.has_value());
+
+  EXPECT_TRUE(std::holds_alternative<int>(ast.Root().constant.value()));
+
+  EXPECT_EQ(std::get<int>(ast.Root().constant.value()), 1);
 }
 
 TEST(ArityVisitorTest, LitExpr) {

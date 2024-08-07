@@ -20,6 +20,10 @@ class LiteralVisitor : public BaseVisitor {
 
   std::any visitRelAbs(psr::RelAbsContext *ctx) override;
 
+  std::any visitNumTerm(psr::NumTermContext *ctx) override;
+
+  std::any visitOpTerm(psr::OpTermContext *ctx) override;
+
   // Expression branches
 
   std::any visitLitExpr(psr::LitExprContext *ctx) override;
@@ -51,6 +55,8 @@ class LiteralVisitor : public BaseVisitor {
   std::any visitQuantification(psr::QuantificationContext *ctx) override;
 
   std::any visitParen(psr::ParenContext *ctx) override;
+
+  std::any visitComparison(psr::ComparisonContext *ctx) override;
 
   //  Binding branches
 
@@ -97,6 +103,16 @@ class LiteralVisitor : public BaseVisitor {
   std::any visitBool(psr::BoolContext *ctx) override;
 
   // std::any visitInterpol(psr::InterpolContext *ctx) override;
+
+  // # Numerical constant branches
+
+  std::any visitNumInt(psr::NumIntContext *ctx) override;
+
+  std::any visitNumNegInt(psr::NumNegIntContext *ctx) override;
+
+  std::any visitNumFloat(psr::NumFloatContext *ctx) override;
+
+  std::any visitNumNegFloat(psr::NumNegFloatContext *ctx) override;
 };
 
 #endif  // LIT_VISITOR_H
