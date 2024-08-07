@@ -144,4 +144,10 @@ class ExtendedAST {
   std::shared_ptr<ExtendedASTData> data_;
 };
 
+const std::map<std::string, sql::ast::AggregateFunction> AGGREGATE_MAP = {
+    {"max", sql::ast::AggregateFunction::MAX},
+    {"min", sql::ast::AggregateFunction::MIN},
+    {"sum", sql::ast::AggregateFunction::SUM},
+    {"average", sql::ast::AggregateFunction::AVG}};
+
 #endif  // EXTENDED_DATA_H

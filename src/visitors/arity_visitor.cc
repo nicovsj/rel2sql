@@ -122,6 +122,15 @@ std::any ArityVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
 }
 
 std::any ArityVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
+  if (ctx->applBase()->T_ID()) {
+    // If the base is an aggregate function, the arity is 1
+    std::string id = ctx->applBase()->T_ID()->getText();
+    if (auto found = AGGREGATE_MAP.find(id); found != AGGREGATE_MAP.end()) {
+      GetNode(ctx).arity = 1;
+      return {};
+    }
+  }
+
   visit(ctx->applBase());
   auto base_arity = GetNode(ctx->applBase()).arity;
 
