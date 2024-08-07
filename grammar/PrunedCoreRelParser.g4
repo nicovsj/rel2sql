@@ -53,6 +53,21 @@ productInner: (exprs = expr (',' exprs = expr)*)?;
 
 relAbs: '{' (exprs = expr (';' exprs = expr)*)? '}';
 
+operator: T_OP_PLUS | T_OP_MINUS | T_OP_MULT | T_OP_DIV;
+
+comparator: T_OP_COMP | T_OP_NEQ | T_OP_EQ;
+
+numericalConstant:
+	T_INT_LIT  # numInt
+	| T_NEG_INT_LIT # numNegInt
+	| T_FLOAT_LIT # numFloat
+	| T_NEG_FLOAT_LIT # numNegFloat;
+
+term:
+	T_ID								# IDTerm
+	| numericalConstant					# numTerm
+	| lhs = term operator rhs = term	# opTerm;
+
 // The order of the rules below matters for precedence.
 expr:
 	literal								# litExpr
@@ -73,4 +88,5 @@ formula:
 	| op = 'not' formula								# unOp
 	| op = 'exists' '(' bindingInner '|' formula ')'	# quantification
 	| op = 'forall' '(' bindingInner '|' formula ')'	# quantification
-	| '(' formula ')'									# paren;
+	| '(' formula ')'									# paren
+	| lhs = term comparator rhs = term					# comparison;
