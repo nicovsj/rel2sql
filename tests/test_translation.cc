@@ -204,6 +204,11 @@ TEST(TranslationTest, PartialApplication) {
   //           "SELECT T0.A2 AS A1 FROM F AS T0, (SELECT 9 AS A1) AS T1 WHERE T0.A1 = T1.A1");
 }
 
+TEST(TranslationTest, AggregateExpression) {
+  EXPECT_EQ(TranslateRelExpression("sum[F]", {{"F", 2}}),
+            "SELECT SUM(T1.A1) FROM (SELECT T0.A1, T0.A2 AS A1 FROM F AS T0) AS T1");
+}
+
 TEST(TranslationTest, RelationalAbstraction) {
   EXPECT_EQ(TranslateRelExpression("{(1,2); (3,4)}"),
             "SELECT CASE WHEN Ind0.I = 1 THEN T2.A1 WHEN Ind0.I = 1 THEN T5.A1 END AS A1, CASE WHEN Ind0.I = 2 THEN "
