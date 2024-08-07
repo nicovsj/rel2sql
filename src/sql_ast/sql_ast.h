@@ -498,9 +498,9 @@ class View : public Expression {
 
 class GroupBy : public Expression {
  public:
-  std::vector<std::shared_ptr<Column>> columns;
+  std::vector<std::shared_ptr<Selectable>> columns;
 
-  GroupBy(std::vector<std::shared_ptr<Column>> columns) : columns(columns) {}
+  GroupBy(std::vector<std::shared_ptr<Selectable>> columns) : columns(columns) {}
 
   std::ostream& Print(std::ostream& os) const override {
     os << "GROUP BY ";

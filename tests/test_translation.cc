@@ -204,9 +204,17 @@ TEST(TranslationTest, PartialApplication) {
   //           "SELECT T0.A2 AS A1 FROM F AS T0, (SELECT 9 AS A1) AS T1 WHERE T0.A1 = T1.A1");
 }
 
-TEST(TranslationTest, AggregateExpression) {
-  EXPECT_EQ(TranslateRelExpression("sum[F]", {{"F", 2}}),
-            "SELECT SUM(T1.A1) FROM (SELECT T0.A1, T0.A2 AS A1 FROM F AS T0) AS T1");
+TEST(TranslationTest, AggregateExpression1) {
+  EXPECT_EQ(TranslateRelExpression("sum[F]", {{"F", 2}}), "SELECT SUM(T0.A2) FROM F AS T0");
+  EXPECT_EQ(TranslateRelExpression("average[F]", {{"F", 2}}), "SELECT AVG(T0.A2) FROM F AS T0");
+  EXPECT_EQ(TranslateRelExpression("min[F]", {{"F", 2}}), "SELECT MIN(T0.A2) FROM F AS T0");
+  EXPECT_EQ(TranslateRelExpression("max[F]", {{"F", 2}}), "SELECT MAX(T0.A2) FROM F AS T0");
+}
+
+TEST(TranslationTest, AggregateExpression2) {
+  EXPECT_EQ(
+      TranslateRelExpression("max[F[x]]", {{"F", 2}}),
+      "SELECT T1.x, MAX(T1.A1) FROM (SELECT T0.A1 AS x, T0.A2 AS A1, T0.A3 AS A2 FROM F AS T0) AS T1 GROUP BY T1.x");
 }
 
 TEST(TranslationTest, RelationalAbstraction) {

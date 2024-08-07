@@ -320,6 +320,17 @@ std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
   /*
    * Generates an SQL query from the partial application.
    */
+
+  if (ctx->applBase()->T_ID() && AGGREGATE_MAP.find(ctx->applBase()->T_ID()->getText()) != AGGREGATE_MAP.end()) {
+    auto text = ctx->getText();
+    auto id = ctx->applBase()->T_ID()->getText();
+    if (ctx->applParams()->applParam().size() != 1) {
+      throw std::runtime_error("Aggregate function with wrong number of parameters");
+    }
+    auto expr_ctx = ctx->applParams()->applParam()[0]->expr();
+    return VisitAggregate(AGGREGATE_MAP.at(id), expr_ctx);
+  }
+
   auto ra_sql = std::any_cast<std::shared_ptr<sql::ast::Sourceable>>(visit(ctx->applBase()));
 
   auto ra_source = std::make_shared<sql::ast::Source>(ra_sql, GenerateTableAlias());
@@ -659,6 +670,49 @@ std::any SQLVisitor::VisitUniversal(psr::QuantificationContext *ctx) {
   auto outer_from = std::make_shared<sql::ast::FromStatement>(sources, not_exists);
 
   auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, outer_from);
+
+  return std::static_pointer_cast<sql::ast::Expression>(query);
+}
+
+std::any SQLVisitor::VisitAggregate(sql::ast::AggregateFunction function, psr::ExprContext *expr_ctx) {
+  /*
+   * Generates an SQL query from the aggregate.
+   */
+  auto sql = std::static_pointer_cast<sql::ast::Sourceable>(
+      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(expr_ctx)));
+
+  auto subquery = std::make_shared<sql::ast::Source>(sql, GenerateTableAlias());
+
+  GetNode(expr_ctx).sql_expression = subquery;
+
+  int arity = GetNode(expr_ctx).arity;
+
+  auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", arity), subquery);
+
+  auto aggregate_column =
+      std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Function>(function, column));
+
+  auto text = expr_ctx->getText();
+
+  auto columns = VarListShorthand({expr_ctx});
+
+  std::shared_ptr<sql::ast::GroupBy> group_by;
+
+  if (!columns.empty()) {
+    group_by = std::make_shared<sql::ast::GroupBy>(columns);
+  }
+
+  columns.push_back(aggregate_column);
+
+  auto from = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{subquery});
+
+  std::shared_ptr<sql::ast::SelectStatement> query;
+
+  if (group_by) {
+    query = std::make_shared<sql::ast::SelectStatement>(columns, from, group_by);
+  } else {
+    query = std::make_shared<sql::ast::SelectStatement>(columns, from);
+  }
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }

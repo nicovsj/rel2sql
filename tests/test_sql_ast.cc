@@ -467,13 +467,13 @@ TEST(SQLPrintingTest, SumGroupBy) {
   auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
   auto c1 = std::make_shared<Column>("A1", t1);
   auto sum1 = std::make_shared<Function>(AggregateFunction::SUM, c1);
-  auto c2 = std::make_shared<Column>("A2", t1);
+  auto c2 = std::make_shared<TermSelectable>(std::make_shared<Column>("A2", t1));
 
   auto a1 = std::make_shared<TermSelectable>(sum1);
 
   auto f1 = std::make_shared<FromStatement>(std::vector<std::shared_ptr<Source>>{t1});
 
-  auto g1 = std::make_shared<GroupBy>(std::vector<std::shared_ptr<Column>>{c2});
+  auto g1 = std::make_shared<GroupBy>(std::vector<std::shared_ptr<Selectable>>{c2});
 
   auto ss1 = std::make_shared<SelectStatement>(std::vector<std::shared_ptr<Selectable>>{a1}, f1, g1);
 
@@ -488,13 +488,13 @@ TEST(SQLPrintingTest, AvgGroupBy) {
   auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
   auto c1 = std::make_shared<Column>("A1", t1);
   auto avg1 = std::make_shared<Function>(AggregateFunction::AVG, c1);
-  auto c2 = std::make_shared<Column>("A2", t1);
+  auto c2 = std::make_shared<TermSelectable>(std::make_shared<Column>("A2", t1));
 
   auto a1 = std::make_shared<TermSelectable>(avg1);
 
   auto f1 = std::make_shared<FromStatement>(std::vector<std::shared_ptr<Source>>{t1});
 
-  auto g1 = std::make_shared<GroupBy>(std::vector<std::shared_ptr<Column>>{c2});
+  auto g1 = std::make_shared<GroupBy>(std::vector<std::shared_ptr<Selectable>>{c2});
 
   auto ss1 = std::make_shared<SelectStatement>(std::vector<std::shared_ptr<Selectable>>{a1}, f1, g1);
 
@@ -509,13 +509,13 @@ TEST(SQLPrintingTest, CountGroupBy) {
   auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
   auto c1 = std::make_shared<Column>("A1", t1);
   auto count1 = std::make_shared<Function>(AggregateFunction::COUNT, c1);
-  auto c2 = std::make_shared<Column>("A2", t1);
+  auto c2 = std::make_shared<TermSelectable>(std::make_shared<Column>("A2", t1));
 
   auto a1 = std::make_shared<TermSelectable>(count1);
 
   auto f1 = std::make_shared<FromStatement>(std::vector<std::shared_ptr<Source>>{t1});
 
-  auto g1 = std::make_shared<GroupBy>(std::vector<std::shared_ptr<Column>>{c2});
+  auto g1 = std::make_shared<GroupBy>(std::vector<std::shared_ptr<Selectable>>{c2});
 
   auto ss1 = std::make_shared<SelectStatement>(std::vector<std::shared_ptr<Selectable>>{a1}, f1, g1);
 
@@ -530,13 +530,13 @@ TEST(SQLPrintingTest, MinGroupBy) {
   auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
   auto c1 = std::make_shared<Column>("A1", t1);
   auto min1 = std::make_shared<Function>(AggregateFunction::MIN, c1);
-  auto c2 = std::make_shared<Column>("A2", t1);
+  auto c2 = std::make_shared<TermSelectable>(std::make_shared<Column>("A2", t1));
 
   auto a1 = std::make_shared<TermSelectable>(min1);
 
   auto f1 = std::make_shared<FromStatement>(std::vector<std::shared_ptr<Source>>{t1});
 
-  auto g1 = std::make_shared<GroupBy>(std::vector<std::shared_ptr<Column>>{c2});
+  auto g1 = std::make_shared<GroupBy>(std::vector<std::shared_ptr<Selectable>>{c2});
 
   auto ss1 = std::make_shared<SelectStatement>(std::vector<std::shared_ptr<Selectable>>{a1}, f1, g1);
 
@@ -551,13 +551,13 @@ TEST(SQLPrintingTest, MaxGroupBy) {
   auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
   auto c1 = std::make_shared<Column>("A1", t1);
   auto max1 = std::make_shared<Function>(AggregateFunction::MAX, c1);
-  auto c2 = std::make_shared<Column>("A2", t1);
+  auto c2 = std::make_shared<TermSelectable>(std::make_shared<Column>("A2", t1));
 
   auto a1 = std::make_shared<TermSelectable>(max1);
 
   auto f1 = std::make_shared<FromStatement>(std::vector<std::shared_ptr<Source>>{t1});
 
-  auto g1 = std::make_shared<GroupBy>(std::vector<std::shared_ptr<Column>>{c2});
+  auto g1 = std::make_shared<GroupBy>(std::vector<std::shared_ptr<Selectable>>{c2});
 
   auto ss1 = std::make_shared<SelectStatement>(std::vector<std::shared_ptr<Selectable>>{a1}, f1, g1);
 
