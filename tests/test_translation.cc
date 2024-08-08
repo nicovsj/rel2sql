@@ -110,37 +110,6 @@ TEST(TranslationTest, FullApplicationFormulaMultipleParams) {
   EXPECT_EQ(TranslateRelFormula("F(x, y, z)"), "SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0");
 }
 
-TEST(TranslationTest, NestedFullApplicationFormula) {
-  EXPECT_EQ(TranslateRelFormula("F(G(x))"), "SELECT T2.x FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2");
-  EXPECT_EQ(TranslateRelFormula("F(G(H(x)))"),
-            "SELECT T4.x FROM F AS T0, (SELECT T3.x FROM G AS T1, (SELECT T2.A1 AS x FROM H AS T2) AS T3) AS T4");
-}
-
-TEST(TranslationTest, FullApplicationFormulaMultipleMixedParams) {
-  EXPECT_EQ(TranslateRelFormula("F(G(x), y)"),
-            "SELECT T2.x, T0.A2 AS y FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2");
-  EXPECT_EQ(TranslateRelFormula("F(x, G(y))"),
-            "SELECT T0.A1 AS x, T2.y FROM F AS T0, (SELECT T1.A1 AS y FROM G AS T1) AS T2");
-  EXPECT_EQ(
-      TranslateRelFormula("F(G(x), H(y))"),
-      "SELECT T2.x, T4.y FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2, (SELECT T3.A1 AS y FROM H AS T3) AS T4");
-}
-
-TEST(TranslationTest, FullApplicationFormulaMultipleParamsSharingVariables) {
-  EXPECT_EQ(TranslateRelFormula("F(G(x), H(x))"),
-            "SELECT T2.x FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2, (SELECT T3.A1 AS x FROM H AS T3) AS T4 "
-            "WHERE T2.x = T4.x");
-  EXPECT_EQ(TranslateRelFormula("F(G(x, y), H(y, z))"),
-            "SELECT T2.x, T2.y, T4.z FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS y FROM G AS T1) AS T2, (SELECT T3.A1 "
-            "AS y, T3.A2 AS z FROM H AS T3) AS T4 WHERE T2.y = T4.y");
-
-  EXPECT_EQ(TranslateRelFormula("F(G(x), x)"),
-            "SELECT T2.x FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2 WHERE T2.x = T0.A2");
-
-  EXPECT_EQ(TranslateRelFormula("F(G(x), x, y)"),
-            "SELECT T2.x, T0.A3 AS y FROM F AS T0, (SELECT T1.A1 AS x FROM G AS T1) AS T2 WHERE T2.x = T0.A2");
-}
-
 TEST(TranslationTest, RepeatedVariableFormula) {
   EXPECT_EQ(TranslateRelFormula("F(x, x)"), "SELECT T0.A1 AS x FROM F AS T0 WHERE T0.A1 = T0.A2");
   EXPECT_EQ(TranslateRelFormula("F(x, x, x)"), "SELECT T0.A1 AS x FROM F AS T0 WHERE T0.A1 = T0.A2 AND T0.A2 = T0.A3");
@@ -193,15 +162,52 @@ TEST(TranslationTest, ProductExpression) {
 
 TEST(TranslationTest, ConditionExpression) {
   EXPECT_EQ(TranslateRelExpression("F[x] where G(x)", {{"F", 2}, {"G", 1}}),
-            "SELECT T2.x, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1, T0.A3 AS A2 FROM F AS T0) AS T2, (SELECT T1.A1 "
-            "AS x FROM G AS T1) AS T3 WHERE T2.x = T3.x");
+            "SELECT T2.x, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM F AS T0) AS T2, (SELECT T1.A1 AS x FROM G AS "
+            "T1) AS T3 WHERE T2.x = T3.x");
 }
 
 TEST(TranslationTest, PartialApplication) {
-  EXPECT_EQ(TranslateRelExpression("F[x]"), "SELECT T0.A1 AS x, T0.A2 AS A1 FROM F AS T0");
-  // TODO: Fix this test
-  // EXPECT_EQ(TranslateRelExpression("F[9]", {{"F", 2}}),
-  //           "SELECT T0.A2 AS A1 FROM F AS T0, (SELECT 9 AS A1) AS T1 WHERE T0.A1 = T1.A1");
+  EXPECT_EQ(TranslateRelExpression("F[x]", {{"F", 2}}), "SELECT T0.A1 AS x, T0.A2 AS A1 FROM F AS T0");
+  EXPECT_EQ(TranslateRelExpression("F[1]", {{"F", 2}}),
+            "SELECT T0.A2 AS A1 FROM F AS T0, (SELECT 1 AS A1) AS T1 WHERE T0.A1 = T1.A1");
+}
+
+TEST(TranslationTest, NestedPartialApplication) {
+  EXPECT_EQ(
+      TranslateRelExpression("F[G[x]]", {{"F", 2}, {"G", 2}}),
+      "SELECT T2.x, T0.A2 AS A1 FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM G AS T1) AS T2 WHERE T0.A1 = T2.A1");
+  EXPECT_EQ(TranslateRelExpression("F[G[H[x]]]", {{"F", 2}, {"G", 2}, {"H", 2}}),
+            "SELECT T4.x, T0.A2 AS A1 FROM F AS T0, (SELECT T3.x, T1.A2 AS A1 FROM G AS T1, (SELECT T2.A1 AS x, T2.A2 "
+            "AS A1 FROM H AS T2) AS T3 WHERE T1.A1 = T3.A1) AS T4 WHERE T0.A1 = T4.A1");
+}
+
+TEST(TranslationTest, PartialApplicationMixedParams) {
+  EXPECT_EQ(TranslateRelExpression("F[G[x], y]", {{"F", 3}, {"G", 2}}),
+            "SELECT T2.x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM G AS T1) AS T2 "
+            "WHERE T0.A1 = T2.A1");
+  EXPECT_EQ(TranslateRelExpression("F[x, 1]", {{"F", 3}}),
+            "SELECT T0.A1 AS x, T0.A3 AS A1 FROM F AS T0, (SELECT 1 AS A1) AS T1 WHERE T0.A2 = T1.A1");
+  EXPECT_EQ(TranslateRelExpression("F[G[x], H[y]]", {{"F", 3}, {"G", 2}, {"H", 2}}),
+            "SELECT T2.x, T4.y, T0.A3 AS A1 FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM G AS T1) AS T2, (SELECT "
+            "T3.A1 AS y, T3.A2 AS A1 FROM H AS T3) AS T4 WHERE T0.A1 = T2.A1 AND T0.A2 = T4.A1");
+}
+
+TEST(TranslationTest, PartialApplicationSharingVariables) {
+  EXPECT_EQ(TranslateRelExpression("F[G[x], H[x]]", {{"F", 3}, {"G", 2}, {"H", 2}}),
+            "SELECT T2.x, T0.A3 AS A1 FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM G AS T1) AS T2, (SELECT T3.A1 "
+            "AS x, T3.A2 AS A1 FROM H AS T3) AS T4 WHERE T0.A1 = T2.A1 AND T0.A2 = T4.A1 AND T2.x = T4.x");
+  EXPECT_EQ(TranslateRelExpression("F[G[x, y], H[y, z]]", {{"F", 3}, {"G", 3}, {"H", 3}}),
+            "SELECT T2.x, T2.y, T4.z, T0.A3 AS A1 FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS y, T1.A3 AS A1 FROM G AS "
+            "T1) AS T2, (SELECT T3.A1 AS y, T3.A2 AS z, T3.A3 AS A1 FROM H AS T3) AS T4 WHERE T0.A1 = T2.A1 AND T0.A2 "
+            "= T4.A1 AND T2.y = T4.y");
+
+  EXPECT_EQ(TranslateRelExpression("F[G[x], x]", {{"F", 3}, {"G", 2}}),
+            "SELECT T2.x, T0.A3 AS A1 FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM G AS T1) AS T2 WHERE T2.x = "
+            "T0.A2 AND T0.A1 = T2.A1");
+
+  EXPECT_EQ(TranslateRelExpression("F[G[x], x, y]", {{"F", 3}, {"G", 2}}),
+            "SELECT T2.x, T0.A3 AS y FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM G AS T1) AS T2 WHERE T2.x = "
+            "T0.A2 AND T0.A1 = T2.A1");
 }
 
 TEST(TranslationTest, AggregateExpression1) {
@@ -212,9 +218,8 @@ TEST(TranslationTest, AggregateExpression1) {
 }
 
 TEST(TranslationTest, AggregateExpression2) {
-  EXPECT_EQ(
-      TranslateRelExpression("max[F[x]]", {{"F", 2}}),
-      "SELECT T1.x, MAX(T1.A1) FROM (SELECT T0.A1 AS x, T0.A2 AS A1, T0.A3 AS A2 FROM F AS T0) AS T1 GROUP BY T1.x");
+  EXPECT_EQ(TranslateRelExpression("max[F[x]]", {{"F", 2}}),
+            "SELECT T1.x, MAX(T1.A1) FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM F AS T0) AS T1 GROUP BY T1.x");
 }
 
 TEST(TranslationTest, RelationalAbstraction) {
@@ -228,16 +233,16 @@ TEST(TranslationTest, RelationalAbstraction) {
 TEST(TranslationTest, BindingExpression) {
   EXPECT_EQ(TranslateRelExpression("[x in T, y in R]: F[x, y]", {{"T", 1}, {"R", 1}, {"F", 3}}),
             "WITH S1 AS (SELECT * FROM T) WITH S0 AS (SELECT * FROM R) SELECT T1.x, T1.y, S1.x AS A1, S0.y AS A2, "
-            "T1.A1 AS A3 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1, T0.A4 AS A2, T0.A5 AS A3 FROM F AS T0) AS "
-            "T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
+            "T1.A1 AS A3 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T1, S1, S0 WHERE S1.x = "
+            "T1.x AND S0.y = T1.y");
 }
 
 TEST(TranslationTest, BindingExpressionBounded) {
-  EXPECT_EQ(TranslateRelExpression("[x in T, y]: F[x, y] where R(y)", {{"T", 1}, {"R", 1}, {"F", 3}}),
-            "WITH S1 AS (SELECT * FROM T) WITH S0 AS (SELECT * FROM R) SELECT T4.x, T4.y, S1.x AS A1, S0.y AS A2, "
-            "T4.A1 AS A3 FROM (SELECT T2.x, T2.y, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1, T0.A4 AS A2, "
-            "T0.A5 AS A3 FROM F AS T0) AS T2, (SELECT T1.A1 AS y FROM R AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S1, S0 "
-            "WHERE S1.x = T4.x AND S0.y = T4.y");
+  EXPECT_EQ(
+      TranslateRelExpression("[x in T, y]: F[x, y] where R(y)", {{"T", 1}, {"R", 1}, {"F", 3}}),
+      "WITH S1 AS (SELECT * FROM T) WITH S0 AS (SELECT * FROM R) SELECT T4.x, T4.y, S1.x AS A1, S0.y AS A2, T4.A1 AS "
+      "A3 FROM (SELECT T2.x, T2.y, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T2, (SELECT "
+      "T1.A1 AS y FROM R AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S1, S0 WHERE S1.x = T4.x AND S0.y = T4.y");
 }
 
 TEST(TranslationTest, BindingFormula) {
@@ -249,5 +254,5 @@ TEST(TranslationTest, BindingFormula) {
 TEST(TranslationTest, Program) {
   EXPECT_EQ(TranslateRelProgram("def F {[x in H]: G[x]}", {{"H", 1}, {"G", 2}}),
             "CREATE VIEW F AS (WITH S0 AS (SELECT * FROM H) SELECT T1.x, S0.x AS A1, T1.A1 AS A2 FROM (SELECT T0.A1 AS "
-            "x, T0.A2 AS A1, T0.A3 AS A2 FROM G AS T0) AS T1, S0 WHERE S0.x = T1.x)");
+            "x, T0.A2 AS A1 FROM G AS T0) AS T1, S0 WHERE S0.x = T1.x)");
 }

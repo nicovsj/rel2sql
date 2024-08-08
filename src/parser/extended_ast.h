@@ -148,6 +148,7 @@ const std::map<std::string, sql::ast::AggregateFunction> AGGREGATE_MAP = {
     {"max", sql::ast::AggregateFunction::MAX},
     {"min", sql::ast::AggregateFunction::MIN},
     {"sum", sql::ast::AggregateFunction::SUM},
-    {"average", sql::ast::AggregateFunction::AVG}};
+    {"average", sql::ast::AggregateFunction::AVG},
+    {"count", sql::ast::AggregateFunction::COUNT}};
 
 #endif  // EXTENDED_DATA_H

@@ -95,8 +95,9 @@ class SQLVisitor : public BaseVisitor {
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> VarListShorthand(std::vector<antlr4::ParserRuleContext *> ctxs);
 
-  std::vector<std::shared_ptr<sql::ast::Condition>> FullApplicationVariableConditions(
+  std::vector<std::shared_ptr<sql::ast::Condition>> ApplicationVariableConditions(
       psr::ApplBaseContext *base_appl_ctx, const std::vector<IndexedContext> &var_param_ctxs,
+      const std::vector<IndexedContext> &non_var_param_ctxs,
       const std::unordered_map<std::string, IndexedContext> &params_by_free_vars) const;
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> SpecialAppliedVarList(

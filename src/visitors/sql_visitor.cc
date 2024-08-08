@@ -17,9 +17,11 @@ std::any SQLVisitor::visitProgram(psr::ProgramContext *ctx) {
     auto view = std::dynamic_pointer_cast<sql::ast::View>(
         std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(child_ctx)));
     views.push_back(view);
+
+    std::cout << *view << std::endl;
   }
 
-  return views;
+  return {};
 }
 
 std::any SQLVisitor::visitRelDef(psr::RelDefContext *ctx) {
@@ -341,7 +343,8 @@ std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
 
   auto non_var_param_by_free_vars = GetFirstNonVarParamByFreeVariables(non_var_params);
 
-  auto conditions = FullApplicationVariableConditions(ctx->applBase(), var_params, non_var_param_by_free_vars);
+  auto conditions =
+      ApplicationVariableConditions(ctx->applBase(), var_params, non_var_params, non_var_param_by_free_vars);
 
   std::vector<antlr4::ParserRuleContext *> source_ctxs;
   for (auto [param, _] : non_var_params) {
@@ -363,7 +366,7 @@ std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
 
   int m = ctx->applParams()->applParam().size();
 
-  for (int i = 1; i <= GetNode(ctx->applBase()).arity; i++) {
+  for (int i = 1; i <= GetNode(ctx->applBase()).arity - m; i++) {
     auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", m + i), ra_source);
     select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, fmt::format("A{}", i)));
   }
@@ -389,7 +392,8 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
 
   auto non_var_param_by_free_vars = GetFirstNonVarParamByFreeVariables(non_var_params);
 
-  auto conditions = FullApplicationVariableConditions(ctx->applBase(), var_params, non_var_param_by_free_vars);
+  auto conditions =
+      ApplicationVariableConditions(ctx->applBase(), var_params, non_var_params, non_var_param_by_free_vars);
 
   std::vector<antlr4::ParserRuleContext *> source_ctxs;
   for (auto [param, _] : non_var_params) {
@@ -728,8 +732,9 @@ std::string SQLVisitor::GenerateTableAlias(std::string prefix) {
   return fmt::format("{}{}", prefix, table_alias_prefix_counter_[prefix]++);
 }
 
-std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::FullApplicationVariableConditions(
+std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::ApplicationVariableConditions(
     psr::ApplBaseContext *base_appl_ctx, const std::vector<IndexedContext> &variable_param_ctxs,
+    const std::vector<IndexedContext> &non_variable_param_ctxs,
     const std::unordered_map<std::string, IndexedContext> &params_by_free_vars) const {
   std::vector<std::shared_ptr<sql::ast::Condition>> conditions;
 
@@ -738,6 +743,7 @@ std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::FullApplicationVar
   std::unordered_map<std::string, std::set<IndexedContext>> params_by_variable;
 
   for (auto numbered_ctx : variable_param_ctxs) {
+    // The first variable should be the only one
     auto variable = *(GetNode(numbered_ctx.ctx).variables.begin());
     params_by_variable[variable].insert(numbered_ctx);
   }
@@ -771,6 +777,15 @@ std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::FullApplicationVar
         conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs));
       }
     }
+  }
+
+  for (int i = 1; i < non_variable_param_ctxs.size(); i++) {
+    auto ctx = non_variable_param_ctxs[i].ctx;
+    auto index = non_variable_param_ctxs[i].index;
+    auto sq = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(ctx).sql_expression);
+    auto lhs = std::make_shared<sql::ast::Column>(fmt::format("A{}", index), ra_subquery);
+    auto rhs = std::make_shared<sql::ast::Column>("A1", sq);
+    conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs));
   }
 
   return conditions;

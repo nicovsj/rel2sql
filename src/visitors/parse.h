@@ -78,7 +78,7 @@ inline std::shared_ptr<sql::ast::Expression> GetSQLFromTree(antlr4::ParserRuleCo
 inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input) {
   auto parser = GetParser(input);
 
-  auto tree = parser->relDef();
+  auto tree = parser->program();
 
   auto ast = GetExtendedASTFromTree(tree);
 
