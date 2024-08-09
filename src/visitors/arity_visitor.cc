@@ -9,7 +9,7 @@ std::any ArityVisitor::visitProgram(psr::ProgramContext *ctx) {
     defs_by_id[child_ctx->name->getText()] = child_ctx;
   }
 
-  for (auto &id : ast_data_->internal_dbs) {
+  for (auto &id : ast_data_->sorted_ids) {
     if (defs_by_id.find(id) == defs_by_id.end()) {
       throw std::runtime_error("IDB " + id + " is not defined");
     }
