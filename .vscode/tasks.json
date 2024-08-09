@@ -9,6 +9,15 @@
                 "kind": "build",
                 "isDefault": false
             }
+        },
+        {
+            "label": "build tool",
+            "type": "shell",
+            "command": "bazel build --config debug //:rel2sql",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            }
         }
     ]
 }
