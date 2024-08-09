@@ -28,6 +28,20 @@ std::any SafeVisitor::visitIDExpr(psr::IDExprContext *ctx) {
 std::any SafeVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
   visitChildren(ctx);
 
+  auto current_node = GetNode(ctx);
+
+  current_node.safeness = std::unordered_set<TupleBinding>();
+
+  for (auto sub_ctx : ctx->productInner()->expr()) {
+    if (!GetNode(sub_ctx).safeness.has_value()) {
+      current_node.safeness = std::nullopt;
+      return {};
+    }
+
+    current_node.safeness.value().insert(GetNode(sub_ctx).safeness.value().begin(),
+                                         GetNode(sub_ctx).safeness.value().end());
+  }
+
   return {};
 }
 
@@ -90,7 +104,9 @@ std::any SafeVisitor::visitFullAppl(psr::FullApplContext *ctx) {
 
   TupleBinding tuple_binding;
 
-  tuple_binding.union_domain.insert(ctx->applBase()->T_ID()->getText());
+  ProjectionTable projection = {ctx->applBase()->T_ID()->getText(), GetNode(ctx).arity};
+
+  tuple_binding.union_domain.insert(projection);
 
   for (auto &param : ctx->applParams()->applParam()) {
     auto id_expr = dynamic_cast<psr::IDExprContext *>(param->expr());
@@ -157,7 +173,7 @@ std::any SafeVisitor::VisitDisjunction(psr::BinOpContext *ctx) {
   for (const auto &lhs : lhs_safeness.value()) {
     for (const auto &rhs : rhs_safeness.value()) {
       if (lhs.vars_tuple == rhs.vars_tuple) {
-        std::unordered_set<std::string> new_union_domain(lhs.union_domain);
+        std::unordered_set<ProjectionTable> new_union_domain(lhs.union_domain);
         new_union_domain.insert(rhs.union_domain.begin(), rhs.union_domain.end());
         GetNode(ctx).safeness.value().insert({lhs.vars_tuple, new_union_domain});
       }

@@ -287,7 +287,8 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
   /*
    * Generates an SQL query from the bindings formula.
    */
-  auto formula_sql = std::any_cast<std::shared_ptr<sql::ast::Sourceable>>(visit(ctx->formula()));
+  auto formula_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
+      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->formula())));
 
   auto formula_source = std::make_shared<sql::ast::Source>(formula_sql, GenerateTableAlias());
 
@@ -988,7 +989,9 @@ std::unordered_set<TupleBinding> SQLVisitor::SafeFunction(psr::BindingInnerConte
 
   for (auto binding : binding_ctx->binding()) {
     if (binding->id_domain) {
-      safe_result.insert({{binding->id->getText()}, {binding->id_domain->getText()}});
+      ProjectionTable projection_table(binding->id_domain->getText(), GetNode(binding).arity);
+      auto tuple_binding = TupleBinding({binding->id->getText()}, {projection_table});
+      safe_result.insert(tuple_binding);
       binding_vars.erase(binding->id->getText());
     }
   }
@@ -1032,7 +1035,7 @@ std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::
       std::vector<std::shared_ptr<sql::ast::SelectStatement>> selects;
 
       for (auto domain : elem.union_domain) {
-        auto table = std::make_shared<sql::ast::Table>(domain);
+        auto table = std::make_shared<sql::ast::Table>(domain.table_name);
         auto source = std::make_shared<sql::ast::Source>(table);
         auto from = std::make_shared<sql::ast::FromStatement>(source);
         auto select = std::make_shared<sql::ast::SelectStatement>(
@@ -1042,17 +1045,16 @@ std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::
 
       auto union_cte = std::make_shared<sql::ast::Union>(selects);
 
-      // TODO: Generate a correct CTE alias
       auto source = std::make_shared<sql::ast::Source>(union_cte, GenerateTableAlias("S"), true);
 
       cte_map[elem] = source;
     } else if (elem.union_domain.size() == 1) {
-      auto table = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>(*elem.union_domain.begin()));
+      auto table = std::make_shared<sql::ast::Source>(
+          std::make_shared<sql::ast::Table>((*elem.union_domain.begin()).table_name));
       auto from = std::make_shared<sql::ast::FromStatement>(table);
       auto select = std::make_shared<sql::ast::SelectStatement>(
           std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::Wildcard>()}, from);
 
-      // TODO: Generate a correct CTE alias
       auto source = std::make_shared<sql::ast::Source>(select, GenerateTableAlias("S"), true);
 
       cte_map[elem] = source;

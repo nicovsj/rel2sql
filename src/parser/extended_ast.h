@@ -9,9 +9,92 @@
 #include "sql_ast/sql_ast.h"
 #include "utils/utils.h"
 
+struct ProjectionTable;
+
+struct ProjectionTable {
+  std::vector<int> indices;
+  std::string table_name;
+  int table_arity;
+
+  ProjectionTable(std::string table_name, int table_arity) : table_name(table_name), table_arity(table_arity) {
+    if (table_arity < 0) {
+      throw std::runtime_error("Table arity must be greater than or equal to 0");
+    }
+
+    for (int i = 0; i < table_arity; i++) {
+      indices.push_back(i);
+    }
+  }
+
+  ProjectionTable(const std::vector<int> &indices, std::string table_name, int table_arity, bool complement = false)
+      : indices(), table_name(table_name), table_arity(table_arity) {
+    if (indices.size() > table_arity) {
+      throw std::runtime_error("Projection table indices size is greater than table arity");
+    }
+
+    if (complement) {
+      this->indices = std::vector<int>();
+
+      for (int i = 0; i < table_arity; i++) {
+        if (std::find(indices.begin(), indices.end(), i) == indices.end()) {
+          this->indices.push_back(i);
+        }
+      }
+    } else {
+      this->indices = indices;
+      std::sort(this->indices.begin(), this->indices.end());
+    }
+  }
+
+  ProjectionTable(const std::vector<int> &indices, const ProjectionTable &parent, bool complement = false)
+      : indices(), table_name(parent.table_name), table_arity(parent.table_arity) {
+    if (indices.size() > parent.indices.size()) {
+      throw std::runtime_error("Projection table indices size is greater than parent indices size");
+    }
+
+    if (complement) {
+      this->indices = std::vector<int>();
+
+      for (int i = 0; i < parent.arity(); i++) {
+        if (std::find(indices.begin(), indices.end(), i) == indices.end()) {
+          this->indices.push_back(parent.indices[i]);
+        }
+      }
+    } else {
+      for (const auto &index : indices) {
+        this->indices.push_back(parent.indices[index]);
+      }
+    }
+  }
+
+  int arity() const { return indices.size(); }
+
+  bool operator==(const ProjectionTable &other) const {
+    return indices == other.indices && table_name == other.table_name;
+  }
+};
+
+namespace std {
+template <>
+struct hash<ProjectionTable> {
+  std::size_t operator()(const ProjectionTable &pt) const {
+    std::size_t seed = 0;
+    utl::hash_range(seed, pt.indices.begin(), pt.indices.end());
+    utl::hash_combine(seed, pt.table_name);
+    return seed;
+  }
+};
+
+}  // namespace std
+
 struct TupleBinding {
   std::vector<std::string> vars_tuple;
-  std::unordered_set<std::string> union_domain;
+  std::unordered_set<ProjectionTable> union_domain;
+
+  TupleBinding() = default;
+
+  TupleBinding(const std::vector<std::string> &vars_tuple, const std::unordered_set<ProjectionTable> &union_domain)
+      : vars_tuple(vars_tuple), union_domain(union_domain) {}
 
   bool operator==(const TupleBinding &other) const {
     return vars_tuple == other.vars_tuple && union_domain == other.union_domain;
@@ -24,10 +107,14 @@ struct hash<TupleBinding> {
   std::size_t operator()(const TupleBinding &tb) const {
     std::size_t seed = 0;
     utl::hash_range(seed, tb.vars_tuple.begin(), tb.vars_tuple.end());
-    utl::hash_range(seed, tb.union_domain.begin(), tb.union_domain.end());
+    for (const auto &table : tb.union_domain) {
+      utl::hash_range(seed, table.indices.begin(), table.indices.end());
+      utl::hash_combine(seed, table.table_name);
+    }
     return seed;
   }
 };
+
 }  // namespace std
 
 struct ExtendedNode {
