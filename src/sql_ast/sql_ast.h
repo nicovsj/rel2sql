@@ -536,8 +536,16 @@ class SelectStatement : public Sourceable {
       : columns(columns), from(from), ctes(ctes) {}
 
   std::ostream& Print(std::ostream& os) const override {
-    for (auto& cte : ctes) {
-      os << "WITH " << cte->Declaration() << " AS " << cte->Definition() << " ";
+    for (int i = 0; i < ctes.size(); i++) {
+      if (i == 0) {
+        os << "WITH ";
+      }
+      os << ctes[i]->Declaration() << " AS " << ctes[i]->Definition();
+
+      if (i < ctes.size() - 1) {
+        os << ",";
+      }
+      os << " ";
     }
     os << "SELECT ";
     for (size_t i = 0; i < columns.size(); i++) {
