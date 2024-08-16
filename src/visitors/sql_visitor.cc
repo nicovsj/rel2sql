@@ -11,17 +11,17 @@ std::any SQLVisitor::visitProgram(psr::ProgramContext *ctx) {
    * Generates an SQL query from the program.
    */
 
-  std::vector<std::shared_ptr<sql::ast::View>> views;
+  std::vector<std::shared_ptr<sql::ast::Expression>> views;
 
   for (auto &child_ctx : ctx->relDef()) {
     auto view = std::dynamic_pointer_cast<sql::ast::View>(
         std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(child_ctx)));
     views.push_back(view);
-
-    std::cout << *view << std::endl << std::endl;
   }
 
-  return {};
+  auto query = std::make_shared<sql::ast::MultipleStatements>(views);
+
+  return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
 std::any SQLVisitor::visitRelDef(psr::RelDefContext *ctx) {

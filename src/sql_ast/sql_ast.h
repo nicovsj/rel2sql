@@ -590,6 +590,23 @@ class Union : public Sourceable {
   }
 };
 
+class MultipleStatements : public Expression {
+ public:
+  std::vector<std::shared_ptr<Expression>> statements;
+
+  MultipleStatements(const std::vector<std::shared_ptr<Expression>>& statements) : statements(statements) {}
+
+  std::ostream& Print(std::ostream& os) const override {
+    for (size_t i = 0; i < statements.size(); i++) {
+      os << *statements[i] << ";";
+      if (i < statements.size() - 1) {
+        os << std::endl << std::endl;
+      }
+    }
+    return os;
+  }
+};
+
 // UTILITY FUNCTIONS
 
 using ParserRuleContext = antlr4::ParserRuleContext;
