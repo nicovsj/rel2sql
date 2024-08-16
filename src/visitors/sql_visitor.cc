@@ -18,7 +18,7 @@ std::any SQLVisitor::visitProgram(psr::ProgramContext *ctx) {
         std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(child_ctx)));
     views.push_back(view);
 
-    std::cout << *view << std::endl;
+    std::cout << *view << std::endl << std::endl;
   }
 
   return {};
@@ -246,11 +246,13 @@ std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
 
   GetNode(ctx->expr()).sql_expression = expr_source;
 
+  auto free_variables = GetNode(ctx).free_variables;
+
   auto safe_result = SafeFunction(ctx->bindingInner(), ctx->expr());
 
   auto cte_map = ComputeBindingsCTEs(safe_result);
 
-  auto select_columns = VarListShorthand({ctx->expr()});
+  auto select_columns = VarListShorthand({ctx});
 
   auto binding_output = ComputeBindingsOutput(cte_map);
 
@@ -298,7 +300,7 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
 
   auto cte_map = ComputeBindingsCTEs(safe_result);
 
-  auto select_columns = VarListShorthand({ctx->formula()});
+  auto select_columns = VarListShorthand({ctx});
 
   auto binding_output = ComputeBindingsOutput(cte_map);
 
@@ -306,15 +308,19 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
 
   std::vector<std::shared_ptr<sql::ast::Source>> from_sources = {formula_source};
 
+  std::vector<std::shared_ptr<sql::ast::Source>> ctes;
+
   for (auto &[_, cte] : cte_map) {
-    from_sources.push_back(cte);
+    ctes.push_back(cte);
   }
+
+  from_sources.insert(from_sources.end(), ctes.begin(), ctes.end());
 
   auto condition = BindingsEqualityShorthand(ctx->formula(), cte_map);
 
   auto from = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
 
-  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from);
+  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from, ctes);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }

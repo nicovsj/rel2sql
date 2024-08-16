@@ -76,6 +76,10 @@ std::any SafeVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
 }
 
 std::any SafeVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
+  visit(ctx->formula());
+
+  auto formula_node = GetNode(ctx->formula());
+
   GetNode(ctx).safeness = {};
 
   for (auto &binding : ctx->bindingInner()->binding()) {
@@ -86,11 +90,56 @@ std::any SafeVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
 }
 
 std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
-  visit(ctx->applBase());
+  if (ctx->applBase()->T_ID() && AGGREGATE_MAP.find(ctx->applBase()->T_ID()->getText()) != AGGREGATE_MAP.end()) {
+    auto param_ctx = *ctx->applParams()->applParam().begin();
+    visit(param_ctx);
 
-  for (auto &param : ctx->applParams()->applParam()) {
-    visit(param);
+    auto &node = GetNode(ctx);
+
+    auto &child_node = GetNode(param_ctx);
+
+    node.safeness = child_node.safeness;
+
+    return {};
   }
+
+  if (ctx->applBase()->T_ID()) {
+    bool all_vars = true;
+    for (auto &param : ctx->applParams()->applParam()) {
+      visit(param);
+      if (*GetNode(param).variables.begin() != param->getText()) {
+        all_vars = false;
+      }
+    }
+
+    if (all_vars) {
+      std::vector<int> indices;
+
+      for (int i = 0; i < ctx->applParams()->applParam().size(); i++) {
+        indices.push_back(i);
+      }
+
+      TupleBinding tuple_binding;
+
+      ProjectionTable projection = {indices, ctx->applBase()->T_ID()->getText(), GetNode(ctx->applBase()).arity};
+
+      tuple_binding.union_domain.insert(projection);
+
+      for (auto &param : ctx->applParams()->applParam()) {
+        auto variable = param->getText();
+
+        tuple_binding.vars_tuple.push_back(variable);
+      }
+
+      GetNode(ctx).safeness = {tuple_binding};
+
+      auto &node2 = GetNode(ctx);
+
+      return {};
+    }
+  }
+
+  visit(ctx->applBase());
 
   return {};
 }
@@ -141,7 +190,7 @@ std::any SafeVisitor::VisitConjunction(psr::BinOpContext *ctx) {
   auto lhs_safeness = GetNode(ctx->lhs).safeness;
   auto rhs_safeness = GetNode(ctx->rhs).safeness;
 
-  auto current_node = GetNode(ctx);
+  auto &current_node = GetNode(ctx);
 
   if (!lhs_safeness.has_value() || !rhs_safeness.has_value()) {
     current_node.safeness = std::nullopt;
@@ -217,6 +266,10 @@ std::any SafeVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
 
 std::any SafeVisitor::visitApplParam(psr::ApplParamContext *ctx) {
   visitChildren(ctx);
+
+  if (ctx->expr()) {
+    GetNode(ctx).safeness = GetNode(ctx->expr()).safeness;
+  }
 
   return {};
 }
