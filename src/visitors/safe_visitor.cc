@@ -133,8 +133,6 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
 
       GetNode(ctx).safeness = {tuple_binding};
 
-      auto &node2 = GetNode(ctx);
-
       return {};
     }
   }
