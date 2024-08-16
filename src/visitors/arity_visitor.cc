@@ -10,6 +10,10 @@ std::any ArityVisitor::visitProgram(psr::ProgramContext *ctx) {
   }
 
   for (auto &id : ast_data_->sorted_ids) {
+    if (AGGREGATE_MAP.find(id) != AGGREGATE_MAP.end()) {
+      // Skip aggregate functions
+      continue;
+    }
     if (defs_by_id.find(id) == defs_by_id.end()) {
       throw std::runtime_error("IDB " + id + " is not defined");
     }
