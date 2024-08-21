@@ -19,13 +19,15 @@ std::string TranslateRelProgram(const std::string& input,
   return os.str();
 }
 
-std::string TranslateRelFormula(const std::string& input) {
+std::string TranslateRelFormula(const std::string& input,
+                                std::unordered_map<std::string, int> external_arity_map = {}) {
   /*
    * This function takes a string CoreRel formula input and returns the SQL translation.
    */
   auto parser = rel_parser::GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::FormulaContext*>(parser->formula());
-  auto ast = rel_parser::GetExtendedASTFromTree(tree);
+  auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
+  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree);
   std::ostringstream os;
   os << *result;
@@ -131,7 +133,7 @@ TEST(TranslationTest, DisjunctionFormula) {
 }
 
 TEST(TranslationTest, ExistentialFormula) {
-  EXPECT_EQ(TranslateRelFormula("exists (y | F(x, y))"),
+  EXPECT_EQ(TranslateRelFormula("exists (y | F(x, y))", {{"F", 2}}),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1");
   EXPECT_EQ(TranslateRelFormula("exists (y, z | F(x, y, z))"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1");
@@ -233,28 +235,28 @@ TEST(TranslationTest, RelationalAbstraction) {
 }
 
 TEST(TranslationTest, BindingExpression) {
-  EXPECT_EQ(TranslateRelExpression("[x in T, y in R]: F[x, y]", {{"T", 1}, {"R", 1}, {"F", 3}}),
-            "WITH S1 AS (SELECT * FROM T) WITH S0 AS (SELECT * FROM R) SELECT T1.x, T1.y, S1.x AS A1, S0.y AS A2, "
-            "T1.A1 AS A3 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T1, S1, S0 WHERE S1.x = "
-            "T1.x AND S0.y = T1.y");
+  EXPECT_EQ(
+      TranslateRelExpression("[x in T, y in R]: F[x, y]", {{"T", 1}, {"R", 1}, {"F", 3}}),
+      "WITH S1 AS (SELECT * FROM T), S0 AS (SELECT * FROM R) SELECT S1.x AS A1, S0.y AS A2, T1.A1 AS A3 FROM (SELECT "
+      "T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
 }
 
 TEST(TranslationTest, BindingExpressionBounded) {
-  EXPECT_EQ(
-      TranslateRelExpression("[x in T, y]: F[x, y] where R(y)", {{"T", 1}, {"R", 1}, {"F", 3}}),
-      "WITH S1 AS (SELECT * FROM T) WITH S0 AS (SELECT * FROM R) SELECT T4.x, T4.y, S1.x AS A1, S0.y AS A2, T4.A1 AS "
-      "A3 FROM (SELECT T2.x, T2.y, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T2, (SELECT "
-      "T1.A1 AS y FROM R AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S1, S0 WHERE S1.x = T4.x AND S0.y = T4.y");
+  EXPECT_EQ(TranslateRelExpression("[x in T, y]: F[x, y] where R(y)", {{"T", 1}, {"R", 1}, {"F", 3}}),
+            "WITH S2 AS (SELECT * FROM T), S1 AS (SELECT * FROM F), S0 AS (SELECT * FROM R) SELECT S2.x AS A1, S1.y AS "
+            "A2, T4.A1 AS A3 FROM (SELECT T2.x, T2.y, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS "
+            "T0) AS T2, (SELECT T1.A1 AS y FROM R AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S2, S1, S0 WHERE S2.x = T4.x "
+            "AND S1.x = T4.x AND S1.y = T4.y AND S0.y = T4.y AND S1.y = S0.y AND S2.x = S1.x");
 }
 
 TEST(TranslationTest, BindingFormula) {
-  EXPECT_EQ(TranslateRelExpression("[x in T, y in R]: F(x, y)"),
-            "WITH S1 AS (SELECT * FROM T) WITH S0 AS (SELECT * FROM R) SELECT T1.x, T1.y, S1.x AS A1, S0.y AS A2 FROM "
-            "(SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
+  EXPECT_EQ(TranslateRelExpression("[x in T, y in R]: F(x, y)", {{"T", 1}, {"R", 1}, {"F", 2}}),
+            "WITH S1 AS (SELECT * FROM T), S0 AS (SELECT * FROM R) SELECT S1.x AS A1, S0.y AS A2 FROM (SELECT T0.A1 AS "
+            "x, T0.A2 AS y FROM F AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
 }
 
 TEST(TranslationTest, Program) {
   EXPECT_EQ(TranslateRelProgram("def F {[x in H]: G[x]}", {{"H", 1}, {"G", 2}}),
-            "CREATE VIEW F AS (WITH S0 AS (SELECT * FROM H) SELECT T1.x, S0.x AS A1, T1.A1 AS A2 FROM (SELECT T0.A1 AS "
-            "x, T0.A2 AS A1 FROM G AS T0) AS T1, S0 WHERE S0.x = T1.x)");
+            "CREATE VIEW F AS (WITH S0 AS (SELECT * FROM H) SELECT S0.x AS A1, T1.A1 AS A2 FROM (SELECT T0.A1 AS x, "
+            "T0.A2 AS A1 FROM G AS T0) AS T1, S0 WHERE S0.x = T1.x)");
 }

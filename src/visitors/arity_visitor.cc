@@ -84,6 +84,8 @@ std::any ArityVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
 
   visit(ctx->lhs);
 
+  visit(ctx->rhs);
+
   node.arity = GetNode(ctx->lhs).arity;
 
   return {};
@@ -101,6 +103,8 @@ std::any ArityVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
 
 std::any ArityVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
   ExtendedNode &node = GetNode(ctx);
+
+  visit(ctx->formula());
 
   node.arity = 0;
 

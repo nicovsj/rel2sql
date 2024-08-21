@@ -65,6 +65,9 @@ class SafeVisitor : public BaseVisitor {
   std::any VisitConjunction(psr::BinOpContext *ctx);
 
   std::any VisitDisjunction(psr::BinOpContext *ctx);
+
+  std::unordered_set<TupleBinding> SpecialIntersectionOfTupleBindings(
+      const std::vector<std::unordered_set<TupleBinding>> &sets) const;
 };
 
 #endif  // SAFE_VISITOR_H
