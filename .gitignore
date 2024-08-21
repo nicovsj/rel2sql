@@ -39,3 +39,5 @@ bazel-*
 
 # Rel queries
 *.rl
+
+.db/
