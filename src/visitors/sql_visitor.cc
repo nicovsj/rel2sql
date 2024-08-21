@@ -100,7 +100,7 @@ std::any SQLVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
     std::vector<std::pair<std::shared_ptr<sql::ast::Condition>, std::shared_ptr<sql::ast::Term>>> cases;
     for (int j = 0; j < ctx->expr().size(); j++) {
       auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", i + 1), from_sources[j]);
-      auto comparison = std::make_shared<sql::ast::ComparisonCondition>(values_col, sql::ast::CompOp::EQ, i + 1);
+      auto comparison = std::make_shared<sql::ast::ComparisonCondition>(values_col, sql::ast::CompOp::EQ, j + 1);
       cases.push_back({comparison, column});
     }
     auto case_when = std::make_shared<sql::ast::CaseWhen>(cases);
@@ -168,12 +168,13 @@ std::any SQLVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
 
   auto select_columns = VarListShorthand(source_ctxs);
 
-  for (auto &child_ctx : ctx->productInner()->expr()) {
+  for (int i = 0; i < expr_ctxs.size(); i++) {
+    auto child_ctx = expr_ctxs[i];
     auto child_source = std::static_pointer_cast<sql::ast::Source>(GetNode(child_ctx).sql_expression);
     int child_arity = GetNode(child_ctx).arity;
-    for (int i = 1; i <= child_arity; i++) {
-      auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", i), child_source);
-      select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(column));
+    for (int j = 1; j <= child_arity; j++) {
+      auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", j), child_source);
+      select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(column, fmt::format("A{}", i + 1)));
     }
   }
 
