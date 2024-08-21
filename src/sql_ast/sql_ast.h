@@ -79,6 +79,7 @@ class Source : public Expression {
  public:
   std::shared_ptr<Sourceable> sourceable;
   std::optional<std::shared_ptr<AliasStatement>> alias;
+  std::vector<std::string> def_columns;
   bool is_subquery;
   bool is_cte;
 
@@ -94,14 +95,21 @@ class Source : public Expression {
     }
   }
 
-  Source(std::shared_ptr<Sourceable> sourceable, std::string alias, bool is_cte = false)
+  Source(std::shared_ptr<Sourceable> sourceable, std::string alias, bool is_cte = false,
+         const std::vector<std::string>& def_columns = {})
       : sourceable(sourceable),
         alias(std::make_shared<AliasStatement>(alias)),
+        def_columns(def_columns),
         is_subquery(CheckIsSubquery(sourceable)),
         is_cte(is_cte) {}
 
-  Source(std::shared_ptr<Sourceable> sourceable, std::shared_ptr<AliasStatement> alias, bool is_cte = false)
-      : sourceable(sourceable), alias(alias), is_subquery(CheckIsSubquery(sourceable)), is_cte(is_cte) {}
+  Source(std::shared_ptr<Sourceable> sourceable, std::shared_ptr<AliasStatement> alias, bool is_cte = false,
+         const std::vector<std::string>& def_columns = {})
+      : sourceable(sourceable),
+        alias(alias),
+        def_columns(def_columns),
+        is_subquery(CheckIsSubquery(sourceable)),
+        is_cte(is_cte) {}
 
   virtual std::ostream& Print(std::ostream& os) const {
     if (is_cte) {
@@ -143,7 +151,19 @@ class Source : public Expression {
 
   virtual std::string Declaration() const {
     if (alias.has_value()) {
-      return alias.value()->Declaration();
+      std::stringstream os;
+      os << alias.value()->Declaration();
+      if (!def_columns.empty()) {
+        os << "(";
+        for (size_t i = 0; i < def_columns.size(); i++) {
+          os << def_columns[i];
+          if (i < def_columns.size() - 1) {
+            os << ", ";
+          }
+        }
+        os << ")";
+      }
+      return os.str();
     } else {
       return Definition();
     }

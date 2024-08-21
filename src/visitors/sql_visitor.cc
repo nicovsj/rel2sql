@@ -1052,7 +1052,7 @@ std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::
 
       auto union_cte = std::make_shared<sql::ast::Union>(selects);
 
-      auto source = std::make_shared<sql::ast::Source>(union_cte, GenerateTableAlias("S"), true);
+      auto source = std::make_shared<sql::ast::Source>(union_cte, GenerateTableAlias("S"), true, elem.vars_tuple);
 
       cte_map[elem] = source;
     } else if (elem.union_domain.size() == 1) {
@@ -1062,7 +1062,7 @@ std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::
       auto select = std::make_shared<sql::ast::SelectStatement>(
           std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::Wildcard>()}, from);
 
-      auto source = std::make_shared<sql::ast::Source>(select, GenerateTableAlias("S"), true);
+      auto source = std::make_shared<sql::ast::Source>(select, GenerateTableAlias("S"), true, elem.vars_tuple);
 
       cte_map[elem] = source;
     } else {

@@ -161,7 +161,7 @@ TEST(TranslationTest, UniversalFormula) {
 
 TEST(TranslationTest, ProductExpression) {
   EXPECT_EQ(TranslateRelExpression("(1, 2)"),
-            "SELECT T0.A1, T1.A1 FROM (SELECT 1 AS A1) AS T0, (SELECT 2 AS A1) AS T1");
+            "SELECT T0.A1 AS A1, T1.A1 AS A2 FROM (SELECT 1 AS A1) AS T0, (SELECT 2 AS A1) AS T1");
 }
 
 TEST(TranslationTest, ConditionExpression) {
@@ -228,35 +228,37 @@ TEST(TranslationTest, AggregateExpression2) {
 
 TEST(TranslationTest, RelationalAbstraction) {
   EXPECT_EQ(TranslateRelExpression("{(1,2); (3,4)}"),
-            "SELECT CASE WHEN Ind0.I = 1 THEN T2.A1 WHEN Ind0.I = 1 THEN T5.A1 END AS A1, CASE WHEN Ind0.I = 2 THEN "
-            "T2.A2 WHEN Ind0.I = 2 THEN T5.A2 END AS A2 FROM (SELECT T0.A1, T1.A1 FROM (SELECT 1 AS A1) AS T0, (SELECT "
-            "2 AS A1) AS T1) AS T2, (SELECT T3.A1, T4.A1 FROM (SELECT 3 AS A1) AS T3, (SELECT 4 AS A1) AS T4) AS T5, "
+            "SELECT CASE WHEN Ind0.I = 1 THEN T2.A1 WHEN Ind0.I = 2 THEN T5.A1 END AS A1, CASE WHEN Ind0.I = 1 THEN "
+            "T2.A2 WHEN Ind0.I = 2 THEN T5.A2 END AS A2 FROM (SELECT T0.A1 AS A1, T1.A1 AS A2 FROM (SELECT 1 AS A1) AS "
+            "T0, (SELECT "
+            "2 AS A1) AS T1) AS T2, (SELECT T3.A1 AS A1, T4.A1 AS A2 FROM (SELECT 3 AS A1) AS T3, (SELECT 4 AS A1) AS "
+            "T4) AS T5, "
             "(VALUES (1), (2)) AS Ind0(I)");
 }
 
 TEST(TranslationTest, BindingExpression) {
-  EXPECT_EQ(
-      TranslateRelExpression("[x in T, y in R]: F[x, y]", {{"T", 1}, {"R", 1}, {"F", 3}}),
-      "WITH S1 AS (SELECT * FROM T), S0 AS (SELECT * FROM R) SELECT S1.x AS A1, S0.y AS A2, T1.A1 AS A3 FROM (SELECT "
-      "T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
+  EXPECT_EQ(TranslateRelExpression("[x in T, y in R]: F[x, y]", {{"T", 1}, {"R", 1}, {"F", 3}}),
+            "WITH S1(x) AS (SELECT * FROM T), S0(y) AS (SELECT * FROM R) SELECT S1.x AS A1, S0.y AS A2, T1.A1 AS A3 "
+            "FROM (SELECT "
+            "T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
 }
 
 TEST(TranslationTest, BindingExpressionBounded) {
   EXPECT_EQ(TranslateRelExpression("[x in T, y]: F[x, y] where R(y)", {{"T", 1}, {"R", 1}, {"F", 3}}),
-            "WITH S2 AS (SELECT * FROM T), S1 AS (SELECT * FROM F), S0 AS (SELECT * FROM R) SELECT S2.x AS A1, S1.y AS "
-            "A2, T4.A1 AS A3 FROM (SELECT T2.x, T2.y, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS "
-            "T0) AS T2, (SELECT T1.A1 AS y FROM R AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S2, S1, S0 WHERE S2.x = T4.x "
-            "AND S1.x = T4.x AND S1.y = T4.y AND S0.y = T4.y AND S1.y = S0.y AND S2.x = S1.x");
+            "WITH S2(x) AS (SELECT * FROM T), S1(x, y) AS (SELECT * FROM F), S0(y) AS (SELECT * FROM R) SELECT S2.x AS "
+            "A1, S1.y AS A2, T4.A1 AS A3 FROM (SELECT T2.x, T2.y, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS "
+            "A1 FROM F AS T0) AS T2, (SELECT T1.A1 AS y FROM R AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S2, S1, S0 WHERE "
+            "S2.x = T4.x AND S1.x = T4.x AND S1.y = T4.y AND S0.y = T4.y AND S1.y = S0.y AND S2.x = S1.x");
 }
 
 TEST(TranslationTest, BindingFormula) {
   EXPECT_EQ(TranslateRelExpression("[x in T, y in R]: F(x, y)", {{"T", 1}, {"R", 1}, {"F", 2}}),
-            "WITH S1 AS (SELECT * FROM T), S0 AS (SELECT * FROM R) SELECT S1.x AS A1, S0.y AS A2 FROM (SELECT T0.A1 AS "
-            "x, T0.A2 AS y FROM F AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
+            "WITH S1(x) AS (SELECT * FROM T), S0(y) AS (SELECT * FROM R) SELECT S1.x AS A1, S0.y AS A2 FROM (SELECT "
+            "T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
 }
 
 TEST(TranslationTest, Program) {
   EXPECT_EQ(TranslateRelProgram("def F {[x in H]: G[x]}", {{"H", 1}, {"G", 2}}),
-            "CREATE VIEW F AS (WITH S0 AS (SELECT * FROM H) SELECT S0.x AS A1, T1.A1 AS A2 FROM (SELECT T0.A1 AS x, "
+            "CREATE VIEW F AS (WITH S0(x) AS (SELECT * FROM H) SELECT S0.x AS A1, T1.A1 AS A2 FROM (SELECT T0.A1 AS x, "
             "T0.A2 AS A1 FROM G AS T0) AS T1, S0 WHERE S0.x = T1.x)");
 }
