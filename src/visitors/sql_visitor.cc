@@ -702,7 +702,7 @@ std::any SQLVisitor::VisitAggregate(sql::ast::AggregateFunction function, psr::E
   auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", arity), subquery);
 
   auto aggregate_column =
-      std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Function>(function, column));
+      std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Function>(function, column), "A1");
 
   auto text = expr_ctx->getText();
 
