@@ -42,6 +42,10 @@ std::any SQLVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
    * Generates an SQL query from the relation abstraction.
    */
 
+  if (GetNode(ctx).has_only_literal_values) {
+    return SpecialVisitRelAbs(ctx);
+  }
+
   std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
   std::vector<std::vector<sql::ast::constant_t>> values;
 
@@ -149,6 +153,10 @@ std::any SQLVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
   /*
    * Generates an SQL query from the product expression.
    */
+
+  if (GetNode(ctx).has_only_literal_values) {
+    return SpecialVisitProductExpr(ctx);
+  }
 
   std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
 
@@ -725,6 +733,85 @@ std::any SQLVisitor::VisitAggregate(sql::ast::AggregateFunction function, psr::E
   } else {
     query = std::make_shared<sql::ast::SelectStatement>(columns, from);
   }
+
+  return std::static_pointer_cast<sql::ast::Expression>(query);
+}
+
+std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext *ctx) {
+  /*
+   * Generates an SQL query from an "only literals" rel abstraction.
+   */
+
+  std::vector<std::shared_ptr<sql::ast::SelectStatement>> selects;
+
+  auto expr_ctxs = ctx->expr();
+
+  if (expr_ctxs.size() < 1) {
+    throw std::runtime_error("Relation abstraction with no member");
+  }
+
+  auto first_ctx = expr_ctxs[0];
+
+  auto first_sql = std::dynamic_pointer_cast<sql::ast::SelectStatement>(
+      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(first_ctx)));
+
+  // Name columns A1, A2, A3, ... for the first row
+  for (int i = 0; i <= first_sql->columns.size(); i++) {
+    auto term = std::dynamic_pointer_cast<sql::ast::TermSelectable>(first_sql->columns[i]);
+    if (!term) {
+      throw std::runtime_error("Column is not a term in special relation abstraction");
+    }
+    term->alias = fmt::format("A{}", i + 1);
+  }
+
+  GetNode(first_ctx).sql_expression = first_sql;
+  selects.push_back(first_sql);
+
+  if (expr_ctxs.size() == 1) {  // Single member relation abstraction
+    return std::dynamic_pointer_cast<sql::ast::Expression>(first_sql);
+  }
+
+  int arity = GetNode(first_ctx).arity;
+
+  for (int i = 1; i < expr_ctxs.size(); i++) {
+    auto child_ctx = expr_ctxs[i];
+
+    if (GetNode(child_ctx).arity != arity) {
+      throw std::runtime_error("Inconsistent arity in relation abstraction");
+    }
+
+    auto child_sql = std::dynamic_pointer_cast<sql::ast::SelectStatement>(
+        std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(child_ctx)));
+    GetNode(child_ctx).sql_expression = child_sql;
+
+    selects.push_back(child_sql);
+  }
+
+  auto union_all = std::make_shared<sql::ast::UnionAll>(selects);
+
+  auto query = std::make_shared<sql::ast::CreateTable>(std::make_shared<sql::ast::Source>(union_all));
+
+  return std::static_pointer_cast<sql::ast::Expression>(query);
+}
+
+std::any SQLVisitor::SpecialVisitProductExpr(psr::ProductExprContext *ctx) {
+  /*
+   * Generates an SQL query from an "only literals" product expression.
+   */
+  auto expr_ctxs = ctx->productInner()->expr();
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> selects;
+
+  // All children must be constants
+  for (auto &child_ctx : expr_ctxs) {
+    if (!GetNode(child_ctx).constant.has_value()) {
+      throw std::runtime_error("Special product expression with non-constant member");
+    }
+    auto constant = std::make_shared<sql::ast::Constant>(GetNode(child_ctx).constant.value());
+    selects.push_back(std::make_shared<sql::ast::TermSelectable>(constant));
+  }
+
+  auto query = std::make_shared<sql::ast::SelectStatement>(selects);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }

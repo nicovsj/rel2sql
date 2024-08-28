@@ -87,6 +87,10 @@ class SQLVisitor : public BaseVisitor {
 
   std::any VisitAggregate(sql::ast::AggregateFunction function, psr::ExprContext *expr_ctx);
 
+  std::any SpecialVisitRelAbs(psr::RelAbsContext *ctx);
+
+  std::any SpecialVisitProductExpr(psr::ProductExprContext *ctx);
+
   // Utility functions
 
   std::string GenerateTableAlias(std::string prefix = "T");
