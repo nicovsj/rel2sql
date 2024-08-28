@@ -11,15 +11,14 @@ std::any SQLVisitor::visitProgram(psr::ProgramContext *ctx) {
    * Generates an SQL query from the program.
    */
 
-  std::vector<std::shared_ptr<sql::ast::Expression>> views;
+  std::vector<std::shared_ptr<sql::ast::Expression>> exprs;
 
   for (auto &child_ctx : ctx->relDef()) {
-    auto view = std::dynamic_pointer_cast<sql::ast::View>(
-        std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(child_ctx)));
-    views.push_back(view);
+    auto expr = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(child_ctx));
+    exprs.push_back(expr);
   }
 
-  auto query = std::make_shared<sql::ast::MultipleStatements>(views);
+  auto query = std::make_shared<sql::ast::MultipleStatements>(exprs);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
@@ -31,6 +30,11 @@ std::any SQLVisitor::visitRelDef(psr::RelDefContext *ctx) {
 
   auto child_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
       std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->relAbs())));
+
+  if (GetNode(ctx->relAbs()).has_only_literal_values) {
+    auto create_table = std::make_shared<sql::ast::CreateTable>(child_sql, ctx->T_ID()->getText());
+    return std::static_pointer_cast<sql::ast::Expression>(create_table);
+  }
 
   auto view = std::make_shared<sql::ast::View>(child_sql, ctx->T_ID()->getText());
 
@@ -756,7 +760,7 @@ std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext *ctx) {
       std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(first_ctx)));
 
   // Name columns A1, A2, A3, ... for the first row
-  for (int i = 0; i <= first_sql->columns.size(); i++) {
+  for (int i = 0; i < first_sql->columns.size(); i++) {
     auto term = std::dynamic_pointer_cast<sql::ast::TermSelectable>(first_sql->columns[i]);
     if (!term) {
       throw std::runtime_error("Column is not a term in special relation abstraction");
@@ -787,9 +791,7 @@ std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext *ctx) {
     selects.push_back(child_sql);
   }
 
-  auto union_all = std::make_shared<sql::ast::UnionAll>(selects);
-
-  auto query = std::make_shared<sql::ast::CreateTable>(std::make_shared<sql::ast::Source>(union_all));
+  auto query = std::make_shared<sql::ast::UnionAll>(selects);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }

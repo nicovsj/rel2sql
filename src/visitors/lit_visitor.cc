@@ -108,25 +108,27 @@ std::any LiteralVisitor::visitProgram(psr::ProgramContext *ctx) {
 }
 
 std::any LiteralVisitor::visitRelDef(psr::RelDefContext *ctx) {
-  visitChildren(ctx);
-  return {};
-}
-
-std::any LiteralVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
   GetNode(ctx).has_only_literal_values = true;
-  for (auto &child : ctx->expr()) {
+  GetNode(ctx->relAbs()).has_only_literal_values = true;
+  for (auto &child : ctx->relAbs()->expr()) {
     visit(child);
     if (!GetNode(child).has_only_literal_values) {
       GetNode(ctx).has_only_literal_values = false;
+      GetNode(ctx->relAbs()).has_only_literal_values = false;
       break;
     }
   }
 
   if (!GetNode(ctx).has_only_literal_values) {
-    for (auto &child : ctx->expr()) {
+    for (auto &child : ctx->relAbs()->expr()) {
       GetNode(child).has_only_literal_values = false;
     }
   }
+  return {};
+}
+
+std::any LiteralVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
+  visitChildren(ctx);
   return {};
 }
 

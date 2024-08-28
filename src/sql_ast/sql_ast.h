@@ -631,13 +631,15 @@ class UnionAll : public Sourceable {
 
 class CreateTable : public Expression {
  public:
-  std::string name;
   std::shared_ptr<Source> source;
 
-  CreateTable(std::string name, std::shared_ptr<Source> source) : name(name), source(source) {}
+  CreateTable(std::shared_ptr<Source> source) : source(source) {}
+
+  CreateTable(std::shared_ptr<Sourceable> sourceable, std::string alias)
+      : source(std::make_shared<Source>(sourceable, alias)) {}
 
   std::ostream& Print(std::ostream& os) const override {
-    os << "CREATE TABLE " << name << "AS " << *source;
+    os << "CREATE TABLE " << source->Declaration() << " AS " << source->Definition();
     return os;
   }
 };
