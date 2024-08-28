@@ -60,6 +60,7 @@ bazel test //...
 ```
 
 
-## Extra Links
+## Extra
 
 - [Useful issue to make debugging work with Bazel and MacOS](https://github.com/bazelbuild/bazel/issues/6327)
+- You can use `antlr4-parse grammar/PrunedCoreRelParser.g4 grammar/CoreRelLexer.g4 program -gui test.rl` to show a GUI with the AST.
