@@ -44,6 +44,8 @@ class LiteralVisitor : public BaseVisitor {
 
   std::any visitPartialAppl(psr::PartialApplContext *ctx) override;
 
+  std::any visitProductInner(psr::ProductInnerContext *ctx) override;
+
   //  Formula branches
 
   std::any visitFullAppl(psr::FullApplContext *ctx) override;

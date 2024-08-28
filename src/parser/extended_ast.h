@@ -128,6 +128,8 @@ struct ExtendedNode {
   // Constant value that unambiguously corresponds to the current context
   std::optional<sql::ast::constant_t> constant;
 
+  bool has_only_literal_values = false;
+
   // Arity of the current context
   int arity;
 

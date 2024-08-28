@@ -113,14 +113,30 @@ std::any LiteralVisitor::visitRelDef(psr::RelDefContext *ctx) {
 }
 
 std::any LiteralVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
-  visitChildren(ctx);
+  GetNode(ctx).has_only_literal_values = true;
+  for (auto &child : ctx->expr()) {
+    visit(child);
+    if (!GetNode(child).has_only_literal_values) {
+      GetNode(ctx).has_only_literal_values = false;
+      break;
+    }
+  }
+
+  if (!GetNode(ctx).has_only_literal_values) {
+    for (auto &child : ctx->expr()) {
+      GetNode(child).has_only_literal_values = false;
+    }
+  }
   return {};
 }
 
 std::any LiteralVisitor::visitIDExpr(psr::IDExprContext *ctx) { return {}; }
 
 std::any LiteralVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
-  visitChildren(ctx);
+  visit(ctx->productInner());
+
+  GetNode(ctx).has_only_literal_values = GetNode(ctx->productInner()).has_only_literal_values;
+
   return {};
 }
 
@@ -131,6 +147,9 @@ std::any LiteralVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
 
 std::any LiteralVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
   visitChildren(ctx);
+
+  GetNode(ctx).has_only_literal_values = GetNode(ctx->relAbs()).has_only_literal_values;
+
   return {};
 }
 
@@ -151,6 +170,19 @@ std::any LiteralVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) 
 
 std::any LiteralVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
   visitChildren(ctx);
+  return {};
+}
+
+std::any LiteralVisitor::visitProductInner(psr::ProductInnerContext *ctx) {
+  GetNode(ctx).has_only_literal_values = true;
+  for (auto &child : ctx->expr()) {
+    visit(child);
+    if (!GetNode(child).constant.has_value()) {
+      GetNode(ctx).has_only_literal_values = false;
+      break;
+    }
+  }
+
   return {};
 }
 
