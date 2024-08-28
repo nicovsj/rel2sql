@@ -610,6 +610,38 @@ class Union : public Sourceable {
   }
 };
 
+class UnionAll : public Sourceable {
+ public:
+  std::vector<std::shared_ptr<SelectStatement>> members;
+
+  UnionAll(std::shared_ptr<SelectStatement> lhs, std::shared_ptr<SelectStatement> rhs) : members({lhs, rhs}) {}
+
+  UnionAll(std::vector<std::shared_ptr<SelectStatement>> members) : members(members) {}
+
+  std::ostream& Print(std::ostream& os) const override {
+    for (size_t i = 0; i < members.size(); i++) {
+      os << *members[i];
+      if (i < members.size() - 1) {
+        os << " UNION ALL ";
+      }
+    }
+    return os;
+  }
+};
+
+class CreateTable : public Expression {
+ public:
+  std::string name;
+  std::shared_ptr<Source> source;
+
+  CreateTable(std::string name, std::shared_ptr<Source> source) : name(name), source(source) {}
+
+  std::ostream& Print(std::ostream& os) const override {
+    os << "CREATE TABLE " << name << "AS " << *source;
+    return os;
+  }
+};
+
 class MultipleStatements : public Expression {
  public:
   std::vector<std::shared_ptr<Expression>> statements;
