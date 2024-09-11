@@ -19,7 +19,6 @@ class Column;
 class Constant;
 class Operation;
 class Function;
-class Aggregate;
 class TermSelectable;
 class ComparisonCondition;
 class LogicalCondition;
@@ -39,38 +38,37 @@ class ExpressionVisitor {
  public:
   virtual ~ExpressionVisitor() = default;
 
-  // Base classes
-  virtual void Visit(const Expression& expression) = 0;
-  virtual void Visit(const Sourceable& sourceable) = 0;
-  virtual void Visit(const Selectable& selectable) = 0;
-  virtual void Visit(const Condition& condition) = 0;
-  virtual void Visit(const Term& term) = 0;
+  // Base class
+  virtual void Visit(Expression& expression);
+  virtual void Visit(Sourceable& sourceable);
+  virtual void Visit(Selectable& selectable);
+  virtual void Visit(Condition& condition);
+  virtual void Visit(Term& term);
 
   // Derived classes
-  virtual void Visit(const AliasStatement& alias_statement) = 0;
-  virtual void Visit(const Source& source) = 0;
-  virtual void Visit(const Table& table) = 0;
-  virtual void Visit(const Values& values) = 0;
-  virtual void Visit(const Wildcard& wildcard) = 0;
-  virtual void Visit(const Column& column) = 0;
-  virtual void Visit(const Constant& constant) = 0;
-  virtual void Visit(const Operation& operation) = 0;
-  virtual void Visit(const Function& function) = 0;
-  virtual void Visit(const Aggregate& aggregate) = 0;
-  virtual void Visit(const TermSelectable& term_selectable) = 0;
-  virtual void Visit(const ComparisonCondition& comparison_condition) = 0;
-  virtual void Visit(const LogicalCondition& logical_condition) = 0;
-  virtual void Visit(const Inclusion& inclusion) = 0;
-  virtual void Visit(const Exists& exists) = 0;
-  virtual void Visit(const CaseWhen& case_when) = 0;
-  virtual void Visit(const FromStatement& from_statement) = 0;
-  virtual void Visit(const GroupBy& group_by) = 0;
-  virtual void Visit(const SelectStatement& select_statement) = 0;
-  virtual void Visit(const Union& union_expr) = 0;
-  virtual void Visit(const UnionAll& union_all_expr) = 0;
-  virtual void Visit(const CreateTable& create_table) = 0;
-  virtual void Visit(const View& view) = 0;
-  virtual void Visit(const MultipleStatements& multiple_statements) = 0;
+  virtual void Visit(AliasStatement& alias_statement);
+  virtual void Visit(Source& source);
+  virtual void Visit(Table& table);
+  virtual void Visit(Values& values);
+  virtual void Visit(Wildcard& wildcard);
+  virtual void Visit(Column& column);
+  virtual void Visit(Constant& constant);
+  virtual void Visit(Operation& operation);
+  virtual void Visit(Function& function);
+  virtual void Visit(TermSelectable& term_selectable);
+  virtual void Visit(ComparisonCondition& comparison_condition);
+  virtual void Visit(LogicalCondition& logical_condition);
+  virtual void Visit(Inclusion& inclusion);
+  virtual void Visit(Exists& exists);
+  virtual void Visit(CaseWhen& case_when);
+  virtual void Visit(FromStatement& from_statement);
+  virtual void Visit(GroupBy& group_by);
+  virtual void Visit(SelectStatement& select_statement);
+  virtual void Visit(Union& union_expr);
+  virtual void Visit(UnionAll& union_all_expr);
+  virtual void Visit(CreateTable& create_table);
+  virtual void Visit(View& view);
+  virtual void Visit(MultipleStatements& multiple_statements);
 };
 
 }  // namespace sql::ast

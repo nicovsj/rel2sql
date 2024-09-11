@@ -3,6 +3,7 @@
 
 #include "CoreRelLexer.h"
 #include "PrunedCoreRelParser.h"
+#include "sql_ast/opt_visitor.h"
 #include "visitors/arity_visitor.h"
 #include "visitors/balancing_visitor.h"
 #include "visitors/ids_visitor.h"
@@ -77,7 +78,13 @@ inline std::shared_ptr<sql::ast::Expression> GetSQLFromTree(antlr4::ParserRuleCo
 
   SQLVisitor visitor(ast.value().Data());
 
-  return std::any_cast<std::shared_ptr<sql::ast::Expression>>(visitor.visit(tree));
+  auto sql = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visitor.visit(tree));
+
+  sql::ast::OptimizerVisitor optimizer;
+
+  optimizer.Visit(*sql);
+
+  return sql;
 }
 
 inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input) {
@@ -87,7 +94,13 @@ inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input) {
 
   auto ast = GetExtendedASTFromTree(tree);
 
-  return GetSQLFromTree(tree);
+  auto sql = GetSQLFromTree(tree);
+
+  sql::ast::OptimizerVisitor optimizer;
+
+  optimizer.Visit(*sql);
+
+  return sql;
 }
 
 }  // namespace rel_parser

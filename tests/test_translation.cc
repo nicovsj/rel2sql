@@ -172,8 +172,7 @@ TEST(TranslationTest, ConditionExpression) {
 
 TEST(TranslationTest, PartialApplication) {
   EXPECT_EQ(TranslateRelExpression("F[x]", {{"F", 2}}), "SELECT T0.A1 AS x, T0.A2 AS A1 FROM F AS T0");
-  EXPECT_EQ(TranslateRelExpression("F[1]", {{"F", 2}}),
-            "SELECT T0.A2 AS A1 FROM F AS T0, (SELECT 1 AS A1) AS T1 WHERE T0.A1 = T1.A1");
+  EXPECT_EQ(TranslateRelExpression("F[1]", {{"F", 2}}), "SELECT T0.A2 AS A1 FROM F AS T0 WHERE T0.A1 = 1");
 }
 
 TEST(TranslationTest, NestedPartialApplication) {
@@ -190,7 +189,7 @@ TEST(TranslationTest, PartialApplicationMixedParams) {
             "SELECT T2.x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM G AS T1) AS T2 "
             "WHERE T0.A1 = T2.A1");
   EXPECT_EQ(TranslateRelExpression("F[x, 1]", {{"F", 3}}),
-            "SELECT T0.A1 AS x, T0.A3 AS A1 FROM F AS T0, (SELECT 1 AS A1) AS T1 WHERE T0.A2 = T1.A1");
+            "SELECT T0.A1 AS x, T0.A3 AS A1 FROM F AS T0 WHERE T0.A2 = 1");
   EXPECT_EQ(TranslateRelExpression("F[G[x], H[y]]", {{"F", 3}, {"G", 2}, {"H", 2}}),
             "SELECT T2.x, T4.y, T0.A3 AS A1 FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM G AS T1) AS T2, (SELECT "
             "T3.A1 AS y, T3.A2 AS A1 FROM H AS T3) AS T4 WHERE T0.A1 = T2.A1 AND T0.A2 = T4.A1");
