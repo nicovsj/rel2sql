@@ -37,6 +37,7 @@ bool OptimizerVisitor::TryReplaceConstantInWhere(const std::shared_ptr<Source>& 
 void OptimizerVisitor::Visit(FromStatement& from_statement) {
   std::vector<std::shared_ptr<Source>> new_sources;
   for (auto& source : from_statement.sources) {
+    // If the optimization succeeds, the source needs to be removed from the FROM statement
     if (!TryReplaceConstantInWhere(source, from_statement)) {
       new_sources.push_back(source);
     }
