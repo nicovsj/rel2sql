@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "sql_ast/expr_visitor.h"
 #include "utils/utils.h"
 
 namespace sql::ast {
@@ -35,6 +36,7 @@ class Expression {
  public:
   virtual ~Expression() = default;
   virtual std::ostream& Print(std::ostream& os) const = 0;
+  virtual void Accept(ExpressionVisitor& visitor) = 0;
 
   friend std::ostream& operator<<(std::ostream& os, const Expression& expr) { return expr.Print(os); }
 };
@@ -42,7 +44,8 @@ class Expression {
 class Sourceable : public Expression {
  public:
   virtual ~Sourceable() = default;
-  virtual std::ostream& Print(std::ostream& os) const = 0;
+  virtual std::ostream& Print(std::ostream& os) const override = 0;
+  virtual void Accept(ExpressionVisitor& visitor) override = 0;
 };
 
 class AliasStatement : public Expression {
@@ -55,6 +58,8 @@ class AliasStatement : public Expression {
   AliasStatement(std::string name, std::vector<std::string> columns) : name(name), columns(columns) {}
 
   std::ostream& Print(std::ostream& os) const override { return os << Access(); }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
   std::string Declaration() const {
     std::stringstream os;
@@ -111,7 +116,7 @@ class Source : public Expression {
         is_subquery(CheckIsSubquery(sourceable)),
         is_cte(is_cte) {}
 
-  virtual std::ostream& Print(std::ostream& os) const {
+  virtual std::ostream& Print(std::ostream& os) const override {
     if (is_cte) {
       os << alias.value()->Access();
       return os;
@@ -125,6 +130,8 @@ class Source : public Expression {
 
     return os;
   }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
   virtual std::string Alias() const {
     std::stringstream os;
@@ -177,12 +184,15 @@ class Table : public Sourceable {
   Table(std::string name) : name(name) {}
 
   std::ostream& Print(std::ostream& os) const override { return os << name; };
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class Selectable : public Expression {
  public:
   virtual ~Selectable() = default;
-  virtual std::ostream& Print(std::ostream& os) const = 0;
+  virtual std::ostream& Print(std::ostream& os) const override = 0;
+  virtual void Accept(ExpressionVisitor& visitor) override = 0;
 
   virtual std::string Alias() const = 0;
   virtual bool HasAlias() const = 0;
@@ -204,6 +214,8 @@ class Wildcard : public Selectable {
     return os << Alias();
   }
 
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
   std::string Alias() const override { return "*"; }
 
   bool HasAlias() const override { return false; }
@@ -212,7 +224,8 @@ class Wildcard : public Selectable {
 class Term : public Expression {
  public:
   virtual ~Term() = default;
-  virtual std::ostream& Print(std::ostream& os) const = 0;
+  virtual std::ostream& Print(std::ostream& os) const override = 0;
+  virtual void Accept(ExpressionVisitor& visitor) override = 0;
 
   virtual std::string ToString() const = 0;
 };
@@ -226,6 +239,8 @@ class TermSelectable : public Selectable {
   TermSelectable(std::shared_ptr<Term> term, std::string alias) : term(term), alias(alias) {}
 
   std::ostream& Print(std::ostream& os) const override { return os << *term; }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
   std::string Alias() const override {
     if (alias.has_value())
@@ -244,6 +259,8 @@ class Constant : public Term {
   Constant(constant_t value) : value(value) {}
 
   std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
   std::string ToString() const override {
     return std::visit(
@@ -264,6 +281,8 @@ class Operation : public Term {
 
   std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
 
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
   std::string ToString() const override {
     std::stringstream ss;
     ss << *lhs << " " << op << " " << *rhs;
@@ -279,6 +298,8 @@ class Function : public Term {
   Function(AggregateFunction name, std::shared_ptr<Term> arg) : name(name), arg(arg) {}
 
   std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
   std::string ToString() const override {
     std::string result = "";
@@ -323,6 +344,8 @@ class Column : public Term {
   };
 
   std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class Values : public Sourceable {
@@ -359,12 +382,15 @@ class Values : public Sourceable {
     }
     return os;
   }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class Condition : public Expression {
  public:
   virtual ~Condition() = default;
-  virtual std::ostream& Print(std::ostream& os) const = 0;
+  virtual std::ostream& Print(std::ostream& os) const override = 0;
+  virtual void Accept(ExpressionVisitor& visitor) override = 0;
 
   virtual bool IsEmpty() const = 0;
 };
@@ -401,6 +427,8 @@ class ComparisonCondition : public Condition {
     return os << *lhs << " " << get_operator_string(op) << " " << *rhs;
   }
 
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
   bool IsEmpty() const override { return false; }
 };
 
@@ -431,6 +459,8 @@ class LogicalCondition : public Condition {
     return os;
   }
 
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
   LogicalCondition(std::vector<std::shared_ptr<Condition>> conditions, LogicalOp op) : conditions(conditions), op(op) {
     this->conditions.erase(std::remove_if(this->conditions.begin(), this->conditions.end(),
                                           [](const std::shared_ptr<Condition>& cond) { return cond->IsEmpty(); }),
@@ -454,6 +484,8 @@ class Inclusion : public Condition {
 
   std::ostream& Print(std::ostream& os) const override;
 
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
   bool IsEmpty() const override { return false; }
 };
 
@@ -465,6 +497,8 @@ class Exists : public Condition {
 
   std::ostream& Print(std::ostream& os) const override;
 
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
   bool IsEmpty() const override { return false; }
 };
 
@@ -475,6 +509,8 @@ class CaseWhen : public Term {
   CaseWhen(std::vector<std::pair<std::shared_ptr<Condition>, std::shared_ptr<Term>>> cases) : cases(cases) {};
 
   std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
   std::string ToString() const override {
     std::stringstream ss;
@@ -517,6 +553,8 @@ class FromStatement : public Expression {
 
     return os;
   }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class View : public Expression {
@@ -531,6 +569,8 @@ class View : public Expression {
   std::ostream& Print(std::ostream& os) const override {
     return os << "CREATE VIEW " << source->Declaration() << " AS " << source->Definition();
   }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class GroupBy : public Expression {
@@ -550,6 +590,8 @@ class GroupBy : public Expression {
 
     return os;
   }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class SelectStatement : public Sourceable {
@@ -606,6 +648,8 @@ class SelectStatement : public Sourceable {
 
     return os;
   }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class Union : public Sourceable {
@@ -625,6 +669,8 @@ class Union : public Sourceable {
     }
     return os;
   }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class UnionAll : public Sourceable {
@@ -644,6 +690,8 @@ class UnionAll : public Sourceable {
     }
     return os;
   }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class CreateTable : public Expression {
@@ -659,6 +707,8 @@ class CreateTable : public Expression {
     os << "CREATE TABLE " << source->Declaration() << " AS " << source->Definition();
     return os;
   }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class MultipleStatements : public Expression {
@@ -676,12 +726,14 @@ class MultipleStatements : public Expression {
     }
     return os;
   }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 // UTILITY FUNCTIONS
 
 using ParserRuleContext = antlr4::ParserRuleContext;
 
-}  // namespace sql::ast
+}  // end namespace sql::ast
 
 #endif  // SQL_H

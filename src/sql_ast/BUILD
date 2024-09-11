@@ -5,6 +5,7 @@ cc_library(
     ],
     hdrs = [
         "sql_ast.h",
+        "expr_visitor.h",
     ],
     visibility = ["//visibility:public"],
     include_prefix = "sql_ast",
