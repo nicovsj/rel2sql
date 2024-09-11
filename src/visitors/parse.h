@@ -4,6 +4,7 @@
 #include "CoreRelLexer.h"
 #include "PrunedCoreRelParser.h"
 #include "visitors/arity_visitor.h"
+#include "visitors/balancing_visitor.h"
 #include "visitors/ids_visitor.h"
 #include "visitors/lit_visitor.h"
 #include "visitors/safe_visitor.h"
@@ -31,6 +32,8 @@ inline ExtendedAST GetExtendedASTFromTree(
 
   LiteralVisitor literal_visitor(extended_ast_data);
 
+  BalancingVisitor balancing_visitor(extended_ast_data);
+
   SafeVisitor safeness_visitor(extended_ast_data);
 
   ids_visitor.visit(tree);
@@ -40,6 +43,8 @@ inline ExtendedAST GetExtendedASTFromTree(
   free_vars_visitor.visit(tree);
 
   literal_visitor.visit(tree);
+
+  balancing_visitor.visit(tree);
 
   safeness_visitor.visit(tree);
 

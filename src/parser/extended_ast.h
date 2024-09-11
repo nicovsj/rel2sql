@@ -136,6 +136,10 @@ struct ExtendedNode {
   // Output of the safeness analysis
   std::optional<std::unordered_set<TupleBinding>> safeness;
 
+  // AND term partitioning variables
+  std::vector<antlr4::ParserRuleContext *> comparator_formulas;
+  std::vector<antlr4::ParserRuleContext *> other_formulas;
+
   void VariablesInplaceUnion(const ExtendedNode &other) {
     variables.insert(other.variables.begin(), other.variables.end());
     free_variables.insert(other.free_variables.begin(), other.free_variables.end());
@@ -148,6 +152,8 @@ struct ExtendedNode {
       free_variables.erase(var);
     }
   }
+
+  bool IsConjunctionWithTerms() const { return !comparator_formulas.empty(); }
 };
 
 struct ExtendedASTData {

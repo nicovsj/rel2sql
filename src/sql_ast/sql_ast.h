@@ -254,6 +254,23 @@ class Constant : public Term {
   }
 };
 
+class Operation : public Term {
+ public:
+  std::shared_ptr<Term> lhs;
+  std::shared_ptr<Term> rhs;
+  std::string op;
+
+  Operation(std::shared_ptr<Term> lhs, std::shared_ptr<Term> rhs, std::string op) : lhs(lhs), rhs(rhs), op(op) {}
+
+  std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
+
+  std::string ToString() const override {
+    std::stringstream ss;
+    ss << *lhs << " " << op << " " << *rhs;
+    return ss.str();
+  }
+};
+
 class Function : public Term {
  public:
   AggregateFunction name;

@@ -20,6 +20,8 @@ class LiteralVisitor : public BaseVisitor {
 
   std::any visitRelAbs(psr::RelAbsContext *ctx) override;
 
+  std::any visitComparator(psr::ComparatorContext *ctx) override;
+
   std::any visitNumTerm(psr::NumTermContext *ctx) override;
 
   std::any visitOpTerm(psr::OpTermContext *ctx) override;

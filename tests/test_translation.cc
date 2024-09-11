@@ -118,12 +118,15 @@ TEST(TranslationTest, RepeatedVariableFormula) {
   EXPECT_EQ(TranslateRelFormula("F(x, y, x)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0 WHERE T0.A1 = T0.A3");
 }
 
-TEST(TranslationTest, OperatorFormula) { EXPECT_EQ(TranslateRelFormula("x*x > 5"), ""); }
+TEST(TranslationTest, OperatorFormula) {
+  EXPECT_EQ(TranslateRelFormula("F(x) and x*x > 5"),
+            "SELECT T1.x FROM (SELECT T0.A1 AS x FROM F AS T0) AS T1 WHERE T1.x * T1.x > 5");
+}
 
 TEST(TranslationTest, ConjunctionFormula) {
   EXPECT_EQ(TranslateRelFormula("F(x) and G(x)"),
-            "SELECT T2.x FROM (SELECT T0.A1 AS x FROM F AS T0) AS T2, (SELECT T1.A1 AS x FROM G AS T1) AS T3 WHERE "
-            "T2.x = T3.x");
+            "SELECT T1.x FROM (SELECT T0.A1 AS x FROM F AS T0) AS T1, (SELECT T2.A1 AS x FROM G AS T2) AS T3 WHERE "
+            "T1.x = T3.x");
 }
 
 TEST(TranslationTest, DisjunctionFormula) {

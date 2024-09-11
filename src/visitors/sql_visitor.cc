@@ -473,6 +473,37 @@ std::any SQLVisitor::visitParen(psr::ParenContext *ctx) {
   return visit(ctx->formula());
 }
 
+std::any SQLVisitor::visitComparison(psr::ComparisonContext *ctx) {
+  /*
+   * Generates an SQL query from the comparison.
+   */
+
+  std::string comparator = ctx->comparator()->getText();
+
+  std::shared_ptr<sql::ast::Term> lhs_term = std::any_cast<std::shared_ptr<sql::ast::Term>>(visit(ctx->lhs));
+  std::shared_ptr<sql::ast::Term> rhs_term = std::any_cast<std::shared_ptr<sql::ast::Term>>(visit(ctx->rhs));
+
+  sql::ast::CompOp op;
+
+  if (comparator == "<") {
+    op = sql::ast::CompOp::LT;
+  } else if (comparator == "<=") {
+    op = sql::ast::CompOp::LTE;
+  } else if (comparator == ">") {
+    op = sql::ast::CompOp::GT;
+  } else if (comparator == ">=") {
+    op = sql::ast::CompOp::GTE;
+  } else if (comparator == "=") {
+    op = sql::ast::CompOp::EQ;
+  } else if (comparator == "<>") {
+    op = sql::ast::CompOp::NEQ;
+  } else {
+    throw std::runtime_error("Unknown comparator");
+  }
+
+  return std::make_shared<sql::ast::ComparisonCondition>(lhs_term, op, rhs_term);
+}
+
 std::any SQLVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
   /*
    * Generates an SQL query from the application base.
@@ -498,33 +529,138 @@ std::any SQLVisitor::visitApplParam(psr::ApplParamContext *ctx) {
   throw std::runtime_error("Unknown application parameter");
 }
 
+std::any SQLVisitor::visitIDTerm(psr::IDTermContext *ctx) {
+  /*
+   * Generates an SQL query from the identifier term.
+   */
+  return std::static_pointer_cast<sql::ast::Term>(std::make_shared<sql::ast::Column>(ctx->T_ID()->getText()));
+}
+
+std::any SQLVisitor::visitNumTerm(psr::NumTermContext *ctx) {
+  /*
+   * Generates an SQL query from the literal term.
+   */
+
+  auto node = GetNode(ctx);
+  return std::static_pointer_cast<sql::ast::Term>(std::make_shared<sql::ast::Constant>(GetNode(ctx).constant.value()));
+}
+
+std::any SQLVisitor::visitOpTerm(psr::OpTermContext *ctx) {
+  /*
+   * Generates an SQL query from the application term.
+   */
+
+  auto lhs_term = std::any_cast<std::shared_ptr<sql::ast::Term>>(visit(ctx->lhs));
+  auto rhs_term = std::any_cast<std::shared_ptr<sql::ast::Term>>(visit(ctx->rhs));
+
+  return std::static_pointer_cast<sql::ast::Term>(
+      std::make_shared<sql::ast::Operation>(lhs_term, rhs_term, ctx->operator_()->getText()));
+}
+
 std::any SQLVisitor::VisitConjunction(psr::BinOpContext *ctx) {
   /*
    * Generates an SQL query from the conjunction of the two formulas.
    */
-  auto lhs_sql = std::static_pointer_cast<sql::ast::Sourceable>(
-      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->lhs)));
-  auto rhs_sql = std::static_pointer_cast<sql::ast::Sourceable>(
-      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->rhs)));
 
-  auto lhs_subquery = std::make_shared<sql::ast::Source>(lhs_sql, GenerateTableAlias());
-  auto rhs_subquery = std::make_shared<sql::ast::Source>(rhs_sql, GenerateTableAlias());
+  // There is a special case for conjunctions with terms, which are already partitioned
+  // by the balancing visitor.
+  if (GetNode(ctx).IsConjunctionWithTerms()) {
+    return VisitConjunctionWithTerms(ctx);
+  }
 
-  GetNode(ctx->lhs).sql_expression = lhs_subquery;
-  GetNode(ctx->rhs).sql_expression = rhs_subquery;
+  // Call the generalized conjunction function with the left and right subformulas
+  return VisitGeneralizedConjunction({ctx->lhs, ctx->rhs});
+}
 
-  std::vector<antlr4::ParserRuleContext *> input_ctxs = {ctx->lhs, ctx->rhs};
+std::any SQLVisitor::VisitGeneralizedConjunction(const std::vector<antlr4::ParserRuleContext *> &subformulas) {
+  /*
+   * Generates an SQL query from the conjunction of N subformulas.
+   */
+
+  std::vector<std::shared_ptr<sql::ast::Source>> subqueries;
+  std::vector<antlr4::ParserRuleContext *> input_ctxs;
+
+  for (auto subformula : subformulas) {
+    auto subformula_sql = std::static_pointer_cast<sql::ast::Sourceable>(
+        std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(subformula)));
+
+    auto subquery = std::make_shared<sql::ast::Source>(subformula_sql, GenerateTableAlias());
+
+    GetNode(subformula).sql_expression = subquery;
+    subqueries.push_back(subquery);
+    input_ctxs.push_back(subformula);
+  }
 
   auto condition = EqualityShorthand(input_ctxs);
-
   auto select_columns = VarListShorthand(input_ctxs);
 
-  auto from = std::make_shared<sql::ast::FromStatement>(
-      std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery, rhs_subquery}, condition);
-
+  auto from = std::make_shared<sql::ast::FromStatement>(subqueries, condition);
   auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
+}
+
+std::any SQLVisitor::VisitConjunctionWithTerms(psr::BinOpContext *ctx) {
+  // We know that this subtree is a conjunction of formulas of the form:
+  //
+  // C1 and C2 and ... and Cn and F1 and F2 and ... and Fm,
+  //
+  // where each Ci is a formula that has to be translated, and each Fi is a comparison of terms.
+  //
+  // Conveniently, we already separated the children into comparator and non-comparator formulas
+  // with the BalancingVisitor.
+
+  std::vector<antlr4::ParserRuleContext *> other_formulas = GetNode(ctx).other_formulas;
+  std::vector<antlr4::ParserRuleContext *> comparator_formulas = GetNode(ctx).comparator_formulas;
+
+  auto select_expression = std::static_pointer_cast<sql::ast::SelectStatement>(
+      std::any_cast<std::shared_ptr<sql::ast::Expression>>(VisitGeneralizedConjunction(other_formulas)));
+
+  auto from_statement = select_expression->from.value();
+
+  auto where_statement = from_statement->where.value();
+
+  std::vector<std::shared_ptr<sql::ast::Condition>> new_conditions;
+
+  std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> free_var_sources;
+
+  for (auto source_ctx : other_formulas) {
+    for (auto free_var : GetNode(source_ctx).free_variables) {
+      if (free_var_sources.find(free_var) == free_var_sources.end()) {
+        free_var_sources[free_var] = std::static_pointer_cast<sql::ast::Source>(GetNode(source_ctx).sql_expression);
+      }
+    }
+  }
+
+  for (auto comparator : comparator_formulas) {
+    auto comparator_sql = std::any_cast<std::shared_ptr<sql::ast::ComparisonCondition>>(visit(comparator));
+
+    SpecialAddSourceToFreeVariablesInTerm(free_var_sources, comparator_sql->lhs);
+    SpecialAddSourceToFreeVariablesInTerm(free_var_sources, comparator_sql->rhs);
+
+    new_conditions.push_back(std::dynamic_pointer_cast<sql::ast::Condition>(comparator_sql));
+  }
+
+  auto additional_conditions = std::make_shared<sql::ast::LogicalCondition>(new_conditions, sql::ast::LogicalOp::AND);
+
+  auto new_where = std::make_shared<sql::ast::LogicalCondition>(
+      std::vector<std::shared_ptr<sql::ast::Condition>>{where_statement, additional_conditions},
+      sql::ast::LogicalOp::AND);
+
+  from_statement->where = new_where;
+
+  return std::static_pointer_cast<sql::ast::Expression>(select_expression);
+}
+
+void SQLVisitor::SpecialAddSourceToFreeVariablesInTerm(
+    const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> &free_var_sources,
+    std::shared_ptr<sql::ast::Term> &term) {
+  if (auto column = std::dynamic_pointer_cast<sql::ast::Column>(term)) {
+    column->source = free_var_sources.at(column->name);
+  } else if (auto operation = std::dynamic_pointer_cast<sql::ast::Operation>(term)) {
+    SpecialAddSourceToFreeVariablesInTerm(free_var_sources, operation->lhs);
+    SpecialAddSourceToFreeVariablesInTerm(free_var_sources, operation->rhs);
+  }
 }
 
 std::any SQLVisitor::VisitDisjunction(psr::BinOpContext *ctx) {

@@ -328,6 +328,11 @@ std::any SafeVisitor::visitQuantification(psr::QuantificationContext *ctx) {
 
   auto formula_node = GetNode(ctx->formula());
 
+  if (!formula_node.safeness.has_value()) {
+    GetNode(ctx).safeness = std::nullopt;
+    return {};
+  }
+
   auto &current_node = GetNode(ctx);
 
   current_node.safeness = std::unordered_set<TupleBinding>();

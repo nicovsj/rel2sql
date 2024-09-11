@@ -91,7 +91,7 @@ TEST(FreeVarsTest, UnionExpr) {
 }
 
 TEST(FreeVarsTest, ExistenceQuantificationExpr) {
-  auto ast = GetExtendedAST("def R { exists (x | F(x)) }");
+  auto ast = GetExtendedAST("def R { exists (x | x > 5) }");
 
   auto free_vars = ast.Root().free_variables;
 
@@ -99,7 +99,7 @@ TEST(FreeVarsTest, ExistenceQuantificationExpr) {
 }
 
 TEST(FreeVarsTest, UniversalQuantificationExpr) {
-  auto ast = GetExtendedAST("def R { forall (x | F(x)) }");
+  auto ast = GetExtendedAST("def R { forall (x | x > 5) }");
 
   auto free_vars = ast.Root().free_variables;
 
@@ -127,7 +127,7 @@ TEST(FreeVarsTest, DisjunctionExpr) {
 }
 
 TEST(FreeVarsTest, NegationExpr) {
-  auto ast = GetExtendedAST("def R { not F(x) }");
+  auto ast = GetExtendedAST("def R { not x > 5 }");
 
   auto free_vars = ast.Root().free_variables;
 
@@ -136,7 +136,7 @@ TEST(FreeVarsTest, NegationExpr) {
 }
 
 TEST(FreeVarsTest, BindingsExpr) {
-  auto ast = GetExtendedAST("def R { [x]:  F[x]}");
+  auto ast = GetExtendedAST("def R { [x]:  F[x]}", {{"F", 2}});
 
   auto free_vars = ast.Root().free_variables;
 

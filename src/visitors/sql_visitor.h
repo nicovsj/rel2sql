@@ -64,6 +64,8 @@ class SQLVisitor : public BaseVisitor {
 
   std::any visitParen(psr::ParenContext *ctx) override;
 
+  std::any visitComparison(psr::ComparisonContext *ctx) override;
+
   //  Binding branches
 
   // std::any visitBindingInner(psr::BindingInnerContext *ctx) override;
@@ -76,8 +78,18 @@ class SQLVisitor : public BaseVisitor {
 
   std::any visitApplParam(psr::ApplParamContext *ctx) override;
 
+  // Term branches
+
+  std::any visitIDTerm(psr::IDTermContext *ctx) override;
+
+  std::any visitNumTerm(psr::NumTermContext *ctx) override;
+
+  std::any visitOpTerm(psr::OpTermContext *ctx) override;
+
  private:
   std::any VisitConjunction(psr::BinOpContext *ctx);
+
+  std::any VisitGeneralizedConjunction(const std::vector<antlr4::ParserRuleContext *> &subformulas);
 
   std::any VisitDisjunction(psr::BinOpContext *ctx);
 
@@ -90,6 +102,8 @@ class SQLVisitor : public BaseVisitor {
   std::any SpecialVisitRelAbs(psr::RelAbsContext *ctx);
 
   std::any SpecialVisitProductExpr(psr::ProductExprContext *ctx);
+
+  std::any VisitConjunctionWithTerms(psr::BinOpContext *ctx);
 
   // Utility functions
 
@@ -129,6 +143,10 @@ class SQLVisitor : public BaseVisitor {
   std::shared_ptr<sql::ast::Condition> BindingsEqualityShorthand(
       antlr4::ParserRuleContext *expr,
       const std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> &safe_result);
+
+  void SpecialAddSourceToFreeVariablesInTerm(
+      const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> &free_var_sources,
+      std::shared_ptr<sql::ast::Term> &comparison);
 
   std::unordered_map<std::string, int> table_alias_prefix_counter_;
 
