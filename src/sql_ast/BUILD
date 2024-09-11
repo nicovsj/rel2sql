@@ -6,7 +6,7 @@ cc_library(
         "sql_ast.cc",
     ],
     hdrs = [
-        "const_replacer.h",
+        "replacers.h",
         "expr_visitor.h",
         "opt_visitor.h",
         "sql_ast.h",

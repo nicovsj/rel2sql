@@ -34,6 +34,25 @@ class ConstantReplacer : public ExpressionVisitor {
   std::shared_ptr<Constant> constant_;
 };
 
+class SourceNameReplacer : public ExpressionVisitor {
+ public:
+  SourceNameReplacer(const std::string& old_source_name, const std::string& new_source_name)
+      : old_source_name_(old_source_name), new_source_name_(new_source_name) {}
+
+  void Visit(Source& source) override {
+    if (source.alias) {
+      auto& alias_statement = source.alias.value();
+      if (alias_statement->name == old_source_name_) {
+        alias_statement->name = new_source_name_;
+      }
+    }
+  }
+
+ private:
+  std::string old_source_name_;
+  std::string new_source_name_;
+};
+
 }  // namespace sql::ast
 
 #endif  // SQL_AST_CONST_REPLACER_H

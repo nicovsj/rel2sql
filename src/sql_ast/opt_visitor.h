@@ -13,10 +13,12 @@ class OptimizerVisitor : public ExpressionVisitor {
 
   void Visit(Expression& expr) override;
 
+  void Visit(SelectStatement& select_statement) override;
   void Visit(FromStatement& from_statement) override;
 
  private:
   bool TryReplaceConstantInWhere(const std::shared_ptr<Source>& source, FromStatement& from_statement);
+  bool TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, SelectStatement& select_statement);
 };
 
 }  // namespace sql::ast
