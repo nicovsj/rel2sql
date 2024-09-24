@@ -13,9 +13,10 @@ This repository contains a rel-to-sql translator experimental tool. This project
 
 ## Prerequisites
 
-This project uses Bazel as its build system. Before you begin, ensure you have the following installed on your machine:
+This project uses Bazel as its build system and Task as its task runner. Before you begin, ensure you have the following installed on your machine:
 
 - [Bazel](https://bazel.build) (version 7.0.0 or later)
+- [Task](https://taskfile.dev/) (version 3.0.0 or later)
 - A C++ compiler (e.g., `g++` or `clang++`)
 - Java Development Kit (JDK) 11 or later
 
@@ -23,21 +24,19 @@ This project uses Bazel as its build system. Before you begin, ensure you have t
 
 To build the project, follow these steps:
 
-1. Clone the repository:
+1. Clone the repository and set up the project:
 
     ```sh
-    git clone https://github.com/RelationalAI/rel-to-sql-semantics.git
-    cd rel-to-sql-semantics
+    task setup
     ```
 
-2. Build the project using Bazel:
+2. Build the project using Task:
 
     ```sh
-    bazel build //:rel-to-sql
+    task build
     ```
 
    This command will build the `rel-to-sql` executable.
-
 
 ## Development
 
@@ -46,7 +45,7 @@ To build the project, follow these steps:
 To generate `compile_commands.json` for use with clangd, run the following command:
 
 ```sh
-bazel run @hedron_compile_commands//:refresh_all
+task generate-compile-commands
 ```
 
 This will generate a `compile_commands.json` file in the root of the project and allow clangd to provide code completion and other features.
@@ -56,11 +55,23 @@ This will generate a `compile_commands.json` file in the root of the project and
 To run the tests, use the following command:
 
 ```sh
-bazel test //...
+task test
 ```
-
 
 ## Extra
 
 - [Useful issue to make debugging work with Bazel and MacOS](https://github.com/bazelbuild/bazel/issues/6327)
-- You can use `antlr4-parse grammar/PrunedCoreRelParser.g4 grammar/CoreRelLexer.g4 program -gui test.rl` to show a GUI with the AST.
+- You can use the following command to show a GUI with the AST:
+  ```sh
+  task parse-antlr -- test.rl
+  ```
+
+## Available Tasks
+
+To see all available tasks for this project, run:
+
+```sh
+task
+```
+
+This will display a list of tasks you can run using the `task` command.
