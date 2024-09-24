@@ -29,13 +29,15 @@ def antlr_cc_library(name, lexer_src, parser_src, package):
     )
 
     native.cc_library(
-        name = name + "_cc_parser",
+        name = name,
         srcs = [generated_lexer, generated_parser],
         deps = [
             generated_lexer,
             generated_parser,
             "@antlr4-cpp-runtime//:antlr4-cpp-runtime",
         ],
+        visibility = ["//visibility:public"],
+        include_prefix = "parser",
         linkstatic = 1,
     )
 
@@ -68,7 +70,7 @@ def _antlr_lexer_library(ctx):
 
     for output in output_files:
 
-        copied = ctx.actions.declare_file("parser/generated/" + output.basename)
+        copied = ctx.actions.declare_file(output.basename)
 
         ctx.actions.run_shell(
             mnemonic = "CopyFile",
@@ -119,7 +121,7 @@ def _antlr_parser_library(ctx):
 
     for output in output_files:
 
-        copied = ctx.actions.declare_file("parser/generated/" + output.basename)
+        copied = ctx.actions.declare_file(output.basename)
 
         ctx.actions.run_shell(
             mnemonic = "CopyFile",
@@ -141,7 +143,7 @@ antlr_lexer_library = rule(
         "_tool": attr.label(
             executable = True,
             cfg = "exec",  # buildifier: disable=attr-cfg
-            default = Label("//bazel:antlr4_tool"),
+            default = Label("//:antlr4_tool"),
         ),
     },
 )
@@ -155,7 +157,7 @@ antlr_parser_library = rule(
         "_tool": attr.label(
             executable = True,
             cfg = "exec",  # buildifier: disable=attr-cfg
-            default = Label("//bazel:antlr4_tool"),
+            default = Label("//:antlr4_tool"),
         ),
     },
 )

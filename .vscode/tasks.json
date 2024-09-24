@@ -1,0 +1,23 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build tests",
+            "type": "shell",
+            "command": "bazel build --config debug //tests:all",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            }
+        },
+        {
+            "label": "build tool",
+            "type": "shell",
+            "command": "bazel build --config debug //:rel2sql",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            }
+        }
+    ]
+}

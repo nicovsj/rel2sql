@@ -1,2 +1,1 @@
 platform settings -w /private/var/tmp/_bazel_nicovsj/324f689d9818b83a06a3cb4ea073aa77/execroot/_main
-settings set target.source-map ./ /Users/nicovsj/Documents/repos/rai/rel-to-sql-semantics

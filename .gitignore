@@ -38,4 +38,6 @@ build/
 bazel-*
 
 # Rel queries
-*.relq
+*.rl
+
+.db/
