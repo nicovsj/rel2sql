@@ -1,6 +1,6 @@
-# rel-to-sql-semantics
+# rel2sql
 
-This repository contains a rel-to-sql translator experimental tool. This project is mainly implemented in C++ with ANTLR for parsing Rel queries.
+This repository contains a rel2sql translation experimental tool. This project is mainly implemented in C++ with ANTLR for parsing Rel queries.
 
 ## Table of Contents
 
@@ -23,21 +23,13 @@ This project uses Bazel as its build system and Task as its task runner. Before 
 
 ## Building the Project
 
-To build the project, follow these steps:
+To build the project, run the following command:
 
-1. Clone the repository and set up the project:
+```sh
+task build
+```
 
-    ```sh
-    task setup
-    ```
-
-2. Build the project using Task:
-
-    ```sh
-    task build
-    ```
-
-   This command will build the `rel-to-sql` executable.
+This command will build the `rel2sql` executable. It should be built in the `bazel-bin` directory.
 
 ## Development
 

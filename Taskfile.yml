@@ -1,10 +1,10 @@
-version: '3'
+version: "3"
 
 tasks:
   build:
-    desc: Build the rel-to-sql project
+    desc: Build the rel2sql executable
     cmds:
-      - bazel build //:rel-to-sql
+      - bazel build //:rel2sql
 
   test:
     desc: Run all tests
@@ -21,22 +21,10 @@ tasks:
     cmds:
       - bazel clean
 
-  run:
-    desc: Run the rel-to-sql executable
-    cmds:
-      - bazel run //:rel-to-sql
-
   default:
     desc: Display available tasks
     cmds:
       - task --list
-
-  setup:
-    desc: Setup the project (clone repository and install dependencies)
-    cmds:
-      - git clone https://github.com/RelationalAI/rel-to-sql-semantics.git
-      - cd rel-to-sql-semantics
-      - echo "Please ensure you have Bazel, a C++ compiler, and JDK 11+ installed."
 
   parse-antlr:
     desc: Parse a Rel file using ANTLR4 and show GUI with AST
