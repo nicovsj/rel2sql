@@ -16,6 +16,7 @@ This repository contains a rel-to-sql translator experimental tool. This project
 This project uses Bazel as its build system and Task as its task runner. Before you begin, ensure you have the following installed on your machine:
 
 - [Bazel](https://bazel.build) (version 7.0.0 or later)
+  - We recommend using [Bazelisk](https://github.com/bazelbuild/bazelisk) to automatically use the correct Bazel version specified in the `.bazelversion` file.
 - [Task](https://taskfile.dev/) (version 3.0.0 or later)
 - A C++ compiler (e.g., `g++` or `clang++`)
 - Java Development Kit (JDK) 11 or later
