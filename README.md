@@ -50,6 +50,8 @@ task generate-compile-commands
 
 This will generate a `compile_commands.json` file in the root of the project and allow clangd to provide code completion and other features.
 
+This project uses [hedron_compile_commands](https://github.com/hedronvision/bazel-compile-commands-extractor) to generate the `compile_commands.json` file. For more information on how this works with Bazel, please refer to the repository's documentation.
+
 ### Testing
 
 To run the tests, use the following command:
