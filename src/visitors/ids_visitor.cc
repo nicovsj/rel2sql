@@ -14,7 +14,6 @@ std::any IDsVisitor::visitProgram(psr::ProgramContext *ctx) {
   RemoveVarsFromDependencyGraph();
 
   ast_data_->sorted_ids = InverseTopologicalOrderOfDependencyGraph();
-  ;
 
   return {};
 }
