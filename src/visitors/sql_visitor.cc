@@ -927,7 +927,7 @@ std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext *ctx) {
     selects.push_back(child_sql);
   }
 
-  auto query = std::make_shared<sql::ast::UnionAll>(selects);
+  auto query = std::make_shared<sql::ast::Union>(selects);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
