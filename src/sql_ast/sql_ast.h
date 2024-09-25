@@ -600,19 +600,22 @@ class SelectStatement : public Sourceable {
   std::optional<std::shared_ptr<FromStatement>> from;
   std::vector<std::shared_ptr<Source>> ctes;
   std::optional<std::shared_ptr<GroupBy>> group_by;
+  bool is_distinct = false;
 
-  SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns) : columns(columns) {}
-
-  SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from)
-      : columns(columns), from(from) {}
-
-  SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from,
-                  std::shared_ptr<GroupBy> group_by)
-      : columns(columns), from(from), group_by(group_by) {}
+  SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, bool is_distinct = false)
+      : columns(columns), is_distinct(is_distinct) {}
 
   SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from,
-                  std::vector<std::shared_ptr<Source>> ctes)
-      : columns(columns), from(from), ctes(ctes) {}
+                  bool is_distinct = false)
+      : columns(columns), from(from), is_distinct(is_distinct) {}
+
+  SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from,
+                  std::shared_ptr<GroupBy> group_by, bool is_distinct = false)
+      : columns(columns), from(from), group_by(group_by), is_distinct(is_distinct) {}
+
+  SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from,
+                  std::vector<std::shared_ptr<Source>> ctes, bool is_distinct = false)
+      : columns(columns), from(from), ctes(ctes), is_distinct(is_distinct) {}
 
   std::ostream& Print(std::ostream& os) const override {
     for (int i = 0; i < ctes.size(); i++) {
@@ -627,6 +630,9 @@ class SelectStatement : public Sourceable {
       os << " ";
     }
     os << "SELECT ";
+    if (is_distinct) {
+      os << "DISTINCT ";
+    }
     for (size_t i = 0; i < columns.size(); i++) {
       if (columns[i]->HasAlias()) {
         os << *columns[i] << " AS " << columns[i]->Alias();
