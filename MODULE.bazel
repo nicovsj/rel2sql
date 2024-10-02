@@ -33,3 +33,7 @@ bazel_dep(name = "spdlog", version = "1.13.0")  # Logging
 
 # Testing dependencies
 bazel_dep(name = "googletest", version = "1.14.0")
+
+# Python bindings
+bazel_dep(name = "pybind11_bazel", version = "2.12.0")
+bazel_dep(name = "rules_python", version = "0.34.0")
