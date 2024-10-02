@@ -11,7 +11,7 @@ namespace rel2sql {
  * @param input The input string to be translated.
  * @return The translated SQL string.
  */
-inline std::string Translate(std::string_view input) {
+std::string Translate(std::string_view input) {
   std::ostringstream oss;
 
   oss << *rel_parser::GetSQL(input);
