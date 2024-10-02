@@ -125,10 +125,15 @@ struct ExtendedNode {
   // SQL expression is the SQL expression that corresponds to the current context
   std::shared_ptr<sql::ast::Expression> sql_expression;
 
+  // Flag to disable translation of the current context
+  bool disabled = false;
+
   // Constant value that unambiguously corresponds to the current context
   std::optional<sql::ast::constant_t> constant;
 
+  // Special flag for defs of rel abs with only literal values
   bool has_only_literal_values = false;
+  std::vector<antlr4::ParserRuleContext *> multiple_literal_values_defs;
 
   // Arity of the current context
   int arity;

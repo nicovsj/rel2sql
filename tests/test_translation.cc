@@ -259,5 +259,5 @@ TEST(TranslationTest, Program) {
 
 TEST(TranslationTest, TableDefinition) {
   EXPECT_EQ(TranslateRelProgram("def F {(1, 2); (3, 4)}"),
-            "CREATE TABLE F AS SELECT 1 AS A1, 2 AS A2 UNION ALL SELECT 3, 4");
+            "CREATE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2))");
 }
