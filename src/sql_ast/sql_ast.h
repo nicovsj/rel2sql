@@ -660,11 +660,11 @@ class SelectStatement : public Sourceable {
 
 class Union : public Sourceable {
  public:
-  std::vector<std::shared_ptr<SelectStatement>> members;
+  std::vector<std::shared_ptr<Sourceable>> members;
 
-  Union(std::shared_ptr<SelectStatement> lhs, std::shared_ptr<SelectStatement> rhs) : members({lhs, rhs}) {}
+  Union(std::shared_ptr<Sourceable> lhs, std::shared_ptr<Sourceable> rhs) : members({lhs, rhs}) {}
 
-  Union(std::vector<std::shared_ptr<SelectStatement>> members) : members(members) {}
+  Union(std::vector<std::shared_ptr<Sourceable>> members) : members(members) {}
 
   std::ostream& Print(std::ostream& os) const override {
     for (size_t i = 0; i < members.size(); i++) {

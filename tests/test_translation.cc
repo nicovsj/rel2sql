@@ -274,6 +274,9 @@ TEST(TranslationTest, Program) {
 TEST(TranslationTest, MultipleDefs) {
   EXPECT_EQ(TranslateRelProgram("def F {(1, 2); (3, 4)} \n def F {(1, 4); (3, 4)}"),
             "CREATE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4), (1, 4), (3, 4)) AS T0(A1, A2));");
+  EXPECT_EQ(TranslateRelProgram("def G {(1, 2); (3, 4)} \n def F {G[1]} \n def F {G[3]}"),
+            "CREATE VIEW G AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE VIEW F AS "
+            "SELECT T1.A2 AS A1 FROM G AS T1 WHERE T1.A1 = 1 UNION SELECT T3.A2 AS A1 FROM G AS T3 WHERE T3.A1 = 3;");
 }
 
 TEST(TranslationTest, TableDefinition) {

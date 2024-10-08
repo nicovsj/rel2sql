@@ -44,10 +44,36 @@ std::any SQLVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
    * Generates an SQL query from the relation abstraction.
    */
 
-  if (GetNode(ctx).has_only_literal_values && !GetNode(ctx).disabled) {
+  if (GetNode(ctx).has_only_literal_values) {
     return SpecialVisitRelAbs(ctx);
   }
 
+  auto query = VisitRelAbsLogic(ctx);
+
+  // If there is only one definition, we can return the query directly
+  if (GetNode(ctx).multiple_defs.empty()) {
+    return std::static_pointer_cast<sql::ast::Expression>(query);
+  }
+
+  // We do have multiple definitions for this relation abstraction
+  std::vector<std::shared_ptr<sql::ast::Sourceable>> queries;
+
+  queries.push_back(query);
+
+  for (auto &additional_ctx : GetNode(ctx).multiple_defs) {
+    auto def_ctx = dynamic_cast<psr::RelDefContext *>(additional_ctx);
+    if (!def_ctx) {
+      throw std::runtime_error("Invalid multiple definition in relation abstraction");
+    }
+    queries.push_back(VisitRelAbsLogic(def_ctx->relAbs()));
+  }
+
+  auto union_query = std::make_shared<sql::ast::Union>(queries);
+
+  return std::static_pointer_cast<sql::ast::Expression>(union_query);
+}
+
+std::shared_ptr<sql::ast::Sourceable> SQLVisitor::VisitRelAbsLogic(psr::RelAbsContext *ctx) {
   std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
   std::vector<std::vector<sql::ast::constant_t>> values;
 
@@ -64,7 +90,7 @@ std::any SQLVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
   GetNode(first_ctx).sql_expression = first_sql;
 
   if (expr_ctxs.size() == 1) {  // Single member relation abstraction
-    return std::dynamic_pointer_cast<sql::ast::Expression>(first_sql);
+    return first_sql;
   }
 
   from_sources.push_back(std::make_shared<sql::ast::Source>(first_sql, GenerateTableAlias()));
@@ -116,9 +142,7 @@ std::any SQLVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
 
   auto from_statement = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
 
-  auto query = std::make_shared<sql::ast::SelectStatement>(selects, from_statement);
-
-  return std::static_pointer_cast<sql::ast::Expression>(query);
+  return std::make_shared<sql::ast::SelectStatement>(selects, from_statement);
 }
 
 std::any SQLVisitor::visitLitExpr(psr::LitExprContext *ctx) {
@@ -882,13 +906,13 @@ std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext *ctx) {
 
   auto &current_node = GetNode(ctx);
   for (auto more_ctx : current_node.multiple_defs) {
-    if (auto def_ctx = dynamic_cast<psr::RelDefContext *>(more_ctx)) {
-      auto rel_abs_ctx = def_ctx->relAbs();
-      auto other_expr_ctxs = rel_abs_ctx->expr();
-      expr_ctxs.insert(expr_ctxs.end(), other_expr_ctxs.begin(), other_expr_ctxs.end());
-    } else {
+    auto def_ctx = dynamic_cast<psr::RelDefContext *>(more_ctx);
+    if (!def_ctx) {
       throw std::runtime_error("Invalid member in relation abstraction: " + more_ctx->getText());
     }
+    auto rel_abs_ctx = def_ctx->relAbs();
+    auto other_expr_ctxs = rel_abs_ctx->expr();
+    expr_ctxs.insert(expr_ctxs.end(), other_expr_ctxs.begin(), other_expr_ctxs.end());
   }
 
   if (expr_ctxs.empty()) {
@@ -1273,7 +1297,7 @@ std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::
 
   for (auto &elem : safe_result) {
     if (elem.union_domain.size() > 1) {
-      std::vector<std::shared_ptr<sql::ast::SelectStatement>> selects;
+      std::vector<std::shared_ptr<sql::ast::Sourceable>> selects;
 
       for (auto domain : elem.union_domain) {
         auto table = std::make_shared<sql::ast::Table>(domain.table_name);

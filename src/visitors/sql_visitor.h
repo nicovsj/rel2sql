@@ -148,6 +148,8 @@ class SQLVisitor : public BaseVisitor {
       const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> &free_var_sources,
       std::shared_ptr<sql::ast::Term> &comparison);
 
+  std::shared_ptr<sql::ast::Sourceable> VisitRelAbsLogic(psr::RelAbsContext *ctx);
+
   std::unordered_map<std::string, int> table_alias_prefix_counter_;
 
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> table_index_;
