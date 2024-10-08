@@ -34,9 +34,14 @@ std::any SQLVisitor::visitRelDef(psr::RelDefContext *ctx) {
   auto child_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
       std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->relAbs())));
 
-  auto view = std::make_shared<sql::ast::View>(child_sql, ctx->T_ID()->getText());
+  std::string def_id = ctx->T_ID()->getText();
 
-  return std::static_pointer_cast<sql::ast::Expression>(view);
+  if (def_id != "output") {
+    auto view = std::make_shared<sql::ast::View>(child_sql, def_id);
+    return std::static_pointer_cast<sql::ast::Expression>(view);
+  }
+
+  return std::static_pointer_cast<sql::ast::Expression>(child_sql);
 }
 
 std::any SQLVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
