@@ -37,7 +37,8 @@ build/
 # Bazel output directories
 bazel-*
 
-# Rel queries
+# Queries
 *.rel
+*.sql
 
 .db/
