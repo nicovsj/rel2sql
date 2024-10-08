@@ -133,7 +133,7 @@ struct ExtendedNode {
 
   // Special flag for defs of rel abs with only literal values
   bool has_only_literal_values = false;
-  std::vector<antlr4::ParserRuleContext *> multiple_literal_values_defs;
+  std::vector<antlr4::ParserRuleContext *> multiple_defs;
 
   // Arity of the current context
   int arity;

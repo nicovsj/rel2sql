@@ -271,6 +271,11 @@ TEST(TranslationTest, Program) {
             "H WHERE H.x = T1.x)");
 }
 
+TEST(TranslationTest, MultipleDefs) {
+  EXPECT_EQ(TranslateRelProgram("def F {(1, 2); (3, 4)} \n def F {(1, 4); (3, 4)}"),
+            "CREATE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4), (1, 4), (3, 4)) AS T0(A1, A2));");
+}
+
 TEST(TranslationTest, TableDefinition) {
   EXPECT_EQ(TranslateRelDef("def F {(1, 2); (3, 4)}"),
             "CREATE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2))");

@@ -3,22 +3,21 @@
 ArityVisitor::ArityVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
 
 std::any ArityVisitor::visitProgram(psr::ProgramContext *ctx) {
-  std::unordered_map<std::string, psr::RelDefContext *> defs_by_id;
+  std::unordered_map<std::string, std::vector<psr::RelDefContext *>> defs_by_id;
 
   for (auto &child_ctx : ctx->relDef()) {
     std::string id = child_ctx->name->getText();
     auto found_def = defs_by_id.find(id);
+    std::string text = child_ctx->getText();
+    auto &current_node = GetNode(child_ctx);
     // If the def is already in the map, it means that the relation has multiple defs
     if (found_def != defs_by_id.end()) {
-      GetNode(found_def->second).multiple_literal_values_defs.push_back(child_ctx);
-      GetNode(child_ctx).disabled = true;
-    } else {
-      defs_by_id[child_ctx->name->getText()] = child_ctx;
+      auto &found_node = GetNode(found_def->second[0]->relAbs());
+      found_node.multiple_defs.push_back(child_ctx);
+      current_node.disabled = true;
     }
+    defs_by_id[child_ctx->name->getText()].push_back(child_ctx);
   }
-
-  std::optional<std::string> last_id;
-  std::optional<bool> last_has_only_literal_values;
 
   for (auto &id : ast_data_->sorted_ids) {
     if (AGGREGATE_MAP.find(id) != AGGREGATE_MAP.end()) {
@@ -29,10 +28,9 @@ std::any ArityVisitor::visitProgram(psr::ProgramContext *ctx) {
       throw std::runtime_error("IDB " + id + " is not defined");
     }
 
-    visit(defs_by_id[id]);
-
-    last_id = id;
-    last_has_only_literal_values = GetNode(defs_by_id[id]).has_only_literal_values;
+    for (auto &def : defs_by_id[id]) {
+      visit(def);
+    }
   }
 
   return {};

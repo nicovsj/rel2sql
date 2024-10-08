@@ -14,6 +14,9 @@ std::any SQLVisitor::visitProgram(psr::ProgramContext *ctx) {
   std::vector<std::shared_ptr<sql::ast::Expression>> exprs;
 
   for (auto &child_ctx : ctx->relDef()) {
+    if (GetNode(child_ctx).disabled) {
+      continue;
+    }
     auto expr = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(child_ctx));
     exprs.push_back(expr);
   }
@@ -877,7 +880,8 @@ std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext *ctx) {
 
   auto expr_ctxs = ctx->expr();
 
-  for (auto more_ctx : GetNode(ctx).multiple_literal_values_defs) {
+  auto &current_node = GetNode(ctx);
+  for (auto more_ctx : current_node.multiple_defs) {
     if (auto def_ctx = dynamic_cast<psr::RelDefContext *>(more_ctx)) {
       auto rel_abs_ctx = def_ctx->relAbs();
       auto other_expr_ctxs = rel_abs_ctx->expr();
@@ -894,7 +898,8 @@ std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext *ctx) {
   int arity = GetNode(expr_ctxs[0]).arity;
 
   for (auto expr_ctx : expr_ctxs) {
-    if (GetNode(expr_ctx).arity != arity) {
+    auto &expr_node = GetNode(expr_ctx);
+    if (expr_node.arity != arity) {
       throw std::runtime_error("Inconsistent arity in relation abstraction");
     }
 
