@@ -531,12 +531,19 @@ class FromStatement : public Expression {
 
   FromStatement(std::shared_ptr<Source> source) : sources({source}) {}
 
-  FromStatement(std::shared_ptr<Source> source, std::shared_ptr<Condition> where) : sources({source}), where(where) {}
+  FromStatement(std::shared_ptr<Source> source, std::shared_ptr<Condition> where) : sources({source}) {
+    if (where && !where->IsEmpty()) {
+      this->where = where;
+    }
+  }
 
   FromStatement(std::vector<std::shared_ptr<Source>> sources) : sources(sources) {}
 
-  FromStatement(std::vector<std::shared_ptr<Source>> sources, std::shared_ptr<Condition> where)
-      : sources(sources), where(where) {}
+  FromStatement(std::vector<std::shared_ptr<Source>> sources, std::shared_ptr<Condition> where) : sources(sources) {
+    if (where && !where->IsEmpty()) {
+      this->where = where;
+    }
+  }
 
   std::ostream& Print(std::ostream& os) const override {
     os << "FROM ";

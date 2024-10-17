@@ -645,9 +645,11 @@ std::any SQLVisitor::VisitConjunctionWithTerms(psr::BinOpContext *ctx) {
 
   auto from_statement = select_expression->from.value();
 
-  auto where_statement = from_statement->where.value();
-
   std::vector<std::shared_ptr<sql::ast::Condition>> new_conditions;
+
+  if (from_statement->where.has_value()) {
+    new_conditions.push_back(from_statement->where.value());
+  }
 
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> free_var_sources;
 
@@ -668,11 +670,7 @@ std::any SQLVisitor::VisitConjunctionWithTerms(psr::BinOpContext *ctx) {
     new_conditions.push_back(std::dynamic_pointer_cast<sql::ast::Condition>(comparator_sql));
   }
 
-  auto additional_conditions = std::make_shared<sql::ast::LogicalCondition>(new_conditions, sql::ast::LogicalOp::AND);
-
-  auto new_where = std::make_shared<sql::ast::LogicalCondition>(
-      std::vector<std::shared_ptr<sql::ast::Condition>>{where_statement, additional_conditions},
-      sql::ast::LogicalOp::AND);
+  auto new_where = std::make_shared<sql::ast::LogicalCondition>(new_conditions, sql::ast::LogicalOp::AND);
 
   from_statement->where = new_where;
 
