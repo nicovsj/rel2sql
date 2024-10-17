@@ -19,6 +19,7 @@ class OptimizerVisitor : public ExpressionVisitor {
  private:
   bool TryReplaceConstantInWhere(const std::shared_ptr<Source>& source, FromStatement& from_statement);
   bool TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, SelectStatement& select_statement);
+  bool TryFlattenSubquery(SelectStatement& select_statement);
 };
 
 }  // namespace sql::ast
