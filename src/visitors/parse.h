@@ -80,10 +80,6 @@ inline std::shared_ptr<sql::ast::Expression> GetSQLFromTree(antlr4::ParserRuleCo
 
   auto sql = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visitor.visit(tree));
 
-  sql::ast::OptimizerVisitor optimizer;
-
-  optimizer.Visit(*sql);
-
   return sql;
 }
 
