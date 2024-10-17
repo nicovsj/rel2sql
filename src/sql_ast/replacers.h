@@ -34,16 +34,34 @@ class ConstantReplacer : public ExpressionVisitor {
   std::shared_ptr<Constant> constant_;
 };
 
-class SourceNameReplacer : public ExpressionVisitor {
+class SourceAndColumnReplacer : public ExpressionVisitor {
  public:
-  SourceNameReplacer(const std::string& old_source_name, const std::string& new_source_name)
-      : old_source_name_(old_source_name), new_source_name_(new_source_name) {}
+  SourceAndColumnReplacer(const std::string& old_source_name, const std::string& new_source_name,
+                          const std::unordered_map<std::string, std::string>& column_map)
+      : old_source_name_(old_source_name), new_source_name_(new_source_name), column_map_(column_map) {}
 
   void Visit(Source& source) override {
+    ExpressionVisitor::Visit(*source.sourceable);
     if (source.alias) {
       auto& alias_statement = source.alias.value();
       if (alias_statement->name == old_source_name_) {
         alias_statement->name = new_source_name_;
+        old_source_name_ = new_source_name_;
+      }
+    }
+  }
+
+  void Visit(Column& column) override {
+    if (column.source && column.source.value()->Alias() == old_source_name_) {
+      if (column.source.value()->alias) {
+        column.source.value()->alias.value()->name = new_source_name_;
+      } else if (auto table = std::dynamic_pointer_cast<Table>(column.source.value()->sourceable)) {
+        table->name = new_source_name_;
+      }
+      old_source_name_ = new_source_name_;
+      auto it = column_map_.find(column.name);
+      if (it != column_map_.end()) {
+        column.name = it->second;
       }
     }
   }
@@ -51,6 +69,7 @@ class SourceNameReplacer : public ExpressionVisitor {
  private:
   std::string old_source_name_;
   std::string new_source_name_;
+  std::unordered_map<std::string, std::string> column_map_;
 };
 
 }  // namespace sql::ast

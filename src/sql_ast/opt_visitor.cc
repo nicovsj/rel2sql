@@ -43,6 +43,10 @@ void OptimizerVisitor::Visit(FromStatement& from_statement) {
     }
   }
   from_statement.sources = new_sources;
+
+  for (auto& source : from_statement.sources) {
+    Visit(*source);
+  }
 }
 
 void OptimizerVisitor::Visit(SelectStatement& select_statement) {
@@ -64,7 +68,14 @@ bool OptimizerVisitor::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte
     if (cte_select->columns.size() == 1 && std::dynamic_pointer_cast<Wildcard>(cte_select->columns[0])) {
       if (cte_select->from.has_value() && cte_select->from.value()->sources.size() == 1) {
         if (auto table = std::dynamic_pointer_cast<Table>(cte_select->from.value()->sources[0]->sourceable)) {
-          SourceNameReplacer replacer(cte->Alias(), table->name);
+          // Create a map of CTE column aliases to their new names (A1, A2, etc.)
+          std::unordered_map<std::string, std::string> column_map;
+          for (size_t i = 0; i < cte->def_columns.size(); ++i) {
+            column_map[cte->def_columns[i]] = fmt::format("A{}", i + 1);
+          }
+
+          // Create a replacer that handles both source name and column name replacements
+          SourceAndColumnReplacer replacer(cte->Alias(), table->name, column_map);
           select_stmt.Accept(replacer);
           return true;
         }
