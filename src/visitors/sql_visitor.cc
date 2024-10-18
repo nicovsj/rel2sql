@@ -943,6 +943,11 @@ std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext *ctx) {
       } else {
         throw std::runtime_error("Invalid product expression: missing productInner");
       }
+    } else if (auto lit_expr_ctx = dynamic_cast<psr::LitExprContext *>(expr_ctx)) {
+      auto constant = GetNode(lit_expr_ctx).constant;
+      auto sql_constant = std::make_shared<sql::ast::Constant>(constant.value());
+      std::vector<sql::ast::Constant> row{*sql_constant};
+      values.push_back(row);
     } else {
       throw std::runtime_error("Invalid expression in relation abstraction: expected product expression");
     }

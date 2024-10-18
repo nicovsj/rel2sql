@@ -5,7 +5,12 @@ LiteralVisitor::LiteralVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisi
 std::any LiteralVisitor::visitLitExpr(psr::LitExprContext *ctx) {
   visit(ctx->literal());
 
-  GetNode(ctx).constant = GetNode(ctx->literal()).constant;
+  auto &lit_expr_node = GetNode(ctx);
+  auto &lit_node = GetNode(ctx->literal());
+
+  lit_expr_node.has_only_literal_values = true;
+
+  lit_expr_node.constant = lit_node.constant;
 
   return {};
 }
@@ -112,7 +117,8 @@ std::any LiteralVisitor::visitRelDef(psr::RelDefContext *ctx) {
   GetNode(ctx->relAbs()).has_only_literal_values = true;
   for (auto &child : ctx->relAbs()->expr()) {
     visit(child);
-    if (!GetNode(child).has_only_literal_values) {
+    auto &child_node = GetNode(child);
+    if (!child_node.has_only_literal_values) {
       GetNode(ctx).has_only_literal_values = false;
       GetNode(ctx->relAbs()).has_only_literal_values = false;
       break;
