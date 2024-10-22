@@ -1,8 +1,5 @@
-load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
-
 # BUILD
 load("@rules_java//java:defs.bzl", "java_binary")
-load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//:antlr.bzl", "antlr_cc_library")
 
 package(default_visibility = ["//visibility:public"])
@@ -41,31 +38,5 @@ cc_binary(
         ":rel2sql_lib",
         "@fmt",
         "@spdlog",
-    ],
-)
-
-pybind_extension(
-    name = "pyrel2sql",
-    srcs = ["src/python_bindings.cpp"],
-    deps = [
-        ":rel2sql_lib"
-    ],
-)
-
-py_library(
-    name = "rel2sql_pylib",
-    data = [
-        ":pyrel2sql",
-    ],
-    imports = [
-        ".",
-    ],
-)
-
-py_test(
-    name = "test_equality",
-    srcs = ["test_equality.py"],
-    deps = [
-        ":rel2sql_pylib",
     ],
 )
