@@ -123,6 +123,22 @@ bool OptimizerVisitor::TryFlattenSubquery(SelectStatement& select_statement) {
 
     select_statement.Accept(replacer);
 
+    if (select_subquery->from.value()->where.has_value()) {
+      auto subquery_where = select_subquery->from.value()->where.value();
+
+      if (from_statement.where.has_value()) {
+        // If the outer query already has a WHERE condition, combine them with AND
+        std::vector<std::shared_ptr<Condition>> conditions;
+        conditions.push_back(from_statement.where.value());
+        conditions.push_back(subquery_where);
+        auto new_where = std::make_shared<LogicalCondition>(conditions, LogicalOp::AND);
+        from_statement.where = new_where;
+      } else {
+        // If the outer query doesn't have a WHERE condition, use the subquery's
+        from_statement.where = subquery_where;
+      }
+    }
+
     // Replace the subquery with its inner source
     *source = *inner_source;
 
