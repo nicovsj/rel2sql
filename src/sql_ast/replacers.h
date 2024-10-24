@@ -37,8 +37,11 @@ class ConstantReplacer : public ExpressionVisitor {
 class SourceAndColumnReplacer : public ExpressionVisitor {
  public:
   SourceAndColumnReplacer(const std::string& old_source_name, const std::string& new_source_name,
-                          const std::unordered_map<std::string, std::string>& column_map)
-      : old_source_name_(old_source_name), new_source_name_(new_source_name), column_map_(column_map) {}
+                          const std::unordered_map<std::string, std::string>& column_map, bool replace_alias = true)
+      : old_source_name_(old_source_name),
+        new_source_name_(new_source_name),
+        column_map_(column_map),
+        replace_alias_(replace_alias) {}
 
   void Visit(Source& source) override {
     ExpressionVisitor::Visit(*source.sourceable);
@@ -51,18 +54,42 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
     }
   }
 
-  void Visit(Column& column) override {
-    if (column.source && column.source.value()->Alias() == old_source_name_) {
-      if (column.source.value()->alias) {
-        column.source.value()->alias.value()->name = new_source_name_;
-      } else if (auto table = std::dynamic_pointer_cast<Table>(column.source.value()->sourceable)) {
+  void Visit(TermSelectable& term_selectable) override {
+    // When visiting a TermSelectable and the term is a column, it is a special case
+    if (auto column = std::dynamic_pointer_cast<Column>(term_selectable.term)) {
+      if (!column->source || column->source.value()->Alias() != old_source_name_) {
+        return;
+      }
+      if (auto table = std::dynamic_pointer_cast<Table>(column->source.value()->sourceable)) {
         table->name = new_source_name_;
+        old_source_name_ = new_source_name_;
       }
-      old_source_name_ = new_source_name_;
-      auto it = column_map_.find(column.name);
+      auto it = column_map_.find(column->name);
       if (it != column_map_.end()) {
-        column.name = it->second;
+        if (replace_alias_ && !term_selectable.alias.has_value()) {
+          term_selectable.alias = it->first;  // Replace TermSelectable's alias
+        }
+        column->name = it->second;
       }
+      return;
+    }
+    ExpressionVisitor::Visit(*term_selectable.term);
+  }
+
+  void Visit(Column& column) override {
+    if (!column.source || column.source.value()->Alias() != old_source_name_) {
+      return;
+    }
+
+    if (column.source.value()->alias) {
+      column.source.value()->alias.value()->name = new_source_name_;
+    } else if (auto table = std::dynamic_pointer_cast<Table>(column.source.value()->sourceable)) {
+      table->name = new_source_name_;
+    }
+    old_source_name_ = new_source_name_;
+    auto it = column_map_.find(column.name);
+    if (it != column_map_.end()) {
+      column.name = it->second;
     }
   }
 
@@ -70,6 +97,7 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
   std::string old_source_name_;
   std::string new_source_name_;
   std::unordered_map<std::string, std::string> column_map_;
+  bool replace_alias_;
 };
 
 }  // namespace sql::ast

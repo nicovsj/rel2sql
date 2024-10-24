@@ -77,7 +77,7 @@ bool OptimizerVisitor::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte
           }
 
           // Create a replacer that handles both source name and column name replacements
-          SourceAndColumnReplacer replacer(cte->Alias(), table->name, column_map);
+          SourceAndColumnReplacer replacer(cte->Alias(), table->name, column_map, false);
           select_stmt.Accept(replacer);
           return true;
         }
