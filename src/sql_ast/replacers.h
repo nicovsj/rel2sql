@@ -36,23 +36,18 @@ class ConstantReplacer : public ExpressionVisitor {
 
 class SourceAndColumnReplacer : public ExpressionVisitor {
  public:
-  SourceAndColumnReplacer(const std::string& old_source_name, const std::string& new_source_name,
-                          const std::unordered_map<std::string, std::string>& column_map, bool replace_alias = true)
+  SourceAndColumnReplacer(const std::string& old_source_name,
+                          const std::unordered_map<std::string, std::shared_ptr<Column>>& column_map,
+                          bool replace_alias = true)
+      : old_source_name_(old_source_name), column_map_(column_map), replace_alias_(replace_alias) {}
+
+  SourceAndColumnReplacer(const std::string& old_source_name, std::shared_ptr<Source> new_source,
+                          const std::unordered_map<std::string, std::shared_ptr<Column>>& column_map,
+                          bool replace_alias = true)
       : old_source_name_(old_source_name),
-        new_source_name_(new_source_name),
+        new_source_(new_source),
         column_map_(column_map),
         replace_alias_(replace_alias) {}
-
-  void Visit(Source& source) override {
-    ExpressionVisitor::Visit(*source.sourceable);
-    if (source.alias) {
-      auto& alias_statement = source.alias.value();
-      if (alias_statement->name == old_source_name_) {
-        alias_statement->name = new_source_name_;
-        old_source_name_ = new_source_name_;
-      }
-    }
-  }
 
   void Visit(TermSelectable& term_selectable) override {
     // When visiting a TermSelectable and the term is a column, it is a special case
@@ -60,43 +55,51 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
       if (!column->source || column->source.value()->Alias() != old_source_name_) {
         return;
       }
-      if (auto table = std::dynamic_pointer_cast<Table>(column->source.value()->sourceable)) {
-        table->name = new_source_name_;
-        old_source_name_ = new_source_name_;
-      }
       auto it = column_map_.find(column->name);
       if (it != column_map_.end()) {
         if (replace_alias_ && !term_selectable.alias.has_value()) {
           term_selectable.alias = it->first;  // Replace TermSelectable's alias
         }
-        column->name = it->second;
+        term_selectable.term = it->second;
       }
       return;
     }
     ExpressionVisitor::Visit(*term_selectable.term);
   }
 
+  void Visit(FromStatement& from_statement) override {
+    if (!new_source_) {
+      ExpressionVisitor::Visit(from_statement);
+      return;
+    }
+
+    for (auto& source : from_statement.sources) {
+      if (source->Alias() == old_source_name_) {
+        source = new_source_;
+        continue;
+      }
+      ExpressionVisitor::Visit(*source);
+    }
+
+    if (from_statement.where) {
+      ExpressionVisitor::Visit(*from_statement.where.value());
+    }
+  }
+
   void Visit(Column& column) override {
     if (!column.source || column.source.value()->Alias() != old_source_name_) {
       return;
     }
-
-    if (column.source.value()->alias) {
-      column.source.value()->alias.value()->name = new_source_name_;
-    } else if (auto table = std::dynamic_pointer_cast<Table>(column.source.value()->sourceable)) {
-      table->name = new_source_name_;
-    }
-    old_source_name_ = new_source_name_;
     auto it = column_map_.find(column.name);
     if (it != column_map_.end()) {
-      column.name = it->second;
+      column = *it->second;
     }
   }
 
  private:
   std::string old_source_name_;
-  std::string new_source_name_;
-  std::unordered_map<std::string, std::string> column_map_;
+  std::shared_ptr<Source> new_source_;
+  std::unordered_map<std::string, std::shared_ptr<Column>> column_map_;
   bool replace_alias_;
 };
 
