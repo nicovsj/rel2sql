@@ -114,7 +114,7 @@ bool OptimizerVisitor::TryFlattenSubquery(SelectStatement& select_statement) {
   for (auto& source : from_statement.sources) {
     auto select_subquery = std::dynamic_pointer_cast<SelectStatement>(source->sourceable);
 
-    if (!select_subquery || !select_subquery->from.has_value()) {
+    if (!select_subquery || !select_subquery->from.has_value() || select_subquery->group_by.has_value()) {
       new_sources.push_back(source);
       continue;
     }
