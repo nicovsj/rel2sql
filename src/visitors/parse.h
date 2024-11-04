@@ -99,6 +99,14 @@ inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input) {
   return sql;
 }
 
+inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQL(std::string_view input) {
+  auto parser = GetParser(input);
+
+  auto tree = parser->program();
+
+  return GetSQLFromTree(tree);
+}
+
 }  // namespace rel_parser
 
 #endif  // PARSE_H

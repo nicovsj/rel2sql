@@ -19,6 +19,14 @@ std::string Translate(std::string_view input) {
   return oss.str();
 }
 
+std::string DumbTranslate(std::string_view input) {
+  std::ostringstream oss;
+
+  oss << *rel_parser::GetUnoptimizedSQL(input);
+
+  return oss.str();
+}
+
 }  // namespace rel2sql
 
 #endif  // REL2SQL_H

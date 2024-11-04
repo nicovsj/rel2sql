@@ -9,24 +9,45 @@ int main(int argc, char* argv[]) {
 
   std::istream* input = &std::cin;
   std::ifstream file;
+  bool unoptimized = false;
+  std::string filename;
 
-  if (argc > 2 && std::string(argv[1]) == "-f") {
-    file.open(argv[2]);
+  // Parse arguments
+  for (int i = 1; i < argc; i++) {
+    std::string arg = argv[i];
+    if (arg == "-u") {
+      unoptimized = true;
+    } else if (arg == "-f") {
+      if (i + 1 >= argc) {
+        std::cerr << "Error: -f requires a filename argument" << std::endl;
+        return 1;
+      }
+      filename = argv[++i];
+    } else {
+      std::cerr << "Usage: " << argv[0] << " [-f filename] [-u]" << std::endl;
+      return 1;
+    }
+  }
+
+  // Handle file input if specified
+  if (!filename.empty()) {
+    file.open(filename);
     if (!file.is_open()) {
-      std::cerr << "Error: Could not open file " << argv[2] << std::endl;
+      std::cerr << "Error: Could not open file " << filename << std::endl;
       return 1;
     }
     input = &file;
-  } else if (argc > 1) {
-    std::cerr << "Usage: " << argv[0] << " [-f filename]" << std::endl;
-    return 1;
   }
 
   oss << input->rdbuf();
 
   std::string file_contents = oss.str();
 
-  std::cout << rel2sql::Translate(file_contents) << std::endl;
+  if (unoptimized) {
+    std::cout << rel2sql::DumbTranslate(file_contents) << std::endl;
+  } else {
+    std::cout << rel2sql::Translate(file_contents) << std::endl;
+  }
 
   if (file.is_open()) {
     file.close();
