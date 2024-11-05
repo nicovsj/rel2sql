@@ -737,7 +737,7 @@ std::any SQLVisitor::VisitExistential(psr::QuantificationContext *ctx) {
       bounded_bindings.push_back(binding);
       auto id_domain = binding->id_domain->getText();
       if (table_index_.find(id_domain) == table_index_.end()) {
-        auto table = std::make_shared<sql::ast::Table>(id_domain);
+        auto table = std::make_shared<sql::ast::Table>(id_domain, ast_data_->arity_by_id[id_domain]);
         table_index_[id_domain] = std::make_shared<sql::ast::Source>(table);
       }
     }
@@ -797,7 +797,7 @@ std::any SQLVisitor::VisitUniversal(psr::QuantificationContext *ctx) {
     }
     auto id_domain = binding->id_domain->getText();
     if (table_index_.find(id_domain) == table_index_.end()) {
-      auto table = std::make_shared<sql::ast::Table>(id_domain);
+      auto table = std::make_shared<sql::ast::Table>(id_domain, ast_data_->arity_by_id[id_domain]);
       table_index_[id_domain] = std::make_shared<sql::ast::Source>(table);
     }
     bound_domain_sources.push_back(table_index_[id_domain]);
@@ -1200,7 +1200,7 @@ std::shared_ptr<sql::ast::Expression> SQLVisitor::GetExpressionFromID(antlr4::Pa
     return std::make_shared<sql::ast::Column>(id);
   }
 
-  return std::make_shared<sql::ast::Table>(id);
+  return std::make_shared<sql::ast::Table>(id, ast_data_->arity_by_id[id]);
 }
 
 std::unordered_map<std::string, SQLVisitor::IndexedContext> SQLVisitor::GetFirstNonVarParamByFreeVariables(
@@ -1308,7 +1308,7 @@ std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::
       std::vector<std::shared_ptr<sql::ast::Sourceable>> selects;
 
       for (auto domain : elem.union_domain) {
-        auto table = std::make_shared<sql::ast::Table>(domain.table_name);
+        auto table = std::make_shared<sql::ast::Table>(domain.table_name, ast_data_->arity_by_id[domain.table_name]);
         auto source = std::make_shared<sql::ast::Source>(table);
         auto from = std::make_shared<sql::ast::FromStatement>(source);
         auto select = std::make_shared<sql::ast::SelectStatement>(
@@ -1322,8 +1322,9 @@ std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::
 
       cte_map[elem] = source;
     } else if (elem.union_domain.size() == 1) {
+      std::string table_name = (*elem.union_domain.begin()).table_name;
       auto table = std::make_shared<sql::ast::Source>(
-          std::make_shared<sql::ast::Table>((*elem.union_domain.begin()).table_name));
+          std::make_shared<sql::ast::Table>(table_name, ast_data_->arity_by_id[table_name]));
       auto from = std::make_shared<sql::ast::FromStatement>(table);
       auto select = std::make_shared<sql::ast::SelectStatement>(
           std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::Wildcard>()}, from);

@@ -180,8 +180,9 @@ class Source : public Expression {
 class Table : public Sourceable {
  public:
   std::string name;
+  int arity;
 
-  Table(std::string name) : name(name) {}
+  Table(std::string name, int arity) : name(name), arity(arity) {}
 
   std::ostream& Print(std::ostream& os) const override { return os << name; };
 

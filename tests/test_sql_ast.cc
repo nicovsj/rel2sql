@@ -7,7 +7,7 @@
 using namespace sql::ast;
 
 TEST(SQLPrintingTest, TablePrint) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 1));
 
   std::ostringstream os;
 
@@ -17,7 +17,7 @@ TEST(SQLPrintingTest, TablePrint) {
 }
 
 TEST(SQLPrintingTest, ColumnPrint) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2));
   auto a1 = std::make_shared<Column>("A1");
   auto a2 = std::make_shared<Column>("A2", t1);
 
@@ -29,7 +29,7 @@ TEST(SQLPrintingTest, ColumnPrint) {
 }
 
 TEST(SQLPrintingTest, ColumnTablePrint) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"), "T1_alias");
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2), "T1_alias");
   auto a1 = std::make_shared<Column>("A1");
   auto a2 = std::make_shared<Column>("A2", t1);
 
@@ -41,7 +41,7 @@ TEST(SQLPrintingTest, ColumnTablePrint) {
 }
 
 TEST(SQLPrintingTest, ValueConditionPrint) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2));
   auto a1 = std::make_shared<Column>("A1");
   auto a2 = std::make_shared<Column>("A2");
 
@@ -56,7 +56,7 @@ TEST(SQLPrintingTest, ValueConditionPrint) {
 }
 
 TEST(SQLPrintingTest, ColumnComparisonConditionPrint) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2));
   auto a1 = std::make_shared<Column>("A1");
   auto a2 = std::make_shared<Column>("A2");
 
@@ -70,7 +70,7 @@ TEST(SQLPrintingTest, ColumnComparisonConditionPrint) {
 }
 
 TEST(SQLPrintingTest, LogicalConditionPrint) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2));
   auto a1 = std::make_shared<Column>("A1");
   auto a2 = std::make_shared<Column>("A2");
 
@@ -89,7 +89,7 @@ TEST(SQLPrintingTest, LogicalConditionPrint) {
 }
 
 TEST(SQLPrintingTest, SelectStatementPrint) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2));
 
   auto c1 = std::make_shared<Column>("A1", t1);
   auto c2 = std::make_shared<Column>("A2", t1);
@@ -97,7 +97,7 @@ TEST(SQLPrintingTest, SelectStatementPrint) {
   auto a1 = std::make_shared<TermSelectable>(c1);
   auto a2 = std::make_shared<TermSelectable>(c2);
 
-  auto t2 = std::make_shared<Source>(std::make_shared<Table>("T2"));
+  auto t2 = std::make_shared<Source>(std::make_shared<Table>("T2", 2));
 
   auto c3 = std::make_shared<Column>("A1", t2);
 
@@ -122,7 +122,7 @@ TEST(SQLPrintingTest, SelectStatementPrint) {
 }
 
 TEST(SQLPrintingTest, SelectSubqueryPrint) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 1));
   auto c1 = std::make_shared<Column>("A1", t1);
 
   auto a1 = std::make_shared<TermSelectable>(c1);
@@ -153,7 +153,7 @@ TEST(SQLPrintingTest, SelectSubqueryPrint) {
 }
 
 TEST(SQLPrintingTest, SelectStatementWithoutConditionPrint) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2));
   auto a1 = std::make_shared<TermSelectable>(std::make_shared<Column>("A1", t1));
   auto a2 = std::make_shared<TermSelectable>(std::make_shared<Column>("A2", t1));
 
@@ -195,7 +195,7 @@ TEST(SQLPrintingTest, SelectStatementForConstant) {
 }
 
 TEST(SQLPrintingTest, SelectStatementForAlias) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 1));
   auto c1 = std::make_shared<Column>("A1", t1);
   auto a1 = std::make_shared<TermSelectable>(c1, "X");
 
@@ -214,7 +214,7 @@ TEST(SQLPrintingTest, SelectStatementForAlias) {
 }
 
 TEST(SQLPrintingTest, ExistsPrint) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 1));
   auto c1 = std::make_shared<Column>("A1", t1);
   auto a1 = std::make_shared<TermSelectable>(c1);
 
@@ -234,7 +234,7 @@ TEST(SQLPrintingTest, ExistsPrint) {
 }
 
 TEST(SQLPrintingTest, InclusionPrint) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 1));
   auto c1 = std::make_shared<Column>("A1", t1);
 
   auto a1 = std::make_shared<TermSelectable>(c1);
@@ -255,7 +255,7 @@ TEST(SQLPrintingTest, InclusionPrint) {
 }
 
 TEST(SQLPrintingTest, NotInclusionPrint) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 1));
   auto c1 = std::make_shared<Column>("A1", t1);
 
   auto a1 = std::make_shared<TermSelectable>(c1);
@@ -276,7 +276,7 @@ TEST(SQLPrintingTest, NotInclusionPrint) {
 }
 
 TEST(SQLPrintingTest, TupleInclusionPrint) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2));
 
   auto c1 = std::make_shared<Column>("A1", t1);
   auto c2 = std::make_shared<Column>("A2", t1);
@@ -311,7 +311,7 @@ TEST(SQLPrintingTest, WildcardPrint) {
 }
 
 TEST(SQLPrintingTest, WildcardColumnPrint) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2));
   auto w1 = std::make_shared<Wildcard>(t1);
 
   std::ostringstream os;
@@ -322,7 +322,7 @@ TEST(SQLPrintingTest, WildcardColumnPrint) {
 }
 
 TEST(SQLPrintingTest, SelectStatementWithColumnAlias) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2));
   auto c1 = std::make_shared<Column>("A1", t1);
   auto c2 = std::make_shared<Column>("A2", t1);
 
@@ -374,10 +374,10 @@ TEST(SQLPrintingTest, FromValues) {
 }
 
 TEST(SQLPrintingTest, CaseWhen) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T", 1));
   auto col1 = std::make_shared<Column>("I", t1);
 
-  auto t2 = std::make_shared<Source>(std::make_shared<Table>("R"));
+  auto t2 = std::make_shared<Source>(std::make_shared<Table>("R", 2));
   auto col2 = std::make_shared<Column>("A1", t2);
   auto col3 = std::make_shared<Column>("A2", t2);
 
@@ -399,7 +399,7 @@ TEST(SQLPrintingTest, CaseWhen) {
 }
 
 TEST(SQLPrintingTest, CTEs) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 1));
   auto c1 = std::make_shared<Column>("A1", t1);
 
   auto a1 = std::make_shared<TermSelectable>(c1);
@@ -415,7 +415,7 @@ TEST(SQLPrintingTest, CTEs) {
 
   auto c4 = std::make_shared<Column>("A1", cte);
 
-  auto t2 = std::make_shared<Source>(std::make_shared<Table>("T2"));
+  auto t2 = std::make_shared<Source>(std::make_shared<Table>("T2", 2));
 
   auto c2 = std::make_shared<Column>("A1", t2);
   auto c3 = std::make_shared<Column>("A2", t2);
@@ -443,7 +443,7 @@ TEST(SQLPrintingTest, CTEs) {
 }
 
 TEST(SQLPrintingTest, View) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 1));
   auto c1 = std::make_shared<Column>("A1", t1);
 
   auto a1 = std::make_shared<TermSelectable>(c1);
@@ -464,7 +464,7 @@ TEST(SQLPrintingTest, View) {
 }
 
 TEST(SQLPrintingTest, SumGroupBy) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2));
   auto c1 = std::make_shared<Column>("A1", t1);
   auto sum1 = std::make_shared<Function>(AggregateFunction::SUM, c1);
   auto c2 = std::make_shared<TermSelectable>(std::make_shared<Column>("A2", t1));
@@ -485,7 +485,7 @@ TEST(SQLPrintingTest, SumGroupBy) {
 }
 
 TEST(SQLPrintingTest, AvgGroupBy) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2));
   auto c1 = std::make_shared<Column>("A1", t1);
   auto avg1 = std::make_shared<Function>(AggregateFunction::AVG, c1);
   auto c2 = std::make_shared<TermSelectable>(std::make_shared<Column>("A2", t1));
@@ -506,7 +506,7 @@ TEST(SQLPrintingTest, AvgGroupBy) {
 }
 
 TEST(SQLPrintingTest, CountGroupBy) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2));
   auto c1 = std::make_shared<Column>("A1", t1);
   auto count1 = std::make_shared<Function>(AggregateFunction::COUNT, c1);
   auto c2 = std::make_shared<TermSelectable>(std::make_shared<Column>("A2", t1));
@@ -527,7 +527,7 @@ TEST(SQLPrintingTest, CountGroupBy) {
 }
 
 TEST(SQLPrintingTest, MinGroupBy) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2));
   auto c1 = std::make_shared<Column>("A1", t1);
   auto min1 = std::make_shared<Function>(AggregateFunction::MIN, c1);
   auto c2 = std::make_shared<TermSelectable>(std::make_shared<Column>("A2", t1));
@@ -548,7 +548,7 @@ TEST(SQLPrintingTest, MinGroupBy) {
 }
 
 TEST(SQLPrintingTest, MaxGroupBy) {
-  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1"));
+  auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 2));
   auto c1 = std::make_shared<Column>("A1", t1);
   auto max1 = std::make_shared<Function>(AggregateFunction::MAX, c1);
   auto c2 = std::make_shared<TermSelectable>(std::make_shared<Column>("A2", t1));
