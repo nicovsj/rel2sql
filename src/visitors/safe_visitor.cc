@@ -73,11 +73,12 @@ std::any SafeVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
 
   current_node.safeness = std::unordered_set<TupleBinding>();
 
-  current_node.safeness.value().insert(GetNode(ctx->expr()).safeness.value().begin(),
-                                       GetNode(ctx->expr()).safeness.value().end());
+  auto expr_node = GetNode(ctx->expr());
+  auto formula_node = GetNode(ctx->formula());
 
-  current_node.safeness.value().insert(GetNode(ctx->formula()).safeness.value().begin(),
-                                       GetNode(ctx->formula()).safeness.value().end());
+  current_node.safeness.value().insert(expr_node.safeness.value().begin(), expr_node.safeness.value().end());
+
+  current_node.safeness.value().insert(formula_node.safeness.value().begin(), formula_node.safeness.value().end());
 
   return {};
 }
@@ -214,6 +215,8 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
 }
 
 std::any SafeVisitor::visitFullAppl(psr::FullApplContext *ctx) {
+  std::string base_id = ctx->getText();
+
   visit(ctx->applBase());
 
   if (!ctx->applBase()->T_ID()) {
@@ -312,11 +315,11 @@ std::any SafeVisitor::visitUnOp(psr::UnOpContext *ctx) {
 std::any SafeVisitor::visitQuantification(psr::QuantificationContext *ctx) {
   visit(ctx->formula());
 
-  if (!ctx->K_exists()) {
-    // If the quantifier is not an existential quantifier, no safeness is guaranteed
-    GetNode(ctx).safeness = std::nullopt;
-    return {};
-  }
+  // if (!ctx->K_exists()) {
+  //   // If the quantifier is not an existential quantifier, no safeness is guaranteed
+  //   GetNode(ctx).safeness = std::nullopt;
+  //   return {};
+  // }
 
   if (ctx->bindingInner()->binding().size() != 1) {
     // TODO: Handle multiple bindings?
