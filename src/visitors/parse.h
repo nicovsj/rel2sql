@@ -92,7 +92,7 @@ inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input) {
 
   auto sql = GetSQLFromTree(tree);
 
-  sql::ast::OptimizerVisitor optimizer;
+  sql::ast::Optimizer optimizer;
 
   optimizer.Visit(*sql);
 

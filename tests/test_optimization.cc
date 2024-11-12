@@ -14,7 +14,7 @@ std::string TranslateRelProgram(const std::string& input,
   auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
   auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree, ast);
-  sql::ast::OptimizerVisitor optimizer;
+  sql::ast::Optimizer optimizer;
   optimizer.Visit(*result);
   std::ostringstream os;
   os << *result;
@@ -30,7 +30,7 @@ std::string TranslateRelDef(const std::string& input, std::unordered_map<std::st
   auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
   auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree, ast);
-  sql::ast::OptimizerVisitor optimizer;
+  sql::ast::Optimizer optimizer;
   optimizer.Visit(*result);
   std::ostringstream os;
   os << *result;
@@ -47,7 +47,7 @@ std::string TranslateRelFormula(const std::string& input,
   auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
   auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree, ast);
-  sql::ast::OptimizerVisitor optimizer;
+  sql::ast::Optimizer optimizer;
   optimizer.Visit(*result);
   std::ostringstream os;
   os << *result;
@@ -64,7 +64,7 @@ std::string TranslateRelExpression(const std::string& input,
   auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
   auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree, ast);
-  sql::ast::OptimizerVisitor optimizer;
+  sql::ast::Optimizer optimizer;
   optimizer.Visit(*result);
   std::ostringstream os;
   os << *result;
