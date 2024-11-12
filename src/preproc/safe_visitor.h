@@ -1,18 +1,17 @@
-#ifndef IDS_VISITOR_H
-#define IDS_VISITOR_H
+#ifndef SAFE_VISITOR_H
+#define SAFE_VISITOR_H
 
 #include <antlr4-runtime.h>
 
-#include "parser/extended_ast.h"
-#include "visitors/base_visitor.h"
+#include "preproc/base_visitor.h"
+#include "structs/extended_ast.h"
 
-class IDsVisitor : public BaseVisitor {
+class SafeVisitor : public BaseVisitor {
   /*
-   * Visitor that computes the dependency graph between IDs in the Rel program
-   * and generates a topological order of the IDs.
+   * Visitor that computes the safeness analysis of each formula and expr in the Rel program.
    */
  public:
-  IDsVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
+  SafeVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
 
   std::any visitProgram(psr::ProgramContext *ctx) override;
 
@@ -20,15 +19,7 @@ class IDsVisitor : public BaseVisitor {
 
   std::any visitRelAbs(psr::RelAbsContext *ctx) override;
 
-  std::any visitIDTerm(psr::IDTermContext *ctx) override;
-
-  std::any visitNumTerm(psr::NumTermContext *ctx) override;
-
-  std::any visitOpTerm(psr::OpTermContext *ctx) override;
-
   // Expression branches
-
-  std::any visitLitExpr(psr::LitExprContext *ctx) override;
 
   std::any visitIDExpr(psr::IDExprContext *ctx) override;
 
@@ -58,24 +49,25 @@ class IDsVisitor : public BaseVisitor {
 
   std::any visitParen(psr::ParenContext *ctx) override;
 
-  std::any visitComparison(psr::ComparisonContext *ctx) override;
-
   //  Binding branches
 
-  std::any visitBindingInner(psr::BindingInnerContext *ctx) override;
+  // std::any visitBindingInner(psr::BindingInnerContext *ctx) override;
 
-  std::any visitBinding(psr::BindingContext *ctx) override;
+  // std::any visitBinding(psr::BindingContext *ctx) override;
 
   std::any visitApplBase(psr::ApplBaseContext *ctx) override;
 
-  std::any visitApplParams(psr::ApplParamsContext *ctx) override;
+  // std::any visitApplParams(psr::ApplParamsContext *ctx) override;
 
   std::any visitApplParam(psr::ApplParamContext *ctx) override;
 
  private:
-  void RemoveVarsFromDependencyGraph();
+  std::any VisitConjunction(psr::BinOpContext *ctx);
 
-  std::vector<std::string> InverseTopologicalOrderOfDependencyGraph();
+  std::any VisitDisjunction(psr::BinOpContext *ctx);
+
+  std::unordered_set<TupleBinding> SpecialIntersectionOfTupleBindings(
+      const std::vector<std::unordered_set<TupleBinding>> &sets) const;
 };
 
-#endif  // IDS_VISITOR_H
+#endif  // SAFE_VISITOR_H

@@ -2,7 +2,7 @@
 
 #include <variant>
 
-#include "visitors/parse.h"
+#include "rel2sql/translate.h"
 
 using namespace rel_parser;
 

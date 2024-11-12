@@ -1,18 +1,18 @@
-#ifndef VARS_VISITOR_H
-#define VARS_VISITOR_H
+#ifndef IDS_VISITOR_H
+#define IDS_VISITOR_H
 
 #include <antlr4-runtime.h>
 
-#include "parser/extended_ast.h"
-#include "visitors/base_visitor.h"
+#include "preproc/base_visitor.h"
+#include "structs/extended_ast.h"
 
-class VariablesVisitor : public BaseVisitor {
+class IDsVisitor : public BaseVisitor {
   /*
-   * Visitor that computes the free variables and variables in scope
-   * for each node in the AST.
+   * Visitor that computes the dependency graph between IDs in the Rel program
+   * and generates a topological order of the IDs.
    */
  public:
-  VariablesVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
+  IDsVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
 
   std::any visitProgram(psr::ProgramContext *ctx) override;
 
@@ -22,9 +22,13 @@ class VariablesVisitor : public BaseVisitor {
 
   std::any visitIDTerm(psr::IDTermContext *ctx) override;
 
+  std::any visitNumTerm(psr::NumTermContext *ctx) override;
+
   std::any visitOpTerm(psr::OpTermContext *ctx) override;
 
   // Expression branches
+
+  std::any visitLitExpr(psr::LitExprContext *ctx) override;
 
   std::any visitIDExpr(psr::IDExprContext *ctx) override;
 
@@ -67,6 +71,11 @@ class VariablesVisitor : public BaseVisitor {
   std::any visitApplParams(psr::ApplParamsContext *ctx) override;
 
   std::any visitApplParam(psr::ApplParamContext *ctx) override;
+
+ private:
+  void RemoveVarsFromDependencyGraph();
+
+  std::vector<std::string> InverseTopologicalOrderOfDependencyGraph();
 };
 
-#endif  // VARS_VISITOR_H
+#endif  // IDS_VISITOR_H

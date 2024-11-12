@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include "sql_ast/sql_ast.h"
+#include "structs/sql_ast.h"
 
 using namespace sql::ast;
 

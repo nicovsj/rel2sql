@@ -1,16 +1,16 @@
-#ifndef PARSE_H
-#define PARSE_H
+#ifndef TRANSLATE_H
+#define TRANSLATE_H
 
 #include "CoreRelLexer.h"
 #include "PrunedCoreRelParser.h"
-#include "sql_ast/opt_visitor.h"
-#include "visitors/arity_visitor.h"
-#include "visitors/balancing_visitor.h"
-#include "visitors/ids_visitor.h"
-#include "visitors/lit_visitor.h"
-#include "visitors/safe_visitor.h"
-#include "visitors/sql_visitor.h"
-#include "visitors/vars_visitor.h"
+#include "optimizer/opt_visitor.h"
+#include "preproc/arity_visitor.h"
+#include "preproc/balancing_visitor.h"
+#include "preproc/ids_visitor.h"
+#include "preproc/lit_visitor.h"
+#include "preproc/safe_visitor.h"
+#include "preproc/vars_visitor.h"
+#include "sql_visitor.h"
 
 namespace rel_parser {
 
@@ -109,4 +109,4 @@ inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQL(std::string_view 
 
 }  // namespace rel_parser
 
-#endif  // PARSE_H
+#endif  // TRANSLATE_H

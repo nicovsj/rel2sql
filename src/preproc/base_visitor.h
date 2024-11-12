@@ -4,7 +4,7 @@
 #include <antlr4-runtime.h>
 
 #include "PrunedCoreRelParserBaseVisitor.h"
-#include "parser/extended_ast.h"
+#include "structs/extended_ast.h"
 
 class BaseVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
   /*

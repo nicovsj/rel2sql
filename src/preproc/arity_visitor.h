@@ -3,8 +3,8 @@
 
 #include <antlr4-runtime.h>
 
-#include "parser/extended_ast.h"
-#include "visitors/base_visitor.h"
+#include "preproc/base_visitor.h"
+#include "structs/extended_ast.h"
 
 class ArityVisitor : public BaseVisitor {
   /*

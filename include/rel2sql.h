@@ -1,7 +1,10 @@
 #ifndef REL2SQL_H
 #define REL2SQL_H
 
-#include "visitors/parse.h"
+#include <sstream>
+#include <string>
+
+#include "rel2sql/translate.h"
 
 namespace rel2sql {
 

@@ -27,7 +27,7 @@ cc_library(
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
     deps = [
-        "//src/visitors",
+        "//src:translate",
     ],
 )
 
@@ -37,6 +37,5 @@ cc_binary(
     deps = [
         ":rel2sql_lib",
         "@fmt",
-        "@spdlog",
     ],
 )

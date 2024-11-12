@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "sql_ast/expr_visitor.h"
+#include "structs/expr_visitor.h"
 #include "utils/utils.h"
 
 namespace sql::ast {

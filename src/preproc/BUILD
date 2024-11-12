@@ -1,11 +1,11 @@
 cc_library(
-    name = "visitors",
+    name = "preproc",
     srcs = glob(["*.cc"]),
     hdrs = glob(["*.h"]),
-    include_prefix = "visitors",
+    include_prefix = "preproc",
     visibility = ["//visibility:public"],
     deps = [
-        "//src/parser:parser",
+        "//src/structs",
         "@antlr4-cpp-runtime//:antlr4-cpp-runtime",
         "@googletest//:gtest",
         "//:rel_parser"

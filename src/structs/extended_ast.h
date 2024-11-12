@@ -6,7 +6,7 @@
 #include <set>
 #include <string>
 
-#include "sql_ast/sql_ast.h"
+#include "structs/sql_ast.h"
 #include "utils/utils.h"
 
 struct ProjectionTable;

@@ -1,8 +1,8 @@
 // cspell:ignore GTEST
 #include <gtest/gtest.h>
 
-#include "sql_ast/sql_ast.h"
-#include "visitors/parse.h"
+#include "rel2sql/translate.h"
+#include "structs/sql_ast.h"
 
 std::string TranslateRelProgram(const std::string& input,
                                 std::unordered_map<std::string, int> external_arity_map = {}) {

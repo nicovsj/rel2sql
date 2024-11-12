@@ -1,23 +1,28 @@
-#ifndef SAFE_VISITOR_H
-#define SAFE_VISITOR_H
+#ifndef VARS_VISITOR_H
+#define VARS_VISITOR_H
 
 #include <antlr4-runtime.h>
 
-#include "parser/extended_ast.h"
-#include "visitors/base_visitor.h"
+#include "preproc/base_visitor.h"
+#include "structs/extended_ast.h"
 
-class SafeVisitor : public BaseVisitor {
+class VariablesVisitor : public BaseVisitor {
   /*
-   * Visitor that computes the safeness analysis of each formula and expr in the Rel program.
+   * Visitor that computes the free variables and variables in scope
+   * for each node in the AST.
    */
  public:
-  SafeVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
+  VariablesVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
 
   std::any visitProgram(psr::ProgramContext *ctx) override;
 
   std::any visitRelDef(psr::RelDefContext *ctx) override;
 
   std::any visitRelAbs(psr::RelAbsContext *ctx) override;
+
+  std::any visitIDTerm(psr::IDTermContext *ctx) override;
+
+  std::any visitOpTerm(psr::OpTermContext *ctx) override;
 
   // Expression branches
 
@@ -49,25 +54,19 @@ class SafeVisitor : public BaseVisitor {
 
   std::any visitParen(psr::ParenContext *ctx) override;
 
+  std::any visitComparison(psr::ComparisonContext *ctx) override;
+
   //  Binding branches
 
-  // std::any visitBindingInner(psr::BindingInnerContext *ctx) override;
+  std::any visitBindingInner(psr::BindingInnerContext *ctx) override;
 
-  // std::any visitBinding(psr::BindingContext *ctx) override;
+  std::any visitBinding(psr::BindingContext *ctx) override;
 
   std::any visitApplBase(psr::ApplBaseContext *ctx) override;
 
-  // std::any visitApplParams(psr::ApplParamsContext *ctx) override;
+  std::any visitApplParams(psr::ApplParamsContext *ctx) override;
 
   std::any visitApplParam(psr::ApplParamContext *ctx) override;
-
- private:
-  std::any VisitConjunction(psr::BinOpContext *ctx);
-
-  std::any VisitDisjunction(psr::BinOpContext *ctx);
-
-  std::unordered_set<TupleBinding> SpecialIntersectionOfTupleBindings(
-      const std::vector<std::unordered_set<TupleBinding>> &sets) const;
 };
 
-#endif  // SAFE_VISITOR_H
+#endif  // VARS_VISITOR_H
