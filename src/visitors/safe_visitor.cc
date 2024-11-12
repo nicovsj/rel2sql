@@ -73,10 +73,7 @@ std::any SafeVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
 
   current_node.safeness = std::unordered_set<TupleBinding>();
 
-  auto expr_node = GetNode(ctx->expr());
   auto formula_node = GetNode(ctx->formula());
-
-  current_node.safeness.value().insert(expr_node.safeness.value().begin(), expr_node.safeness.value().end());
 
   current_node.safeness.value().insert(formula_node.safeness.value().begin(), formula_node.safeness.value().end());
 

@@ -89,11 +89,11 @@ std::any IDsVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
 std::any IDsVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
   str_set deps;
 
-  auto lhs_deps = std::any_cast<str_set>(visit(ctx->lhs));
-  std::set_union(deps.begin(), deps.end(), deps.begin(), deps.end(), std::inserter(deps, deps.begin()));
+  auto lhs_deps = std::any_cast<str_set>(visit(ctx->expr()));
+  std::set_union(deps.begin(), deps.end(), lhs_deps.begin(), lhs_deps.end(), std::inserter(deps, deps.begin()));
 
-  auto rhs_deps = std::any_cast<str_set>(visit(ctx->rhs));
-  std::set_union(deps.begin(), deps.end(), deps.begin(), deps.end(), std::inserter(deps, deps.begin()));
+  auto rhs_deps = std::any_cast<str_set>(visit(ctx->formula()));
+  std::set_union(deps.begin(), deps.end(), rhs_deps.begin(), rhs_deps.end(), std::inserter(deps, deps.begin()));
 
   return deps;
 }
@@ -105,6 +105,7 @@ std::any IDsVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
 
 std::any IDsVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) { return visit(ctx->formula()); }
 
+// FIXME: This is not correct, we need to visit the bindings
 std::any IDsVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) { return visit(ctx->expr()); }
 
 std::any IDsVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) { return visit(ctx->formula()); }

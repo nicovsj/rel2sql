@@ -310,11 +310,11 @@ TEST(TranslationTest, BindingExpression) {
 }
 
 TEST(TranslationTest, BindingExpressionBounded) {
-  EXPECT_EQ(TranslateRelExpression("[x in T, y]: F[x, y] where R(y)", {{"T", 1}, {"R", 1}, {"F", 3}}),
-            "WITH S2(x) AS (SELECT * FROM T), S1(x, y) AS (SELECT * FROM F), S0(y) AS (SELECT * FROM R) SELECT S2.x AS "
-            "A1, S1.y AS A2, T4.A1 AS A3 FROM (SELECT T2.x, T2.y, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS "
-            "A1 FROM F AS T0) AS T2, (SELECT T1.A1 AS y FROM R AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S2, S1, S0 WHERE "
-            "S2.x = T4.x AND S1.x = T4.x AND S1.y = T4.y AND S0.y = T4.y AND S1.y = S0.y AND S2.x = S1.x");
+  EXPECT_EQ(
+      TranslateRelExpression("[x in T, y]: F[x, y] where R(y)", {{"T", 1}, {"R", 1}, {"F", 3}}),
+      "WITH S1(x) AS (SELECT * FROM T), S0(y) AS (SELECT * FROM R) SELECT S1.x AS A1, S0.y AS A2, T4.A1 AS A3 FROM "
+      "(SELECT T2.x, T2.y, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T2, (SELECT T1.A1 "
+      "AS y FROM R AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S1, S0 WHERE S1.x = T4.x AND S0.y = T4.y");
 }
 
 TEST(TranslationTest, BindingFormula) {

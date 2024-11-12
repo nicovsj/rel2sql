@@ -246,9 +246,8 @@ TEST(OptimizationTest, BindingExpression) {
 
 TEST(OptimizationTest, BindingExpressionBounded) {
   EXPECT_EQ(TranslateRelExpression("[x in T, y]: F[x, y] where R(y)", {{"T", 1}, {"R", 1}, {"F", 3}}),
-            "SELECT S2.A1 AS A1, S1.A2 AS A2, T0.A3 AS A3 FROM F AS T0, R AS T1, T AS S2, F AS S1, R AS S0 WHERE S2.A1 "
-            "= T0.A1 AND S1.A1 = T0.A1 AND S1.A2 = T0.A2 AND S0.A1 = T0.A2 AND S1.A2 = S0.A1 AND S2.A1 = S1.A1 AND "
-            "T0.A2 = T1.A1");
+            "SELECT S1.A1 AS A1, S0.A1 AS A2, T0.A3 AS A3 FROM F AS T0, R AS T1, T AS S1, R AS S0 WHERE S1.A1 = T0.A1 "
+            "AND S0.A1 = T0.A2 AND T0.A2 = T1.A1");
 }
 
 TEST(OptimizationTest, BindingFormula) {
