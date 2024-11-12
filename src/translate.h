@@ -3,7 +3,7 @@
 
 #include "CoreRelLexer.h"
 #include "PrunedCoreRelParser.h"
-#include "optimizer/opt_visitor.h"
+#include "optimizer/optimizer.h"
 #include "preproc/arity_visitor.h"
 #include "preproc/balancing_visitor.h"
 #include "preproc/ids_visitor.h"
