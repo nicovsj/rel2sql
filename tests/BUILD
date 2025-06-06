@@ -6,7 +6,7 @@ cc_test(
         "test_extended_ast.cc",
     ],
     deps = [
-        "//:rel2sql_lib",
+        "//:rel2sql",
         "@googletest//:gtest_main",
     ],
 )
@@ -17,7 +17,7 @@ cc_test(
         "test_translation.cc",
     ],
     deps = [
-        "//:rel2sql_lib",
+        "//:rel2sql",
         "@googletest//:gtest_main",
     ],
 )
@@ -28,7 +28,7 @@ cc_test(
         "test_sql_ast.cc",
     ],
     deps = [
-        "//:rel2sql_lib",
+        "//:rel2sql",
         "@googletest//:gtest_main",
     ],
 )
@@ -39,7 +39,7 @@ cc_test(
         "test_optimization.cc",
     ],
     deps = [
-        "//:rel2sql_lib",
+        "//:rel2sql",
         "@googletest//:gtest_main",
     ],
 )
