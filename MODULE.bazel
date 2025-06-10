@@ -14,7 +14,7 @@ bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
 git_override(
     module_name = "hedron_compile_commands",
     remote = "https://github.com/hedronvision/bazel-compile-commands-extractor.git",
-    commit = "1e08f8e0507b6b6b1f4416a9a22cf5c28beaba93",
+    commit = "4f28899228fb3ad0126897876f147ca15026151e",
     # Replace the commit hash (above) with the latest (https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main).
     # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
 )
@@ -32,4 +32,4 @@ bazel_dep(name = "fmt", version = "10.2.1")  # Formatting strings
 bazel_dep(name = "spdlog", version = "1.13.0")  # Logging
 
 # Testing dependencies
-bazel_dep(name = "googletest", version = "1.14.0")
+bazel_dep(name = "googletest", version = "1.17.0")
