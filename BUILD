@@ -56,6 +56,5 @@ cc_shared_library(
 cc_binary(
     name = "rel2sql_bin",
     srcs = ["app/main.cc"],
-    deps = [":rel2sql"],
-    dynamic_deps = [":rel2sql_shared"],
+    deps = [":rel2sql"]
 )
