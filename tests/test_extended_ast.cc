@@ -2,7 +2,7 @@
 
 #include <variant>
 
-#include "rel2sql/translate.h"
+#include "translate.h"
 
 using namespace rel_parser;
 
