@@ -19,9 +19,8 @@ antlr_cc_library(
 )
 
 cc_library(
-    name = "rel2sql",
+    name = "rel2sql_impl",
     hdrs = [
-        "src/rel2sql.h",
         "src/translate.h",
         "src/sql_visitor.h",
     ] + glob([
@@ -37,15 +36,22 @@ cc_library(
         "src/structs/*.cc",
         "src/preproc/*.cc",
     ]),
-    include_prefix = "rel2sql",
     includes = ["src"],
     strip_include_prefix = "src",
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = [
         "//:rel_parser",
         "@googletest//:gtest_main",
         "@fmt",
     ],
+)
+
+cc_library(
+    name = "rel2sql",
+    hdrs = ["include/rel2sql.h"],
+    includes = ["include"],
+    deps = [":rel2sql_impl"],
+    visibility = ["//visibility:public"],
 )
 
 cc_shared_library(
