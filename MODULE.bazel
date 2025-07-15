@@ -5,6 +5,10 @@
 # For more details, please check https://github.com/bazelbuild/bazel/issues/18958
 ###############################################################################
 "Module for com_foo_bar"
+module(
+    name = "rel2sql",
+    version = "0.1.0"
+)
 
 ANTLR4_VERSION = "4.13.1"
 
