@@ -144,7 +144,7 @@ TEST(FreeVarsTest, BindingsExpr) {
 }
 
 TEST(FreeVarsTest, ConditionExpr) {
-  auto ast = GetExtendedAST("def R { F[x] where G(y) }");
+  auto ast = GetExtendedAST("def R { F[x] where G(y) }", {{"F", 2}, {"G", 1}});
 
   auto free_vars = ast.Root().free_variables;
 

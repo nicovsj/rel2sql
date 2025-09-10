@@ -24,6 +24,10 @@ std::any ArityVisitor::visitProgram(psr::ProgramContext *ctx) {
       // Skip aggregate functions
       continue;
     }
+    if (ast_data_->external_dbs.find(id) != ast_data_->external_dbs.end()) {
+      // Skip external databases
+      continue;
+    }
     if (defs_by_id.find(id) == defs_by_id.end()) {
       throw std::runtime_error("IDB " + id + " is not defined");
     }
