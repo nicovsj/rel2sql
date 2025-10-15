@@ -12,8 +12,9 @@ tasks:
       - bazel test //...
 
   generate-compile-commands:
-    desc: Generate compile_commands.json for clangd
+    desc: Generate compile_commands.json for clangd (includes generated files)
     cmds:
+      - bazel build //... --keep_going
       - bazel run @hedron_compile_commands//:refresh_all
 
   clean:
