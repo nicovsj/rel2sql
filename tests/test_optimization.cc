@@ -11,7 +11,7 @@ std::string TranslateRelProgram(const std::string& input,
    */
   auto parser = rel_parser::GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ProgramContext*>(parser->program());
-  auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
+  auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
   auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree, ast);
   sql::ast::Optimizer optimizer;
@@ -27,7 +27,7 @@ std::string TranslateRelDef(const std::string& input, std::unordered_map<std::st
    */
   auto parser = rel_parser::GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::RelDefContext*>(parser->relDef());
-  auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
+  auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
   auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree, ast);
   sql::ast::Optimizer optimizer;
@@ -44,7 +44,7 @@ std::string TranslateRelFormula(const std::string& input,
    */
   auto parser = rel_parser::GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::FormulaContext*>(parser->formula());
-  auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
+  auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
   auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree, ast);
   sql::ast::Optimizer optimizer;
@@ -61,7 +61,7 @@ std::string TranslateRelExpression(const std::string& input,
    */
   auto parser = rel_parser::GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ExprContext*>(parser->expr());
-  auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
+  auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
   auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree, ast);
   sql::ast::Optimizer optimizer;

@@ -181,12 +181,26 @@ class Table : public Sourceable {
  public:
   std::string name;
   int arity;
+  std::vector<std::string> attribute_names;
 
   Table(std::string name, int arity) : name(name), arity(arity) {}
+
+  Table(std::string name, int arity, std::vector<std::string> attr_names)
+      : name(name), arity(arity), attribute_names(std::move(attr_names)) {}
 
   std::ostream& Print(std::ostream& os) const override { return os << name; };
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool HasNamedAttributes() const { return !attribute_names.empty(); }
+
+  std::string GetAttributeName(int index) const {
+    if (HasNamedAttributes() && index >= 0 && index < static_cast<int>(attribute_names.size())) {
+      return attribute_names[index];
+    } else {
+      return "A" + std::to_string(index + 1);
+    }
+  }
 };
 
 class Selectable : public Expression {

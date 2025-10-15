@@ -11,6 +11,7 @@
 #include "preproc/safe_visitor.h"
 #include "preproc/vars_visitor.h"
 #include "sql_visitor.h"
+#include "structs/edb_info.h"
 
 namespace rel_parser {
 
@@ -60,16 +61,6 @@ inline ExtendedAST GetExtendedAST(std::string_view input) {
   return GetExtendedASTFromTree(tree);
 };
 
-inline ExtendedAST GetExtendedAST(std::string_view input, std::unordered_map<std::string, int> extended_arity_map) {
-  auto parser = GetParser(input);
-
-  auto tree = parser->program();
-
-  auto extended_ast_data = std::make_shared<ExtendedASTData>(extended_arity_map);
-
-  return GetExtendedASTFromTree(tree, extended_ast_data);
-};
-
 inline std::shared_ptr<sql::ast::Expression> GetSQLFromTree(antlr4::ParserRuleContext* tree,
                                                             std::optional<ExtendedAST> ast = std::nullopt) {
   if (!ast) {
@@ -99,12 +90,38 @@ inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input) {
   return sql;
 }
 
+inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input, const rel2sql::EDBMap& edb_map) {
+  auto parser = GetParser(input);
+
+  auto tree = parser->program();
+
+  auto ast = GetExtendedASTFromTree(tree, std::make_shared<ExtendedASTData>(edb_map));
+
+  auto sql = GetSQLFromTree(tree, ast);
+
+  sql::ast::Optimizer optimizer;
+
+  optimizer.Visit(*sql);
+
+  return sql;
+}
+
 inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQL(std::string_view input) {
   auto parser = GetParser(input);
 
   auto tree = parser->program();
 
   return GetSQLFromTree(tree);
+}
+
+inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQL(std::string_view input, const rel2sql::EDBMap& edb_map) {
+  auto parser = GetParser(input);
+
+  auto tree = parser->program();
+
+  auto ast = GetExtendedASTFromTree(tree, std::make_shared<ExtendedASTData>(edb_map));
+
+  return GetSQLFromTree(tree, ast);
 }
 
 }  // namespace rel_parser

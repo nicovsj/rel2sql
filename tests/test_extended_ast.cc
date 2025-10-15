@@ -136,7 +136,9 @@ TEST(FreeVarsTest, NegationExpr) {
 }
 
 TEST(FreeVarsTest, BindingsExpr) {
-  auto ast = GetExtendedAST("def R { [x]:  F[x]}", {{"F", 2}});
+  auto edb_map = rel2sql::edb_utils::FromArityMap({{"F", 2}});
+  auto ast =
+      GetExtendedASTFromTree(GetParser("def R { [x]:  F[x]}")->program(), std::make_shared<ExtendedASTData>(edb_map));
 
   auto free_vars = ast.Root().free_variables;
 
@@ -144,7 +146,9 @@ TEST(FreeVarsTest, BindingsExpr) {
 }
 
 TEST(FreeVarsTest, ConditionExpr) {
-  auto ast = GetExtendedAST("def R { F[x] where G(y) }", {{"F", 2}, {"G", 1}});
+  auto edb_map = rel2sql::edb_utils::FromArityMap({{"F", 2}, {"G", 1}});
+  auto ast = GetExtendedASTFromTree(GetParser("def R { F[x] where G(y) }")->program(),
+                                    std::make_shared<ExtendedASTData>(edb_map));
 
   auto free_vars = ast.Root().free_variables;
 
@@ -360,8 +364,10 @@ TEST(ArityVisitorTest, PartialApplication) {
 
 TEST(ArityVisitorTest, Binding) {
   std::unordered_map<std::string, int> arity_map = {{"F", 1}, {"G", 2}};
+  auto edb_map = rel2sql::edb_utils::FromArityMap(arity_map);
 
-  auto ast = GetExtendedAST("def R { [x in F]: G[x] }", arity_map);
+  auto ast = GetExtendedASTFromTree(GetParser("def R { [x in F]: G[x] }")->program(),
+                                    std::make_shared<ExtendedASTData>(edb_map));
 
   EXPECT_EQ(ast.Arity("R"), 2);
 }

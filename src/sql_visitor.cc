@@ -6,14 +6,14 @@ SQLVisitor::SQLVisitor(std::shared_ptr<ExtendedASTData> ast) : BaseVisitor(ast) 
 
 SQLVisitor::~SQLVisitor() = default;
 
-std::any SQLVisitor::visitProgram(psr::ProgramContext *ctx) {
+std::any SQLVisitor::visitProgram(psr::ProgramContext* ctx) {
   /*
    * Generates an SQL query from the program.
    */
 
   std::vector<std::shared_ptr<sql::ast::Expression>> exprs;
 
-  for (auto &child_ctx : ctx->relDef()) {
+  for (auto& child_ctx : ctx->relDef()) {
     if (GetNode(child_ctx).disabled) {
       continue;
     }
@@ -26,7 +26,7 @@ std::any SQLVisitor::visitProgram(psr::ProgramContext *ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
-std::any SQLVisitor::visitRelDef(psr::RelDefContext *ctx) {
+std::any SQLVisitor::visitRelDef(psr::RelDefContext* ctx) {
   /*
    * Generates an SQL query from the relation definition.
    */
@@ -44,7 +44,7 @@ std::any SQLVisitor::visitRelDef(psr::RelDefContext *ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(child_sql);
 }
 
-std::any SQLVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
+std::any SQLVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
   /*
    * Generates an SQL query from the relation abstraction.
    */
@@ -65,8 +65,8 @@ std::any SQLVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
 
   queries.push_back(query);
 
-  for (auto &additional_ctx : GetNode(ctx).multiple_defs) {
-    auto def_ctx = dynamic_cast<psr::RelDefContext *>(additional_ctx);
+  for (auto& additional_ctx : GetNode(ctx).multiple_defs) {
+    auto def_ctx = dynamic_cast<psr::RelDefContext*>(additional_ctx);
     if (!def_ctx) {
       throw std::runtime_error("Invalid multiple definition in relation abstraction");
     }
@@ -78,7 +78,7 @@ std::any SQLVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(union_query);
 }
 
-std::shared_ptr<sql::ast::Sourceable> SQLVisitor::VisitRelAbsLogic(psr::RelAbsContext *ctx) {
+std::shared_ptr<sql::ast::Sourceable> SQLVisitor::VisitRelAbsLogic(psr::RelAbsContext* ctx) {
   std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
   std::vector<std::vector<sql::ast::constant_t>> values;
 
@@ -118,7 +118,7 @@ std::shared_ptr<sql::ast::Sourceable> SQLVisitor::VisitRelAbsLogic(psr::RelAbsCo
     values.push_back({i + 1});
   }
 
-  std::vector<antlr4::ParserRuleContext *> source_ctxs{expr_ctxs.begin(), expr_ctxs.end()};
+  std::vector<antlr4::ParserRuleContext*> source_ctxs{expr_ctxs.begin(), expr_ctxs.end()};
 
   auto condition = EqualityShorthand(source_ctxs);
 
@@ -150,7 +150,7 @@ std::shared_ptr<sql::ast::Sourceable> SQLVisitor::VisitRelAbsLogic(psr::RelAbsCo
   return std::make_shared<sql::ast::SelectStatement>(selects, from_statement);
 }
 
-std::any SQLVisitor::visitLitExpr(psr::LitExprContext *ctx) {
+std::any SQLVisitor::visitLitExpr(psr::LitExprContext* ctx) {
   /*
    * Generates an SQL query from the literal expression.
    */
@@ -171,7 +171,7 @@ std::any SQLVisitor::visitLitExpr(psr::LitExprContext *ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(select_statement);
 }
 
-std::any SQLVisitor::visitIDExpr(psr::IDExprContext *ctx) {
+std::any SQLVisitor::visitIDExpr(psr::IDExprContext* ctx) {
   /*
    * Generates an SQL query from the identifier expression.
    */
@@ -180,7 +180,7 @@ std::any SQLVisitor::visitIDExpr(psr::IDExprContext *ctx) {
   return GetExpressionFromID(ctx, id);
 }
 
-std::any SQLVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
+std::any SQLVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
   /*
    * Generates an SQL query from the product expression.
    */
@@ -193,7 +193,7 @@ std::any SQLVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
 
   auto expr_ctxs = ctx->productInner()->expr();
 
-  for (auto &child_ctx : expr_ctxs) {
+  for (auto& child_ctx : expr_ctxs) {
     auto child_sql = std::static_pointer_cast<sql::ast::Sourceable>(
         std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(child_ctx)));
     auto child_subquery = std::make_shared<sql::ast::Source>(child_sql, GenerateTableAlias());
@@ -201,7 +201,7 @@ std::any SQLVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
     from_sources.push_back(child_subquery);
   }
 
-  std::vector<antlr4::ParserRuleContext *> source_ctxs{expr_ctxs.begin(), expr_ctxs.end()};
+  std::vector<antlr4::ParserRuleContext*> source_ctxs{expr_ctxs.begin(), expr_ctxs.end()};
 
   auto condition = EqualityShorthand(source_ctxs);
 
@@ -224,7 +224,7 @@ std::any SQLVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
-std::any SQLVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
+std::any SQLVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
   /*
    * Generates an SQL query from the condition expression.
    */
@@ -256,7 +256,7 @@ std::any SQLVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
-std::any SQLVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
+std::any SQLVisitor::visitRelAbsExpr(psr::RelAbsExprContext* ctx) {
   /*
    * Generates an SQL query from the relation abstraction expression.
    */
@@ -267,14 +267,14 @@ std::any SQLVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
   return std::dynamic_pointer_cast<sql::ast::Expression>(child_sql);
 }
 
-std::any SQLVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
+std::any SQLVisitor::visitFormulaExpr(psr::FormulaExprContext* ctx) {
   /*
    * Generates an SQL query from the formula expression.
    */
   return visit(ctx->formula());
 }
 
-std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
+std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
   /*
    * Generates an SQL query from the bindings expression.
    */
@@ -310,7 +310,7 @@ std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
 
   std::vector<std::shared_ptr<sql::ast::Source>> ctes;
 
-  for (auto &[_, cte] : cte_map) {
+  for (auto& [_, cte] : cte_map) {
     ctes.push_back(cte);
   }
 
@@ -325,7 +325,7 @@ std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
-std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
+std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
   /*
    * Generates an SQL query from the bindings formula.
    */
@@ -350,7 +350,7 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
 
   std::vector<std::shared_ptr<sql::ast::Source>> ctes;
 
-  for (auto &[_, cte] : cte_map) {
+  for (auto& [_, cte] : cte_map) {
     ctes.push_back(cte);
   }
 
@@ -365,7 +365,7 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
-std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
+std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
   /*
    * Generates an SQL query from the partial application.
    */
@@ -393,14 +393,14 @@ std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
   auto conditions =
       ApplicationVariableConditions(ctx->applBase(), var_params, non_var_params, non_var_param_by_free_vars);
 
-  std::vector<antlr4::ParserRuleContext *> source_ctxs;
+  std::vector<antlr4::ParserRuleContext*> source_ctxs;
   for (auto [param, _] : non_var_params) {
     source_ctxs.push_back(param);
   }
 
   std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
 
-  for (auto &ctx : source_ctxs) {
+  for (auto& ctx : source_ctxs) {
     auto source_subquery = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(ctx).sql_expression);
     from_sources.push_back(source_subquery);
   }
@@ -414,7 +414,8 @@ std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
   int m = ctx->applParams()->applParam().size();
 
   for (int i = 1; i <= GetNode(ctx->applBase()).arity - m; i++) {
-    auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", m + i), ra_source);
+    std::string column_name = GetColumnNameFromSource(ra_source, m + i - 1);
+    auto column = std::make_shared<sql::ast::Column>(column_name, ra_source);
     select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, fmt::format("A{}", i)));
   }
 
@@ -425,7 +426,7 @@ std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
-std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
+std::any SQLVisitor::visitFullAppl(psr::FullApplContext* ctx) {
   /*
    * Generates an SQL query from the full application.
    */
@@ -442,14 +443,14 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
   auto conditions =
       ApplicationVariableConditions(ctx->applBase(), var_params, non_var_params, non_var_param_by_free_vars);
 
-  std::vector<antlr4::ParserRuleContext *> source_ctxs;
+  std::vector<antlr4::ParserRuleContext*> source_ctxs;
   for (auto [param, _] : non_var_params) {
     source_ctxs.push_back(param);
   }
 
   std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
 
-  for (auto &ctx : source_ctxs) {
+  for (auto& ctx : source_ctxs) {
     auto source_subquery = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(ctx).sql_expression);
     from_sources.push_back(source_subquery);
   }
@@ -466,7 +467,7 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext *ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
-std::any SQLVisitor::visitBinOp(psr::BinOpContext *ctx) {
+std::any SQLVisitor::visitBinOp(psr::BinOpContext* ctx) {
   if (ctx->K_and()) {
     return VisitConjunction(ctx);
   } else if (ctx->K_or()) {
@@ -476,14 +477,14 @@ std::any SQLVisitor::visitBinOp(psr::BinOpContext *ctx) {
   }
 }
 
-std::any SQLVisitor::visitUnOp(psr::UnOpContext *ctx) {
+std::any SQLVisitor::visitUnOp(psr::UnOpContext* ctx) {
   /*
    * Generates an SQL query from the unary operation.
    */
   throw std::runtime_error("Not implemented yet");
 }
 
-std::any SQLVisitor::visitQuantification(psr::QuantificationContext *ctx) {
+std::any SQLVisitor::visitQuantification(psr::QuantificationContext* ctx) {
   if (ctx->K_exists()) {
     return VisitExistential(ctx);
   } else if (ctx->K_forall()) {
@@ -493,14 +494,14 @@ std::any SQLVisitor::visitQuantification(psr::QuantificationContext *ctx) {
   }
 }
 
-std::any SQLVisitor::visitParen(psr::ParenContext *ctx) {
+std::any SQLVisitor::visitParen(psr::ParenContext* ctx) {
   /*
    * Generates an SQL query from the parenthesized expression.
    */
   return visit(ctx->formula());
 }
 
-std::any SQLVisitor::visitComparison(psr::ComparisonContext *ctx) {
+std::any SQLVisitor::visitComparison(psr::ComparisonContext* ctx) {
   /*
    * Generates an SQL query from the comparison.
    */
@@ -531,7 +532,7 @@ std::any SQLVisitor::visitComparison(psr::ComparisonContext *ctx) {
   return std::make_shared<sql::ast::ComparisonCondition>(lhs_term, op, rhs_term);
 }
 
-std::any SQLVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
+std::any SQLVisitor::visitApplBase(psr::ApplBaseContext* ctx) {
   /*
    * Generates an SQL query from the application base.
    */
@@ -544,7 +545,7 @@ std::any SQLVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
   throw std::runtime_error("Unknown application base");
 }
 
-std::any SQLVisitor::visitApplParam(psr::ApplParamContext *ctx) {
+std::any SQLVisitor::visitApplParam(psr::ApplParamContext* ctx) {
   /*
    * Generates an SQL query from the application parameter.
    */
@@ -556,14 +557,14 @@ std::any SQLVisitor::visitApplParam(psr::ApplParamContext *ctx) {
   throw std::runtime_error("Unknown application parameter");
 }
 
-std::any SQLVisitor::visitIDTerm(psr::IDTermContext *ctx) {
+std::any SQLVisitor::visitIDTerm(psr::IDTermContext* ctx) {
   /*
    * Generates an SQL query from the identifier term.
    */
   return std::static_pointer_cast<sql::ast::Term>(std::make_shared<sql::ast::Column>(ctx->T_ID()->getText()));
 }
 
-std::any SQLVisitor::visitNumTerm(psr::NumTermContext *ctx) {
+std::any SQLVisitor::visitNumTerm(psr::NumTermContext* ctx) {
   /*
    * Generates an SQL query from the literal term.
    */
@@ -572,7 +573,7 @@ std::any SQLVisitor::visitNumTerm(psr::NumTermContext *ctx) {
   return std::static_pointer_cast<sql::ast::Term>(std::make_shared<sql::ast::Constant>(GetNode(ctx).constant.value()));
 }
 
-std::any SQLVisitor::visitOpTerm(psr::OpTermContext *ctx) {
+std::any SQLVisitor::visitOpTerm(psr::OpTermContext* ctx) {
   /*
    * Generates an SQL query from the application term.
    */
@@ -584,7 +585,7 @@ std::any SQLVisitor::visitOpTerm(psr::OpTermContext *ctx) {
       std::make_shared<sql::ast::Operation>(lhs_term, rhs_term, ctx->operator_()->getText()));
 }
 
-std::any SQLVisitor::VisitConjunction(psr::BinOpContext *ctx) {
+std::any SQLVisitor::VisitConjunction(psr::BinOpContext* ctx) {
   /*
    * Generates an SQL query from the conjunction of the two formulas.
    */
@@ -599,13 +600,13 @@ std::any SQLVisitor::VisitConjunction(psr::BinOpContext *ctx) {
   return VisitGeneralizedConjunction({ctx->lhs, ctx->rhs});
 }
 
-std::any SQLVisitor::VisitGeneralizedConjunction(const std::vector<antlr4::ParserRuleContext *> &subformulas) {
+std::any SQLVisitor::VisitGeneralizedConjunction(const std::vector<antlr4::ParserRuleContext*>& subformulas) {
   /*
    * Generates an SQL query from the conjunction of N subformulas.
    */
 
   std::vector<std::shared_ptr<sql::ast::Source>> subqueries;
-  std::vector<antlr4::ParserRuleContext *> input_ctxs;
+  std::vector<antlr4::ParserRuleContext*> input_ctxs;
 
   for (auto subformula : subformulas) {
     auto subformula_sql = std::static_pointer_cast<sql::ast::Sourceable>(
@@ -627,7 +628,7 @@ std::any SQLVisitor::VisitGeneralizedConjunction(const std::vector<antlr4::Parse
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
-std::any SQLVisitor::VisitConjunctionWithTerms(psr::BinOpContext *ctx) {
+std::any SQLVisitor::VisitConjunctionWithTerms(psr::BinOpContext* ctx) {
   // We know that this subtree is a conjunction of formulas of the form:
   //
   // C1 and C2 and ... and Cn and F1 and F2 and ... and Fm,
@@ -637,8 +638,8 @@ std::any SQLVisitor::VisitConjunctionWithTerms(psr::BinOpContext *ctx) {
   // Conveniently, we already separated the children into comparator and non-comparator formulas
   // with the BalancingVisitor.
 
-  std::vector<antlr4::ParserRuleContext *> other_formulas = GetNode(ctx).other_formulas;
-  std::vector<antlr4::ParserRuleContext *> comparator_formulas = GetNode(ctx).comparator_formulas;
+  std::vector<antlr4::ParserRuleContext*> other_formulas = GetNode(ctx).other_formulas;
+  std::vector<antlr4::ParserRuleContext*> comparator_formulas = GetNode(ctx).comparator_formulas;
 
   auto select_expression = std::static_pointer_cast<sql::ast::SelectStatement>(
       std::any_cast<std::shared_ptr<sql::ast::Expression>>(VisitGeneralizedConjunction(other_formulas)));
@@ -678,8 +679,8 @@ std::any SQLVisitor::VisitConjunctionWithTerms(psr::BinOpContext *ctx) {
 }
 
 void SQLVisitor::SpecialAddSourceToFreeVariablesInTerm(
-    const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> &free_var_sources,
-    std::shared_ptr<sql::ast::Term> &term) {
+    const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources,
+    std::shared_ptr<sql::ast::Term>& term) {
   if (auto column = std::dynamic_pointer_cast<sql::ast::Column>(term)) {
     column->source = free_var_sources.at(column->name);
   } else if (auto operation = std::dynamic_pointer_cast<sql::ast::Operation>(term)) {
@@ -688,7 +689,7 @@ void SQLVisitor::SpecialAddSourceToFreeVariablesInTerm(
   }
 }
 
-std::any SQLVisitor::VisitDisjunction(psr::BinOpContext *ctx) {
+std::any SQLVisitor::VisitDisjunction(psr::BinOpContext* ctx) {
   /*
    * Generates an SQL query from the disjunction of the two formulas.
    */
@@ -703,8 +704,8 @@ std::any SQLVisitor::VisitDisjunction(psr::BinOpContext *ctx) {
   GetNode(ctx->lhs).sql_expression = lhs_subquery;
   GetNode(ctx->rhs).sql_expression = rhs_subquery;
 
-  auto lhs_cols = VarListShorthand(std::vector<antlr4::ParserRuleContext *>{ctx->lhs});
-  auto rhs_cols = VarListShorthand(std::vector<antlr4::ParserRuleContext *>{ctx->rhs});
+  auto lhs_cols = VarListShorthand(std::vector<antlr4::ParserRuleContext*>{ctx->lhs});
+  auto rhs_cols = VarListShorthand(std::vector<antlr4::ParserRuleContext*>{ctx->rhs});
 
   auto lhs_from =
       std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery});
@@ -721,14 +722,14 @@ std::any SQLVisitor::VisitDisjunction(psr::BinOpContext *ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
-std::any SQLVisitor::VisitExistential(psr::QuantificationContext *ctx) {
+std::any SQLVisitor::VisitExistential(psr::QuantificationContext* ctx) {
   /*
    * Generates an SQL query from the existence quantification.
    */
 
-  std::vector<psr::BindingContext *> bounded_bindings;
+  std::vector<psr::BindingContext*> bounded_bindings;
 
-  std::vector<psr::BindingContext *> bindings = ctx->bindingInner()->binding();
+  std::vector<psr::BindingContext*> bindings = ctx->bindingInner()->binding();
 
   auto free_vars = GetNode(ctx).free_variables;
 
@@ -737,8 +738,7 @@ std::any SQLVisitor::VisitExistential(psr::QuantificationContext *ctx) {
       bounded_bindings.push_back(binding);
       auto id_domain = binding->id_domain->getText();
       if (table_index_.find(id_domain) == table_index_.end()) {
-        auto table = std::make_shared<sql::ast::Table>(id_domain, ast_data_->arity_by_id[id_domain]);
-        table_index_[id_domain] = std::make_shared<sql::ast::Source>(table);
+        table_index_[id_domain] = CreateTableSource(id_domain);
       }
     }
   }
@@ -767,7 +767,7 @@ std::any SQLVisitor::VisitExistential(psr::QuantificationContext *ctx) {
   for (auto binding : bounded_bindings) {
     auto id_domain = binding->id_domain->getText();
     auto id = binding->id->getText();
-    auto bound_column = std::make_shared<sql::ast::Column>("A1", table_index_[id_domain]);
+    auto bound_column = std::make_shared<sql::ast::Column>(GetEDBColumnName(id_domain, 0), table_index_[id_domain]);
     auto free_var_column = std::make_shared<sql::ast::Column>(id, subquery);
     conditions.push_back(
         std::make_shared<sql::ast::ComparisonCondition>(free_var_column, sql::ast::CompOp::EQ, bound_column));
@@ -782,7 +782,7 @@ std::any SQLVisitor::VisitExistential(psr::QuantificationContext *ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
-std::any SQLVisitor::VisitUniversal(psr::QuantificationContext *ctx) {
+std::any SQLVisitor::VisitUniversal(psr::QuantificationContext* ctx) {
   /*
    * Generates an SQL query from the universal quantification.
    */
@@ -797,8 +797,7 @@ std::any SQLVisitor::VisitUniversal(psr::QuantificationContext *ctx) {
     }
     auto id_domain = binding->id_domain->getText();
     if (table_index_.find(id_domain) == table_index_.end()) {
-      auto table = std::make_shared<sql::ast::Table>(id_domain, ast_data_->arity_by_id[id_domain]);
-      table_index_[id_domain] = std::make_shared<sql::ast::Source>(table);
+      table_index_[id_domain] = CreateTableSource(id_domain);
     }
     bound_domain_sources.push_back(table_index_[id_domain]);
   }
@@ -834,7 +833,7 @@ std::any SQLVisitor::VisitUniversal(psr::QuantificationContext *ctx) {
 
   for (auto binding : ctx->bindingInner()->binding()) {
     auto id_domain = binding->id_domain->getText();
-    auto bound_column = std::make_shared<sql::ast::Column>("A1", table_index_[id_domain]);
+    auto bound_column = std::make_shared<sql::ast::Column>(GetEDBColumnName(id_domain, 0), table_index_[id_domain]);
     inclusion_tuple.push_back(bound_column);
   }
 
@@ -859,7 +858,7 @@ std::any SQLVisitor::VisitUniversal(psr::QuantificationContext *ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
-std::any SQLVisitor::VisitAggregate(sql::ast::AggregateFunction function, psr::ExprContext *expr_ctx) {
+std::any SQLVisitor::VisitAggregate(sql::ast::AggregateFunction function, psr::ExprContext* expr_ctx) {
   /*
    * Generates an SQL query from the aggregate.
    */
@@ -872,7 +871,14 @@ std::any SQLVisitor::VisitAggregate(sql::ast::AggregateFunction function, psr::E
 
   int arity = GetNode(expr_ctx).arity;
 
-  auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", arity), subquery);
+  // Always use proper column name from the table (EDBInfo handles both custom and standard naming)
+  std::string column_name;
+  if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(subquery->sourceable)) {
+    column_name = table->GetAttributeName(arity - 1);  // Convert to 0-based index
+  } else {
+    column_name = fmt::format("A{}", arity);
+  }
+  auto column = std::make_shared<sql::ast::Column>(column_name, subquery);
 
   auto aggregate_column =
       std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Function>(function, column), "A1");
@@ -902,14 +908,14 @@ std::any SQLVisitor::VisitAggregate(sql::ast::AggregateFunction function, psr::E
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
-std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext *ctx) {
+std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext* ctx) {
   std::vector<std::vector<sql::ast::Constant>> values;
 
   auto expr_ctxs = ctx->expr();
 
-  auto &current_node = GetNode(ctx);
+  auto& current_node = GetNode(ctx);
   for (auto more_ctx : current_node.multiple_defs) {
-    auto def_ctx = dynamic_cast<psr::RelDefContext *>(more_ctx);
+    auto def_ctx = dynamic_cast<psr::RelDefContext*>(more_ctx);
     if (!def_ctx) {
       throw std::runtime_error("Invalid member in relation abstraction: " + more_ctx->getText());
     }
@@ -925,12 +931,12 @@ std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext *ctx) {
   int arity = GetNode(expr_ctxs[0]).arity;
 
   for (auto expr_ctx : expr_ctxs) {
-    auto &expr_node = GetNode(expr_ctx);
+    auto& expr_node = GetNode(expr_ctx);
     if (expr_node.arity != arity) {
       throw std::runtime_error("Inconsistent arity in relation abstraction");
     }
 
-    if (auto product_inner = dynamic_cast<psr::ProductExprContext *>(expr_ctx)) {
+    if (auto product_inner = dynamic_cast<psr::ProductExprContext*>(expr_ctx)) {
       auto product_inner_ctx = product_inner->productInner();
       if (product_inner_ctx) {
         std::vector<sql::ast::Constant> row;
@@ -943,7 +949,7 @@ std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext *ctx) {
       } else {
         throw std::runtime_error("Invalid product expression: missing productInner");
       }
-    } else if (auto lit_expr_ctx = dynamic_cast<psr::LitExprContext *>(expr_ctx)) {
+    } else if (auto lit_expr_ctx = dynamic_cast<psr::LitExprContext*>(expr_ctx)) {
       auto constant = GetNode(lit_expr_ctx).constant;
       auto sql_constant = std::make_shared<sql::ast::Constant>(constant.value());
       std::vector<sql::ast::Constant> row{*sql_constant};
@@ -973,7 +979,7 @@ std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext *ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(select);
 }
 
-std::any SQLVisitor::SpecialVisitProductExpr(psr::ProductExprContext *ctx) {
+std::any SQLVisitor::SpecialVisitProductExpr(psr::ProductExprContext* ctx) {
   /*
    * Generates an SQL query from an "only literals" product expression.
    */
@@ -982,7 +988,7 @@ std::any SQLVisitor::SpecialVisitProductExpr(psr::ProductExprContext *ctx) {
   std::vector<std::shared_ptr<sql::ast::Selectable>> selects;
 
   // All children must be constants
-  for (auto &child_ctx : expr_ctxs) {
+  for (auto& child_ctx : expr_ctxs) {
     if (!GetNode(child_ctx).constant.has_value()) {
       throw std::runtime_error("Special product expression with non-constant member");
     }
@@ -1006,10 +1012,61 @@ std::string SQLVisitor::GenerateTableAlias(std::string prefix) {
   return fmt::format("{}{}", prefix, table_alias_prefix_counter_[prefix]++);
 }
 
+std::shared_ptr<sql::ast::Source> SQLVisitor::CreateTableSource(const std::string& table_name) {
+  /*
+   * Creates a table source with proper column names based on EDB attribute information.
+   */
+  std::shared_ptr<sql::ast::Table> table;
+
+  // Always create table with attribute names from EDBInfo (whether custom or standard A1, A2, etc.)
+  auto edb_info = ast_data_->GetEDBInfo(table_name);
+  if (edb_info && edb_info->arity() > 0) {
+    std::vector<std::string> attribute_names;
+    for (int i = 0; i < edb_info->arity(); ++i) {
+      attribute_names.push_back(edb_info->get_attribute_name(i));
+    }
+    table = std::make_shared<sql::ast::Table>(table_name, edb_info->arity(), attribute_names);
+    // Create a source with an alias that includes the attribute names
+    auto alias = std::make_shared<sql::ast::AliasStatement>(GenerateTableAlias(), attribute_names);
+    return std::make_shared<sql::ast::Source>(table, alias);
+  } else {
+    // Fallback to default table creation if EDBInfo not found
+    table = std::make_shared<sql::ast::Table>(table_name, ast_data_->arity_by_id[table_name]);
+    return std::make_shared<sql::ast::Source>(table);
+  }
+}
+
+std::string SQLVisitor::GetEDBColumnName(const std::string& table_name, int index) const {
+  /*
+   * Gets the proper column name for an EDB table at the given index.
+   */
+  // Always use EDBInfo for attribute names (whether custom or standard A1, A2, etc.)
+  auto edb_info = ast_data_->GetEDBInfo(table_name);
+  if (edb_info) {
+    return edb_info->get_attribute_name(index);
+  } else {
+    // Fallback to default naming if EDBInfo not found (shouldn't happen with EDBMap)
+    return fmt::format("A{}", index + 1);
+  }
+}
+
+std::string SQLVisitor::GetColumnNameFromSource(const std::shared_ptr<sql::ast::Source>& source, int index) const {
+  /*
+   * Gets the proper column name from a source at the given index.
+   */
+  if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(source->sourceable)) {
+    // Always use the attribute names from EDBInfo (whether custom or standard A1, A2, etc.)
+    return table->GetAttributeName(index);
+  } else {
+    // For subqueries and other sources, use default naming
+    return fmt::format("A{}", index + 1);
+  }
+}
+
 std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::ApplicationVariableConditions(
-    psr::ApplBaseContext *base_appl_ctx, const std::vector<IndexedContext> &variable_param_ctxs,
-    const std::vector<IndexedContext> &non_variable_param_ctxs,
-    const std::unordered_map<std::string, IndexedContext> &params_by_free_vars) const {
+    psr::ApplBaseContext* base_appl_ctx, const std::vector<IndexedContext>& variable_param_ctxs,
+    const std::vector<IndexedContext>& non_variable_param_ctxs,
+    const std::unordered_map<std::string, IndexedContext>& params_by_free_vars) const {
   std::vector<std::shared_ptr<sql::ast::Condition>> conditions;
 
   // Map the singled-out variables that are parameters to the set of parameter contexts
@@ -1039,15 +1096,31 @@ std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::ApplicationVariabl
       // The ctxs_that_are_the_variable set is ordered by the index of the parameter context
       // so we can just take the first one to do the equality
       auto min_parameter_variable_index = variable_params.begin()->index;
-      auto rhs = std::make_shared<sql::ast::Column>(fmt::format("A{}", min_parameter_variable_index), ra_subquery);
+      // Always use proper column name from the table (EDBInfo handles both custom and standard naming)
+      std::string rhs_column_name;
+      if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(ra_subquery->sourceable)) {
+        rhs_column_name = table->GetAttributeName(min_parameter_variable_index - 1);  // Convert to 0-based index
+      } else {
+        rhs_column_name = fmt::format("A{}", min_parameter_variable_index);
+      }
+      auto rhs = std::make_shared<sql::ast::Column>(rhs_column_name, ra_subquery);
 
       conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs));
     }
     if (variable_params.size() > 1) {
       // Then the variable is repeated as a parameter multiple times, and we need to equate those columns
       for (auto it1 = variable_params.begin(), it2 = std::next(it1); it2 != variable_params.end(); it1++, it2++) {
-        auto lhs = std::make_shared<sql::ast::Column>(fmt::format("A{}", it1->index), ra_subquery);
-        auto rhs = std::make_shared<sql::ast::Column>(fmt::format("A{}", it2->index), ra_subquery);
+        // Always use proper column names from the table (EDBInfo handles both custom and standard naming)
+        std::string lhs_column_name, rhs_column_name;
+        if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(ra_subquery->sourceable)) {
+          lhs_column_name = table->GetAttributeName(it1->index - 1);  // Convert to 0-based index
+          rhs_column_name = table->GetAttributeName(it2->index - 1);  // Convert to 0-based index
+        } else {
+          lhs_column_name = fmt::format("A{}", it1->index);
+          rhs_column_name = fmt::format("A{}", it2->index);
+        }
+        auto lhs = std::make_shared<sql::ast::Column>(lhs_column_name, ra_subquery);
+        auto rhs = std::make_shared<sql::ast::Column>(rhs_column_name, ra_subquery);
         conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs));
       }
     }
@@ -1065,24 +1138,23 @@ std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::ApplicationVariabl
   return conditions;
 }
 
-std::shared_ptr<sql::ast::Condition> SQLVisitor::EqualityShorthand(
-    std::vector<antlr4::ParserRuleContext *> input_ctxs) {
+std::shared_ptr<sql::ast::Condition> SQLVisitor::EqualityShorthand(std::vector<antlr4::ParserRuleContext*> input_ctxs) {
   /*
    * Generates a condition that equates all the repeated variables in the input map. This is the EQ function
    * in the paper.
    */
 
-  std::unordered_map<std::string, std::vector<antlr4::ParserRuleContext *>> repetition_map;
+  std::unordered_map<std::string, std::vector<antlr4::ParserRuleContext*>> repetition_map;
 
-  for (auto const &ctx : input_ctxs) {
-    for (auto const &var : GetNode(ctx).variables) {
+  for (auto const& ctx : input_ctxs) {
+    for (auto const& var : GetNode(ctx).variables) {
       repetition_map[var].push_back(ctx);
     }
   }
 
   std::vector<std::shared_ptr<sql::ast::Condition>> conditions;
 
-  for (auto const &[var, ctxs] : repetition_map) {
+  for (auto const& [var, ctxs] : repetition_map) {
     if (ctxs.size() < 2) continue;
 
     for (size_t i = 0; i < ctxs.size(); i++) {
@@ -1102,13 +1174,13 @@ std::shared_ptr<sql::ast::Condition> SQLVisitor::EqualityShorthand(
 }
 
 std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::VarListShorthand(
-    std::vector<antlr4::ParserRuleContext *> input_ctxs) {
+    std::vector<antlr4::ParserRuleContext*> input_ctxs) {
   std::unordered_set<std::string> seen_vars;
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
 
-  for (auto const &ctx : input_ctxs) {
-    for (auto const &var : GetNode(ctx).free_variables) {
+  for (auto const& ctx : input_ctxs) {
+    for (auto const& var : GetNode(ctx).free_variables) {
       if (seen_vars.find(var) != seen_vars.end()) continue;
 
       auto source = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(ctx).sql_expression);
@@ -1125,7 +1197,7 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::VarListShorthand(
 }
 
 std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVarList(
-    psr::ApplBaseContext *base_ctx, std::vector<IndexedContext> input_ctxs,
+    psr::ApplBaseContext* base_ctx, std::vector<IndexedContext> input_ctxs,
     std::vector<IndexedContext> variable_param_ctxs,
     std::unordered_map<std::string, IndexedContext> free_vars_in_non_variable_params) const {
   std::unordered_set<std::string> seen_vars;
@@ -1137,14 +1209,14 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVar
   // Remove variable parameters that are already part of the free variables of non-variable parameters
   variable_param_ctxs.erase(
       std::remove_if(variable_param_ctxs.begin(), variable_param_ctxs.end(),
-                     [this, &free_vars_in_non_variable_params](auto const &ctx) {
+                     [this, &free_vars_in_non_variable_params](auto const& ctx) {
                        return free_vars_in_non_variable_params.find(*GetNode(ctx.ctx).variables.begin()) !=
                               free_vars_in_non_variable_params.end();
                      }),
       variable_param_ctxs.end());
 
   // Map the non-free (bound) variable parameter indexes to the variable names
-  for (auto const &[ctx, index] : variable_param_ctxs) {
+  for (auto const& [ctx, index] : variable_param_ctxs) {
     auto variables = GetNode(ctx).variables;
 
     if (variables.size() != 1) {
@@ -1161,12 +1233,12 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVar
   final_ctxs.insert(final_ctxs.end(), variable_param_ctxs.begin(), variable_param_ctxs.end());
   final_ctxs.insert(final_ctxs.end(), input_ctxs.begin(), input_ctxs.end());
 
-  std::sort(final_ctxs.begin(), final_ctxs.end(), [](auto const &a, auto const &b) { return a.index < b.index; });
+  std::sort(final_ctxs.begin(), final_ctxs.end(), [](auto const& a, auto const& b) { return a.index < b.index; });
 
   auto ra_subquery = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(base_ctx).sql_expression);
 
-  for (auto const &[ctx, index] : final_ctxs) {
-    for (auto const &var : GetNode(ctx).variables) {
+  for (auto const& [ctx, index] : final_ctxs) {
+    for (auto const& var : GetNode(ctx).variables) {
       if (seen_vars.find(var) != seen_vars.end()) continue;
 
       std::shared_ptr<sql::ast::Selectable> selectable;
@@ -1174,7 +1246,16 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVar
       if (auto found = bound_variable_ctxs_by_index.find(index); found != bound_variable_ctxs_by_index.end()) {
         auto bound_var = found->second;
 
-        auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", index), ra_subquery);
+        // Use proper column name from the table instead of hardcoded A{}
+        std::string column_name;
+        if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(ra_subquery->sourceable)) {
+          // The index is 1-based, but GetAttributeName expects 0-based index
+          int adjusted_index = index - 1;
+          column_name = table->GetAttributeName(adjusted_index);
+        } else {
+          column_name = fmt::format("A{}", index);
+        }
+        auto column = std::make_shared<sql::ast::Column>(column_name, ra_subquery);
         selectable = std::make_shared<sql::ast::TermSelectable>(column, bound_var);
       } else {
         auto subquery = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(ctx).sql_expression);
@@ -1191,7 +1272,7 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVar
   return columns;
 }
 
-std::shared_ptr<sql::ast::Expression> SQLVisitor::GetExpressionFromID(antlr4::ParserRuleContext *ctx,
+std::shared_ptr<sql::ast::Expression> SQLVisitor::GetExpressionFromID(antlr4::ParserRuleContext* ctx,
                                                                       std::string id) const {
   auto node = GetNode(ctx);
 
@@ -1200,11 +1281,22 @@ std::shared_ptr<sql::ast::Expression> SQLVisitor::GetExpressionFromID(antlr4::Pa
     return std::make_shared<sql::ast::Column>(id);
   }
 
-  return std::make_shared<sql::ast::Table>(id, ast_data_->arity_by_id[id]);
+  // Always create table with attribute names from EDBInfo (whether custom or standard A1, A2, etc.)
+  auto edb_info = ast_data_->GetEDBInfo(id);
+  if (edb_info && edb_info->arity() > 0) {
+    std::vector<std::string> attribute_names;
+    for (int i = 0; i < edb_info->arity(); ++i) {
+      attribute_names.push_back(edb_info->get_attribute_name(i));
+    }
+    return std::make_shared<sql::ast::Table>(id, edb_info->arity(), attribute_names);
+  } else {
+    // Fallback to default table creation if EDBInfo not found
+    return std::make_shared<sql::ast::Table>(id, ast_data_->arity_by_id[id]);
+  }
 }
 
 std::unordered_map<std::string, SQLVisitor::IndexedContext> SQLVisitor::GetFirstNonVarParamByFreeVariables(
-    const std::vector<IndexedContext> &non_var_params) {
+    const std::vector<IndexedContext>& non_var_params) {
   std::unordered_map<std::string, IndexedContext> minimum_context_by_free_variable;
 
   for (auto indexed_ctx : non_var_params) {
@@ -1221,8 +1313,8 @@ std::unordered_map<std::string, SQLVisitor::IndexedContext> SQLVisitor::GetFirst
 }
 
 std::pair<std::vector<SQLVisitor::IndexedContext>, std::vector<SQLVisitor::IndexedContext>>
-SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext *base,
-                                            const std::vector<psr::ApplParamContext *> &params) {
+SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext* base,
+                                            const std::vector<psr::ApplParamContext*>& params) {
   /*
    * Splits the parameters of the full application into variable and non-variable parameters.
    */
@@ -1250,8 +1342,8 @@ SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext *base,
   return std::make_pair(var_params, non_var_params);
 }
 
-std::unordered_set<TupleBinding> SQLVisitor::SafeFunction(psr::BindingInnerContext *binding_ctx,
-                                                          antlr4::ParserRuleContext *expr_ctx) {
+std::unordered_set<TupleBinding> SQLVisitor::SafeFunction(psr::BindingInnerContext* binding_ctx,
+                                                          antlr4::ParserRuleContext* expr_ctx) {
   /*
    * Computes the safe function from the paper.
    */
@@ -1296,19 +1388,30 @@ std::unordered_set<TupleBinding> SQLVisitor::SafeFunction(psr::BindingInnerConte
 }
 
 std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::ComputeBindingsCTEs(
-    std::unordered_set<TupleBinding> &safe_result) {
+    std::unordered_set<TupleBinding>& safe_result) {
   /*
    * Computes the CTEs for the bindings. Associates each safe result with the CTE that it generates for after use.
    */
 
   std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> cte_map;
 
-  for (auto &elem : safe_result) {
+  for (auto& elem : safe_result) {
     if (elem.union_domain.size() > 1) {
       std::vector<std::shared_ptr<sql::ast::Sourceable>> selects;
 
       for (auto domain : elem.union_domain) {
-        auto table = std::make_shared<sql::ast::Table>(domain.table_name, ast_data_->arity_by_id[domain.table_name]);
+        std::shared_ptr<sql::ast::Table> table;
+        // Always create table with attribute names from EDBInfo (whether custom or standard A1, A2, etc.)
+        auto edb_info = ast_data_->GetEDBInfo(domain.table_name);
+        if (edb_info && edb_info->arity() > 0) {
+          std::vector<std::string> attribute_names;
+          for (int i = 0; i < edb_info->arity(); ++i) {
+            attribute_names.push_back(edb_info->get_attribute_name(i));
+          }
+          table = std::make_shared<sql::ast::Table>(domain.table_name, edb_info->arity(), attribute_names);
+        } else {
+          table = std::make_shared<sql::ast::Table>(domain.table_name, ast_data_->arity_by_id[domain.table_name]);
+        }
         auto source = std::make_shared<sql::ast::Source>(table);
         auto from = std::make_shared<sql::ast::FromStatement>(source);
         auto select = std::make_shared<sql::ast::SelectStatement>(
@@ -1341,7 +1444,7 @@ std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::
 }
 
 std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::ComputeBindingsOutput(
-    const std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> &safe_result) {
+    const std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>>& safe_result) {
   /*
    * Computes the output for the bindings.
    */
@@ -1349,7 +1452,7 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::ComputeBindingsOu
   std::unordered_set<std::string> seen_vars;
 
   for (auto [tuple_binding, cte] : safe_result) {
-    const auto &[vars, union_domain] = tuple_binding;
+    const auto& [vars, union_domain] = tuple_binding;
     for (auto var : vars) {
       if (seen_vars.find(var) != seen_vars.end()) continue;
 
@@ -1365,8 +1468,8 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::ComputeBindingsOu
 }
 
 std::shared_ptr<sql::ast::Condition> SQLVisitor::BindingsEqualityShorthand(
-    antlr4::ParserRuleContext *expr,
-    const std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> &safe_result) {
+    antlr4::ParserRuleContext* expr,
+    const std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>>& safe_result) {
   /*
    * Generates a condition that equates all the repeated variables in the input map. This is the EQ function
    * in the paper.
@@ -1380,9 +1483,9 @@ std::shared_ptr<sql::ast::Condition> SQLVisitor::BindingsEqualityShorthand(
 
   std::vector<std::shared_ptr<sql::ast::Condition>> conditions;
 
-  for (auto const &[tuple_binding, cte] : safe_result) {
-    auto const &[vars, union_domain] = tuple_binding;
-    for (auto const &var : vars) {
+  for (auto const& [tuple_binding, cte] : safe_result) {
+    auto const& [vars, union_domain] = tuple_binding;
+    for (auto const& var : vars) {
       if (expr_free_vars.find(var) != expr_free_vars.end()) {
         auto condition = std::make_shared<sql::ast::ComparisonCondition>(
             std::make_shared<sql::ast::Column>(var, cte), sql::ast::CompOp::EQ,
@@ -1394,7 +1497,7 @@ std::shared_ptr<sql::ast::Condition> SQLVisitor::BindingsEqualityShorthand(
     }
   }
 
-  for (auto const &[var, sources] : repetition_map) {
+  for (auto const& [var, sources] : repetition_map) {
     if (sources.size() < 2) continue;
 
     for (size_t i = 0; i < sources.size(); i++) {

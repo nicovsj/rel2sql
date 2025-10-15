@@ -1,6 +1,7 @@
 // cspell:ignore GTEST
 #include <gtest/gtest.h>
 
+#include "structs/edb_info.h"
 #include "structs/sql_ast.h"
 #include "translate.h"
 
@@ -11,7 +12,7 @@ std::string TranslateRelProgram(const std::string& input,
    */
   auto parser = rel_parser::GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ProgramContext*>(parser->program());
-  auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
+  auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
   auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree, ast);
   std::ostringstream os;
@@ -25,7 +26,7 @@ std::string TranslateRelDef(const std::string& input, std::unordered_map<std::st
    */
   auto parser = rel_parser::GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::RelDefContext*>(parser->relDef());
-  auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
+  auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
   auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree, ast);
   std::ostringstream os;
@@ -40,7 +41,7 @@ std::string TranslateRelFormula(const std::string& input,
    */
   auto parser = rel_parser::GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::FormulaContext*>(parser->formula());
-  auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
+  auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
   auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree);
   std::ostringstream os;
@@ -55,7 +56,49 @@ std::string TranslateRelExpression(const std::string& input,
    */
   auto parser = rel_parser::GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ExprContext*>(parser->expr());
-  auto ast_data = std::make_shared<ExtendedASTData>(external_arity_map);
+  auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
+  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
+  auto result = rel_parser::GetSQLFromTree(tree, ast);
+  std::ostringstream os;
+  os << *result;
+  return os.str();
+}
+
+std::string TranslateRelProgramWithEDB(const std::string& input, const rel2sql::EDBMap& edb_map) {
+  /*
+   * This function takes a string CoreRel program input and returns the SQL translation using EDB info.
+   */
+  auto parser = rel_parser::GetParser(input);
+  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ProgramContext*>(parser->program());
+  auto ast_data = std::make_shared<ExtendedASTData>(edb_map);
+  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
+  auto result = rel_parser::GetSQLFromTree(tree, ast);
+  std::ostringstream os;
+  os << *result;
+  return os.str();
+}
+
+std::string TranslateRelDefWithEDB(const std::string& input, const rel2sql::EDBMap& edb_map) {
+  /*
+   * This function takes a string CoreRel definition input and returns the SQL translation using EDB info.
+   */
+  auto parser = rel_parser::GetParser(input);
+  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::RelDefContext*>(parser->relDef());
+  auto ast_data = std::make_shared<ExtendedASTData>(edb_map);
+  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
+  auto result = rel_parser::GetSQLFromTree(tree, ast);
+  std::ostringstream os;
+  os << *result;
+  return os.str();
+}
+
+std::string TranslateRelFormulaWithEDB(const std::string& input, const rel2sql::EDBMap& edb_map) {
+  /*
+   * This function takes a string CoreRel formula input and returns the SQL translation using EDB info.
+   */
+  auto parser = rel_parser::GetParser(input);
+  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::FormulaContext*>(parser->formula());
+  auto ast_data = std::make_shared<ExtendedASTData>(edb_map);
   auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree, ast);
   std::ostringstream os;
@@ -344,4 +387,93 @@ TEST(TranslationTest, MultipleDefs2) {
 TEST(TranslationTest, TableDefinition) {
   EXPECT_EQ(TranslateRelDef("def F {(1, 2); (3, 4)}"),
             "CREATE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2))");
+}
+
+// Tests for EDB with named attributes
+TEST(EDBTranslationTest, NamedAttributesFormula) {
+  rel2sql::EDBMap edb_map;
+  edb_map["F"] = rel2sql::EDBInfo({"id", "name"});
+
+  EXPECT_EQ(TranslateRelFormulaWithEDB("F(x, y)", edb_map), "SELECT T0.id AS x, T0.name AS y FROM F AS T0");
+}
+
+TEST(EDBTranslationTest, NamedAttributesConjunction) {
+  rel2sql::EDBMap edb_map;
+  edb_map["F"] = rel2sql::EDBInfo({"id", "name"});
+  edb_map["G"] = rel2sql::EDBInfo({"student_id", "grade"});
+
+  EXPECT_EQ(TranslateRelFormulaWithEDB("F(x, y) and G(x, z)", edb_map),
+            "SELECT T1.x, T1.y, T3.z FROM (SELECT T0.id AS x, T0.name AS y FROM F AS T0) AS T1, (SELECT T2.student_id "
+            "AS x, T2.grade AS z FROM G AS T2) AS T3 WHERE T1.x = T3.x");
+}
+
+TEST(EDBTranslationTest, NamedAttributesExistential) {
+  rel2sql::EDBMap edb_map;
+  edb_map["F"] = rel2sql::EDBInfo({"student_id", "course_id"});
+  edb_map["G"] = rel2sql::EDBInfo({"course_id"});
+
+  EXPECT_EQ(TranslateRelFormulaWithEDB("exists (y in G | F(x, y))", edb_map),
+            "SELECT T2.x FROM (SELECT T1.student_id AS x, T1.course_id AS y FROM F AS T1) AS T2, G AS T0(course_id) "
+            "WHERE T2.y = T0.course_id");
+}
+
+TEST(EDBTranslationTest, NamedAttributesPartialApplication) {
+  rel2sql::EDBMap edb_map;
+  edb_map["F"] = rel2sql::EDBInfo({"student_id", "course_id", "grade"});
+
+  EXPECT_EQ(TranslateRelDefWithEDB("def G {F[x]}", edb_map),
+            "CREATE VIEW G AS (SELECT T0.student_id AS x, T0.course_id AS A1, T0.grade AS A2 FROM F AS T0)");
+}
+
+TEST(EDBTranslationTest, NamedAttributesAggregate) {
+  rel2sql::EDBMap edb_map;
+  edb_map["F"] = rel2sql::EDBInfo({"student_id", "grade"});
+
+  EXPECT_EQ(TranslateRelDefWithEDB("def G {max[F[x]]}", edb_map),
+            "CREATE VIEW G AS (SELECT T1.x, MAX(T1.A1) AS A1 FROM (SELECT T0.student_id AS x, T0.grade AS A1 FROM F AS "
+            "T0) AS T1 GROUP BY T1.x)");
+}
+
+// Tests for mixed EDB (some with named attributes, some without)
+TEST(EDBTranslationTest, MixedEDBAttributes) {
+  rel2sql::EDBMap edb_map;
+  edb_map["F"] = rel2sql::EDBInfo({"id", "name"});  // Named attributes
+  edb_map["G"] = rel2sql::EDBInfo();                // Unnamed attributes (empty vector)
+
+  EXPECT_EQ(TranslateRelFormulaWithEDB("F(x, y) and G(x, z)", edb_map),
+            "SELECT T1.x, T1.y, T3.z FROM (SELECT T0.id AS x, T0.name AS y FROM F AS T0) AS T1, (SELECT T2.A1 AS x, "
+            "T2.A2 AS z FROM G AS T2) AS T3 WHERE T1.x = T3.x");
+}
+
+// Tests for EDB with single attribute
+TEST(EDBTranslationTest, SingleNamedAttribute) {
+  rel2sql::EDBMap edb_map;
+  edb_map["F"] = rel2sql::EDBInfo({"id"});
+
+  EXPECT_EQ(TranslateRelFormulaWithEDB("F(x)", edb_map), "SELECT T0.id AS x FROM F AS T0");
+}
+
+// Tests for EDB with three attributes
+TEST(EDBTranslationTest, ThreeNamedAttributes) {
+  rel2sql::EDBMap edb_map;
+  edb_map["F"] = rel2sql::EDBInfo({"student_id", "course_id", "grade"});
+
+  EXPECT_EQ(TranslateRelFormulaWithEDB("F(x, y, z)", edb_map),
+            "SELECT T0.student_id AS x, T0.course_id AS y, T0.grade AS z FROM F AS T0");
+}
+
+// Test for backward compatibility - empty EDB map should work like before
+TEST(EDBTranslationTest, EmptyEDBMap) {
+  rel2sql::EDBMap edb_map;
+
+  EXPECT_EQ(TranslateRelFormulaWithEDB("F(x)", edb_map), "SELECT T0.A1 AS x FROM F AS T0");
+}
+
+// Test for EDB with repeated variables using named attributes
+TEST(EDBTranslationTest, NamedAttributesRepeatedVariables) {
+  rel2sql::EDBMap edb_map;
+  edb_map["F"] = rel2sql::EDBInfo({"id", "parent_id"});
+
+  EXPECT_EQ(TranslateRelFormulaWithEDB("F(x, x)", edb_map),
+            "SELECT T0.id AS x FROM F AS T0 WHERE T0.id = T0.parent_id");
 }

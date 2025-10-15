@@ -5,7 +5,9 @@
 
 #include <set>
 #include <string>
+#include <unordered_map>
 
+#include "structs/edb_info.h"
 #include "structs/sql_ast.h"
 #include "utils/utils.h"
 
@@ -26,7 +28,7 @@ struct ProjectionTable {
     }
   }
 
-  ProjectionTable(const std::vector<int> &indices, std::string table_name, int table_arity, bool complement = false)
+  ProjectionTable(const std::vector<int>& indices, std::string table_name, int table_arity, bool complement = false)
       : indices(), table_name(table_name), table_arity(table_arity) {
     if (indices.size() > table_arity) {
       throw std::runtime_error("Projection table indices size is greater than table arity");
@@ -46,7 +48,7 @@ struct ProjectionTable {
     }
   }
 
-  ProjectionTable(const std::vector<int> &indices, const ProjectionTable &parent, bool complement = false)
+  ProjectionTable(const std::vector<int>& indices, const ProjectionTable& parent, bool complement = false)
       : indices(), table_name(parent.table_name), table_arity(parent.table_arity) {
     if (indices.size() > parent.indices.size()) {
       throw std::runtime_error("Projection table indices size is greater than parent indices size");
@@ -61,7 +63,7 @@ struct ProjectionTable {
         }
       }
     } else {
-      for (const auto &index : indices) {
+      for (const auto& index : indices) {
         this->indices.push_back(parent.indices[index]);
       }
     }
@@ -69,7 +71,7 @@ struct ProjectionTable {
 
   int arity() const { return indices.size(); }
 
-  bool operator==(const ProjectionTable &other) const {
+  bool operator==(const ProjectionTable& other) const {
     return indices == other.indices && table_name == other.table_name;
   }
 };
@@ -77,7 +79,7 @@ struct ProjectionTable {
 namespace std {
 template <>
 struct hash<ProjectionTable> {
-  std::size_t operator()(const ProjectionTable &pt) const {
+  std::size_t operator()(const ProjectionTable& pt) const {
     std::size_t seed = 0;
     utl::hash_range(seed, pt.indices.begin(), pt.indices.end());
     utl::hash_combine(seed, pt.table_name);
@@ -93,10 +95,10 @@ struct TupleBinding {
 
   TupleBinding() = default;
 
-  TupleBinding(const std::vector<std::string> &vars_tuple, const std::unordered_set<ProjectionTable> &union_domain)
+  TupleBinding(const std::vector<std::string>& vars_tuple, const std::unordered_set<ProjectionTable>& union_domain)
       : vars_tuple(vars_tuple), union_domain(union_domain) {}
 
-  bool operator==(const TupleBinding &other) const {
+  bool operator==(const TupleBinding& other) const {
     return vars_tuple == other.vars_tuple && union_domain == other.union_domain;
   }
 };
@@ -104,10 +106,10 @@ struct TupleBinding {
 namespace std {
 template <>
 struct hash<TupleBinding> {
-  std::size_t operator()(const TupleBinding &tb) const {
+  std::size_t operator()(const TupleBinding& tb) const {
     std::size_t seed = 0;
     utl::hash_range(seed, tb.vars_tuple.begin(), tb.vars_tuple.end());
-    for (const auto &table : tb.union_domain) {
+    for (const auto& table : tb.union_domain) {
       utl::hash_range(seed, table.indices.begin(), table.indices.end());
       utl::hash_combine(seed, table.table_name);
     }
@@ -133,7 +135,7 @@ struct ExtendedNode {
 
   // Special flag for defs of rel abs with only literal values
   bool has_only_literal_values = false;
-  std::vector<antlr4::ParserRuleContext *> multiple_defs;
+  std::vector<antlr4::ParserRuleContext*> multiple_defs;
 
   // Arity of the current context
   int arity;
@@ -142,18 +144,18 @@ struct ExtendedNode {
   std::optional<std::unordered_set<TupleBinding>> safeness;
 
   // AND term partitioning variables
-  std::vector<antlr4::ParserRuleContext *> comparator_formulas;
-  std::vector<antlr4::ParserRuleContext *> other_formulas;
+  std::vector<antlr4::ParserRuleContext*> comparator_formulas;
+  std::vector<antlr4::ParserRuleContext*> other_formulas;
 
-  void VariablesInplaceUnion(const ExtendedNode &other) {
+  void VariablesInplaceUnion(const ExtendedNode& other) {
     variables.insert(other.variables.begin(), other.variables.end());
     free_variables.insert(other.free_variables.begin(), other.free_variables.end());
   }
 
-  void VariablesInplaceDifference(const ExtendedNode &other) {
+  void VariablesInplaceDifference(const ExtendedNode& other) {
     ExtendedNode result;
     variables.insert(other.variables.begin(), other.variables.end());
-    for (const auto &var : other.free_variables) {
+    for (const auto& var : other.free_variables) {
       free_variables.erase(var);
     }
   }
@@ -162,8 +164,10 @@ struct ExtendedNode {
 };
 
 struct ExtendedASTData {
-  std::unordered_map<antlr4::ParserRuleContext *, ExtendedNode> index;
+  std::unordered_map<antlr4::ParserRuleContext*, ExtendedNode> index;
   std::unordered_map<std::string, int> arity_by_id;
+  std::unordered_map<std::string, std::vector<std::string>> edb_attribute_names;
+  std::unordered_map<std::string, rel2sql::EDBInfo> edb_info_map;
 
   std::unordered_map<std::string, std::vector<std::string>> ids_dependencies;
 
@@ -176,13 +180,21 @@ struct ExtendedASTData {
 
   ExtendedASTData() = default;
 
-  ExtendedASTData(const std::unordered_map<std::string, int> &external_arity_map) {
-    for (const auto &[id, arity] : external_arity_map) {
-      AddEDB(id, arity);
+  ExtendedASTData(const rel2sql::EDBMap& edb_map) {
+    for (const auto& [id, edb_info] : edb_map) {
+      // Store the EDBInfo for later use
+      edb_info_map[id] = edb_info;
+
+      if (edb_info.has_custom_named_attributes()) {
+        AddEDBWithNames(id, edb_info.attribute_names);
+      } else {
+        // For EDBs with standard A1, A2, etc. naming, use the standard AddEDB
+        AddEDB(id, edb_info.arity());
+      }
     }
   }
 
-  void AddIDB(const std::string &id) {
+  void AddIDB(const std::string& id) {
     ids.insert(id);
 
     if (external_dbs.find(id) != external_dbs.end()) {
@@ -193,7 +205,7 @@ struct ExtendedASTData {
     internal_dbs.insert(id);
   }
 
-  void AddEDB(const std::string &edb, int arity) {
+  void AddEDB(const std::string& edb, int arity) {
     if (internal_dbs.find(edb) != internal_dbs.end()) {
       throw std::runtime_error("EDB " + edb + " already in the set of IDBs");
     }
@@ -208,7 +220,24 @@ struct ExtendedASTData {
     arity_by_id[edb] = arity;
   }
 
-  void AddVar(const std::string &var) {
+  void AddEDBWithNames(const std::string& edb, const std::vector<std::string>& attribute_names) {
+    if (internal_dbs.find(edb) != internal_dbs.end()) {
+      throw std::runtime_error("EDB " + edb + " already in the set of IDBs");
+    }
+
+    if (vars.find(edb) != vars.end()) {
+      throw std::runtime_error("EDB " + edb + " already in the set of variables");
+    }
+
+    ids.insert(edb);
+    external_dbs.insert(edb);
+
+    int arity = static_cast<int>(attribute_names.size());
+    arity_by_id[edb] = arity;
+    edb_attribute_names[edb] = attribute_names;
+  }
+
+  void AddVar(const std::string& var) {
     if (internal_dbs.find(var) != internal_dbs.end() || external_dbs.find(var) != external_dbs.end()) {
       // ID is already in the set of IDBs or EDBs then do nothing
       return;
@@ -218,18 +247,27 @@ struct ExtendedASTData {
     vars.insert(var);
   }
 
-  void AddDependency(const std::string &id, const std::string &dep) { ids_dependencies[id].push_back(dep); }
+  void AddDependency(const std::string& id, const std::string& dep) { ids_dependencies[id].push_back(dep); }
+
+  // Get EDBInfo for an EDB (if it exists)
+  std::optional<rel2sql::EDBInfo> GetEDBInfo(const std::string& edb) const {
+    auto it = edb_info_map.find(edb);
+    if (it != edb_info_map.end()) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
 };
 
 class ExtendedAST {
  public:
-  ExtendedAST(antlr4::ParserRuleContext *root, std::shared_ptr<ExtendedASTData> data) : root_(root), data_(data) {}
+  ExtendedAST(antlr4::ParserRuleContext* root, std::shared_ptr<ExtendedASTData> data) : root_(root), data_(data) {}
 
   ExtendedNode Root() const { return data_->index[root_]; }
 
   std::shared_ptr<ExtendedASTData> Data() const { return data_; }
 
-  ExtendedNode &Get(antlr4::ParserRuleContext *ctx) {
+  ExtendedNode& Get(antlr4::ParserRuleContext* ctx) {
     auto it = data_->index.find(ctx);
     if (it == data_->index.end()) {
       data_->index[ctx] = ExtendedNode{};
@@ -237,10 +275,10 @@ class ExtendedAST {
     return it->second;
   }
 
-  int Arity(const std::string &id) const { return data_->arity_by_id.at(id); }
+  int Arity(const std::string& id) const { return data_->arity_by_id.at(id); }
 
  private:
-  antlr4::ParserRuleContext *root_;
+  antlr4::ParserRuleContext* root_;
   std::shared_ptr<ExtendedASTData> data_;
 };
 
