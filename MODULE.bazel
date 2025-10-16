@@ -6,8 +6,8 @@
 ###############################################################################
 "Module for com_foo_bar"
 module(
-    name = "rel2sql",
-    version = "0.1.0"
+    name = "rel2sql_core",
+    version = "1.0.0"
 )
 
 ANTLR4_VERSION = "4.13.1"

@@ -1,0 +1,13 @@
+# WASM-specific Bazel configuration
+# This isolates WASM toolchain settings from the main project
+
+# Global Emscripten configuration
+build --incompatible_enable_cc_toolchain_resolution
+build --features=exceptions
+build --copt='-fexceptions'
+build --cxxopt='-std=c++20'
+build --cxxopt='-fexceptions'
+build --linkopt='-sDISABLE_EXCEPTION_CATCHING=0'
+
+# No platform-specific config for WASM (this was the root cause!)
+# build:macos --cxxopt='-isysroot/Library/Developer/CommandLineTools/SDKs/MacOSX14.5.sdk'

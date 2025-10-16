@@ -17,6 +17,12 @@ tasks:
       - bazel build //... --keep_going
       - bazel run @hedron_compile_commands//:refresh_all
 
+  generate-compile-commands-with-wasm:
+    desc: Generate compile_commands.json including WASM targets for IntelliSense
+    cmds:
+      - bazel build //... //wasm:bindings_lib --keep_going
+      - bazel run @hedron_compile_commands//:refresh_all
+
   clean:
     desc: Clean Bazel build artifacts
     cmds:
@@ -31,4 +37,55 @@ tasks:
     desc: Parse a Rel file using ANTLR4 and show GUI with AST
     cmds:
       - antlr4-parse grammar/PrunedCoreRelParser.g4 grammar/CoreRelLexer.g4 program -gui {{.CLI_ARGS}}
+    silent: true
+
+  build-wasm:
+    desc: Build the WASM module for web browsers
+    cmds:
+      - bazel build //wasm:rel2sql_wasm
+
+  wasm-example:
+    desc: Build WASM module and copy example files for testing
+    cmds:
+      - bazel build //wasm:rel2sql_wasm
+      - cp wasm/wrapper.js bazel-bin/wasm/rel2sql_wasm/
+      - cp wasm/example.html bazel-bin/wasm/rel2sql_wasm/
+      - echo "WASM module built and example files copied"
+      - echo "To test - cd bazel-bin/wasm/rel2sql_wasm"
+      - echo "Then run - python3 -m http.server 8000"
+      - echo "Open - http://localhost:8000/example.html"
+
+  wasm-serve:
+    desc: Serve the WASM example on localhost:8000
+    dir: bazel-bin/wasm/rel2sql_wasm
+    cmds:
+      - python3 -m http.server 8000
+    silent: true
+
+  build-test-wasm:
+    desc: Build a simple test WASM module without external dependencies
+    cmds:
+      - bazel build //wasm:test_wasm
+
+  build-simple-wasm:
+    desc: Build a simple WASM module without external dependencies (mock implementation)
+    cmds:
+      - bazel build //wasm:simple_wasm
+
+  test-wasm:
+    desc: Build test WASM and create a simple test page
+    cmds:
+      - bazel build //wasm:test_wasm
+      - mkdir -p test_wasm_output
+      - cp bazel-bin/wasm/test_wasm.js test_wasm_output/
+      - cp bazel-bin/wasm/test_wasm.wasm test_wasm_output/
+      - cp bazel-bin/wasm/test_wasm.wasm.map test_wasm_output/ || true
+      - echo "Test WASM files copied to test_wasm_output/"
+      - echo "You can now serve this directory with python3 -m http.server 8000"
+
+  serve-test-wasm:
+    desc: Serve the test WASM files on localhost:8000
+    dir: test_wasm_output
+    cmds:
+      - python3 -m http.server 8000
     silent: true
