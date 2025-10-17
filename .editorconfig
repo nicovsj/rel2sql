@@ -1,0 +1,53 @@
+# EditorConfig helps maintain consistent coding styles
+# across different editors and IDEs
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Preserve tabs where they are required
+[Makefile]
+indent_style = tab
+indent_size = 4
+
+# Bazel/Starlark files
+[{BUILD,WORKSPACE,*.bzl}]
+indent_style = space
+indent_size = 2
+
+# YAML
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# JSON
+[*.json]
+indent_style = space
+indent_size = 2
+
+# Markdown: don't strip trailing whitespace
+[*.md]
+trim_trailing_whitespace = false
+indent_style = space
+indent_size = 2
+
+# ANTLR grammars
+[*.g4]
+indent_style = space
+indent_size = 2
+
+# C/C++
+[*.{c,cc,cxx,cpp,h,hpp}]
+indent_style = space
+indent_size = 2
+
+# JavaScript/TypeScript
+[*.{js,jsx,ts,tsx}]
+indent_style = space
+indent_size = 2
