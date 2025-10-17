@@ -4,12 +4,21 @@ This repository contains a rel2sql translation experimental tool. This project i
 
 ## Table of Contents
 
-- [Prerequisites](#prerequisites)
-- [Building the Project](#building-the-project)
-- [Development](#development)
-  - [Generating `compile_commands.json`](#generating-compile_commandsjson)
-  - [Testing](#testing)
-- [Extra Links](#extra-links)
+- [rel2sql](#rel2sql)
+  - [Table of Contents](#table-of-contents)
+  - [Prerequisites](#prerequisites)
+  - [Building the Project](#building-the-project)
+  - [Development](#development)
+    - [Generating `compile_commands.json`](#generating-compile_commandsjson)
+    - [Testing](#testing)
+  - [WebAssembly (WASM) Support](#webassembly-wasm-support)
+    - [Building WASM](#building-wasm)
+    - [Testing WASM](#testing-wasm)
+      - [Interactive Testing](#interactive-testing)
+      - [Automated Testing (CI/CD)](#automated-testing-cicd)
+    - [WASM Documentation](#wasm-documentation)
+  - [Extra](#extra)
+  - [Available Tasks](#available-tasks)
 
 ## Prerequisites
 
@@ -52,6 +61,57 @@ To run the tests, use the following command:
 ```sh
 task test
 ```
+
+## WebAssembly (WASM) Support
+
+Rel2SQL can be compiled to WebAssembly for use in web browsers. This enables running Rel2SQL directly in the browser without server-side processing.
+
+### Building WASM
+
+To build the WebAssembly module:
+
+```sh
+task build-wasm
+```
+
+### Testing WASM
+
+#### Interactive Testing
+
+To build and test the WASM module with an interactive web interface:
+
+```sh
+task test-wasm
+```
+
+This will:
+1. Build the WASM module
+2. Start a local HTTP server on port 8000
+3. Open `http://localhost:8000/wasm/test_wasm.html` in your browser
+
+The test page provides:
+- Interactive Rel-to-SQL translation
+- System tests to verify WASM functionality
+- Real-time status indicators
+
+#### Automated Testing (CI/CD)
+
+For automated testing in CI workflows:
+
+```sh
+task test-wasm-bazel
+```
+
+This automated test:
+- Builds the WASM module
+- Verifies WASM files are generated correctly
+- Loads and tests the WASM module using Node.js
+- Runs translation tests with sample Rel expressions
+- Reports pass/fail status for CI integration
+
+### WASM Documentation
+
+For detailed information about the WASM implementation, testing, and troubleshooting, see [`wasm/README.md`](wasm/README.md).
 
 ## Extra
 

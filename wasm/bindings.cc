@@ -2,25 +2,30 @@
 #include <emscripten/bind.h>
 #include <emscripten/emscripten.h>
 #endif
+
 #include <string>
+#include <string_view>
 
-// Simple WASM wrapper without external dependencies
-// This demonstrates the two-module approach works
+// Forward declaration - we'll link against the rel2sql library
+namespace rel2sql {
 
-std::string translate_rel2sql(const std::string& input) {
-  // Mock implementation for now
-  return "WASM: " + input;
+std::string Translate(std::string_view input);
+
 }
 
-bool test_rel2sql() { return true; }
+// WebAssembly wrapper functions
+std::string translate_rel2sql(const std::string& input) { return rel2sql::Translate(input); }
 
-#ifdef __EMSCRIPTEN__
+// Test function to verify the library is working
+bool test_rel2sql() {
+  std::string result = rel2sql::Translate("def output {1}");
+  return !result.empty();
+}
+
 // Emscripten bindings
+#ifdef __EMSCRIPTEN__
 EMSCRIPTEN_BINDINGS(rel2sql_module) {
-  // Basic translation functions
   emscripten::function("translate", &translate_rel2sql);
-
-  // Utility functions
   emscripten::function("test", &test_rel2sql);
 }
 #endif

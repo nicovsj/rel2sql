@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rel2SQL WASM Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            background-color: #fafafa;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 14px;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007acc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #005a99;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .output {
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 10px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            min-height: 50px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .status.loading {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .example {
+            background-color: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧮 Rel2SQL WASM Test</h1>
+
+        <div id="status" class="status loading">
+            Loading WASM module...
+        </div>
+
+        <div class="test-section">
+            <h3>📝 Rel Expression to SQL Translation</h3>
+            <p>Enter a Rel expression below and click "Translate" to see the SQL output:</p>
+
+            <div class="example">
+                <strong>Example:</strong> def output {1}
+            </div>
+
+            <textarea id="relInput" placeholder="Enter your Rel expression here...">def output {1}</textarea>
+            <br>
+            <button id="translateBtn" onclick="translateRel()" disabled>Translate</button>
+            <div id="sqlOutput" class="output">SQL output will appear here...</div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔧 System Test</h3>
+            <p>Test if the WASM module is working correctly:</p>
+            <button id="testBtn" onclick="testSystem()" disabled>Run Test</button>
+            <div id="testOutput" class="output">Test results will appear here...</div>
+        </div>
+    </div>
+
+    <!-- Load the WASM module using script tag -->
+    <script src="./bazel-bin/rel2sql_wasm/rel2sql_embindings.js"></script>
+
+    <script>
+        let rel2sqlModule = null;
+
+        async function loadWasm() {
+            try {
+                console.log('Available globals:', Object.keys(window));
+                console.log('Rel2SqlModule:', typeof Rel2SqlModule);
+
+                // The Rel2SqlModule should be available globally
+                if (typeof Rel2SqlModule === 'function') {
+                    // Instantiate the module
+                    rel2sqlModule = await Rel2SqlModule();
+
+                    // Update status
+                    document.getElementById('status').className = 'status success';
+                    document.getElementById('status').textContent = '✅ WASM module loaded successfully!';
+
+                    // Enable buttons
+                    document.getElementById('translateBtn').disabled = false;
+                    document.getElementById('testBtn').disabled = false;
+                } else {
+                    throw new Error('Rel2SqlModule factory not found');
+                }
+
+            } catch (error) {
+                console.error('Failed to load WASM module:', error);
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `❌ Failed to load WASM module: ${error.message}`;
+            }
+        }
+
+        // Load WASM when page loads
+        window.addEventListener('load', loadWasm);
+
+        // Global functions for buttons
+        window.translateRel = function() {
+            if (!rel2sqlModule) {
+                alert('WASM module not loaded yet');
+                return;
+            }
+
+            const input = document.getElementById('relInput').value.trim();
+            if (!input) {
+                alert('Please enter a Rel expression');
+                return;
+            }
+
+            try {
+                const result = rel2sqlModule.translate(input);
+                document.getElementById('sqlOutput').textContent = result;
+            } catch (error) {
+                document.getElementById('sqlOutput').textContent = `Error: ${error.message}`;
+            }
+        };
+
+        window.testSystem = function() {
+            if (!rel2sqlModule) {
+                alert('WASM module not loaded yet');
+                return;
+            }
+
+            try {
+                const result = rel2sqlModule.test();
+                if (result) {
+                    document.getElementById('testOutput').textContent = '✅ System test passed! The WASM module is working correctly.';
+                } else {
+                    document.getElementById('testOutput').textContent = '❌ System test failed!';
+                }
+            } catch (error) {
+                document.getElementById('testOutput').textContent = `Error: ${error.message}`;
+            }
+        };
+    </script>
+</body>
+</html>

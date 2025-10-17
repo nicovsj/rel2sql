@@ -2,6 +2,8 @@
 
 # BUILD
 load("//:antlr.bzl", "antlr_cc_library")
+load("@emsdk//emscripten_toolchain:wasm_rules.bzl", "wasm_cc_binary")
+load("@aspect_rules_js//js:defs.bzl", "js_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -53,4 +55,48 @@ cc_binary(
     name = "rel2sql_bin",
     srcs = ["app/main.cc"],
     deps = [":rel2sql"]
+)
+
+# Emscripten configuration for WASM build
+DEFAULT_EMSCRIPTEN_LINKOPTS = [
+    "--bind",
+    "-s MODULARIZE=1",
+    "-s EXPORT_NAME=Rel2SqlModule",
+    "-s MALLOC=emmalloc",
+    "-s ALLOW_MEMORY_GROWTH=1",
+    "-s ASSERTIONS=0",
+    "-s USE_PTHREADS=0",
+    "-s DISABLE_EXCEPTION_CATCHING=0",
+    "--no-shared-memory",
+    "--no-import-memory",
+]
+
+WASM_LINKOPTS = [
+    "-s WASM=1",
+]
+
+# WASM wrapper that directly links against rel2sql library
+cc_binary(
+    name = "rel2sql_embindings",
+    srcs = ["wasm/bindings.cc"],
+    deps = [
+        ":rel2sql",  # Direct dependency on rel2sql
+    ],
+    linkopts = DEFAULT_EMSCRIPTEN_LINKOPTS + WASM_LINKOPTS,
+    tags = ["manual"],
+)
+
+# Produces rel2sql_embindings.{js,wasm,wasm.map}
+wasm_cc_binary(
+    name = "rel2sql_wasm",
+    cc_target = ":rel2sql_embindings",
+    tags = ["manual"],
+)
+
+# Automated test for WASM module using Node.js
+js_test(
+    name = "test_wasm_module",
+    entry_point = "wasm/test_wasm.js",
+    data = [":rel2sql_wasm"],
+    tags = ["manual"],  # Manual tag since it requires WASM build
 )

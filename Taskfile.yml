@@ -1,16 +1,46 @@
 version: "3"
 
 tasks:
+  # Core build tasks
   build:
     desc: Build the rel2sql executable
     cmds:
       - bazel build //:rel2sql
+
+  build-shared:
+    desc: Build the rel2sql shared library
+    cmds:
+      - bazel build //:rel2sql_shared
 
   test:
     desc: Run all tests
     cmds:
       - bazel test //...
 
+  # WASM build tasks
+  build-wasm:
+    desc: Build the WASM module for web browsers
+    cmds:
+      - bazel build //:rel2sql_wasm --config=emcc
+
+  test-wasm:
+    desc: Build WASM and serve test page on localhost:8000
+    cmds:
+      - bazel build //:rel2sql_wasm --config=emcc
+      - echo "WASM built successfully!"
+      - echo "Killing any existing process on port 8000..."
+      - kill $(lsof -ti:8000) 2>/dev/null || echo "No process found on port 8000"
+      - echo "Open http://localhost:8000/wasm/test_wasm.html in your browser"
+      - echo "Press Ctrl+C to stop the server"
+      - python3 -m http.server 8000
+
+  test-wasm-bazel:
+    desc: Run automated Bazel test for WASM module (for CI)
+    cmds:
+      - bazel build //:rel2sql_wasm --config=emcc
+      - bazel test //:test_wasm_module --config=emcc
+
+  # Development tasks
   generate-compile-commands:
     desc: Generate compile_commands.json for clangd (includes generated files)
     cmds:
@@ -20,18 +50,8 @@ tasks:
   generate-compile-commands-with-wasm:
     desc: Generate compile_commands.json including WASM targets for IntelliSense
     cmds:
-      - bazel build //... //wasm:bindings_lib --keep_going
+      - bazel build //... --config=emcc --keep_going
       - bazel run @hedron_compile_commands//:refresh_all
-
-  clean:
-    desc: Clean Bazel build artifacts
-    cmds:
-      - bazel clean
-
-  default:
-    desc: Display available tasks
-    cmds:
-      - task --list
 
   parse-antlr:
     desc: Parse a Rel file using ANTLR4 and show GUI with AST
@@ -39,53 +59,20 @@ tasks:
       - antlr4-parse grammar/PrunedCoreRelParser.g4 grammar/CoreRelLexer.g4 program -gui {{.CLI_ARGS}}
     silent: true
 
-  build-wasm:
-    desc: Build the WASM module for web browsers
+  # Utility tasks
+  clean:
+    desc: Clean Bazel build artifacts
     cmds:
-      - bazel build //wasm:rel2sql_wasm
+      - bazel clean
 
-  wasm-example:
-    desc: Build WASM module and copy example files for testing
+  clean-all:
+    desc: Clean Bazel build artifacts and generated files
     cmds:
-      - bazel build //wasm:rel2sql_wasm
-      - cp wasm/wrapper.js bazel-bin/wasm/rel2sql_wasm/
-      - cp wasm/example.html bazel-bin/wasm/rel2sql_wasm/
-      - echo "WASM module built and example files copied"
-      - echo "To test - cd bazel-bin/wasm/rel2sql_wasm"
-      - echo "Then run - python3 -m http.server 8000"
-      - echo "Open - http://localhost:8000/example.html"
+      - bazel clean
+      - rm -f compile_commands.json
+      - rm -f wasm/test_wasm.html
 
-  wasm-serve:
-    desc: Serve the WASM example on localhost:8000
-    dir: bazel-bin/wasm/rel2sql_wasm
+  default:
+    desc: Display available tasks
     cmds:
-      - python3 -m http.server 8000
-    silent: true
-
-  build-test-wasm:
-    desc: Build a simple test WASM module without external dependencies
-    cmds:
-      - bazel build //wasm:test_wasm
-
-  build-simple-wasm:
-    desc: Build a simple WASM module without external dependencies (mock implementation)
-    cmds:
-      - bazel build //wasm:simple_wasm
-
-  test-wasm:
-    desc: Build test WASM and create a simple test page
-    cmds:
-      - bazel build //wasm:test_wasm
-      - mkdir -p test_wasm_output
-      - cp bazel-bin/wasm/test_wasm.js test_wasm_output/
-      - cp bazel-bin/wasm/test_wasm.wasm test_wasm_output/
-      - cp bazel-bin/wasm/test_wasm.wasm.map test_wasm_output/ || true
-      - echo "Test WASM files copied to test_wasm_output/"
-      - echo "You can now serve this directory with python3 -m http.server 8000"
-
-  serve-test-wasm:
-    desc: Serve the test WASM files on localhost:8000
-    dir: test_wasm_output
-    cmds:
-      - python3 -m http.server 8000
-    silent: true
+      - task --list

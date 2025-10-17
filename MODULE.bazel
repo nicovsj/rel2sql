@@ -32,8 +32,14 @@ http_jar(
 )
 
 # Utility dependencies
-bazel_dep(name = "fmt", version = "10.2.1")  # Formatting strings
-bazel_dep(name = "spdlog", version = "1.13.0")  # Logging
+bazel_dep(name = "fmt", version = "9.1.0")  # Formatting strings - older version for Emscripten compatibility
+bazel_dep(name = "spdlog", version = "1.11.0")  # Logging - compatible with fmt 9.1.0
 
 # Testing dependencies
 bazel_dep(name = "googletest", version = "1.17.0")
+
+# Emscripten SDK Bazel integration
+bazel_dep(name = "emsdk", version = "4.0.13")
+
+# Node.js rules for testing
+bazel_dep(name = "aspect_rules_js", version = "2.6.2")
