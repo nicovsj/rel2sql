@@ -1,10 +1,10 @@
 #ifndef REL2SQL_EDB_INFO_H
 #define REL2SQL_EDB_INFO_H
 
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
 namespace rel2sql {
 
 /**
