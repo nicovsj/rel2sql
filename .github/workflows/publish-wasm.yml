@@ -1,0 +1,77 @@
+name: Publish WASM to GitHub Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test-on-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bazelisk
+        uses: bazelbuild/setup-bazelisk@v3
+
+      - name: Run Bazel tests (native)
+        run: bazel test //... --config=default
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build WASM
+        run: bazel build //:rel2sql_wasm --config=emcc
+
+      - name: Run Bazel tests (WASM)
+        run: bazel test //:test_wasm_module --config=emcc
+
+  publish:
+    needs: [test-on-tag]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+
+      - name: Setup Bazelisk
+        uses: bazelbuild/setup-bazelisk@v3
+
+      - name: Build WASM
+        run: bazel build //:rel2sql_wasm --config=emcc
+
+      - name: Prepare package dist
+        run: |
+          set -e
+          PKG_DIR=packages/rel2sql-wasm
+          DIST=$PKG_DIR/dist
+          mkdir -p $DIST
+          cp -v bazel-bin/rel2sql_wasm/rel2sql_embindings.js $DIST/
+          cp -v bazel-bin/rel2sql_wasm/rel2sql_embindings.wasm $DIST/
+          cp -v $PKG_DIR/loader.js $DIST/loader.js
+
+      - name: Set version from tag
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "Publishing version $TAG"
+          jq --arg v "$TAG" '.version=$v' packages/rel2sql-wasm/package.json > packages/rel2sql-wasm/package.json.tmp
+          mv packages/rel2sql-wasm/package.json.tmp packages/rel2sql-wasm/package.json
+
+      - name: Publish package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd packages/rel2sql-wasm
+          npm publish --provenance --access public
