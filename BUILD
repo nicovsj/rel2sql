@@ -62,11 +62,13 @@ DEFAULT_EMSCRIPTEN_LINKOPTS = [
     "--bind",
     "-s MODULARIZE=1",
     "-s EXPORT_NAME=Rel2SqlModule",
+    "-s EXPORT_ES6=1",
     "-s MALLOC=emmalloc",
     "-s ALLOW_MEMORY_GROWTH=1",
     "-s ASSERTIONS=0",
     "-s USE_PTHREADS=0",
     "-s DISABLE_EXCEPTION_CATCHING=0",
+    "-s ENVIRONMENT=node,web",
     "--no-shared-memory",
     "--no-import-memory",
 ]
@@ -99,4 +101,11 @@ js_test(
     entry_point = "wasm/test_wasm.js",
     data = [":rel2sql_wasm"],
     tags = ["manual"],  # Manual tag since it requires WASM build
+)
+
+# Node.js-based npm package consumption test
+js_test(
+    name = "npm_package_test",
+    entry_point = "wasm/tests/npm_package_test.mjs",
+    tags = ["manual"],
 )

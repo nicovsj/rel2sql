@@ -40,6 +40,11 @@ tasks:
       - bazel build //:rel2sql_wasm --config=emcc
       - bazel test //:test_wasm_module --config=emcc
 
+  test-npm-package:
+    desc: Test npm package build, pack, and consumption
+    cmds:
+      - node wasm/tests/npm_package_test.mjs
+
   # Development tasks
   generate-compile-commands:
     desc: Generate compile_commands.json for clangd (includes generated files)
