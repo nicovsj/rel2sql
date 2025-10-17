@@ -44,14 +44,14 @@ tasks:
   generate-compile-commands:
     desc: Generate compile_commands.json for clangd (includes generated files)
     cmds:
-      - bazel build //... --keep_going
-      - bazel run @hedron_compile_commands//:refresh_all
+      - bazel build //... --config=default --keep_going
+      - bazel run @hedron_compile_commands//:refresh_all --config=default
 
   generate-compile-commands-with-wasm:
     desc: Generate compile_commands.json including WASM targets for IntelliSense
     cmds:
       - bazel build //... --config=emcc --keep_going
-      - bazel run @hedron_compile_commands//:refresh_all
+      - bazel run @hedron_compile_commands//:refresh_all --config=emcc
 
   parse-antlr:
     desc: Parse a Rel file using ANTLR4 and show GUI with AST

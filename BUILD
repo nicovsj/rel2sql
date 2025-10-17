@@ -22,7 +22,7 @@ antlr_cc_library(
 
 cc_library(
     name = "rel2sql",
-    hdrs = ["include/rel2sql.h"],
+    hdrs = ["include/rel2sql/rel2sql.h"],
     srcs = [
         "src/rel2sql.cc",
         "src/sql_visitor.cc",
@@ -53,7 +53,7 @@ cc_shared_library(
 
 cc_binary(
     name = "rel2sql_bin",
-    srcs = ["app/main.cc"],
+    srcs = ["apps/cli/main.cc"],
     deps = [":rel2sql"]
 )
 

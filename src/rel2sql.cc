@@ -1,4 +1,4 @@
-#include "rel2sql.h"
+#include <rel2sql/rel2sql.h>
 
 #include <unordered_map>
 
