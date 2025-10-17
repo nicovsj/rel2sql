@@ -1,0 +1,24 @@
+{
+  "name": "@your-scope/rel2sql-wasm",
+  "version": "0.0.0",
+  "private": false,
+  "description": "Rel2SQL WebAssembly build and loader",
+  "type": "module",
+  "main": "dist/loader.js",
+  "exports": {
+    ".": "./dist/loader.js",
+    "./rel2sql_embindings.js": "./dist/rel2sql_embindings.js",
+    "./rel2sql_embindings.wasm": "./dist/rel2sql_embindings.wasm"
+  },
+  "files": [
+    "dist/*"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-org/rel2sql.git"
+  },
+  "license": "UNLICENSED"
+}
