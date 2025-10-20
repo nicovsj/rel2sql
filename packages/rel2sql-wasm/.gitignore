@@ -1,0 +1,3 @@
+# Generated dist files (created by Bazel build process)
+dist/
+*.tgz

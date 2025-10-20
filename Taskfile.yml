@@ -1,34 +1,83 @@
 version: "3"
 
 tasks:
+  # Core build tasks
   build:
     desc: Build the rel2sql executable
     cmds:
-      - bazel build //:rel2sql
+      - bazel build --config=default //:rel2sql
+
+  build-shared:
+    desc: Build the rel2sql shared library
+    cmds:
+      - bazel build --config=default //:rel2sql_shared
 
   test:
     desc: Run all tests
     cmds:
-      - bazel test //...
+      - bazel test --config=default //...
 
+  # WASM build tasks
+  build-wasm:
+    desc: Build the WASM module for web browsers
+    cmds:
+      - bazel build //:rel2sql_wasm --config=emcc
+
+  test-wasm:
+    desc: Build WASM and serve test page on localhost:8000
+    cmds:
+      - bazel build //:rel2sql_wasm --config=emcc
+      - echo "WASM built successfully!"
+      - echo "Killing any existing process on port 8000..."
+      - kill $(lsof -ti:8000) 2>/dev/null || echo "No process found on port 8000"
+      - echo "Open http://localhost:8000/wasm/test_wasm.html in your browser"
+      - echo "Press Ctrl+C to stop the server"
+      - python3 -m http.server 8000
+
+  test-wasm-bazel:
+    desc: Run automated Bazel test for WASM module (for CI)
+    cmds:
+      - bazel build //:rel2sql_wasm --config=emcc
+      - bazel test //:test_wasm_module --config=emcc
+
+  test-npm-package:
+    desc: Test npm package build, pack, and consumption
+    cmds:
+      - node wasm/tests/npm_package_test.mjs
+
+  # Development tasks
   generate-compile-commands:
     desc: Generate compile_commands.json for clangd (includes generated files)
     cmds:
-      - bazel build //... --keep_going
-      - bazel run @hedron_compile_commands//:refresh_all
+      - bazel build //... --config=default --keep_going
+      - bazel run @hedron_compile_commands//:refresh_all --config=default
 
-  clean:
-    desc: Clean Bazel build artifacts
+  generate-compile-commands-with-wasm:
+    desc: Generate compile_commands.json including WASM targets for IntelliSense
     cmds:
-      - bazel clean
-
-  default:
-    desc: Display available tasks
-    cmds:
-      - task --list
+      - bazel build //... --config=emcc --keep_going
+      - bazel run @hedron_compile_commands//:refresh_all --config=emcc
 
   parse-antlr:
     desc: Parse a Rel file using ANTLR4 and show GUI with AST
     cmds:
       - antlr4-parse grammar/PrunedCoreRelParser.g4 grammar/CoreRelLexer.g4 program -gui {{.CLI_ARGS}}
     silent: true
+
+  # Utility tasks
+  clean:
+    desc: Clean Bazel build artifacts
+    cmds:
+      - bazel clean
+
+  clean-all:
+    desc: Clean Bazel build artifacts and generated files
+    cmds:
+      - bazel clean
+      - rm -f compile_commands.json
+      - rm -f wasm/test_wasm.html
+
+  default:
+    desc: Display available tasks
+    cmds:
+      - task --list
