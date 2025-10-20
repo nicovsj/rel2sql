@@ -102,7 +102,7 @@ wasm_cc_binary(
 # Automated test for WASM module using Node.js
 js_test(
     name = "test_wasm_module",
-    entry_point = "wasm/test_wasm.js",
+    entry_point = "wasm/test_wasm.mjs",
     data = [":rel2sql_wasm"],
     tags = ["manual"],  # Manual tag since it requires WASM build
 )

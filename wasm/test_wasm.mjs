@@ -5,8 +5,12 @@
  * This script tests the WASM module functionality without requiring a browser
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // In Bazel test environment, the WASM files are available in the runfiles
 // The data dependency makes them available in the current directory structure
@@ -51,12 +55,12 @@ async function testWasmModule() {
   console.log('📦 Loading WASM module...');
 
   try {
-    // Import the WASM module using absolute path
+    // Import the WASM module using ES6 import
     const wasmPath = path.resolve(WASM_JS_PATH);
-    const Rel2SqlModule = require(wasmPath);
+    const Rel2SqlModule = await import(wasmPath);
 
     // Initialize the module
-    const module = await Rel2SqlModule();
+    const module = await Rel2SqlModule.default();
     console.log('✅ WASM module loaded successfully');
 
     // Test the system test function
@@ -117,8 +121,8 @@ async function main() {
 }
 
 // Run if this script is executed directly
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   main();
 }
 
-module.exports = { testWasmModule, TEST_CASES };
+export { testWasmModule, TEST_CASES };
