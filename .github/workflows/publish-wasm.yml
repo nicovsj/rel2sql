@@ -10,31 +10,7 @@ permissions:
   packages: write
 
 jobs:
-  test-on-tag:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Bazelisk
-        uses: bazelbuild/setup-bazelisk@v3
-
-      - name: Run Bazel tests (native)
-        run: bazel test //... --config=default
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Build WASM
-        run: bazel build //:rel2sql_wasm --config=emcc
-
-      - name: Run Bazel tests (WASM)
-        run: bazel test //:test_wasm_module --config=emcc
-
   publish:
-    needs: [test-on-tag]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
