@@ -5,17 +5,17 @@ tasks:
   build:
     desc: Build the rel2sql executable
     cmds:
-      - bazel build //:rel2sql
+      - bazel build --config=default //:rel2sql
 
   build-shared:
     desc: Build the rel2sql shared library
     cmds:
-      - bazel build //:rel2sql_shared
+      - bazel build --config=default //:rel2sql_shared
 
   test:
     desc: Run all tests
     cmds:
-      - bazel test //...
+      - bazel test --config=default //...
 
   # WASM build tasks
   build-wasm:
