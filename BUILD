@@ -66,7 +66,7 @@ DEFAULT_EMSCRIPTEN_LINKOPTS = [
     "--bind",
     "-s MODULARIZE=1",
     "-s EXPORT_NAME=Rel2SqlModule",
-    "-s EXPORT_ES6=0",
+    "-s EXPORT_ES6=1",
     "-s MALLOC=emmalloc",
     "-s ALLOW_MEMORY_GROWTH=1",
     "-s ASSERTIONS=0",
@@ -102,7 +102,7 @@ wasm_cc_binary(
 # Automated test for WASM module using Node.js
 js_test(
     name = "test_wasm_module",
-    entry_point = "wasm/test_wasm.js",
+    entry_point = "wasm/test_wasm.mjs",
     data = [":rel2sql_wasm"],
     tags = ["manual"],  # Manual tag since it requires WASM build
 )
