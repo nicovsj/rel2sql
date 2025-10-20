@@ -4,6 +4,10 @@
 load("//:antlr.bzl", "antlr_cc_library")
 load("@emsdk//emscripten_toolchain:wasm_rules.bzl", "wasm_cc_binary")
 load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("@rules_java//java:java_binary.bzl", "java_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_shared_library.bzl", "cc_shared_library")
 
 package(default_visibility = ["//visibility:public"])
 
