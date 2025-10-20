@@ -42,7 +42,7 @@ bazel_dep(name = "googletest", version = "1.17.0")
 bazel_dep(name = "rules_cc", version = "0.0.9")
 
 # Java rules
-bazel_dep(name = "rules_java", version = "6.6.0")
+bazel_dep(name = "rules_java", version = "6.5.0")
 
 # Emscripten SDK Bazel integration
 bazel_dep(name = "emsdk", version = "4.0.13")
