@@ -10,10 +10,7 @@
       "import": "./dist/loader-node.js",
       "require": "./dist/loader-node.cjs"
     },
-    "./browser": "./dist/loader-browser.js",
-    "./rel2sql_embindings.js": "./dist/rel2sql_embindings.js",
-    "./rel2sql_embindings.wasm": "./dist/rel2sql_embindings.wasm",
-    "./rel2sql_embindings_node.wasm": "./dist/rel2sql_embindings_node.wasm"
+    "./browser": "./dist/loader-browser.js"
   },
   "files": [
     "dist/*"

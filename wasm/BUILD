@@ -26,6 +26,7 @@ DEFAULT_EMSCRIPTEN_LINKOPTS = [
 BROWSER_EMSCRIPTEN_LINKOPTS = [
     "-s EXPORT_ES6=0",  # No ES6 modules for browser compatibility
     "-s ENVIRONMENT=web",  # Browser only
+    "-s SINGLE_FILE=1",  # Bundle WASM into JS for self-contained package
 ]
 
 # Node.js-specific linkopts

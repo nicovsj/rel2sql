@@ -3,47 +3,37 @@
 //   import { loadRel2Sql } from '@nicovsj/rel2sql-wasm/browser';
 //   const mod = await loadRel2Sql();
 
-// Browser-compatible loading - no Node.js imports
+// Browser-compatible loading using dynamic imports
 export async function loadRel2Sql(options = {}) {
-  const { baseUrl, emscripten } = options;
+  const { emscripten } = options;
 
-  // Browser-specific loading - no Node.js imports
-  const wasmUrl = baseUrl ? `${baseUrl}rel2sql_embindings_browser.wasm` : './dist/rel2sql_embindings_browser.wasm';
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined') {
+    throw new Error('Browser loader can only be used in browser environments');
+  }
 
-  // Create a script element to load the browser build
-  return new Promise((resolve, reject) => {
-    // Check if we're in a browser environment
-    if (typeof window === 'undefined') {
-      reject(new Error('Browser loader can only be used in browser environments'));
-      return;
+  try {
+    // Dynamic import of the browser build JS file
+    const wasmModule = await import('./rel2sql_embindings_browser.js');
+    const Rel2SqlModule = wasmModule.default;
+
+    if (typeof Rel2SqlModule !== 'function') {
+      throw new Error('Rel2SqlModule factory not found in browser build');
     }
 
-    // Create script element to load the browser build
-    const script = document.createElement('script');
-    script.type = 'text/javascript';
-    script.src = './dist/rel2sql_embindings_browser.js';
+    // Load WASM binary as a module (bundled with SINGLE_FILE=1)
+    const wasmBinary = await import('./rel2sql_embindings_browser.wasm');
 
-    script.onload = () => {
-      // The browser build creates a global Rel2SqlModule function
-      if (typeof window.Rel2SqlModule === 'function') {
-        window.Rel2SqlModule({
-          locateFile: (path) => {
-            if (path.endsWith('.wasm')) return wasmUrl;
-            return path;
-          },
-          ...emscripten,
-        }).then(resolve).catch(reject);
-      } else {
-        reject(new Error('Rel2SqlModule not found after script load'));
-      }
-    };
+    // Instantiate the WASM module
+    const instance = await Rel2SqlModule({
+      wasmBinary: wasmBinary.default,
+      ...emscripten,
+    });
 
-    script.onerror = () => {
-      reject(new Error('Failed to load rel2sql_embindings_browser.js'));
-    };
-
-    document.head.appendChild(script);
-  });
+    return instance;
+  } catch (error) {
+    throw new Error(`Failed to load browser WASM module: ${error.message}`);
+  }
 }
 
 export default loadRel2Sql;

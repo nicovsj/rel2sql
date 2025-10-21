@@ -124,15 +124,23 @@ console.log("OK:", out.substring(0, 60));
 writeFileSync(join(tmpDir, "test.mjs"), testContent);
 execSync(`node ${join(tmpDir, "test.mjs")}`, { stdio: "inherit" });
 
-console.log(
-  "[6/6] Browser build created (not tested in Node.js environment)..."
-);
-console.log("Browser build files:");
-console.log("- rel2sql_embindings_browser.js");
-console.log("- rel2sql_embindings_browser.wasm");
-console.log("- loader-browser.js");
-console.log(
-  "Note: Browser build is designed for webpack/browser environments, not Node.js"
-);
+console.log("[6/6] Testing browser loader (simulated browser environment)...");
+const browserTestContent = `
+// Simulate browser environment for testing
+global.window = {};
+global.document = { head: { appendChild: () => {} } };
+
+import { loadRel2Sql } from "@nicovsj/rel2sql-wasm/browser";
+
+// Test that the browser loader can be imported and has the right interface
+if (typeof loadRel2Sql !== 'function') {
+  throw new Error('loadRel2Sql should be a function');
+}
+
+console.log("Browser loader interface OK - function exported correctly");
+console.log("Note: Full browser test requires actual browser environment");
+`;
+writeFileSync(join(tmpDir, "browser-test.mjs"), browserTestContent);
+execSync(`node ${join(tmpDir, "browser-test.mjs")}`, { stdio: "inherit" });
 
 console.log("All good ✅");
