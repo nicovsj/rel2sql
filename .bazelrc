@@ -1,10 +1,12 @@
+#--- Global C++ configuration ---
+
+# Use C++20 standard
 build --cxxopt='-std=c++20'
+
+# Disable deprecated builtins warning
 build --cxxopt='-Wno-deprecated-builtins'
 
-# Global Emscripten configuration (from working example)
-build:emcc --incompatible_enable_cc_toolchain_resolution
-build:emcc --features=exceptions
-build:emcc --cxxopt='-fexceptions'
+#--- Global platform-specific configuration ---
 
 # Enable platform-specific configs for regular builds (but not WASM)
 build:default --enable_platform_specific_config
@@ -12,7 +14,25 @@ build:default --enable_platform_specific_config
 # macOS-specific configuration
 build:macos --cxxopt='-isysroot/Library/Developer/CommandLineTools/SDKs/MacOSX14.5.sdk'
 
-# Debug configuration
+#--- Global debug configuration ---
+
+# Set debug configuration
 build:debug -c dbg
+
+# Enable oso_prefix_is_pwd feature
 build:debug --features=oso_prefix_is_pwd
 build:debug --spawn_strategy=local
+
+# Enable local spawn strategy
+build:debug --spawn_strategy=local
+
+#--- Global Emscripten configuration ---
+
+# Enable CC toolchain resolution
+build:emcc --incompatible_enable_cc_toolchain_resolution
+
+# Enable exceptions
+build:emcc --features=exceptions
+
+# Enable exceptions
+build:emcc --cxxopt='-fexceptions'
