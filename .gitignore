@@ -37,6 +37,15 @@ build/
 # Bazel output directories
 bazel-*
 
+# WASM test dist directory
+wasm/tests/browser/dist/
+
+# NPM package dist directory
+packages/rel2sql-wasm/dist/
+
+# NPM package tarballs
+packages/rel2sql-wasm/*.tgz
+
 # Queries
 *.rel
 *.sql

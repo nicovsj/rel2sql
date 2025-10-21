@@ -12,38 +12,53 @@ tasks:
     cmds:
       - bazel build --config=default //:rel2sql_shared
 
+  # Test subcommands
   test:
     desc: Run all tests
     cmds:
+      - task: test:unit
+      - task: test:wasm
+
+  test:unit:
+    desc: Run unit tests
+    cmds:
       - bazel test --config=default //...
 
-  # WASM build tasks
-  build-wasm:
-    desc: Build the WASM module for web browsers
+  test:wasm:
+    desc: Run WASM tests
     cmds:
-      - bazel build //:rel2sql_wasm --config=emcc
+      - task: test:wasm:npm
+      - task: test:wasm:browser
 
-  test-wasm:
-    desc: Build WASM and serve test page on localhost:8000
-    cmds:
-      - bazel build //:rel2sql_wasm --config=emcc
-      - echo "WASM built successfully!"
-      - echo "Killing any existing process on port 8000..."
-      - kill $(lsof -ti:8000) 2>/dev/null || echo "No process found on port 8000"
-      - echo "Open http://localhost:8000/wasm/test_wasm.html in your browser"
-      - echo "Press Ctrl+C to stop the server"
-      - python3 -m http.server 8000
-
-  test-wasm-bazel:
-    desc: Run automated Bazel test for WASM module (for CI)
-    cmds:
-      - bazel build //:rel2sql_wasm --config=emcc
-      - bazel test //:test_wasm_module --config=emcc
-
-  test-npm-package:
+  test:wasm:npm:
     desc: Test npm package build, pack, and consumption
     cmds:
       - node wasm/tests/npm_package_test.mjs
+
+  test:wasm:browser:
+    desc: Setup and serve browser test on localhost:8080
+    cmds:
+      - node wasm/setup_browser_test.mjs
+      - echo "Open http://localhost:8080/wasm/tests/browser/test_browser.html in your browser"
+      - echo "Press Ctrl+C to stop the server"
+      - python3 -m http.server 8080
+
+
+  # WASM build tasks
+  build-wasm:
+    desc: Build both Node.js and Browser WASM modules
+    cmds:
+      - bazel build //wasm:rel2sql_wasm_node //wasm:rel2sql_wasm_browser --config=emcc
+
+  build-wasm-node:
+    desc: Build only the Node.js WASM module
+    cmds:
+      - bazel build //wasm:rel2sql_wasm_node --config=emcc
+
+  build-wasm-browser:
+    desc: Build only the Browser WASM module
+    cmds:
+      - bazel build //wasm:rel2sql_wasm_browser --config=emcc
 
   # Development tasks
   generate-compile-commands:
