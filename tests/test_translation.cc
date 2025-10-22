@@ -5,14 +5,12 @@
 #include "structs/sql_ast.h"
 #include "translate.h"
 
-std::string TranslateRelProgram(const std::string& input,
-                                std::unordered_map<std::string, int> external_arity_map = {}) {
-  /*
-   * This function takes a string CoreRel program input and returns the SQL translation.
-   */
+// Template function to eliminate code duplication
+template <typename ContextType, typename DataType>
+std::string TranslateRel(const std::string& input, ContextType* (*parse_method)(rel_parser::PrunedCoreRelParser*),
+                         DataType&& ast_data) {
   auto parser = rel_parser::GetParser(input);
-  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ProgramContext*>(parser->program());
-  auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
+  auto tree = dynamic_cast<ContextType*>(parse_method(parser.get()));
   auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree, ast);
   std::ostringstream os;
@@ -20,18 +18,23 @@ std::string TranslateRelProgram(const std::string& input,
   return os.str();
 }
 
+std::string TranslateRelProgram(const std::string& input,
+                                std::unordered_map<std::string, int> external_arity_map = {}) {
+  /*
+   * This function takes a string CoreRel program input and returns the SQL translation.
+   */
+  auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
+  return TranslateRel<rel_parser::PrunedCoreRelParser::ProgramContext>(
+      input, [](rel_parser::PrunedCoreRelParser* p) { return p->program(); }, ast_data);
+}
+
 std::string TranslateRelDef(const std::string& input, std::unordered_map<std::string, int> external_arity_map = {}) {
   /*
    * This function takes a string CoreRel program input and returns the SQL translation.
    */
-  auto parser = rel_parser::GetParser(input);
-  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::RelDefContext*>(parser->relDef());
   auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
-  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
-  auto result = rel_parser::GetSQLFromTree(tree, ast);
-  std::ostringstream os;
-  os << *result;
-  return os.str();
+  return TranslateRel<rel_parser::PrunedCoreRelParser::RelDefContext>(
+      input, [](rel_parser::PrunedCoreRelParser* p) { return p->relDef(); }, ast_data);
 }
 
 std::string TranslateRelFormula(const std::string& input,
@@ -39,14 +42,9 @@ std::string TranslateRelFormula(const std::string& input,
   /*
    * This function takes a string CoreRel formula input and returns the SQL translation.
    */
-  auto parser = rel_parser::GetParser(input);
-  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::FormulaContext*>(parser->formula());
   auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
-  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
-  auto result = rel_parser::GetSQLFromTree(tree);
-  std::ostringstream os;
-  os << *result;
-  return os.str();
+  return TranslateRel<rel_parser::PrunedCoreRelParser::FormulaContext>(
+      input, [](rel_parser::PrunedCoreRelParser* p) { return p->formula(); }, ast_data);
 }
 
 std::string TranslateRelExpression(const std::string& input,
@@ -54,56 +52,45 @@ std::string TranslateRelExpression(const std::string& input,
   /*
    * This function takes a string CoreRel expression input and returns the SQL translation.
    */
-  auto parser = rel_parser::GetParser(input);
-  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ExprContext*>(parser->expr());
   auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
-  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
-  auto result = rel_parser::GetSQLFromTree(tree, ast);
-  std::ostringstream os;
-  os << *result;
-  return os.str();
+  return TranslateRel<rel_parser::PrunedCoreRelParser::ExprContext>(
+      input, [](rel_parser::PrunedCoreRelParser* p) { return p->expr(); }, ast_data);
 }
 
 std::string TranslateRelProgramWithEDB(const std::string& input, const rel2sql::EDBMap& edb_map) {
   /*
    * This function takes a string CoreRel program input and returns the SQL translation using EDB info.
    */
-  auto parser = rel_parser::GetParser(input);
-  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ProgramContext*>(parser->program());
   auto ast_data = std::make_shared<ExtendedASTData>(edb_map);
-  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
-  auto result = rel_parser::GetSQLFromTree(tree, ast);
-  std::ostringstream os;
-  os << *result;
-  return os.str();
+  return TranslateRel<rel_parser::PrunedCoreRelParser::ProgramContext>(
+      input, [](rel_parser::PrunedCoreRelParser* p) { return p->program(); }, ast_data);
 }
 
 std::string TranslateRelDefWithEDB(const std::string& input, const rel2sql::EDBMap& edb_map) {
   /*
    * This function takes a string CoreRel definition input and returns the SQL translation using EDB info.
    */
-  auto parser = rel_parser::GetParser(input);
-  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::RelDefContext*>(parser->relDef());
   auto ast_data = std::make_shared<ExtendedASTData>(edb_map);
-  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
-  auto result = rel_parser::GetSQLFromTree(tree, ast);
-  std::ostringstream os;
-  os << *result;
-  return os.str();
+  return TranslateRel<rel_parser::PrunedCoreRelParser::RelDefContext>(
+      input, [](rel_parser::PrunedCoreRelParser* p) { return p->relDef(); }, ast_data);
 }
 
 std::string TranslateRelFormulaWithEDB(const std::string& input, const rel2sql::EDBMap& edb_map) {
   /*
    * This function takes a string CoreRel formula input and returns the SQL translation using EDB info.
    */
-  auto parser = rel_parser::GetParser(input);
-  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::FormulaContext*>(parser->formula());
   auto ast_data = std::make_shared<ExtendedASTData>(edb_map);
-  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
-  auto result = rel_parser::GetSQLFromTree(tree, ast);
-  std::ostringstream os;
-  os << *result;
-  return os.str();
+  return TranslateRel<rel_parser::PrunedCoreRelParser::FormulaContext>(
+      input, [](rel_parser::PrunedCoreRelParser* p) { return p->formula(); }, ast_data);
+}
+
+std::string TranslateRelExpressionWithEDB(const std::string& input, const rel2sql::EDBMap& edb_map) {
+  /*
+   * This function takes a string CoreRel expression input and returns the SQL translation using EDB info.
+   */
+  auto ast_data = std::make_shared<ExtendedASTData>(edb_map);
+  return TranslateRel<rel_parser::PrunedCoreRelParser::ExprContext>(
+      input, [](rel_parser::PrunedCoreRelParser* p) { return p->expr(); }, ast_data);
 }
 
 TEST(SQLVisitorTest, EqualitySpecialCondition) {
@@ -476,4 +463,11 @@ TEST(EDBTranslationTest, NamedAttributesRepeatedVariables) {
 
   EXPECT_EQ(TranslateRelFormulaWithEDB("F(x, x)", edb_map),
             "SELECT T0.id AS x FROM F AS T0 WHERE T0.id = T0.parent_id");
+}
+
+TEST(EDBTranslationTest, BindingFormula) {
+  rel2sql::EDBMap edb_map;
+  edb_map["F"] = rel2sql::EDBInfo({"name"});
+
+  EXPECT_EQ(TranslateRelExpressionWithEDB("(x): F(x)", edb_map), "SELECT T0.name AS x FROM F AS T0");
 }

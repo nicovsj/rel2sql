@@ -1,6 +1,7 @@
 // cspell:ignore GTEST
 #include <gtest/gtest.h>
 
+#include "structs/edb_info.h"
 #include "structs/sql_ast.h"
 #include "translate.h"
 
@@ -62,6 +63,22 @@ std::string TranslateRelExpression(const std::string& input,
   auto parser = rel_parser::GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ExprContext*>(parser->expr());
   auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
+  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
+  auto result = rel_parser::GetSQLFromTree(tree, ast);
+  sql::ast::Optimizer optimizer;
+  optimizer.Visit(*result);
+  std::ostringstream os;
+  os << *result;
+  return os.str();
+}
+
+std::string TranslateRelExpressionWithEDB(const std::string& input, const rel2sql::EDBMap& edb_map) {
+  /*
+   * This function takes a string CoreRel expression input and returns the SQL translation using EDB info.
+   */
+  auto parser = rel_parser::GetParser(input);
+  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ExprContext*>(parser->expr());
+  auto ast_data = std::make_shared<ExtendedASTData>(edb_map);
   auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
   auto result = rel_parser::GetSQLFromTree(tree, ast);
   sql::ast::Optimizer optimizer;
@@ -274,4 +291,13 @@ TEST(OptimizationTest, MultipleDefs2) {
 TEST(OptimizationTest, TableDefinition) {
   EXPECT_EQ(TranslateRelDef("def F {(1, 2); (3, 4)}"),
             "CREATE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2))");
+}
+
+TEST(OptimizationTest, EDBBindingFormula) {
+  rel2sql::EDBMap edb_map;
+  edb_map["F"] = rel2sql::EDBInfo({"name"});
+
+  EXPECT_EQ(TranslateRelExpressionWithEDB("(x): F(x)", edb_map),
+            "WITH S0(x) AS (SELECT * FROM F) SELECT S0.x AS A1 FROM (SELECT T0.name AS x FROM F AS T0) AS T1, S0 WHERE "
+            "S0.x = T1.x");
 }
