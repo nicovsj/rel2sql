@@ -9,8 +9,7 @@ namespace rel2sql {
 
 // Forward declarations
 class EDBInfo;
-using EDBMap = std::unordered_map<std::string, EDBInfo>;
-
+class EDBMap;
 /*
  * Translates the given input string into SQL.
  *

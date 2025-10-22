@@ -57,8 +57,32 @@ struct EDBInfo {
   }
 };
 
-// Type alias for EDB map
-using EDBMap = std::unordered_map<std::string, EDBInfo>;
+struct EDBMap {
+  std::unordered_map<std::string, EDBInfo> map;
+
+  EDBMap() = default;
+
+  EDBMap(const std::unordered_map<std::string, EDBInfo>& map) : map(map) {}
+
+  size_t size() const { return map.size(); }
+
+  bool has(const std::string& name) const { return map.find(name) != map.end(); }
+
+  EDBInfo get(const std::string& name) const { return map.at(name); }
+
+  void set(const std::string& name, const EDBInfo& info) { map[name] = info; }
+
+  // Subscript operators
+  EDBInfo& operator[](const std::string& name) { return map[name]; }
+
+  const EDBInfo& operator[](const std::string& name) const { return map.at(name); }
+
+  // Iterators
+  auto begin() { return map.begin(); }
+  auto end() { return map.end(); }
+  auto begin() const { return map.begin(); }
+  auto end() const { return map.end(); }
+};
 
 // Helper functions for EDBMap
 namespace edb_utils {
@@ -79,6 +103,7 @@ inline EDBMap WithNamedAttributes(const std::unordered_map<std::string, std::vec
   }
   return edb_map;
 }
+
 }  // namespace edb_utils
 
 }  // namespace rel2sql
