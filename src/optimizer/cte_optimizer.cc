@@ -22,10 +22,12 @@ bool CTEOptimizer::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, Se
 
         if (auto table = std::dynamic_pointer_cast<Table>(original_source->sourceable)) {
           auto new_source = std::make_shared<Source>(table, cte->Alias());
-          // Create a map of CTE column aliases to their new names (A1, A2, etc.)
+          // Create a map of CTE column aliases to their new names
+          // Use the table's actual attribute names if available, otherwise fall back to A1, A2, etc.
           std::unordered_map<std::string, std::shared_ptr<Column>> column_map;
           for (size_t i = 0; i < cte->def_columns.size(); ++i) {
-            column_map[cte->def_columns[i]] = std::make_shared<Column>(fmt::format("A{}", i + 1), new_source);
+            std::string column_name = table->GetAttributeName(i);
+            column_map[cte->def_columns[i]] = std::make_shared<Column>(column_name, new_source);
           }
 
           // Create a replacer that handles both source name and column name replacements

@@ -1426,9 +1426,20 @@ std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::
       cte_map[elem] = source;
     } else if (elem.union_domain.size() == 1) {
       std::string table_name = (*elem.union_domain.begin()).table_name;
-      auto table = std::make_shared<sql::ast::Source>(
-          std::make_shared<sql::ast::Table>(table_name, ast_data_->arity_by_id[table_name]));
-      auto from = std::make_shared<sql::ast::FromStatement>(table);
+      // Create table with proper EDB attribute names
+      auto edb_info = ast_data_->GetEDBInfo(table_name);
+      std::shared_ptr<sql::ast::Table> table;
+      if (edb_info && edb_info->arity() > 0) {
+        std::vector<std::string> attribute_names;
+        for (int i = 0; i < edb_info->arity(); ++i) {
+          attribute_names.push_back(edb_info->get_attribute_name(i));
+        }
+        table = std::make_shared<sql::ast::Table>(table_name, edb_info->arity(), attribute_names);
+      } else {
+        table = std::make_shared<sql::ast::Table>(table_name, ast_data_->arity_by_id[table_name]);
+      }
+      auto table_source = std::make_shared<sql::ast::Source>(table);
+      auto from = std::make_shared<sql::ast::FromStatement>(table_source);
       auto select = std::make_shared<sql::ast::SelectStatement>(
           std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::Wildcard>()}, from);
 
