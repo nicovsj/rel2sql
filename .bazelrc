@@ -17,6 +17,8 @@ build:macos --cxxopt='-isysroot/Library/Developer/CommandLineTools/SDKs/MacOSX14
 #--- Global debug configuration ---
 
 # Set debug configuration
+build:debug --enable_platform_specific_config
+
 build:debug -c dbg
 
 # Enable oso_prefix_is_pwd feature
