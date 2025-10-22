@@ -20,11 +20,6 @@ std::string translate_rel2sql_with_edb(const std::string& input, const rel2sql::
   return rel2sql::Translate(input, edb_map);
 }
 
-// Wrapper for Translate using EDBMapWrapper
-std::string translate_rel2sql_with_edb_wrapper(const std::string& input, const rel2sql::EDBMap& edb_map) {
-  return rel2sql::Translate(input, edb_map);
-}
-
 // Test function to verify the library is working
 bool test_rel2sql() {
   std::string result = rel2sql::Translate("def output {1}");
@@ -71,7 +66,6 @@ EMSCRIPTEN_BINDINGS(rel2sql_module) {
   // Expose functions
   emscripten::function("translate", &translate_rel2sql);
   emscripten::function("translateWithEDB", &translate_rel2sql_with_edb);
-  emscripten::function("translateWithEDBWrapper", &translate_rel2sql_with_edb_wrapper);
   emscripten::function("test", &test_rel2sql);
   emscripten::function("testWithEDB", &test_rel2sql_with_edb);
 }
