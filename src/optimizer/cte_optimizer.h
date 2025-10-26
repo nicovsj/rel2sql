@@ -3,6 +3,7 @@
 
 #include "base_optimizer.h"
 
+namespace rel2sql {
 namespace sql::ast {
 
 class CTEOptimizer : public BaseOptimizer {
@@ -16,5 +17,6 @@ class CTEOptimizer : public BaseOptimizer {
 };  // class CTEOptimizer
 
 }  // namespace sql::ast
+}  // namespace rel2sql
 
 #endif  // CTE_OPTIMIZER_H

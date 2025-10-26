@@ -2,6 +2,7 @@
 
 #include "replacers.h"
 
+namespace rel2sql {
 namespace sql::ast {
 
 void SelfJoinOptimizer::Visit(SelectStatement& select_statement) {
@@ -138,3 +139,4 @@ void SelfJoinOptimizer::CollectComparisonConditions(const std::shared_ptr<Condit
 }
 
 }  // namespace sql::ast
+}  // namespace rel2sql

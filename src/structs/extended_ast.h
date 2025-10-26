@@ -3,13 +3,14 @@
 
 #include <antlr4-runtime.h>
 
-#include <set>
 #include <string>
-#include <unordered_map>
+#include <vector>
 
 #include "structs/edb_info.h"
 #include "structs/sql_ast.h"
 #include "utils/utils.h"
+
+namespace rel2sql {
 
 struct ProjectionTable;
 
@@ -76,10 +77,12 @@ struct ProjectionTable {
   }
 };
 
+}  // namespace rel2sql
+
 namespace std {
 template <>
-struct hash<ProjectionTable> {
-  std::size_t operator()(const ProjectionTable& pt) const {
+struct hash<rel2sql::ProjectionTable> {
+  std::size_t operator()(const rel2sql::ProjectionTable& pt) const {
     std::size_t seed = 0;
     utl::hash_range(seed, pt.indices.begin(), pt.indices.end());
     utl::hash_combine(seed, pt.table_name);
@@ -88,6 +91,8 @@ struct hash<ProjectionTable> {
 };
 
 }  // namespace std
+
+namespace rel2sql {
 
 struct TupleBinding {
   std::vector<std::string> vars_tuple;
@@ -103,10 +108,12 @@ struct TupleBinding {
   }
 };
 
+}  // namespace rel2sql
+
 namespace std {
 template <>
-struct hash<TupleBinding> {
-  std::size_t operator()(const TupleBinding& tb) const {
+struct hash<rel2sql::TupleBinding> {
+  std::size_t operator()(const rel2sql::TupleBinding& tb) const {
     std::size_t seed = 0;
     utl::hash_range(seed, tb.vars_tuple.begin(), tb.vars_tuple.end());
     for (const auto& table : tb.union_domain) {
@@ -118,6 +125,8 @@ struct hash<TupleBinding> {
 };
 
 }  // namespace std
+
+namespace rel2sql {
 
 struct ExtendedNode {
   // Variables are the variables that are bound in the current context
@@ -288,5 +297,7 @@ const std::map<std::string, sql::ast::AggregateFunction> AGGREGATE_MAP = {
     {"sum", sql::ast::AggregateFunction::SUM},
     {"average", sql::ast::AggregateFunction::AVG},
     {"count", sql::ast::AggregateFunction::COUNT}};
+
+}  // namespace rel2sql
 
 #endif  // EXTENDED_DATA_H

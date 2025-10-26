@@ -4,6 +4,7 @@
 #include "structs/expr_visitor.h"
 #include "structs/sql_ast.h"
 
+namespace rel2sql {
 namespace sql::ast {
 
 class BaseOptimizer : public ExpressionVisitor {
@@ -30,5 +31,6 @@ class BaseOptimizer : public ExpressionVisitor {
 };
 
 }  // namespace sql::ast
+}  // namespace rel2sql
 
 #endif  // BASE_OPTIMIZER_H

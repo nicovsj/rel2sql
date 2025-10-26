@@ -7,6 +7,8 @@
 #include "structs/expr_visitor.h"
 #include "structs/sql_ast.h"
 
+namespace rel2sql {
+
 namespace sql::ast {
 
 class ConstantReplacer : public ExpressionVisitor {
@@ -104,5 +106,6 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
 };
 
 }  // namespace sql::ast
+}  // namespace rel2sql
 
 #endif  // SQL_AST_CONST_REPLACER_H

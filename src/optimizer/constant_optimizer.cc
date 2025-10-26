@@ -2,6 +2,8 @@
 
 #include "replacers.h"
 
+namespace rel2sql {
+
 namespace sql::ast {
 
 void ConstantOptimizer::Visit(FromStatement& from_statement) {
@@ -49,3 +51,4 @@ bool ConstantOptimizer::TryReplaceConstantInWhere(const std::shared_ptr<Source>&
 }
 
 }  // namespace sql::ast
+}  // namespace rel2sql

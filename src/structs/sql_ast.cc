@@ -1,5 +1,7 @@
 #include "sql_ast.h"
 
+namespace rel2sql {
+
 namespace sql::ast {
 
 std::ostream& Exists::Print(std::ostream& os) const { return os << "EXISTS (" << *select << ")"; }
@@ -23,3 +25,4 @@ std::ostream& Inclusion::Print(std::ostream& os) const {
 }
 
 }  // namespace sql::ast
+}  // namespace rel2sql

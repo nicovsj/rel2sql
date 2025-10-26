@@ -2,6 +2,8 @@
 
 #include "structs/sql_ast.h"
 
+namespace rel2sql {
+
 namespace sql::ast {
 
 void ExpressionVisitor::Visit(Expression& expression) { expression.Accept(*this); }
@@ -134,3 +136,4 @@ void ExpressionVisitor::Visit(MultipleStatements& multiple_statements) {
 }
 
 }  // namespace sql::ast
+}  // namespace rel2sql

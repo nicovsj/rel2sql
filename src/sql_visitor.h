@@ -8,6 +8,8 @@
 #include "structs/extended_ast.h"
 #include "structs/sql_ast.h"
 
+namespace rel2sql {
+
 class SQLVisitor : public BaseVisitor {
   /*
    * Visitor that constructs the SQL AST from the Rel program.
@@ -165,5 +167,7 @@ class SQLVisitor : public BaseVisitor {
   FRIEND_TEST(SQLVisitorTest, EqualitySpecialCondition);
   FRIEND_TEST(SQLVisitorTest, SpecialVarList);
 };
+
+}  // namespace rel2sql
 
 #endif  // SQL_VISITOR_H

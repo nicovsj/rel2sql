@@ -5,16 +5,18 @@
 #include "structs/sql_ast.h"
 #include "translate.h"
 
+namespace rel2sql {
+
 std::string TranslateRelProgram(const std::string& input,
                                 std::unordered_map<std::string, int> external_arity_map = {}) {
   /*
    * This function takes a string CoreRel program input and returns the SQL translation.
    */
-  auto parser = rel_parser::GetParser(input);
+  auto parser = GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ProgramContext*>(parser->program());
   auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
-  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
-  auto result = rel_parser::GetSQLFromTree(tree, ast);
+  auto ast = GetExtendedASTFromTree(tree, ast_data);
+  auto result = GetSQLFromTree(tree, ast);
   sql::ast::Optimizer optimizer;
   optimizer.Visit(*result);
   std::ostringstream os;
@@ -26,11 +28,11 @@ std::string TranslateRelDef(const std::string& input, std::unordered_map<std::st
   /*
    * This function takes a string CoreRel program input and returns the SQL translation.
    */
-  auto parser = rel_parser::GetParser(input);
+  auto parser = GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::RelDefContext*>(parser->relDef());
   auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
-  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
-  auto result = rel_parser::GetSQLFromTree(tree, ast);
+  auto ast = GetExtendedASTFromTree(tree, ast_data);
+  auto result = GetSQLFromTree(tree, ast);
   sql::ast::Optimizer optimizer;
   optimizer.Visit(*result);
   std::ostringstream os;
@@ -43,11 +45,11 @@ std::string TranslateRelFormula(const std::string& input,
   /*
    * This function takes a string CoreRel formula input and returns the SQL translation.
    */
-  auto parser = rel_parser::GetParser(input);
+  auto parser = GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::FormulaContext*>(parser->formula());
   auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
-  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
-  auto result = rel_parser::GetSQLFromTree(tree, ast);
+  auto ast = GetExtendedASTFromTree(tree, ast_data);
+  auto result = GetSQLFromTree(tree, ast);
   sql::ast::Optimizer optimizer;
   optimizer.Visit(*result);
   std::ostringstream os;
@@ -60,11 +62,11 @@ std::string TranslateRelExpression(const std::string& input,
   /*
    * This function takes a string CoreRel expression input and returns the SQL translation.
    */
-  auto parser = rel_parser::GetParser(input);
+  auto parser = GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ExprContext*>(parser->expr());
   auto ast_data = std::make_shared<ExtendedASTData>(rel2sql::edb_utils::FromArityMap(external_arity_map));
-  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
-  auto result = rel_parser::GetSQLFromTree(tree, ast);
+  auto ast = GetExtendedASTFromTree(tree, ast_data);
+  auto result = GetSQLFromTree(tree, ast);
   sql::ast::Optimizer optimizer;
   optimizer.Visit(*result);
   std::ostringstream os;
@@ -76,11 +78,11 @@ std::string TranslateRelExpressionWithEDB(const std::string& input, const rel2sq
   /*
    * This function takes a string CoreRel expression input and returns the SQL translation using EDB info.
    */
-  auto parser = rel_parser::GetParser(input);
+  auto parser = GetParser(input);
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::ExprContext*>(parser->expr());
   auto ast_data = std::make_shared<ExtendedASTData>(edb_map);
-  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
-  auto result = rel_parser::GetSQLFromTree(tree, ast);
+  auto ast = GetExtendedASTFromTree(tree, ast_data);
+  auto result = GetSQLFromTree(tree, ast);
   sql::ast::Optimizer optimizer;
   optimizer.Visit(*result);
   std::ostringstream os;
@@ -301,3 +303,5 @@ TEST(OptimizationTest, EDBBindingFormula) {
             "WITH S0(x) AS (SELECT * FROM F) SELECT S0.x AS A1 FROM (SELECT T0.name AS x FROM F AS T0) AS T1, S0 WHERE "
             "S0.x = T1.x");
 }
+
+}  // namespace rel2sql

@@ -13,14 +13,14 @@
 #include "sql_visitor.h"
 #include "structs/edb_info.h"
 
-namespace rel_parser {
+namespace rel2sql {
 
-inline std::unique_ptr<PrunedCoreRelParser> GetParser(std::string_view input) {
+inline std::unique_ptr<rel_parser::PrunedCoreRelParser> GetParser(std::string_view input) {
   auto input_stream = new antlr4::ANTLRInputStream(input.data());
-  auto lexer = new CoreRelLexer(input_stream);
+  auto lexer = new rel_parser::CoreRelLexer(input_stream);
   auto tokens = new antlr4::CommonTokenStream(lexer);
 
-  return std::make_unique<PrunedCoreRelParser>(tokens);
+  return std::make_unique<rel_parser::PrunedCoreRelParser>(tokens);
 }
 
 inline ExtendedAST GetExtendedASTFromTree(
@@ -124,6 +124,6 @@ inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQL(std::string_view 
   return GetSQLFromTree(tree, ast);
 }
 
-}  // namespace rel_parser
+}  // namespace rel2sql
 
 #endif  // TRANSLATE_H

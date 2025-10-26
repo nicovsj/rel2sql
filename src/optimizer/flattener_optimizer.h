@@ -3,6 +3,7 @@
 
 #include "base_optimizer.h"
 
+namespace rel2sql {
 namespace sql::ast {
 
 class FlattenerOptimizer : public BaseOptimizer {
@@ -16,5 +17,6 @@ class FlattenerOptimizer : public BaseOptimizer {
 };  // class FlattenerOptimizer
 
 }  // namespace sql::ast
+}  // namespace rel2sql
 
 #endif  // FLATTENER_OPTIMIZER_H

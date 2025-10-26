@@ -1,70 +1,72 @@
 #include "balancing_visitor.h"
 
+namespace rel2sql {
+
 BalancingVisitor::BalancingVisitor(std::shared_ptr<ExtendedASTData> ast_data) : BaseVisitor(ast_data) {}
 
-std::any BalancingVisitor::visitProgram(psr::ProgramContext *ctx) {
+std::any BalancingVisitor::visitProgram(psr::ProgramContext* ctx) {
   visitChildren(ctx);
   return {};
 }
 
-std::any BalancingVisitor::visitRelDef(psr::RelDefContext *ctx) {
+std::any BalancingVisitor::visitRelDef(psr::RelDefContext* ctx) {
   visitChildren(ctx);
   return {};
 }
 
-std::any BalancingVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
+std::any BalancingVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
   visitChildren(ctx);
   return {};
 }
 
-std::any BalancingVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
+std::any BalancingVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
   visitChildren(ctx);
   return {};
 }
 
-std::any BalancingVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
+std::any BalancingVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
   visitChildren(ctx);
   return {};
 }
 
-std::any BalancingVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
+std::any BalancingVisitor::visitRelAbsExpr(psr::RelAbsExprContext* ctx) {
   visitChildren(ctx);
   return {};
 }
 
-std::any BalancingVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
+std::any BalancingVisitor::visitFormulaExpr(psr::FormulaExprContext* ctx) {
   visitChildren(ctx);
   return {};
 }
 
-std::any BalancingVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
+std::any BalancingVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
   visit(ctx->expr());
   return {};
 }
 
-std::any BalancingVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
+std::any BalancingVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
   visit(ctx->formula());
   return {};
 }
 
-std::any BalancingVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
+std::any BalancingVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
   visitChildren(ctx);
   return {};
 }
 
-std::any BalancingVisitor::visitProductInner(psr::ProductInnerContext *ctx) {
+std::any BalancingVisitor::visitProductInner(psr::ProductInnerContext* ctx) {
   visitChildren(ctx);
   return {};
 }
 
-std::any BalancingVisitor::visitFullAppl(psr::FullApplContext *ctx) {
+std::any BalancingVisitor::visitFullAppl(psr::FullApplContext* ctx) {
   visitChildren(ctx);
   return {};
 }
 
-std::any BalancingVisitor::visitBinOp(psr::BinOpContext *ctx) {
+std::any BalancingVisitor::visitBinOp(psr::BinOpContext* ctx) {
   if (ctx->K_and()) {
-    auto &node = GetNode(ctx);
+    auto& node = GetNode(ctx);
 
     // Collect and store comparator formulas and other formulas
     CollectComparatorFormulas(ctx, node.comparator_formulas, node.other_formulas);
@@ -99,39 +101,39 @@ std::any BalancingVisitor::visitBinOp(psr::BinOpContext *ctx) {
   return {};
 }
 
-std::any BalancingVisitor::visitUnOp(psr::UnOpContext *ctx) {
+std::any BalancingVisitor::visitUnOp(psr::UnOpContext* ctx) {
   visit(ctx->formula());
   return {};
 }
 
-std::any BalancingVisitor::visitQuantification(psr::QuantificationContext *ctx) {
+std::any BalancingVisitor::visitQuantification(psr::QuantificationContext* ctx) {
   visit(ctx->formula());
   return {};
 }
 
-std::any BalancingVisitor::visitParen(psr::ParenContext *ctx) {
+std::any BalancingVisitor::visitParen(psr::ParenContext* ctx) {
   visit(ctx->formula());
   return {};
 }
 
-std::any BalancingVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
+std::any BalancingVisitor::visitApplBase(psr::ApplBaseContext* ctx) {
   visitChildren(ctx);
   return {};
 }
 
-std::any BalancingVisitor::visitApplParams(psr::ApplParamsContext *ctx) {
+std::any BalancingVisitor::visitApplParams(psr::ApplParamsContext* ctx) {
   visitChildren(ctx);
   return {};
 }
 
-std::any BalancingVisitor::visitApplParam(psr::ApplParamContext *ctx) {
+std::any BalancingVisitor::visitApplParam(psr::ApplParamContext* ctx) {
   visitChildren(ctx);
   return {};
 }
 
-void BalancingVisitor::CollectComparatorFormulas(psr::FormulaContext *formula_ctx,
-                                                 std::vector<antlr4::ParserRuleContext *> &comparator_formulas,
-                                                 std::vector<antlr4::ParserRuleContext *> &other_formulas) {
+void BalancingVisitor::CollectComparatorFormulas(psr::FormulaContext* formula_ctx,
+                                                 std::vector<antlr4::ParserRuleContext*>& comparator_formulas,
+                                                 std::vector<antlr4::ParserRuleContext*>& other_formulas) {
   /**
    * @brief Recursively collects comparator formulas and other formulas from a given formula context.
    *
@@ -151,9 +153,9 @@ void BalancingVisitor::CollectComparatorFormulas(psr::FormulaContext *formula_ct
    * @note The function assumes that ComparisonContext represents a comparator formula.
    */
 
-  if (auto comparison_ctx = dynamic_cast<psr::ComparisonContext *>(formula_ctx)) {
+  if (auto comparison_ctx = dynamic_cast<psr::ComparisonContext*>(formula_ctx)) {
     comparator_formulas.push_back(formula_ctx);
-  } else if (auto bin_op_ctx = dynamic_cast<psr::BinOpContext *>(formula_ctx)) {
+  } else if (auto bin_op_ctx = dynamic_cast<psr::BinOpContext*>(formula_ctx)) {
     if (bin_op_ctx->K_and()) {
       CollectComparatorFormulas(bin_op_ctx->lhs, comparator_formulas, other_formulas);
       CollectComparatorFormulas(bin_op_ctx->rhs, comparator_formulas, other_formulas);
@@ -164,3 +166,5 @@ void BalancingVisitor::CollectComparatorFormulas(psr::FormulaContext *formula_ct
     other_formulas.push_back(formula_ctx);
   }
 }
+
+}  // namespace rel2sql

@@ -2,6 +2,7 @@
 
 #include "replacers.h"
 
+namespace rel2sql {
 namespace sql::ast {
 
 void CTEOptimizer::Visit(SelectStatement& select_statement) {
@@ -42,3 +43,4 @@ bool CTEOptimizer::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, Se
 }
 
 }  // namespace sql::ast
+}  // namespace rel2sql

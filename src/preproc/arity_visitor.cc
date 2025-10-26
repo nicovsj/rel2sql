@@ -1,25 +1,27 @@
 #include "arity_visitor.h"
 
+namespace rel2sql {
+
 ArityVisitor::ArityVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
 
-std::any ArityVisitor::visitProgram(psr::ProgramContext *ctx) {
-  std::unordered_map<std::string, std::vector<psr::RelDefContext *>> defs_by_id;
+std::any ArityVisitor::visitProgram(psr::ProgramContext* ctx) {
+  std::unordered_map<std::string, std::vector<psr::RelDefContext*>> defs_by_id;
 
-  for (auto &child_ctx : ctx->relDef()) {
+  for (auto& child_ctx : ctx->relDef()) {
     std::string id = child_ctx->name->getText();
     auto found_def = defs_by_id.find(id);
     std::string text = child_ctx->getText();
-    auto &current_node = GetNode(child_ctx);
+    auto& current_node = GetNode(child_ctx);
     // If the def is already in the map, it means that the relation has multiple defs
     if (found_def != defs_by_id.end()) {
-      auto &found_node = GetNode(found_def->second[0]->relAbs());
+      auto& found_node = GetNode(found_def->second[0]->relAbs());
       found_node.multiple_defs.push_back(child_ctx);
       current_node.disabled = true;
     }
     defs_by_id[child_ctx->name->getText()].push_back(child_ctx);
   }
 
-  for (auto &id : ast_data_->sorted_ids) {
+  for (auto& id : ast_data_->sorted_ids) {
     if (AGGREGATE_MAP.find(id) != AGGREGATE_MAP.end()) {
       // Skip aggregate functions
       continue;
@@ -32,7 +34,7 @@ std::any ArityVisitor::visitProgram(psr::ProgramContext *ctx) {
       throw std::runtime_error("IDB " + id + " is not defined");
     }
 
-    for (auto &def : defs_by_id[id]) {
+    for (auto& def : defs_by_id[id]) {
       visit(def);
     }
   }
@@ -40,7 +42,7 @@ std::any ArityVisitor::visitProgram(psr::ProgramContext *ctx) {
   return {};
 }
 
-std::any ArityVisitor::visitRelDef(psr::RelDefContext *ctx) {
+std::any ArityVisitor::visitRelDef(psr::RelDefContext* ctx) {
   visit(ctx->relAbs());
 
   GetNode(ctx).arity = GetNode(ctx->relAbs()).arity;
@@ -50,7 +52,7 @@ std::any ArityVisitor::visitRelDef(psr::RelDefContext *ctx) {
   return {};
 }
 
-std::any ArityVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
+std::any ArityVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
   visit(ctx->expr(0));
 
   int common_arity = GetNode(ctx->expr(0)).arity;
@@ -68,12 +70,12 @@ std::any ArityVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
   return {};
 }
 
-std::any ArityVisitor::visitLitExpr(psr::LitExprContext *ctx) {
+std::any ArityVisitor::visitLitExpr(psr::LitExprContext* ctx) {
   GetNode(ctx).arity = 1;
   return {};
 }
 
-std::any ArityVisitor::visitIDExpr(psr::IDExprContext *ctx) {
+std::any ArityVisitor::visitIDExpr(psr::IDExprContext* ctx) {
   std::string id = ctx->T_ID()->getText();
 
   if (auto found = ast_data_->arity_by_id.find(id); found != ast_data_->arity_by_id.end()) {
@@ -85,10 +87,10 @@ std::any ArityVisitor::visitIDExpr(psr::IDExprContext *ctx) {
   return {};
 }
 
-std::any ArityVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
-  ExtendedNode &node = GetNode(ctx);
+std::any ArityVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
+  ExtendedNode& node = GetNode(ctx);
 
-  for (auto &child : ctx->productInner()->expr()) {
+  for (auto& child : ctx->productInner()->expr()) {
     visit(child);
     node.arity += GetNode(child).arity;
   }
@@ -96,8 +98,8 @@ std::any ArityVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
   return {};
 }
 
-std::any ArityVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
-  ExtendedNode &node = GetNode(ctx);
+std::any ArityVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
+  ExtendedNode& node = GetNode(ctx);
 
   visit(ctx->lhs);
 
@@ -108,8 +110,8 @@ std::any ArityVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
   return {};
 }
 
-std::any ArityVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
-  ExtendedNode &node = GetNode(ctx);
+std::any ArityVisitor::visitRelAbsExpr(psr::RelAbsExprContext* ctx) {
+  ExtendedNode& node = GetNode(ctx);
 
   visit(ctx->relAbs());
 
@@ -118,8 +120,8 @@ std::any ArityVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
   return {};
 }
 
-std::any ArityVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
-  ExtendedNode &node = GetNode(ctx);
+std::any ArityVisitor::visitFormulaExpr(psr::FormulaExprContext* ctx) {
+  ExtendedNode& node = GetNode(ctx);
 
   visit(ctx->formula());
 
@@ -128,8 +130,8 @@ std::any ArityVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
   return {};
 }
 
-std::any ArityVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
-  ExtendedNode &node = GetNode(ctx);
+std::any ArityVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
+  ExtendedNode& node = GetNode(ctx);
 
   visit(ctx->expr());
 
@@ -138,19 +140,19 @@ std::any ArityVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
   return {};
 }
 
-std::any ArityVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
-  ExtendedNode &node = GetNode(ctx);
+std::any ArityVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
+  ExtendedNode& node = GetNode(ctx);
 
   node.arity = ctx->bindingInner()->binding().size();
 
   return {};
 }
 
-std::any ArityVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
+std::any ArityVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
   visit(ctx->applBase());
   auto base_arity = GetNode(ctx->applBase()).arity;
 
-  for (auto &child : ctx->applParams()->applParam()) {
+  for (auto& child : ctx->applParams()->applParam()) {
     visit(child->expr());
     auto param_arity = GetNode(child->expr()).arity;
     base_arity -= param_arity;
@@ -173,7 +175,7 @@ std::any ArityVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
   return {};
 }
 
-std::any ArityVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
+std::any ArityVisitor::visitApplBase(psr::ApplBaseContext* ctx) {
   if (ctx->T_ID()) {
     std::string id = ctx->T_ID()->getText();
     if (auto found = ast_data_->arity_by_id.find(id); found != ast_data_->arity_by_id.end()) {
@@ -189,15 +191,17 @@ std::any ArityVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
   return {};
 }
 
-std::any ArityVisitor::visitApplParams(psr::ApplParamsContext *ctx) {
-  ExtendedNode &node = GetNode(ctx);
+std::any ArityVisitor::visitApplParams(psr::ApplParamsContext* ctx) {
+  ExtendedNode& node = GetNode(ctx);
 
   node.arity = 0;
 
-  for (auto &child : ctx->applParam()) {
+  for (auto& child : ctx->applParam()) {
     visit(child->expr());
     node.arity += GetNode(child).arity;
   }
 
   return {};
 }
+
+}  // namespace rel2sql

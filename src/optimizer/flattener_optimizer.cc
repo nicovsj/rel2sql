@@ -2,6 +2,8 @@
 
 #include "replacers.h"
 
+namespace rel2sql {
+
 namespace sql::ast {
 
 void FlattenerOptimizer::Visit(SelectStatement& select_statement) {
@@ -78,3 +80,4 @@ bool FlattenerOptimizer::TryFlattenSubquery(SelectStatement& select_statement) {
 }
 
 }  // namespace sql::ast
+}  // namespace rel2sql

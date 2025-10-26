@@ -4,7 +4,7 @@
 
 #include "translate.h"
 
-using namespace rel_parser;
+namespace rel2sql {
 
 TEST(SortedIDsTest, DefaultOrder) {
   std::string input = "def R{S}\ndef S{T}\n";
@@ -371,3 +371,5 @@ TEST(ArityVisitorTest, Binding) {
 
   EXPECT_EQ(ast.Arity("R"), 2);
 }
+
+}  // namespace rel2sql

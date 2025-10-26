@@ -1,6 +1,8 @@
 #ifndef SQL_AST_EXPR_VISITOR_H
 #define SQL_AST_EXPR_VISITOR_H
 
+namespace rel2sql {
+
 namespace sql::ast {
 
 // Forward declarations
@@ -72,5 +74,6 @@ class ExpressionVisitor {
 };
 
 }  // namespace sql::ast
+}  // namespace rel2sql
 
 #endif  // SQL_AST_EXPR_VISITOR_H

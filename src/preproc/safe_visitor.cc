@@ -1,31 +1,33 @@
 #include "safe_visitor.h"
 
+namespace rel2sql {
+
 SafeVisitor::SafeVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
 
-std::any SafeVisitor::visitProgram(psr::ProgramContext *ctx) {
+std::any SafeVisitor::visitProgram(psr::ProgramContext* ctx) {
   visitChildren(ctx);
   return {};
 }
 
-std::any SafeVisitor::visitRelDef(psr::RelDefContext *ctx) {
+std::any SafeVisitor::visitRelDef(psr::RelDefContext* ctx) {
   visit(ctx->relAbs());
 
   return {};
 }
 
-std::any SafeVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
+std::any SafeVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
   visitChildren(ctx);
 
-  auto &current_node = GetNode(ctx);
+  auto& current_node = GetNode(ctx);
 
   std::vector<std::unordered_set<TupleBinding>> sets_to_intersect;
 
-  for (auto &expr_ctx : ctx->expr()) {
+  for (auto& expr_ctx : ctx->expr()) {
     if (!GetNode(expr_ctx).safeness.has_value()) {
       current_node.safeness = std::nullopt;
       return {};
     }
-    auto &expr_safeness = GetNode(expr_ctx).safeness.value();
+    auto& expr_safeness = GetNode(expr_ctx).safeness.value();
     sets_to_intersect.push_back(expr_safeness);
   }
 
@@ -39,16 +41,16 @@ std::any SafeVisitor::visitRelAbs(psr::RelAbsContext *ctx) {
   return {};
 }
 
-std::any SafeVisitor::visitIDExpr(psr::IDExprContext *ctx) {
+std::any SafeVisitor::visitIDExpr(psr::IDExprContext* ctx) {
   GetNode(ctx).safeness = {};
 
   return {};
 }
 
-std::any SafeVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
+std::any SafeVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
   visitChildren(ctx);
 
-  auto &current_node = GetNode(ctx);
+  auto& current_node = GetNode(ctx);
 
   current_node.safeness = std::unordered_set<TupleBinding>();
 
@@ -65,11 +67,11 @@ std::any SafeVisitor::visitProductExpr(psr::ProductExprContext *ctx) {
   return {};
 }
 
-std::any SafeVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
+std::any SafeVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
   visit(ctx->expr());
   visit(ctx->formula());
 
-  auto &current_node = GetNode(ctx);
+  auto& current_node = GetNode(ctx);
 
   current_node.safeness = std::unordered_set<TupleBinding>();
 
@@ -80,7 +82,7 @@ std::any SafeVisitor::visitConditionExpr(psr::ConditionExprContext *ctx) {
   return {};
 }
 
-std::any SafeVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
+std::any SafeVisitor::visitRelAbsExpr(psr::RelAbsExprContext* ctx) {
   visitChildren(ctx);
 
   GetNode(ctx).safeness = GetNode(ctx->relAbs()).safeness;
@@ -88,7 +90,7 @@ std::any SafeVisitor::visitRelAbsExpr(psr::RelAbsExprContext *ctx) {
   return {};
 }
 
-std::any SafeVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
+std::any SafeVisitor::visitFormulaExpr(psr::FormulaExprContext* ctx) {
   visit(ctx->formula());
 
   GetNode(ctx).safeness = GetNode(ctx->formula()).safeness;
@@ -96,9 +98,9 @@ std::any SafeVisitor::visitFormulaExpr(psr::FormulaExprContext *ctx) {
   return {};
 }
 
-std::any SafeVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
+std::any SafeVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
   visit(ctx->expr());
-  auto &current_node = GetNode(ctx);
+  auto& current_node = GetNode(ctx);
 
   // If the expression is not safe, the whole expression is not safe
   if (!GetNode(ctx->expr()).safeness.has_value()) {
@@ -108,14 +110,14 @@ std::any SafeVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
 
   // Get variables that are being bind
   std::unordered_set<std::string> binding_vars;
-  for (auto &binding : ctx->bindingInner()->binding()) {
-    auto &node = GetNode(binding);
+  for (auto& binding : ctx->bindingInner()->binding()) {
+    auto& node = GetNode(binding);
     binding_vars.insert(node.variables.begin(), node.variables.end());
   }
 
   current_node.safeness = std::unordered_set<TupleBinding>();
 
-  for (auto &tuple_binding : GetNode(ctx->expr()).safeness.value()) {
+  for (auto& tuple_binding : GetNode(ctx->expr()).safeness.value()) {
     if (tuple_binding.union_domain.size() != 1) {
       throw std::runtime_error("Expected exactly one projection table");
     }
@@ -144,28 +146,28 @@ std::any SafeVisitor::visitBindingsExpr(psr::BindingsExprContext *ctx) {
   return {};
 }
 
-std::any SafeVisitor::visitBindingsFormula(psr::BindingsFormulaContext *ctx) {
+std::any SafeVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
   visit(ctx->formula());
 
   auto formula_node = GetNode(ctx->formula());
 
   GetNode(ctx).safeness = {};
 
-  for (auto &binding : ctx->bindingInner()->binding()) {
+  for (auto& binding : ctx->bindingInner()->binding()) {
     visit(binding);
   }
 
   return {};
 }
 
-std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
+std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
   if (ctx->applBase()->T_ID() && AGGREGATE_MAP.find(ctx->applBase()->T_ID()->getText()) != AGGREGATE_MAP.end()) {
     auto param_ctx = *ctx->applParams()->applParam().begin();
     visit(param_ctx);
 
-    auto &node = GetNode(ctx);
+    auto& node = GetNode(ctx);
 
-    auto &child_node = GetNode(param_ctx);
+    auto& child_node = GetNode(param_ctx);
 
     node.safeness = child_node.safeness;
 
@@ -174,7 +176,7 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
 
   if (ctx->applBase()->T_ID()) {
     bool all_vars = true;
-    for (auto &param : ctx->applParams()->applParam()) {
+    for (auto& param : ctx->applParams()->applParam()) {
       visit(param);
       if (*GetNode(param).variables.begin() != param->getText()) {
         all_vars = false;
@@ -194,7 +196,7 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
 
       tuple_binding.union_domain.insert(projection);
 
-      for (auto &param : ctx->applParams()->applParam()) {
+      for (auto& param : ctx->applParams()->applParam()) {
         auto variable = param->getText();
 
         tuple_binding.vars_tuple.push_back(variable);
@@ -211,7 +213,7 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext *ctx) {
   return {};
 }
 
-std::any SafeVisitor::visitFullAppl(psr::FullApplContext *ctx) {
+std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
   std::string base_id = ctx->getText();
 
   visit(ctx->applBase());
@@ -226,8 +228,8 @@ std::any SafeVisitor::visitFullAppl(psr::FullApplContext *ctx) {
 
   tuple_binding.union_domain.insert(projection);
 
-  for (auto &param : ctx->applParams()->applParam()) {
-    auto id_expr = dynamic_cast<psr::IDExprContext *>(param->expr());
+  for (auto& param : ctx->applParams()->applParam()) {
+    auto id_expr = dynamic_cast<psr::IDExprContext*>(param->expr());
     if (!id_expr) {
       return {};
     }
@@ -242,7 +244,7 @@ std::any SafeVisitor::visitFullAppl(psr::FullApplContext *ctx) {
   return {};
 }
 
-std::any SafeVisitor::visitBinOp(psr::BinOpContext *ctx) {
+std::any SafeVisitor::visitBinOp(psr::BinOpContext* ctx) {
   if (ctx->K_and()) {
     return VisitConjunction(ctx);
   } else if (ctx->K_or()) {
@@ -252,14 +254,14 @@ std::any SafeVisitor::visitBinOp(psr::BinOpContext *ctx) {
   throw std::runtime_error("Unknown binary operator");
 }
 
-std::any SafeVisitor::VisitConjunction(psr::BinOpContext *ctx) {
+std::any SafeVisitor::VisitConjunction(psr::BinOpContext* ctx) {
   visit(ctx->lhs);
   visit(ctx->rhs);
 
   auto lhs_safeness = GetNode(ctx->lhs).safeness;
   auto rhs_safeness = GetNode(ctx->rhs).safeness;
 
-  auto &current_node = GetNode(ctx);
+  auto& current_node = GetNode(ctx);
 
   if (!lhs_safeness.has_value() || !rhs_safeness.has_value()) {
     current_node.safeness = std::nullopt;
@@ -274,7 +276,7 @@ std::any SafeVisitor::VisitConjunction(psr::BinOpContext *ctx) {
   return {};
 }
 
-std::any SafeVisitor::VisitDisjunction(psr::BinOpContext *ctx) {
+std::any SafeVisitor::VisitDisjunction(psr::BinOpContext* ctx) {
   visit(ctx->lhs);
   visit(ctx->rhs);
 
@@ -288,8 +290,8 @@ std::any SafeVisitor::VisitDisjunction(psr::BinOpContext *ctx) {
     return {};
   }
 
-  for (const auto &lhs : lhs_safeness.value()) {
-    for (const auto &rhs : rhs_safeness.value()) {
+  for (const auto& lhs : lhs_safeness.value()) {
+    for (const auto& rhs : rhs_safeness.value()) {
       if (lhs.vars_tuple == rhs.vars_tuple) {
         std::unordered_set<ProjectionTable> new_union_domain(lhs.union_domain);
         new_union_domain.insert(rhs.union_domain.begin(), rhs.union_domain.end());
@@ -301,7 +303,7 @@ std::any SafeVisitor::VisitDisjunction(psr::BinOpContext *ctx) {
   return {};
 }
 
-std::any SafeVisitor::visitUnOp(psr::UnOpContext *ctx) {
+std::any SafeVisitor::visitUnOp(psr::UnOpContext* ctx) {
   visit(ctx->formula());
 
   GetNode(ctx).safeness = GetNode(ctx->formula()).safeness;
@@ -309,7 +311,7 @@ std::any SafeVisitor::visitUnOp(psr::UnOpContext *ctx) {
   return {};
 }
 
-std::any SafeVisitor::visitQuantification(psr::QuantificationContext *ctx) {
+std::any SafeVisitor::visitQuantification(psr::QuantificationContext* ctx) {
   visit(ctx->formula());
 
   // if (!ctx->K_exists()) {
@@ -333,11 +335,11 @@ std::any SafeVisitor::visitQuantification(psr::QuantificationContext *ctx) {
     return {};
   }
 
-  auto &current_node = GetNode(ctx);
+  auto& current_node = GetNode(ctx);
 
   current_node.safeness = std::unordered_set<TupleBinding>();
 
-  for (auto &tuple_binding : formula_node.safeness.value()) {
+  for (auto& tuple_binding : formula_node.safeness.value()) {
     auto it = std::find(tuple_binding.vars_tuple.begin(), tuple_binding.vars_tuple.end(), quant_var);
     if (it == tuple_binding.vars_tuple.end()) {
       throw std::runtime_error("Quantified variable not found in tuple");
@@ -368,7 +370,7 @@ std::any SafeVisitor::visitQuantification(psr::QuantificationContext *ctx) {
   return {};
 }
 
-std::any SafeVisitor::visitParen(psr::ParenContext *ctx) {
+std::any SafeVisitor::visitParen(psr::ParenContext* ctx) {
   visit(ctx->formula());
 
   GetNode(ctx).safeness = GetNode(ctx->formula()).safeness;
@@ -376,7 +378,7 @@ std::any SafeVisitor::visitParen(psr::ParenContext *ctx) {
   return {};
 }
 
-std::any SafeVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
+std::any SafeVisitor::visitApplBase(psr::ApplBaseContext* ctx) {
   visitChildren(ctx);
 
   GetNode(ctx).safeness = {};
@@ -384,7 +386,7 @@ std::any SafeVisitor::visitApplBase(psr::ApplBaseContext *ctx) {
   return {};
 }
 
-std::any SafeVisitor::visitApplParam(psr::ApplParamContext *ctx) {
+std::any SafeVisitor::visitApplParam(psr::ApplParamContext* ctx) {
   visitChildren(ctx);
 
   if (ctx->expr()) {
@@ -395,7 +397,7 @@ std::any SafeVisitor::visitApplParam(psr::ApplParamContext *ctx) {
 }
 
 std::unordered_set<TupleBinding> SafeVisitor::SpecialIntersectionOfTupleBindings(
-    const std::vector<std::unordered_set<TupleBinding>> &sets) const {
+    const std::vector<std::unordered_set<TupleBinding>>& sets) const {
   if (sets.empty()) {
     return {};
   }
@@ -405,10 +407,10 @@ std::unordered_set<TupleBinding> SafeVisitor::SpecialIntersectionOfTupleBindings
   for (size_t i = 1; i < sets.size(); ++i) {
     std::unordered_set<TupleBinding> currentIntersection;
 
-    for (const TupleBinding &elem : intersection) {
+    for (const TupleBinding& elem : intersection) {
       // If the element is in the next set, add it to the current intersection
 
-      for (const TupleBinding &otherElem : sets[i]) {
+      for (const TupleBinding& otherElem : sets[i]) {
         if (elem.vars_tuple == otherElem.vars_tuple) {
           std::unordered_set<ProjectionTable> new_union_domain(elem.union_domain);
           new_union_domain.insert(otherElem.union_domain.begin(), otherElem.union_domain.end());
@@ -426,3 +428,5 @@ std::unordered_set<TupleBinding> SafeVisitor::SpecialIntersectionOfTupleBindings
 
   return intersection;
 }
+
+}  // namespace rel2sql

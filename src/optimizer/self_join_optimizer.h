@@ -5,6 +5,7 @@
 
 #include "base_optimizer.h"
 
+namespace rel2sql {
 namespace sql::ast {
 
 class SelfJoinOptimizer : public BaseOptimizer {
@@ -22,5 +23,6 @@ class SelfJoinOptimizer : public BaseOptimizer {
 };  // class SelfJoinOptimizer
 
 }  // namespace sql::ast
+}  // namespace rel2sql
 
 #endif  // SELF_JOIN_OPTIMIZER_H

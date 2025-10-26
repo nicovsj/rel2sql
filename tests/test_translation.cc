@@ -5,14 +5,16 @@
 #include "structs/sql_ast.h"
 #include "translate.h"
 
+namespace rel2sql {
+
 // Template function to eliminate code duplication
 template <typename ContextType, typename DataType>
 std::string TranslateRel(const std::string& input, ContextType* (*parse_method)(rel_parser::PrunedCoreRelParser*),
                          DataType&& ast_data) {
-  auto parser = rel_parser::GetParser(input);
+  auto parser = GetParser(input);
   auto tree = dynamic_cast<ContextType*>(parse_method(parser.get()));
-  auto ast = rel_parser::GetExtendedASTFromTree(tree, ast_data);
-  auto result = rel_parser::GetSQLFromTree(tree, ast);
+  auto ast = GetExtendedASTFromTree(tree, ast_data);
+  auto result = GetSQLFromTree(tree, ast);
   std::ostringstream os;
   os << *result;
   return os.str();
@@ -96,11 +98,11 @@ std::string TranslateRelExpressionWithEDB(const std::string& input, const rel2sq
 TEST(SQLVisitorTest, EqualitySpecialCondition) {
   std::string input = "F(x) and G(x)";
 
-  auto parser = rel_parser::GetParser(input);
+  auto parser = GetParser(input);
 
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::BinOpContext*>(parser->formula());
 
-  auto ast = rel_parser::GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromTree(tree);
 
   auto table_F = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("F", 1));
   auto table_G = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("G", 1));
@@ -122,11 +124,11 @@ TEST(SQLVisitorTest, EqualitySpecialCondition) {
 TEST(SQLVisitorTest, SpecialVarList) {
   std::string input = "F(x) and G(x, y)";
 
-  auto parser = rel_parser::GetParser(input);
+  auto parser = GetParser(input);
 
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::BinOpContext*>(parser->formula());
 
-  auto ast = rel_parser::GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromTree(tree);
 
   auto table_F = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("F", 1));
   auto table_G = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("G", 2));
@@ -471,3 +473,5 @@ TEST(EDBTranslationTest, BindingFormula) {
 
   EXPECT_EQ(TranslateRelExpressionWithEDB("(x): F(x)", edb_map), "SELECT T0.name AS x FROM F AS T0");
 }
+
+}  // namespace rel2sql

@@ -6,6 +6,8 @@
 #include "PrunedCoreRelParserBaseVisitor.h"
 #include "structs/extended_ast.h"
 
+namespace rel2sql {
+
 class BaseVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
   /*
    * Provides a base visitor for constructing an extended AST.
@@ -24,5 +26,7 @@ class BaseVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
 
   std::shared_ptr<ExtendedASTData> ast_data_;
 };
+
+}  // namespace rel2sql
 
 #endif  // ABS_VISITOR_H

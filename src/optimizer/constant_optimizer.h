@@ -3,6 +3,8 @@
 
 #include "base_optimizer.h"
 
+namespace rel2sql {
+
 namespace sql::ast {
 
 class ConstantOptimizer : public BaseOptimizer {
@@ -16,5 +18,6 @@ class ConstantOptimizer : public BaseOptimizer {
 };  // class ConstantOptimizer
 
 }  // namespace sql::ast
+}  // namespace rel2sql
 
 #endif  // CONSTANT_OPTIMIZER_H

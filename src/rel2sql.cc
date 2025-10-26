@@ -9,7 +9,7 @@ namespace rel2sql {
 
 std::string Translate(std::string_view input) {
   std::ostringstream oss;
-  oss << *rel_parser::GetSQL(input);
+  oss << *GetSQL(input);
   return oss.str();
 }
 
@@ -20,7 +20,7 @@ std::string Translate(std::string_view input, const std::unordered_map<std::stri
 
 std::string DumbTranslate(std::string_view input) {
   std::ostringstream oss;
-  oss << *rel_parser::GetUnoptimizedSQL(input);
+  oss << *GetUnoptimizedSQL(input);
   return oss.str();
 }
 
@@ -31,13 +31,13 @@ std::string DumbTranslate(std::string_view input, const std::unordered_map<std::
 
 std::string Translate(std::string_view input, const EDBMap& edb_map) {
   std::ostringstream oss;
-  oss << *rel_parser::GetSQL(input, edb_map);
+  oss << *GetSQL(input, edb_map);
   return oss.str();
 }
 
 std::string DumbTranslate(std::string_view input, const EDBMap& edb_map) {
   std::ostringstream oss;
-  oss << *rel_parser::GetUnoptimizedSQL(input, edb_map);
+  oss << *GetUnoptimizedSQL(input, edb_map);
   return oss.str();
 }
 

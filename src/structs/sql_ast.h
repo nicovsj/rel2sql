@@ -12,6 +12,8 @@
 #include "structs/expr_visitor.h"
 #include "utils/utils.h"
 
+namespace rel2sql {
+
 namespace sql::ast {
 
 enum class CompOp {
@@ -762,6 +764,7 @@ class MultipleStatements : public Expression {
 
 using ParserRuleContext = antlr4::ParserRuleContext;
 
-}  // end namespace sql::ast
+}  // namespace sql::ast
+}  // namespace rel2sql
 
 #endif  // SQL_H

@@ -4,7 +4,9 @@
 
 #include "structs/sql_ast.h"
 
-using namespace sql::ast;
+namespace rel2sql {
+
+namespace sql::ast {
 
 TEST(SQLPrintingTest, TablePrint) {
   auto t1 = std::make_shared<Source>(std::make_shared<Table>("T1", 1));
@@ -567,3 +569,6 @@ TEST(SQLPrintingTest, MaxGroupBy) {
 
   EXPECT_EQ(os.str(), "SELECT MAX(T1.A1) FROM T1 GROUP BY T1.A2");
 }
+
+}  // namespace sql::ast
+}  // namespace rel2sql

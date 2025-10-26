@@ -2,6 +2,8 @@
 
 #include "structs/sql_ast.h"
 
+namespace rel2sql {
+
 SQLVisitor::SQLVisitor(std::shared_ptr<ExtendedASTData> ast) : BaseVisitor(ast) {}
 
 SQLVisitor::~SQLVisitor() = default;
@@ -1523,3 +1525,5 @@ std::shared_ptr<sql::ast::Condition> SQLVisitor::BindingsEqualityShorthand(
 
   return std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
 }
+
+}  // namespace rel2sql
