@@ -25,12 +25,9 @@ antlr_cc_library(
 cc_library(
     name = "rel2sql",
     hdrs = ["include/rel2sql/rel2sql.h"],
-    srcs = [
-        "src/rel2sql.cc",
-        "src/sql_visitor.cc",
-        "src/translate.h",
-        "src/sql_visitor.h",
-    ] + glob([
+    srcs = glob([
+        "src/*.cc",
+        "src/*.h",
         "src/optimizer/*.cc",
         "src/structs/*.cc",
         "src/preproc/*.cc",
