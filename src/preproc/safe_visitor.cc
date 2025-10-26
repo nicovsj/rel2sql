@@ -1,5 +1,7 @@
 #include "safe_visitor.h"
 
+#include "exceptions.h"
+
 namespace rel2sql {
 
 SafeVisitor::SafeVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
@@ -119,7 +121,8 @@ std::any SafeVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
 
   for (auto& tuple_binding : GetNode(ctx->expr()).safeness.value()) {
     if (tuple_binding.union_domain.size() != 1) {
-      throw std::runtime_error("Expected exactly one projection table");
+      SourceLocation location = GetSourceLocation(ctx);
+      throw QuantificationException("Expected exactly one projection table", location);
     }
 
     ProjectionTable child_projection = *tuple_binding.union_domain.begin();
@@ -251,7 +254,8 @@ std::any SafeVisitor::visitBinOp(psr::BinOpContext* ctx) {
     return VisitDisjunction(ctx);
   }
 
-  throw std::runtime_error("Unknown binary operator");
+  SourceLocation location = GetSourceLocation(ctx);
+  throw TranslationException("Unknown binary operator", ErrorCode::UNKNOWN_BINARY_OPERATOR, location);
 }
 
 std::any SafeVisitor::VisitConjunction(psr::BinOpContext* ctx) {
@@ -342,12 +346,14 @@ std::any SafeVisitor::visitQuantification(psr::QuantificationContext* ctx) {
   for (auto& tuple_binding : formula_node.safeness.value()) {
     auto it = std::find(tuple_binding.vars_tuple.begin(), tuple_binding.vars_tuple.end(), quant_var);
     if (it == tuple_binding.vars_tuple.end()) {
-      throw std::runtime_error("Quantified variable not found in tuple");
+      SourceLocation location = GetSourceLocation(ctx);
+      throw QuantificationException("Quantified variable '" + quant_var + "' not found in tuple", location);
     }
     int index = std::distance(tuple_binding.vars_tuple.begin(), it);
 
     if (tuple_binding.union_domain.size() != 1) {
-      throw std::runtime_error("Expected exactly one projection table");
+      SourceLocation location = GetSourceLocation(ctx);
+      throw QuantificationException("Expected exactly one projection table", location);
     }
 
     ProjectionTable child_projection = *tuple_binding.union_domain.begin();

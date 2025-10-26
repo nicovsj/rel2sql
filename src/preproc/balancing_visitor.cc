@@ -1,5 +1,7 @@
 #include "balancing_visitor.h"
 
+#include "exceptions.h"
+
 namespace rel2sql {
 
 BalancingVisitor::BalancingVisitor(std::shared_ptr<ExtendedASTData> ast_data) : BaseVisitor(ast_data) {}
@@ -83,8 +85,10 @@ std::any BalancingVisitor::visitBinOp(psr::BinOpContext* ctx) {
       for (auto comparator_formula : node.comparator_formulas) {
         for (auto free_variable : GetNode(comparator_formula).free_variables) {
           if (other_free_variables.find(free_variable) == other_free_variables.end()) {
-            throw std::runtime_error(fmt::format(
-                "Free variable {} is not part of a non-comparator formula in the same conjunction.", free_variable));
+            SourceLocation location = GetSourceLocation(comparator_formula);
+            throw VariableException(
+                "Free variable '" + free_variable + "' is not part of a non-comparator formula in the same conjunction",
+                location);
           }
         }
       }

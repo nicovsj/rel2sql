@@ -1,5 +1,7 @@
 #include "arity_visitor.h"
 
+#include "exceptions.h"
+
 namespace rel2sql {
 
 ArityVisitor::ArityVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
@@ -31,7 +33,17 @@ std::any ArityVisitor::visitProgram(psr::ProgramContext* ctx) {
       continue;
     }
     if (defs_by_id.find(id) == defs_by_id.end()) {
-      throw std::runtime_error("IDB " + id + " is not defined");
+      // Find a context to get location info - use the first definition as reference
+      antlr4::ParserRuleContext* ctx = nullptr;
+      for (auto& pair : defs_by_id) {
+        if (!pair.second.empty()) {
+          ctx = pair.second[0];
+          break;
+        }
+      }
+
+      SourceLocation location = ctx ? GetSourceLocation(ctx) : SourceLocation(0, 0);
+      throw ArityException("IDB '" + id + "' is not defined", location);
     }
 
     for (auto& def : defs_by_id[id]) {
@@ -61,7 +73,10 @@ std::any ArityVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
     visit(ctx->expr(i));
 
     if (GetNode(ctx->expr(i)).arity != common_arity) {
-      throw std::runtime_error("Not every member with the same arity in relational abstraction");
+      SourceLocation location = GetSourceLocation(ctx->expr(i));
+      throw ArityException("Arity mismatch in relational abstraction: expected " + std::to_string(common_arity) +
+                               ", got " + std::to_string(GetNode(ctx->expr(i)).arity),
+                           location);
     }
   }
 

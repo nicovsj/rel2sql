@@ -4,6 +4,7 @@
 #include <antlr4-runtime.h>
 
 #include "PrunedCoreRelParserBaseVisitor.h"
+#include "exceptions.h"
 #include "structs/extended_ast.h"
 
 namespace rel2sql {
@@ -23,6 +24,9 @@ class BaseVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
   ExtendedNode& GetNode(antlr4::ParserRuleContext* ctx) { return ast_data_->index[ctx]; }
 
   const ExtendedNode& GetNode(antlr4::ParserRuleContext* ctx) const { return ast_data_->index.at(ctx); }
+
+  // Helper method to extract source location from ANTLR context
+  rel2sql::SourceLocation GetSourceLocation(antlr4::ParserRuleContext* ctx);
 
   std::shared_ptr<ExtendedASTData> ast_data_;
 };

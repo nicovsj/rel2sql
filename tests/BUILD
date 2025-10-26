@@ -45,3 +45,14 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "test_exceptions",
+    srcs = [
+        "test_exceptions.cc",
+    ],
+    deps = [
+        "//:rel2sql",
+        "@googletest//:gtest_main",
+    ],
+)

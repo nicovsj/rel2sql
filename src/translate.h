@@ -3,6 +3,7 @@
 
 #include "CoreRelLexer.h"
 #include "PrunedCoreRelParser.h"
+#include "error_listener.h"
 #include "optimizer/optimizer.h"
 #include "preproc/arity_visitor.h"
 #include "preproc/balancing_visitor.h"
@@ -20,7 +21,13 @@ inline std::unique_ptr<rel_parser::PrunedCoreRelParser> GetParser(std::string_vi
   auto lexer = new rel_parser::CoreRelLexer(input_stream);
   auto tokens = new antlr4::CommonTokenStream(lexer);
 
-  return std::make_unique<rel_parser::PrunedCoreRelParser>(tokens);
+  auto parser = std::make_unique<rel_parser::PrunedCoreRelParser>(tokens);
+
+  // Remove default error listeners and add our custom one
+  parser->removeErrorListeners();
+  parser->addErrorListener(new Rel2SqlErrorListener());
+
+  return parser;
 }
 
 inline ExtendedAST GetExtendedASTFromTree(
