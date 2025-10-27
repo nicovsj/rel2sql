@@ -36,6 +36,10 @@ class ConstantReplacer : public ExpressionVisitor {
   std::shared_ptr<Constant> constant_;
 };
 
+/**
+ * Visitor that replaces references to a source and its columns with new references.
+ * Used during query optimization to eliminate redundant sources and update column references.
+ */
 class SourceAndColumnReplacer : public ExpressionVisitor {
  public:
   SourceAndColumnReplacer(const std::string& old_source_name,

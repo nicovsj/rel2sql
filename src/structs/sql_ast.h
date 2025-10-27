@@ -452,6 +452,9 @@ class ComparisonCondition : public Condition {
   bool IsEmpty() const override { return false; }
 };
 
+/**
+ * Represents logical operations (AND, OR, NOT) combining multiple conditions.
+ */
 class LogicalCondition : public Condition {
  public:
   std::vector<std::shared_ptr<Condition>> conditions;
