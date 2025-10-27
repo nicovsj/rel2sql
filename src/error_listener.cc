@@ -2,6 +2,8 @@
 
 #include <sstream>
 
+#include "exceptions.h"
+
 namespace rel2sql {
 
 void Rel2SqlErrorListener::syntaxError(antlr4::Recognizer* recognizer, antlr4::Token* offendingSymbol, size_t line,
