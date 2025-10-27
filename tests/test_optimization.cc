@@ -299,8 +299,7 @@ TEST(OptimizationTest, EDBBindingFormula) {
   rel2sql::EDBMap edb_map;
   edb_map["F"] = rel2sql::EDBInfo({"name"});
 
-  EXPECT_EQ(TranslateRelExpressionWithEDB("(x): F(x)", edb_map),
-            "SELECT S0.name AS A1 FROM F AS T0, F AS S0 WHERE S0.name = T0.name");
+  EXPECT_EQ(TranslateRelExpressionWithEDB("(x): F(x)", edb_map), "SELECT S0.name AS A1 FROM F AS S0");
 }
 
 }  // namespace rel2sql

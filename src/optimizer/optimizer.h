@@ -27,7 +27,7 @@ class Optimizer : public BaseOptimizer {
     }
 
     flattener_optimizer_.Visit(expression);
-    // self_join_optimizer_.Visit(expression);
+    self_join_optimizer_.Visit(expression);
   }
 
  private:
