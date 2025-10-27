@@ -4,6 +4,12 @@ namespace rel2sql {
 
 namespace sql::ast {
 
+std::string Expression::ToString() const {
+  std::stringstream ss;
+  Print(ss);
+  return ss.str();
+}
+
 std::ostream& Exists::Print(std::ostream& os) const { return os << "EXISTS (" << *select << ")"; }
 
 std::ostream& Inclusion::Print(std::ostream& os) const {

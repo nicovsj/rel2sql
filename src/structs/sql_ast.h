@@ -40,6 +40,9 @@ class Expression {
   virtual std::ostream& Print(std::ostream& os) const = 0;
   virtual void Accept(ExpressionVisitor& visitor) = 0;
 
+  // Convenience method that returns a string representation using the Print method
+  std::string ToString() const;
+
   friend std::ostream& operator<<(std::ostream& os, const Expression& expr) { return expr.Print(os); }
 };
 
