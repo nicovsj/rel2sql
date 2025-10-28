@@ -30,30 +30,10 @@ jobs:
         run: bazel build //wasm:rel2sql_wasm_node //wasm:rel2sql_wasm_browser --config=emcc
 
       - name: Prepare package dist
-        run: |
-          set -e
-          PKG_DIR=packages/rel2sql-wasm
-          DIST=$PKG_DIR/dist
-          mkdir -p $DIST
-
-          # Copy Node.js build (main build)
-          cp -v bazel-bin/wasm/rel2sql_wasm_node/rel2sql_embindings_node.js $DIST/rel2sql_embindings.js
-          cp -v bazel-bin/wasm/rel2sql_wasm_node/rel2sql_embindings_node.wasm $DIST/rel2sql_embindings_node.wasm
-
-          # Copy browser build
-          cp -v bazel-bin/wasm/rel2sql_wasm_browser/rel2sql_embindings_browser.js $DIST/rel2sql_embindings_browser.js
-          cp -v bazel-bin/wasm/rel2sql_wasm_browser/rel2sql_embindings_browser.wasm $DIST/rel2sql_embindings_browser.wasm
-
-          # Copy loaders
-          cp -v $PKG_DIR/loader-node.js $DIST/loader-node.js
-          cp -v $PKG_DIR/loader-browser.js $DIST/loader-browser.js
+        run: ./ci/prepare-package-dist.sh
 
       - name: Set version from tag
-        run: |
-          TAG=${GITHUB_REF#refs/tags/}
-          echo "Publishing version $TAG"
-          jq --arg v "$TAG" '.version=$v' packages/rel2sql-wasm/package.json > packages/rel2sql-wasm/package.json.tmp
-          mv packages/rel2sql-wasm/package.json.tmp packages/rel2sql-wasm/package.json
+        run: ./ci/set-version-from-tag.sh
 
       - name: Publish package
         env:
@@ -61,3 +41,14 @@ jobs:
         run: |
           cd packages/rel2sql-wasm
           npm publish --provenance --access public
+
+      - name: Trigger Vercel redeploy
+        if: success()
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: ./ci/trigger-vercel-redeploy.sh
