@@ -1,8 +1,11 @@
 #ifndef SQL_AST_CONST_REPLACER_H
 #define SQL_AST_CONST_REPLACER_H
 
+#include <algorithm>
 #include <memory>
+#include <set>
 #include <string>
+#include <unordered_set>
 
 #include "structs/expr_visitor.h"
 #include "structs/sql_ast.h"
@@ -107,6 +110,160 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
   std::shared_ptr<Source> new_source_;
   std::unordered_map<std::string, std::shared_ptr<Column>> column_map_;
   bool replace_alias_;
+};
+
+class SourceReplacer : public ExpressionVisitor {
+ public:
+  SourceReplacer(const std::string& old_source_name, std::shared_ptr<Source> new_source)
+      : old_source_name_(old_source_name), new_source_(new_source) {}
+
+  void Visit(FromStatement& from_statement) override {
+    if (!new_source_) {
+      ExpressionVisitor::Visit(from_statement);
+      return;
+    }
+
+    for (auto& source : from_statement.sources) {
+      if (source->Alias() == old_source_name_) {
+        source = new_source_;
+        continue;
+      }
+      ExpressionVisitor::Visit(*source);
+    }
+
+    if (from_statement.where) {
+      ExpressionVisitor::Visit(*from_statement.where.value());
+    }
+  }
+
+  void Visit(Column& column) override {
+    if (!column.source || column.source.value()->Alias() != old_source_name_) {
+      return;
+    }
+    column.source = new_source_;
+  }
+
+ private:
+  std::string old_source_name_;
+  std::shared_ptr<Source> new_source_;
+};
+
+/**
+ * Visitor that flattens nested LogicalConditions so that AND and OR operators are not nested
+ * when they could be at the same level. For example: (A AND B) AND C becomes A AND B AND C.
+ */
+class LogicalConditionFlattener : public ExpressionVisitor {
+  void Visit(LogicalCondition& logical_condition) override {
+    // First visit all children recursively (depth-first)
+    for (auto& condition : logical_condition.conditions) {
+      ExpressionVisitor::Visit(*condition);
+    }
+
+    // Only flatten AND and OR conditions (NOT doesn't make sense to flatten)
+    if (logical_condition.op != LogicalOp::AND && logical_condition.op != LogicalOp::OR) {
+      return;
+    }
+
+    // Build flattened list of conditions
+    std::vector<std::shared_ptr<Condition>> flattened_conditions;
+
+    for (auto& condition : logical_condition.conditions) {
+      // If this condition is also a LogicalCondition with the same operator, extract its conditions
+      auto nested_logical = std::dynamic_pointer_cast<LogicalCondition>(condition);
+      if (nested_logical && nested_logical->op == logical_condition.op) {
+        // Extract all conditions from the nested LogicalCondition
+        flattened_conditions.insert(flattened_conditions.end(), nested_logical->conditions.begin(),
+                                    nested_logical->conditions.end());
+      } else {
+        // Keep the condition as-is
+        flattened_conditions.push_back(condition);
+      }
+    }
+
+    // Replace the conditions vector with the flattened version
+    logical_condition.conditions = std::move(flattened_conditions);
+  }
+};
+
+/**
+ * Visitor that removes duplicate sources and redundant equalities from the FROM clause and WHERE clause.
+ */
+class RedundancyReplacer : public ExpressionVisitor {
+  void Visit(FromStatement& from_statement) override {
+    for (auto& source : from_statement.sources) {
+      ExpressionVisitor::Visit(*source);
+    }
+
+    std::unordered_set<std::string> seen_aliases;
+
+    auto new_end = std::remove_if(from_statement.sources.begin(), from_statement.sources.end(),
+                                  [&seen_aliases](const std::shared_ptr<Source>& source) {
+                                    return !seen_aliases.insert(source->Alias()).second;  // Returns true if duplicate
+                                  });
+
+    from_statement.sources.erase(new_end, from_statement.sources.end());
+
+    if (from_statement.where) {
+      ExpressionVisitor::Visit(*from_statement.where.value());
+    }
+  }
+
+  void Visit(LogicalCondition& logical_condition) override {
+    // Visit remaining conditions
+    for (auto& condition : logical_condition.conditions) {
+      ExpressionVisitor::Visit(*condition);
+    }
+    // Only process AND conditions for duplicate removal
+    if (logical_condition.op != LogicalOp::AND) return;
+
+    std::set<EqualityPair> seen_equalities;
+
+    auto new_end = std::remove_if(logical_condition.conditions.begin(), logical_condition.conditions.end(),
+                                  [&seen_equalities](const std::shared_ptr<Condition>& condition) {
+                                    return IsRedundantEquality(condition, seen_equalities);
+                                  });
+
+    logical_condition.conditions.erase(new_end, logical_condition.conditions.end());
+  }
+
+ private:
+  using ColumnId = std::pair<std::string, std::string>;  // (source_alias, column_name)
+  using EqualityPair = std::pair<ColumnId, ColumnId>;    // (left_column, right_column)
+
+  // Returns true if the condition is a duplicate equality between two columns
+  static bool IsRedundantEquality(const std::shared_ptr<Condition>& condition,
+                                  std::set<EqualityPair>& seen_equalities) {
+    // Extract equality condition between two columns
+    auto comp_condition = std::dynamic_pointer_cast<ComparisonCondition>(condition);
+    if (!comp_condition || comp_condition->op != CompOp::EQ) {
+      return false;  // Keep non-equality conditions
+    }
+
+    auto left_column = std::dynamic_pointer_cast<Column>(comp_condition->lhs);
+    auto right_column = std::dynamic_pointer_cast<Column>(comp_condition->rhs);
+    if (!left_column || !right_column) {
+      return false;  // Keep non-column comparisons
+    }
+
+    if (!left_column->source.has_value() || !right_column->source.has_value()) {
+      return false;  // Keep columns without sources
+    }
+
+    // Create column identifiers
+    ColumnId left_id{left_column->source.value()->Alias(), left_column->name};
+    ColumnId right_id{right_column->source.value()->Alias(), right_column->name};
+
+    if (left_id == right_id) {
+      return true;  // Self-comparisons are redundant
+    }
+
+    // Normalize order so (A, B) and (B, A) are treated as the same equality
+    EqualityPair equality_pair =
+        (left_id < right_id) ? EqualityPair{left_id, right_id} : EqualityPair{right_id, left_id};
+
+    // Return true if this equality was already seen (duplicate)
+    return !seen_equalities.insert(equality_pair).second;
+  }
 };
 
 }  // namespace sql::ast

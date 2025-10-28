@@ -265,8 +265,8 @@ TEST(OptimizationTest, BindingExpression) {
 
 TEST(OptimizationTest, BindingExpressionBounded) {
   EXPECT_EQ(TranslateRelExpression("[x in T, y]: F[x, y] where R(y)", {{"T", 1}, {"R", 1}, {"F", 3}}),
-            "SELECT S1.A1 AS A1, S0.A1 AS A2, T0.A3 AS A3 FROM F AS T0, R AS T1, T AS S1, R AS S0 WHERE S1.A1 = T0.A1 "
-            "AND S0.A1 = T0.A2 AND T0.A2 = T1.A1");
+            "SELECT S1.A1 AS A1, T1.A1 AS A2, T0.A3 AS A3 FROM F AS T0, R AS T1, T AS S1 WHERE S1.A1 = T0.A1 AND T1.A1 "
+            "= T0.A2");
 }
 
 TEST(OptimizationTest, BindingFormula) {
@@ -299,7 +299,17 @@ TEST(OptimizationTest, EDBBindingFormula) {
   rel2sql::EDBMap edb_map;
   edb_map["F"] = rel2sql::EDBInfo({"name"});
 
-  EXPECT_EQ(TranslateRelExpressionWithEDB("(x): F(x)", edb_map), "SELECT S0.name AS A1 FROM F AS S0");
+  EXPECT_EQ(TranslateRelExpressionWithEDB("(x): F(x)", edb_map), "SELECT T0.name AS A1 FROM F AS T0");
+}
+
+TEST(OptimizationTest, EDBBindingFormulaWithCondition) {
+  rel2sql::EDBMap edb_map;
+  edb_map["customers"] = rel2sql::EDBInfo({"customer_id"});
+  edb_map["orders"] = rel2sql::EDBInfo({"order_id", "customer_id"});
+
+  EXPECT_EQ(TranslateRelExpressionWithEDB("(cid, oid): customers(cid) and orders(oid, cid)", edb_map),
+            "SELECT T0.customer_id AS A1, T2.order_id AS A2 FROM customers AS T0, orders AS T2 WHERE T2.customer_id = "
+            "T0.customer_id");
 }
 
 }  // namespace rel2sql

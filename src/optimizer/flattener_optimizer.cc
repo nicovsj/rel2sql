@@ -73,7 +73,13 @@ bool FlattenerOptimizer::TryFlattenSubquery(SelectStatement& select_statement) {
     }
     flattened = true;
   }
+
   from_statement.sources = new_sources;
+
+  if (flattened) {
+    LogicalConditionFlattener flattener;
+    select_statement.Accept(flattener);
+  }
 
   return flattened;
 }

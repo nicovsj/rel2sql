@@ -33,7 +33,7 @@ bool SelfJoinOptimizer::EliminateRedundantSelfJoins(SelectStatement& select_stat
 
   auto where_condition = from_statement.where.value();
 
-  auto comparisons = CollectComparisonConditions(where_condition);
+  auto comparisons = CollectEquivalenceConditions(where_condition);
 
   // If no comparisons are found, there's no possible self-join.
   if (comparisons.empty()) return false;
@@ -42,16 +42,26 @@ bool SelfJoinOptimizer::EliminateRedundantSelfJoins(SelectStatement& select_stat
     // No possible self-join if there's only one source.
     if (candidate_sources.size() <= 1) continue;
 
-    // Filter comparisons to only include those between candidate sources
-    auto filtered_comparisons = FilterComparisonsForSources(comparisons, candidate_sources);
-    if (filtered_comparisons.empty()) continue;
+    // Generate all possible pairs from candidate sources
+    auto source_pairs = GenerateSourcePairs(candidate_sources);
 
-    auto matcher_map = BuildSelfJoinMatcherMap(filtered_comparisons);
+    // Process each source pair to check for complete equivalence classes
+    for (const auto& source_pair : source_pairs) {
+      // Compute transitive closure to find equivalence classes
+      auto equivalence_classes = ComputeColumnEquivalenceClasses(comparisons);
 
-    if (EliminateSelfJoins(matcher_map, from_statement)) {
-      simplified = true;
+      // Check if this source pair forms a self join in the query
+      if (IsSelfJoin(source_pair, equivalence_classes)) {
+        SourceReplacer replacer(source_pair.second->Alias(), source_pair.first);
+        base_expr_->Accept(replacer);
+
+        simplified = true;
+      }
     }
   }
+
+  RedundancyReplacer redundancy_replacer;
+  base_expr_->Accept(redundancy_replacer);
 
   return simplified;
 }
@@ -69,43 +79,135 @@ SelfJoinOptimizer::SourcesByTable SelfJoinOptimizer::GroupSourcesByTableName(
   return grouped_sources;
 }
 
-std::vector<std::shared_ptr<ComparisonCondition>> SelfJoinOptimizer::CollectComparisonConditions(
-    const std::shared_ptr<Condition>& condition) {
-  std::vector<std::shared_ptr<ComparisonCondition>> comparisons;
+SelfJoinOptimizer::SourcePairs SelfJoinOptimizer::GenerateSourcePairs(
+    const std::vector<std::shared_ptr<Source>>& candidate_sources) {
+  SourcePairs source_pairs;
 
-  if (auto comp_condition = std::dynamic_pointer_cast<ComparisonCondition>(condition)) {
-    comparisons.push_back(comp_condition);
-  } else if (auto logical_condition = std::dynamic_pointer_cast<LogicalCondition>(condition)) {
-    if (logical_condition->op != LogicalOp::AND) {
-      // Return empty vector for non-AND logical conditions (OR, NOT)
-      // We can't safely eliminate self-joins with these operations
-      return {};
-    }
-    for (const auto& sub_condition : logical_condition->conditions) {
-      auto sub_comparisons = CollectComparisonConditions(sub_condition);
-      // If any sub-condition returns empty (due to non-AND), stop processing
-      if (sub_comparisons.empty()) {
-        return {};
-      }
-      comparisons.insert(comparisons.end(), sub_comparisons.begin(), sub_comparisons.end());
+  // Generate all possible pairs (i, j) where i < j to avoid duplicates
+  for (size_t i = 0; i < candidate_sources.size(); ++i) {
+    for (size_t j = i + 1; j < candidate_sources.size(); ++j) {
+      source_pairs.emplace_back(candidate_sources[i], candidate_sources[j]);
     }
   }
 
-  return comparisons;
+  return source_pairs;
 }
 
-std::vector<std::shared_ptr<ComparisonCondition>> SelfJoinOptimizer::FilterComparisonsForSources(
-    const std::vector<std::shared_ptr<ComparisonCondition>>& comparisons,
-    const std::vector<std::shared_ptr<Source>>& candidate_sources) {
-  std::vector<std::shared_ptr<ComparisonCondition>> filtered_comparisons;
+SelfJoinOptimizer::EquivalenceClassesMap SelfJoinOptimizer::ComputeColumnEquivalenceClasses(
+    const std::vector<std::shared_ptr<ComparisonCondition>>& equivalences) {
+  EquivalenceClassesMap result;
+  size_t next_class_id = 0;
 
-  // Create a set of candidate source aliases for fast lookup
-  std::unordered_set<std::string> candidate_aliases;
-  for (const auto& source : candidate_sources) {
-    candidate_aliases.insert(source->Alias());
+  // Process each equality condition
+  for (const auto& equivalence : equivalences) {
+    auto left_col = std::dynamic_pointer_cast<Column>(equivalence->lhs);
+    auto right_col = std::dynamic_pointer_cast<Column>(equivalence->rhs);
+
+    if (!left_col || !right_col) continue;
+    if (!left_col->source.has_value() || !right_col->source.has_value()) continue;
+
+    std::string left_alias = left_col->source.value()->Alias();
+    std::string right_alias = right_col->source.value()->Alias();
+
+    ColumnId left_id = {left_alias, left_col->name};
+    ColumnId right_id = {right_alias, right_col->name};
+
+    // Find existing classes for both columns
+    auto left_class_it = result.column_to_class.find(left_id);
+    auto right_class_it = result.column_to_class.find(right_id);
+
+    if (left_class_it == result.column_to_class.end() && right_class_it == result.column_to_class.end()) {
+      // Neither column is in any class, create a new one
+      size_t new_class_id = next_class_id++;
+      result.column_to_class[left_id] = new_class_id;
+      result.column_to_class[right_id] = new_class_id;
+      result.class_to_columns[new_class_id].insert(left_id);
+      result.class_to_columns[new_class_id].insert(right_id);
+    } else if (left_class_it == result.column_to_class.end()) {
+      // Left column is new, add it to right column's class
+      size_t class_id = right_class_it->second;
+      result.column_to_class[left_id] = class_id;
+      result.class_to_columns[class_id].insert(left_id);
+    } else if (right_class_it == result.column_to_class.end()) {
+      // Right column is new, add it to left column's class
+      size_t class_id = left_class_it->second;
+      result.column_to_class[right_id] = class_id;
+      result.class_to_columns[class_id].insert(right_id);
+    } else if (left_class_it->second != right_class_it->second) {
+      // Both columns are in different classes, merge them
+      size_t left_class_id = left_class_it->second;
+      size_t right_class_id = right_class_it->second;
+
+      // Merge right class into left class
+      for (const auto& col_id : result.class_to_columns[right_class_id]) {
+        result.column_to_class[col_id] = left_class_id;
+        result.class_to_columns[left_class_id].insert(col_id);
+      }
+
+      // Remove the right class
+      result.class_to_columns.erase(right_class_id);
+    }
+    // If both columns are already in the same class, do nothing
   }
 
-  for (const auto& comp_condition : comparisons) {
+  return result;
+}
+
+bool SelfJoinOptimizer::IsSelfJoin(const SourcePair& source_pair, const EquivalenceClassesMap& eq_class_map) {
+  // Get table information to know the expected arity
+  auto table1 = std::dynamic_pointer_cast<Table>(source_pair.first->sourceable);
+  auto table2 = std::dynamic_pointer_cast<Table>(source_pair.second->sourceable);
+
+  if (!table1 || !table2) return false;
+
+  // Both tables should have the same arity for a valid self-join
+  if (table1->arity != table2->arity) return false;
+
+  std::string source1_alias = source_pair.first->Alias();
+  std::string source2_alias = source_pair.second->Alias();
+
+  // Iterate through both tables' attribute names simultaneously
+  for (size_t i = 0; i < table1->attribute_names.size(); ++i) {
+    const auto& attribute_name1 = table1->attribute_names[i];
+    const auto& attribute_name2 = table2->attribute_names[i];
+
+    // Check if the corresponding columns are in the same equivalence class
+    auto eq_class_1 = eq_class_map.column_to_class.find({source1_alias, attribute_name1});
+    auto eq_class_2 = eq_class_map.column_to_class.find({source2_alias, attribute_name2});
+
+    // If either column is not found in any equivalence class, it's not complete
+    if (eq_class_1 == eq_class_map.column_to_class.end() || eq_class_2 == eq_class_map.column_to_class.end()) {
+      return false;
+    }
+
+    // If the columns are not in the same equivalence class, it's not complete
+    if (eq_class_1->second != eq_class_2->second) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+std::vector<std::shared_ptr<ComparisonCondition>> SelfJoinOptimizer::CollectEquivalenceConditions(
+    const std::shared_ptr<Condition>& where_condition) {
+  // We can assume that the LogicalConditions are already flattened. This is guaranteed by the flattener optimizer.
+  // So we need to check if the WHERE condition is a LogicalCondition with AND operator and
+  // then collect all the equivalences in it.
+
+  std::vector<std::shared_ptr<ComparisonCondition>> equivalences;
+
+  auto logical_condition = std::dynamic_pointer_cast<LogicalCondition>(where_condition);
+
+  // Check if condition is a LogicalCondition with AND operator
+  if (!logical_condition) return {};
+  if (logical_condition->op != LogicalOp::AND) return {};
+
+  for (const auto& sub_condition : logical_condition->conditions) {
+    auto comp_condition = std::dynamic_pointer_cast<ComparisonCondition>(sub_condition);
+
+    // Check if condition is an equivalence condition
+    if (!comp_condition) continue;
     if (comp_condition->op != CompOp::EQ) continue;
 
     auto left_col = std::dynamic_pointer_cast<Column>(comp_condition->lhs);
@@ -114,122 +216,9 @@ std::vector<std::shared_ptr<ComparisonCondition>> SelfJoinOptimizer::FilterCompa
     if (!left_col || !right_col) continue;
     if (!left_col->source.has_value() || !right_col->source.has_value()) continue;
 
-    std::string left_alias = left_col->source.value()->Alias();
-    std::string right_alias = right_col->source.value()->Alias();
-
-    // Check if both columns belong to different candidate sources
-    if (left_alias != right_alias && candidate_aliases.count(left_alias) > 0 &&
-        candidate_aliases.count(right_alias) > 0) {
-      filtered_comparisons.push_back(comp_condition);
-    }
+    equivalences.push_back(comp_condition);
   }
-
-  return filtered_comparisons;
-}
-
-SelfJoinOptimizer::SelfJoinMatcherMap SelfJoinOptimizer::BuildSelfJoinMatcherMap(
-    const std::vector<std::shared_ptr<ComparisonCondition>>& comparisons) {
-  // Group equality conditions by source pairs. The inner map is a map of column names to sources.
-  // The outer map is a map of unique alias pairs (self-join candidates) to inner maps.
-  // Multiple aliases can be at play here. If they were only two we wouldn't need the outer map.
-  SelfJoinMatcherMap matcher_map;
-
-  for (const auto& comp_condition : comparisons) {
-    auto left_col = std::dynamic_pointer_cast<Column>(comp_condition->lhs);
-    auto right_col = std::dynamic_pointer_cast<Column>(comp_condition->rhs);
-
-    std::shared_ptr<Column> primary_col, modified_col;
-
-    std::string left_alias = left_col->source.value()->Alias();
-    std::string right_alias = right_col->source.value()->Alias();
-
-    // Make sure the primary column is the one with the smaller alias to avoid duplicate matches.
-    if (left_alias <= right_alias) {
-      primary_col = left_col;
-      modified_col = right_col;
-    } else {
-      primary_col = right_col;
-      modified_col = left_col;
-    }
-
-    if (primary_col->name == modified_col->name) {  // Match!
-      auto source_pair = std::make_pair(primary_col->source.value()->Alias(), modified_col->source.value()->Alias());
-
-      auto it = matcher_map.find(source_pair);
-      if (it == matcher_map.end()) {
-        matcher_map[source_pair] = SelfJoin(primary_col->source.value(), modified_col->source.value());
-        it = matcher_map.find(source_pair);
-      }
-
-      it->second.AddJoinCondition(comp_condition);
-      it->second.AddColumn(primary_col);
-    }
-  }
-
-  return matcher_map;
-}
-
-void SelfJoinOptimizer::RemoveConditionsFromWhere(
-    const std::vector<std::shared_ptr<ComparisonCondition>>& conditions_to_remove,
-    std::shared_ptr<Condition>& where_condition) {
-  // FIX: This is flawed. This assumes that the WHERE clause is a flat LogicalCondition.
-  if (where_condition) {
-    if (auto logical_condition = std::dynamic_pointer_cast<LogicalCondition>(where_condition)) {
-      // Create a set for fast lookup of conditions to remove
-      std::unordered_set<std::shared_ptr<ComparisonCondition>> to_remove_set(conditions_to_remove.begin(),
-                                                                             conditions_to_remove.end());
-
-      // Remove conditions using iterator
-      for (auto it = logical_condition->conditions.begin(); it != logical_condition->conditions.end();) {
-        if (auto comp_condition = std::dynamic_pointer_cast<ComparisonCondition>(*it)) {
-          if (to_remove_set.count(comp_condition) > 0) {
-            it = logical_condition->conditions.erase(it);
-          } else {
-            ++it;
-          }
-        } else {
-          ++it;
-        }
-      }
-    }
-  }
-}
-
-void SelfJoinOptimizer::RemoveRedundantSource(const SelfJoin& self_join_candidate, FromStatement& from_statement) {
-  // Remove the redundant source from the FROM clause
-  for (auto it = from_statement.sources.begin(); it != from_statement.sources.end();) {
-    if (*it == self_join_candidate.redundant_source) {
-      it = from_statement.sources.erase(it);
-    } else {
-      ++it;
-    }
-  }
-
-  // FIX: This is flawed. This assumes that the WHERE clause is a flat LogicalCondition.
-  // Remove join conditions from the WHERE clause
-  if (from_statement.where.has_value()) {
-    RemoveConditionsFromWhere(self_join_candidate.join_conditions, from_statement.where.value());
-  }
-}
-
-bool SelfJoinOptimizer::EliminateSelfJoins(const SelfJoinMatcherMap& matcher_map, FromStatement& from_statement) {
-  bool simplified = false;
-
-  for (const auto& [source_pair, self_join_candidate] : matcher_map) {
-    if (self_join_candidate.IsComplete()) {
-      // Remove the redundant source and its associated conditions
-      RemoveRedundantSource(self_join_candidate, from_statement);
-
-      // Replace all references to the redundant source with the primary source
-      SourceAndColumnReplacer replacer(self_join_candidate.redundant_source->Alias(),
-                                       self_join_candidate.primary_source, self_join_candidate.column_map);
-      base_expr_->Accept(replacer);
-
-      simplified = true;
-    }
-  }
-
-  return simplified;
+  return equivalences;
 }
 
 }  // namespace sql::ast
