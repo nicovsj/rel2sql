@@ -40,8 +40,7 @@ bool FlattenerOptimizer::TryFlattenSubquery(SelectStatement& select_statement) {
     std::string old_alias = source->Alias();
 
     for (auto& inner_source : select_subquery->from.value()->sources) {
-      for (size_t i = 0; i < select_subquery->columns.size(); ++i) {
-        auto& column = select_subquery->columns[i];
+      for (auto& column : select_subquery->columns) {
         if (auto term_selectable = std::dynamic_pointer_cast<TermSelectable>(column)) {
           if (auto term = std::dynamic_pointer_cast<Column>(term_selectable->term)) {
             column_map[term_selectable->Alias()] = term;
