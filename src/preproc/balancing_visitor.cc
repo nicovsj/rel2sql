@@ -157,7 +157,7 @@ void BalancingVisitor::CollectComparatorFormulas(psr::FormulaContext* formula_ct
    * @note The function assumes that ComparisonContext represents a comparator formula.
    */
 
-  if (auto comparison_ctx = dynamic_cast<psr::ComparisonContext*>(formula_ctx)) {
+  if (dynamic_cast<psr::ComparisonContext*>(formula_ctx)) {
     comparator_formulas.push_back(formula_ctx);
   } else if (auto bin_op_ctx = dynamic_cast<psr::BinOpContext*>(formula_ctx)) {
     if (bin_op_ctx->K_and()) {
