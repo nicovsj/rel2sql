@@ -27,8 +27,14 @@ tasks:
   test:wasm:
     desc: Run WASM tests
     cmds:
+      - task: test:wasm:bindings
       - task: test:wasm:npm
       - task: test:wasm:browser
+
+  test:wasm:bindings:
+    desc: "Test WASM bindings contract (requires: bazel build //wasm:rel2sql_wasm_node --config=emcc)"
+    cmds:
+      - node wasm/tests/bindings_test.mjs
 
   test:wasm:npm:
     desc: Test npm package build, pack, and consumption
