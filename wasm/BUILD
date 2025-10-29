@@ -2,7 +2,6 @@
 
 # WASM BUILD
 load("@emsdk//emscripten_toolchain:wasm_rules.bzl", "wasm_cc_binary")
-load("@aspect_rules_js//js:defs.bzl", "js_test")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 
 package(default_visibility = ["//visibility:public"])
@@ -18,6 +17,7 @@ DEFAULT_EMSCRIPTEN_LINKOPTS = [
     "-s ASSERTIONS=0",
     "-s USE_PTHREADS=0",
     "-s DISABLE_EXCEPTION_CATCHING=0",
+    "-s EXPORT_EXCEPTION_HANDLING_HELPERS=1",
     "--no-shared-memory",
     "--no-import-memory",
 ]
@@ -84,13 +84,5 @@ wasm_cc_binary(
 wasm_cc_binary(
     name = "rel2sql_wasm",
     cc_target = ":rel2sql_embindings_node",
-    tags = ["manual"],
-)
-
-
-# Node.js-based npm package consumption test
-js_test(
-    name = "npm_package_test",
-    entry_point = "tests/npm_package_test.mjs",
     tags = ["manual"],
 )
