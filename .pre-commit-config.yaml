@@ -9,3 +9,4 @@ repos:
     rev: v1.3.5
     hooks:
       - id: clang-format
+        args: ["--version=21.1.2"]
