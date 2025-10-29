@@ -276,23 +276,25 @@ TEST(OptimizationTest, BindingFormula) {
 
 TEST(OptimizationTest, Program) {
   EXPECT_EQ(TranslateRelDef("def F {[x in H]: G[x]}", {{"H", 1}, {"G", 2}}),
-            "CREATE VIEW F AS (SELECT S0.A1 AS A1, T0.A2 AS A2 FROM G AS T0, H AS S0 WHERE S0.A1 = T0.A1)");
+            "CREATE OR REPLACE VIEW F AS (SELECT S0.A1 AS A1, T0.A2 AS A2 FROM G AS T0, H AS S0 WHERE S0.A1 = T0.A1)");
 }
 
 TEST(OptimizationTest, MultipleDefs1) {
-  EXPECT_EQ(TranslateRelProgram("def F {(1, 2); (3, 4)} \n def F {(1, 4); (3, 4)}"),
-            "CREATE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4), (1, 4), (3, 4)) AS T0(A1, A2));");
+  EXPECT_EQ(
+      TranslateRelProgram("def F {(1, 2); (3, 4)} \n def F {(1, 4); (3, 4)}"),
+      "CREATE OR REPLACE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4), (1, 4), (3, 4)) AS T0(A1, A2));");
 }
 
 TEST(OptimizationTest, MultipleDefs2) {
   EXPECT_EQ(TranslateRelProgram("def G {(1, 2); (3, 4)} \n def F {G[1]} \n def F {G[3]}"),
-            "CREATE VIEW G AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE VIEW F AS "
+            "CREATE OR REPLACE VIEW G AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE OR "
+            "REPLACE VIEW F AS "
             "SELECT T1.A2 AS A1 FROM G AS T1 WHERE T1.A1 = 1 UNION SELECT T3.A2 AS A1 FROM G AS T3 WHERE T3.A1 = 3;");
 }
 
 TEST(OptimizationTest, TableDefinition) {
   EXPECT_EQ(TranslateRelDef("def F {(1, 2); (3, 4)}"),
-            "CREATE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2))");
+            "CREATE OR REPLACE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2))");
 }
 
 TEST(OptimizationTest, EDBBindingFormula) {

@@ -357,25 +357,28 @@ TEST(TranslationTest, BindingFormula) {
 
 TEST(TranslationTest, Program) {
   EXPECT_EQ(TranslateRelDef("def F {[x in H]: G[x]}", {{"H", 1}, {"G", 2}}),
-            "CREATE VIEW F AS (WITH S0(x) AS (SELECT * FROM H) SELECT S0.x AS A1, T1.A1 AS A2 FROM (SELECT T0.A1 AS x, "
+            "CREATE OR REPLACE VIEW F AS (WITH S0(x) AS (SELECT * FROM H) SELECT S0.x AS A1, T1.A1 AS A2 FROM (SELECT "
+            "T0.A1 AS x, "
             "T0.A2 AS A1 FROM G AS T0) AS T1, S0 WHERE S0.x = T1.x)");
 }
 
 TEST(TranslationTest, MultipleDefs1) {
-  EXPECT_EQ(TranslateRelProgram("def F {(1, 2); (3, 4)} \n def F {(1, 4); (3, 4)}"),
-            "CREATE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4), (1, 4), (3, 4)) AS T0(A1, A2));");
+  EXPECT_EQ(
+      TranslateRelProgram("def F {(1, 2); (3, 4)} \n def F {(1, 4); (3, 4)}"),
+      "CREATE OR REPLACE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4), (1, 4), (3, 4)) AS T0(A1, A2));");
 }
 
 TEST(TranslationTest, MultipleDefs2) {
   EXPECT_EQ(TranslateRelProgram("def G {(1, 2); (3, 4)} \n def F {G[1]} \n def F {G[3]}"),
-            "CREATE VIEW G AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE VIEW F AS "
+            "CREATE OR REPLACE VIEW G AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE OR "
+            "REPLACE VIEW F AS "
             "SELECT T1.A2 AS A1 FROM G AS T1, (SELECT 1 AS A1) AS T2 WHERE T1.A1 = T2.A1 UNION SELECT T3.A2 AS A1 FROM "
             "G AS T3, (SELECT 3 AS A1) AS T4 WHERE T3.A1 = T4.A1;");
 }
 
 TEST(TranslationTest, TableDefinition) {
   EXPECT_EQ(TranslateRelDef("def F {(1, 2); (3, 4)}"),
-            "CREATE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2))");
+            "CREATE OR REPLACE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2))");
 }
 
 // Tests for EDB with named attributes
@@ -411,7 +414,7 @@ TEST(EDBTranslationTest, NamedAttributesPartialApplication) {
   edb_map["F"] = rel2sql::EDBInfo({"student_id", "course_id", "grade"});
 
   EXPECT_EQ(TranslateRelDefWithEDB("def G {F[x]}", edb_map),
-            "CREATE VIEW G AS (SELECT T0.student_id AS x, T0.course_id AS A1, T0.grade AS A2 FROM F AS T0)");
+            "CREATE OR REPLACE VIEW G AS (SELECT T0.student_id AS x, T0.course_id AS A1, T0.grade AS A2 FROM F AS T0)");
 }
 
 TEST(EDBTranslationTest, NamedAttributesAggregate) {
@@ -419,7 +422,8 @@ TEST(EDBTranslationTest, NamedAttributesAggregate) {
   edb_map["F"] = rel2sql::EDBInfo({"student_id", "grade"});
 
   EXPECT_EQ(TranslateRelDefWithEDB("def G {max[F[x]]}", edb_map),
-            "CREATE VIEW G AS (SELECT T1.x, MAX(T1.A1) AS A1 FROM (SELECT T0.student_id AS x, T0.grade AS A1 FROM F AS "
+            "CREATE OR REPLACE VIEW G AS (SELECT T1.x, MAX(T1.A1) AS A1 FROM (SELECT T0.student_id AS x, T0.grade AS "
+            "A1 FROM F AS "
             "T0) AS T1 GROUP BY T1.x)");
 }
 

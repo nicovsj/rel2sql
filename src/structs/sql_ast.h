@@ -597,7 +597,7 @@ class View : public Expression {
       : source(std::make_shared<Source>(sourceable, alias)) {}
 
   std::ostream& Print(std::ostream& os) const override {
-    return os << "CREATE VIEW " << source->Declaration() << " AS " << source->Definition();
+    return os << "CREATE OR REPLACE VIEW " << source->Declaration() << " AS " << source->Definition();
   }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }

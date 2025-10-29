@@ -462,7 +462,7 @@ TEST(SQLPrintingTest, View) {
 
   os << *v1;
 
-  EXPECT_EQ(os.str(), "CREATE VIEW V1 AS (SELECT T1.A1 FROM T1 WHERE T1.A1 = 1)");
+  EXPECT_EQ(os.str(), "CREATE OR REPLACE VIEW V1 AS (SELECT T1.A1 FROM T1 WHERE T1.A1 = 1)");
 }
 
 TEST(SQLPrintingTest, SumGroupBy) {
