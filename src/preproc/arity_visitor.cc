@@ -158,6 +158,8 @@ std::any ArityVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
 std::any ArityVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
   ExtendedNode& node = GetNode(ctx);
 
+  visit(ctx->formula());
+
   node.arity = ctx->bindingInner()->binding().size();
 
   return {};
@@ -187,6 +189,51 @@ std::any ArityVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
     throw std::runtime_error("Partial application overflows the arity of the base expression");
   }
 
+  return {};
+}
+
+std::any ArityVisitor::visitFullAppl(psr::FullApplContext* ctx) {
+  visit(ctx->applBase());
+  visit(ctx->applParams());
+
+  // Arity is zero so no need to set it
+  return {};
+}
+
+std::any ArityVisitor::visitBinOp(psr::BinOpContext* ctx) {
+  visit(ctx->lhs);
+  visit(ctx->rhs);
+
+  // Arity is zero so no need to set it
+  return {};
+}
+
+std::any ArityVisitor::visitUnOp(psr::UnOpContext* ctx) {
+  visit(ctx->formula());
+
+  // Arity is zero so no need to set it
+  return {};
+}
+
+std::any ArityVisitor::visitQuantification(psr::QuantificationContext* ctx) {
+  visit(ctx->formula());
+
+  // Arity is zero so no need to set it
+  return {};
+}
+
+std::any ArityVisitor::visitParen(psr::ParenContext* ctx) {
+  visit(ctx->formula());
+
+  // Arity is zero so no need to set it
+  return {};
+}
+
+std::any ArityVisitor::visitComparison(psr::ComparisonContext* ctx) {
+  visit(ctx->lhs);
+  visit(ctx->rhs);
+
+  // Arity is zero so no need to set it
   return {};
 }
 

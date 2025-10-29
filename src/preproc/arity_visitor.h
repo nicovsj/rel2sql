@@ -41,6 +41,20 @@ class ArityVisitor : public BaseVisitor {
 
   std::any visitPartialAppl(psr::PartialApplContext* ctx) override;
 
+  // Formula branches
+
+  std::any visitFullAppl(psr::FullApplContext* ctx) override;
+
+  std::any visitBinOp(psr::BinOpContext* ctx) override;
+
+  std::any visitUnOp(psr::UnOpContext* ctx) override;
+
+  std::any visitQuantification(psr::QuantificationContext* ctx) override;
+
+  std::any visitParen(psr::ParenContext* ctx) override;
+
+  std::any visitComparison(psr::ComparisonContext* ctx) override;
+
   //  Binding branches
 
   std::any visitApplBase(psr::ApplBaseContext* ctx) override;
