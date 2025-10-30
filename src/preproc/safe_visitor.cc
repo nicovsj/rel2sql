@@ -318,20 +318,6 @@ std::any SafeVisitor::visitUnOp(psr::UnOpContext* ctx) {
 std::any SafeVisitor::visitQuantification(psr::QuantificationContext* ctx) {
   visit(ctx->formula());
 
-  // if (!ctx->K_exists()) {
-  //   // If the quantifier is not an existential quantifier, no safeness is guaranteed
-  //   GetNode(ctx).safeness = std::nullopt;
-  //   return {};
-  // }
-
-  if (ctx->bindingInner()->binding().size() != 1) {
-    // TODO: Handle multiple bindings?
-    GetNode(ctx).safeness = std::nullopt;
-    return {};
-  }
-
-  std::string quant_var = ctx->bindingInner()->binding(0)->id->getText();
-
   auto formula_node = GetNode(ctx->formula());
 
   if (!formula_node.safeness.has_value()) {
@@ -341,7 +327,10 @@ std::any SafeVisitor::visitQuantification(psr::QuantificationContext* ctx) {
 
   auto& current_node = GetNode(ctx);
 
-  current_node.safeness = std::unordered_set<TupleBinding>();
+  current_node.safeness = std::unordered_set<TupleBinding>{};
+
+  for (auto& binding : ctx->bindingInner()->binding()) {
+    std::string quant_var = binding->id->getText();
 
   for (auto& tuple_binding : formula_node.safeness.value()) {
     auto it = std::find(tuple_binding.vars_tuple.begin(), tuple_binding.vars_tuple.end(), quant_var);
@@ -371,6 +360,7 @@ std::any SafeVisitor::visitQuantification(psr::QuantificationContext* ctx) {
     TupleBinding new_tuple_binding = {new_vars_tuple, {new_projection}};
 
     current_node.safeness.value().insert(new_tuple_binding);
+    }
   }
 
   return {};
