@@ -196,40 +196,40 @@ TEST(TranslationTest, DisjunctionFormula) {
 }
 
 TEST(TranslationTest, ExistentialFormula1) {
-  EXPECT_EQ(TranslateRelFormula("exists (y | F(x, y))", {{"F", 2}}),
+  EXPECT_EQ(TranslateRelFormula("exists ((y) | F(x, y))", {{"F", 2}}),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1");
 }
 
 TEST(TranslationTest, ExistentialFormula2) {
-  EXPECT_EQ(TranslateRelFormula("exists (y, z | F(x, y, z))"),
+  EXPECT_EQ(TranslateRelFormula("exists ((y, z) | F(x, y, z))"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1");
 }
 
 TEST(TranslationTest, ExistentialFormula3) {
-  EXPECT_EQ(TranslateRelFormula("exists (y in G | F(x, y))"),
+  EXPECT_EQ(TranslateRelFormula("exists ((y in G) | F(x, y))"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1, G WHERE T1.y = G.A1");
 }
 
 TEST(TranslationTest, ExistentialFormula4) {
-  EXPECT_EQ(TranslateRelFormula("exists (y in G, z in H | F(x, y, z))"),
+  EXPECT_EQ(TranslateRelFormula("exists ((y in G, z in H) | F(x, y, z))"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1, G, H WHERE T1.y = G.A1 "
             "AND T1.z = H.A1");
 }
 
 TEST(TranslationTest, ExistentialFormula5) {
-  EXPECT_EQ(TranslateRelFormula("exists (y in G, z | F(x, y, z))"),
+  EXPECT_EQ(TranslateRelFormula("exists ((y in G, z) | F(x, y, z))"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1, G WHERE T1.y = G.A1");
 }
 
 TEST(TranslationTest, UniversalFormula1) {
   // TODO: Must remove inner-most FROM subquery alias (final "AS T1")
-  EXPECT_EQ(TranslateRelFormula("forall (y in G | F(x, y))"),
+  EXPECT_EQ(TranslateRelFormula("forall ((y in G) | F(x, y))"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1 WHERE EXISTS (SELECT * FROM G WHERE "
             "(T1.x, G.A1) NOT IN (SELECT * FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1))");
 }
 
 TEST(TranslationTest, UniversalFormula2) {
-  EXPECT_EQ(TranslateRelFormula("forall (y in G, z in H | F(x, y, z))"),
+  EXPECT_EQ(TranslateRelFormula("forall ((y in G, z in H) | F(x, y, z))"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1 WHERE EXISTS (SELECT * "
             "FROM G, H WHERE (T1.x, G.A1, H.A1) NOT IN (SELECT * FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM "
             "F AS T0) AS T1))");
@@ -404,7 +404,7 @@ TEST(EDBTranslationTest, NamedAttributesExistential) {
   edb_map["F"] = rel2sql::EDBInfo({"student_id", "course_id"});
   edb_map["G"] = rel2sql::EDBInfo({"course_id"});
 
-  EXPECT_EQ(TranslateRelFormulaWithEDB("exists (y in G | F(x, y))", edb_map),
+  EXPECT_EQ(TranslateRelFormulaWithEDB("exists ((y in G) | F(x, y))", edb_map),
             "SELECT T2.x FROM (SELECT T1.student_id AS x, T1.course_id AS y FROM F AS T1) AS T2, G AS T0(course_id) "
             "WHERE T2.y = T0.course_id");
 }
@@ -486,7 +486,7 @@ TEST(EDBTranslationTest, TransitiveClosure) {
   edb_map["B"] = rel2sql::EDBInfo({"B1", "B2"});
 
   EXPECT_EQ(
-      TranslateRelExpressionWithEDB("(x, y): exists(z | A(x, z) and B(z, y))", edb_map),
+      TranslateRelExpressionWithEDB("(x, y): exists((z) | A(x, z) and B(z, y))", edb_map),
       "WITH S1(x) AS (SELECT A.A1 FROM A), S0(y) AS (SELECT B.B2 FROM B) SELECT S1.x AS A1, S0.y AS A2 FROM (SELECT "
       "T4.x, T4.y FROM (SELECT T1.x, T1.z, T3.y FROM (SELECT T0.A1 AS x, T0.A2 AS z FROM A AS T0) AS T1, (SELECT T2.B1 "
       "AS z, T2.B2 AS y FROM B AS T2) AS T3 WHERE T1.z = T3.z) AS T4) AS T5, S1, S0 WHERE S1.x = T5.x AND S0.y = T5.y");

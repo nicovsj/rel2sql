@@ -86,7 +86,7 @@ formula:
 	| lhs = formula op = 'and' rhs = formula			    # binOp
 	| lhs = formula op = 'or' rhs = formula				    # binOp
 	| op = 'not' formula								              # unOp
-	| op = 'exists' '(' bindingInner '|' formula ')'	# quantification
-	| op = 'forall' '(' bindingInner '|' formula ')'	# quantification
+	| op = 'exists' '(' '(' bindingInner ')' '|' formula ')'	# quantification
+	| op = 'forall' '(' '(' bindingInner ')' '|' formula ')'	# quantification
 	| '(' formula ')'									                # paren
 	| lhs = term comparator rhs = term					      # comparison;

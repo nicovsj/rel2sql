@@ -132,36 +132,36 @@ TEST(OptimizationTest, DisjunctionFormula) {
 }
 
 TEST(OptimizationTest, ExistentialFormula1) {
-  EXPECT_EQ(TranslateRelFormula("exists (y | F(x, y))", {{"F", 2}}), "SELECT T0.A1 AS x FROM F AS T0");
+  EXPECT_EQ(TranslateRelFormula("exists ((y) | F(x, y))", {{"F", 2}}), "SELECT T0.A1 AS x FROM F AS T0");
 }
 
 TEST(OptimizationTest, ExistentialFormula2) {
-  EXPECT_EQ(TranslateRelFormula("exists (y, z | F(x, y, z))"), "SELECT T0.A1 AS x FROM F AS T0");
+  EXPECT_EQ(TranslateRelFormula("exists ((y, z) | F(x, y, z))"), "SELECT T0.A1 AS x FROM F AS T0");
 }
 
 TEST(OptimizationTest, ExistentialFormula3) {
-  EXPECT_EQ(TranslateRelFormula("exists (y in G | F(x, y))"), "SELECT T0.A1 AS x FROM F AS T0, G WHERE T0.A2 = G.A1");
+  EXPECT_EQ(TranslateRelFormula("exists ((y in G) | F(x, y))"), "SELECT T0.A1 AS x FROM F AS T0, G WHERE T0.A2 = G.A1");
 }
 
 TEST(OptimizationTest, ExistentialFormula4) {
-  EXPECT_EQ(TranslateRelFormula("exists (y in G, z in H | F(x, y, z))"),
+  EXPECT_EQ(TranslateRelFormula("exists ((y in G, z in H) | F(x, y, z))"),
             "SELECT T0.A1 AS x FROM F AS T0, G, H WHERE T0.A2 = G.A1 AND T0.A3 = H.A1");
 }
 
 TEST(OptimizationTest, ExistentialFormula5) {
-  EXPECT_EQ(TranslateRelFormula("exists (y in G, z | F(x, y, z))"),
+  EXPECT_EQ(TranslateRelFormula("exists ((y in G, z) | F(x, y, z))"),
             "SELECT T0.A1 AS x FROM F AS T0, G WHERE T0.A2 = G.A1");
 }
 
 TEST(OptimizationTest, UniversalFormula1) {
   // TODO: Must remove inner-most FROM subquery alias (final "AS T1")
-  EXPECT_EQ(TranslateRelFormula("forall (y in G | F(x, y))"),
+  EXPECT_EQ(TranslateRelFormula("forall ((y in G) | F(x, y))"),
             "SELECT T0.A1 AS x FROM F AS T0 WHERE EXISTS (SELECT * FROM G WHERE (T0.A1, G.A1) NOT IN (SELECT * FROM "
             "(SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1))");
 }
 
 TEST(OptimizationTest, UniversalFormula2) {
-  EXPECT_EQ(TranslateRelFormula("forall (y in G, z in H | F(x, y, z))"),
+  EXPECT_EQ(TranslateRelFormula("forall ((y in G, z in H) | F(x, y, z))"),
             "SELECT T0.A1 AS x FROM F AS T0 WHERE EXISTS (SELECT * FROM G, H WHERE (T0.A1, G.A1, H.A1) NOT IN (SELECT "
             "* FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1))");
 }
