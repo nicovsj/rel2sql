@@ -64,29 +64,29 @@ numericalConstant:
 	| T_NEG_FLOAT_LIT # numNegFloat;
 
 term:
-	T_ID								# IDTerm
-	| numericalConstant					# numTerm
+	T_ID								              # IDTerm
+	| numericalConstant					      # numTerm
 	| lhs = term operator rhs = term	# opTerm;
 
 // The order of the rules below matters for precedence.
 expr:
-	literal								# litExpr
-	| T_ID								# IDExpr
-	| '(' productInner ')'				# productExpr
-	| lhs = expr 'where' rhs = formula	# conditionExpr
-	| relAbs							# relAbsExpr
-	| formula							# formulaExpr
-	| '[' bindingInner ']' ':' expr		# bindingsExpr
-	| '(' bindingInner ')' ':' formula	# bindingsFormula
-	| applBase '[' applParams ']'		# partialAppl;
+	literal								                   # litExpr
+	| T_ID								                   # IDExpr
+	| '(' productInner ')'                   # productExpr
+	| lhs = expr 'where' rhs = formula	     # conditionExpr
+	| relAbs							                   # relAbsExpr
+	| formula							                   # formulaExpr
+	| '[' bindingInner ']' ':' expr		       # bindingsExpr
+	| '(' bindingInner ')' ':' formula	     # bindingsFormula
+	| applBase '[' applParams ']'		         # partialAppl;
 
 formula:
-	'{' ('(' ')')? '}'									# formulaBool
-	| applBase '(' applParams? ')'						# FullAppl
-	| lhs = formula op = 'and' rhs = formula			# binOp
-	| lhs = formula op = 'or' rhs = formula				# binOp
-	| op = 'not' formula								# unOp
+	'{' ('(' ')')? '}'									              # formulaBool
+	| applBase '(' applParams? ')'						        # FullAppl
+	| lhs = formula op = 'and' rhs = formula			    # binOp
+	| lhs = formula op = 'or' rhs = formula				    # binOp
+	| op = 'not' formula								              # unOp
 	| op = 'exists' '(' bindingInner '|' formula ')'	# quantification
 	| op = 'forall' '(' bindingInner '|' formula ')'	# quantification
-	| '(' formula ')'									# paren
-	| lhs = term comparator rhs = term					# comparison;
+	| '(' formula ')'									                # paren
+	| lhs = term comparator rhs = term					      # comparison;
