@@ -1356,7 +1356,9 @@ std::unordered_set<TupleBinding> SQLVisitor::SafeFunction(psr::BindingInnerConte
 
   for (auto binding : binding_ctx->binding()) {
     if (binding->id_domain) {
-      ProjectionTable projection_table(binding->id_domain->getText(), GetNode(binding).arity);
+      auto found = ast_data_->arity_by_id.find(binding->id_domain->getText());
+      int domain_arity = found != ast_data_->arity_by_id.end() ? found->second : 0;
+      ProjectionTable projection_table(binding->id_domain->getText(), domain_arity);
       auto tuple_binding = TupleBinding({binding->id->getText()}, {projection_table});
       safe_result.insert(tuple_binding);
       binding_vars.erase(binding->id->getText());
@@ -1398,12 +1400,15 @@ std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::
   std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> cte_map;
 
   for (auto& elem : safe_result) {
-    if (elem.union_domain.size() > 1) {
-      std::vector<std::shared_ptr<sql::ast::Sourceable>> selects;
+    if (elem.union_domain.empty()) {
+      throw std::runtime_error("Empty union domain");
+    }
 
+    // Build selects for each domain
+    std::vector<std::shared_ptr<sql::ast::Sourceable>> selects;
       for (auto domain : elem.union_domain) {
+      // Create table with attribute names from EDBInfo (whether custom or standard A1, A2, etc.)
         std::shared_ptr<sql::ast::Table> table;
-        // Always create table with attribute names from EDBInfo (whether custom or standard A1, A2, etc.)
         auto edb_info = ast_data_->GetEDBInfo(domain.table_name);
         if (edb_info && edb_info->arity() > 0) {
           std::vector<std::string> attribute_names;
@@ -1414,43 +1419,39 @@ std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::
         } else {
           table = std::make_shared<sql::ast::Table>(domain.table_name, ast_data_->arity_by_id[domain.table_name]);
         }
-        auto source = std::make_shared<sql::ast::Source>(table);
-        auto from = std::make_shared<sql::ast::FromStatement>(source);
-        auto select = std::make_shared<sql::ast::SelectStatement>(
-            std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::Wildcard>()}, from);
-        selects.push_back(select);
-      }
 
-      auto union_cte = std::make_shared<sql::ast::Union>(selects);
-
-      auto source = std::make_shared<sql::ast::Source>(union_cte, GenerateTableAlias("S"), true, elem.vars_tuple);
-
-      cte_map[elem] = source;
-    } else if (elem.union_domain.size() == 1) {
-      std::string table_name = (*elem.union_domain.begin()).table_name;
-      // Create table with proper EDB attribute names
-      auto edb_info = ast_data_->GetEDBInfo(table_name);
-      std::shared_ptr<sql::ast::Table> table;
-      if (edb_info && edb_info->arity() > 0) {
-        std::vector<std::string> attribute_names;
-        for (int i = 0; i < edb_info->arity(); ++i) {
-          attribute_names.push_back(edb_info->get_attribute_name(i));
-        }
-        table = std::make_shared<sql::ast::Table>(table_name, edb_info->arity(), attribute_names);
-      } else {
-        table = std::make_shared<sql::ast::Table>(table_name, ast_data_->arity_by_id[table_name]);
-      }
       auto table_source = std::make_shared<sql::ast::Source>(table);
       auto from = std::make_shared<sql::ast::FromStatement>(table_source);
-      auto select = std::make_shared<sql::ast::SelectStatement>(
-          std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::Wildcard>()}, from);
 
-      auto source = std::make_shared<sql::ast::Source>(select, GenerateTableAlias("S"), true, elem.vars_tuple);
+      // Create columns based on domain.indices
+      // If all columns are selected, use wildcard for better readability
+      std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
+      if (static_cast<int>(domain.indices.size()) == table->arity) {
+        auto wildcard = std::make_shared<sql::ast::Wildcard>();
+        columns.push_back(wildcard);
+      } else {
+        for (int index : domain.indices) {
+          std::string column_name = table->GetAttributeName(index);
+          auto column = std::make_shared<sql::ast::Column>(column_name, table_source);
+          auto term_selectable = std::make_shared<sql::ast::TermSelectable>(column);
+          columns.push_back(term_selectable);
+        }
+      }
+
+      auto select = std::make_shared<sql::ast::SelectStatement>(columns, from);
+      selects.push_back(select);
+    }
+
+    // Create final source - either from union or single select
+    std::shared_ptr<sql::ast::Source> source;
+    if (elem.union_domain.size() > 1) {
+      auto union_cte = std::make_shared<sql::ast::Union>(selects);
+      source = std::make_shared<sql::ast::Source>(union_cte, GenerateTableAlias("S"), true, elem.vars_tuple);
+      } else {
+      source = std::make_shared<sql::ast::Source>(selects[0], GenerateTableAlias("S"), true, elem.vars_tuple);
+    }
 
       cte_map[elem] = source;
-    } else {
-      throw std::runtime_error("Empty union domain");
-    }
   }
 
   return cte_map;
