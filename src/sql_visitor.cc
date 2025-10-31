@@ -8,6 +8,18 @@ SQLVisitor::SQLVisitor(std::shared_ptr<ExtendedASTData> ast) : BaseVisitor(ast) 
 
 SQLVisitor::~SQLVisitor() = default;
 
+std::shared_ptr<sql::ast::Sourceable> SQLVisitor::TryGetTopLevelIDSelect(psr::RelAbsContext* ctx) {
+  if (!ctx) return nullptr;
+  if (ctx->expr().size() != 1) return nullptr;
+
+  auto single_expr_ctx = ctx->expr()[0];
+  auto id_expr_ctx = dynamic_cast<psr::IDExprContext*>(single_expr_ctx);
+  if (!id_expr_ctx) return nullptr;
+
+  auto expr = GetExpressionFromID(id_expr_ctx, id_expr_ctx->T_ID()->getText(), true);
+  return std::dynamic_pointer_cast<sql::ast::Sourceable>(expr);
+}
+
 std::any SQLVisitor::visitProgram(psr::ProgramContext* ctx) {
   /*
    * Generates an SQL query from the program.
@@ -33,8 +45,16 @@ std::any SQLVisitor::visitRelDef(psr::RelDefContext* ctx) {
    * Generates an SQL query from the relation definition.
    */
 
-  auto child_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
+  auto body_ctx = ctx->relAbs();
+
+  auto special_child = TryGetTopLevelIDSelect(body_ctx);
+  std::shared_ptr<sql::ast::Sourceable> child_sql;
+  if (special_child) {
+    child_sql = special_child;
+  } else {
+    child_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
       std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->relAbs())));
+  }
 
   std::string def_id = ctx->T_ID()->getText();
 
@@ -1285,16 +1305,33 @@ std::shared_ptr<sql::ast::Expression> SQLVisitor::GetExpressionFromID(antlr4::Pa
 
   // Always create table with attribute names from EDBInfo (whether custom or standard A1, A2, etc.)
   auto edb_info = ast_data_->GetEDBInfo(id);
+  std::shared_ptr<sql::ast::Table> table;
   if (edb_info && edb_info->arity() > 0) {
     std::vector<std::string> attribute_names;
     for (int i = 0; i < edb_info->arity(); ++i) {
       attribute_names.push_back(edb_info->get_attribute_name(i));
     }
-    return std::make_shared<sql::ast::Table>(id, edb_info->arity(), attribute_names);
+    table = std::make_shared<sql::ast::Table>(id, edb_info->arity(), attribute_names);
   } else {
     // Fallback to default table creation if EDBInfo not found
-    return std::make_shared<sql::ast::Table>(id, ast_data_->arity_by_id[id]);
+    table = std::make_shared<sql::ast::Table>(id, ast_data_->arity_by_id[id]);
   }
+
+  if (is_top_level) {
+    // Build SELECT <alias>.<columns> AS <columns> FROM <Table> AS <alias>
+    auto source = std::make_shared<sql::ast::Source>(table, GenerateTableAlias());
+    std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
+    select_columns.reserve(table->arity);
+    for (int i = 0; i < table->arity; ++i) {
+      auto col_name = table->GetAttributeName(i);
+      auto col = std::make_shared<sql::ast::Column>(col_name, source);
+      select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(col, col_name));
+    }
+    auto from_stmt = std::make_shared<sql::ast::FromStatement>(source);
+    return std::make_shared<sql::ast::SelectStatement>(select_columns, from_stmt);
+  }
+
+  return table;
 }
 
 std::unordered_map<std::string, SQLVisitor::IndexedContext> SQLVisitor::GetFirstNonVarParamByFreeVariables(

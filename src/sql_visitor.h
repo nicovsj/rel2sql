@@ -131,7 +131,7 @@ class SQLVisitor : public BaseVisitor {
       std::vector<IndexedContext> variable_param_ctxs,
       std::unordered_map<std::string, IndexedContext> free_vars_in_non_variable_params) const;
 
-  std::shared_ptr<sql::ast::Expression> GetExpressionFromID(antlr4::ParserRuleContext* ctx, std::string id) const;
+  std::shared_ptr<sql::ast::Expression> GetExpressionFromID(antlr4::ParserRuleContext* ctx, std::string id, bool is_top_level = false);
 
   std::unordered_map<std::string, IndexedContext> GetFirstNonVarParamByFreeVariables(
       const std::vector<IndexedContext>& other_param_ctxs);
@@ -161,6 +161,8 @@ class SQLVisitor : public BaseVisitor {
   std::unordered_map<std::string, int> table_alias_prefix_counter_;
 
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> table_index_;
+
+  std::shared_ptr<sql::ast::Sourceable> TryGetTopLevelIDSelect(psr::RelAbsContext* ctx);
 
   // Testing bindings
 
