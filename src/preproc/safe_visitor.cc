@@ -334,16 +334,10 @@ std::any SafeVisitor::visitQuantification(psr::QuantificationContext* ctx) {
 
   for (auto& tuple_binding : formula_node.safeness.value()) {
     auto it = std::find(tuple_binding.vars_tuple.begin(), tuple_binding.vars_tuple.end(), quant_var);
-    if (it == tuple_binding.vars_tuple.end()) {
-      SourceLocation location = GetSourceLocation(ctx);
-      throw QuantificationException("Quantified variable '" + quant_var + "' not found in tuple", location);
-    }
-    int index = std::distance(tuple_binding.vars_tuple.begin(), it);
+      if (it == tuple_binding.vars_tuple.end()) continue;
 
-    if (tuple_binding.union_domain.size() != 1) {
-      SourceLocation location = GetSourceLocation(ctx);
-      throw QuantificationException("Expected exactly one projection table", location);
-    }
+    int index = std::distance(tuple_binding.vars_tuple.begin(), it);
+      if (tuple_binding.union_domain.size() != 1) continue;  // Expected exactly one projection table
 
     ProjectionTable child_projection = *tuple_binding.union_domain.begin();
 

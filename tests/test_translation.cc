@@ -499,6 +499,15 @@ TEST(EDBTranslationTest, SimpleReferenceDefinition) {
   EXPECT_EQ(TranslateRelDefWithEDB("def A {F}", edb_map),
             "CREATE OR REPLACE VIEW A AS (SELECT T0.A1 AS A1, T0.A2 AS A2 FROM F AS T0)");
 }
+
+TEST(EDBTranslationTest, ExistentialNotBoundingAllVariables) {
+  rel2sql::EDBMap edb_map;
+  edb_map["A"] = rel2sql::EDBInfo({"A1"});
+  edb_map["B"] = rel2sql::EDBInfo({"B1"});
+
+  EXPECT_EQ(TranslateRelFormulaWithEDB("exists((y) | A(x) and B(y))", edb_map),
+            "SELECT T4.x FROM (SELECT T1.x, T3.y FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1, (SELECT T2.B1 AS y FROM "
+            "B AS T2) AS T3) AS T4");
 }
 
 }  // namespace rel2sql
