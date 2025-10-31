@@ -1294,8 +1294,8 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVar
   return columns;
 }
 
-std::shared_ptr<sql::ast::Expression> SQLVisitor::GetExpressionFromID(antlr4::ParserRuleContext* ctx,
-                                                                      std::string id) const {
+std::shared_ptr<sql::ast::Expression> SQLVisitor::GetExpressionFromID(antlr4::ParserRuleContext* ctx, std::string id,
+                                                                      bool is_top_level) {
   auto node = GetNode(ctx);
 
   // Check if it is a variable
