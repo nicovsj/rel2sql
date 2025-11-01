@@ -8,123 +8,7 @@
 
 #include "structs/edb_info.h"
 #include "structs/sql_ast.h"
-#include "utils/utils.h"
-
-namespace rel2sql {
-
-struct ProjectionTable;
-
-struct ProjectionTable {
-  std::vector<int> indices;
-  std::string table_name;
-  int table_arity;
-
-  ProjectionTable(std::string table_name, int table_arity) : table_name(table_name), table_arity(table_arity) {
-    if (table_arity < 0) {
-      throw std::runtime_error("Table arity must be greater than or equal to 0");
-    }
-
-    for (int i = 0; i < table_arity; i++) {
-      indices.push_back(i);
-    }
-  }
-
-  ProjectionTable(const std::vector<int>& indices, std::string table_name, int table_arity, bool complement = false)
-      : indices(), table_name(table_name), table_arity(table_arity) {
-    if (indices.size() > table_arity) {
-      throw std::runtime_error("Projection table indices size is greater than table arity");
-    }
-
-    if (complement) {
-      this->indices = std::vector<int>();
-
-      for (int i = 0; i < table_arity; i++) {
-        if (std::find(indices.begin(), indices.end(), i) == indices.end()) {
-          this->indices.push_back(i);
-        }
-      }
-    } else {
-      this->indices = indices;
-      std::sort(this->indices.begin(), this->indices.end());
-    }
-  }
-
-  ProjectionTable(const std::vector<int>& indices, const ProjectionTable& parent, bool complement = false)
-      : indices(), table_name(parent.table_name), table_arity(parent.table_arity) {
-    if (indices.size() > parent.indices.size()) {
-      throw std::runtime_error("Projection table indices size is greater than parent indices size");
-    }
-
-    if (complement) {
-      this->indices = std::vector<int>();
-
-      for (int i = 0; i < parent.arity(); i++) {
-        if (std::find(indices.begin(), indices.end(), i) == indices.end()) {
-          this->indices.push_back(parent.indices[i]);
-        }
-      }
-    } else {
-      for (const auto& index : indices) {
-        this->indices.push_back(parent.indices[index]);
-      }
-    }
-  }
-
-  int arity() const { return indices.size(); }
-
-  bool operator==(const ProjectionTable& other) const {
-    return indices == other.indices && table_name == other.table_name;
-  }
-};
-
-}  // namespace rel2sql
-
-namespace std {
-template <>
-struct hash<rel2sql::ProjectionTable> {
-  std::size_t operator()(const rel2sql::ProjectionTable& pt) const {
-    std::size_t seed = 0;
-    utl::hash_range(seed, pt.indices.begin(), pt.indices.end());
-    utl::hash_combine(seed, pt.table_name);
-    return seed;
-  }
-};
-
-}  // namespace std
-
-namespace rel2sql {
-
-struct TupleBinding {
-  std::vector<std::string> vars_tuple;
-  std::unordered_set<ProjectionTable> union_domain;
-
-  TupleBinding() = default;
-
-  TupleBinding(const std::vector<std::string>& vars_tuple, const std::unordered_set<ProjectionTable>& union_domain)
-      : vars_tuple(vars_tuple), union_domain(union_domain) {}
-
-  bool operator==(const TupleBinding& other) const {
-    return vars_tuple == other.vars_tuple && union_domain == other.union_domain;
-  }
-};
-
-}  // namespace rel2sql
-
-namespace std {
-template <>
-struct hash<rel2sql::TupleBinding> {
-  std::size_t operator()(const rel2sql::TupleBinding& tb) const {
-    std::size_t seed = 0;
-    utl::hash_range(seed, tb.vars_tuple.begin(), tb.vars_tuple.end());
-    for (const auto& table : tb.union_domain) {
-      utl::hash_range(seed, table.indices.begin(), table.indices.end());
-      utl::hash_combine(seed, table.table_name);
-    }
-    return seed;
-  }
-};
-
-}  // namespace std
+#include "structs/bindings_bound.h"
 
 namespace rel2sql {
 
@@ -150,7 +34,7 @@ struct ExtendedNode {
   int arity;
 
   // Output of the safeness analysis
-  std::optional<std::unordered_set<TupleBinding>> safeness;
+  std::optional<std::unordered_set<BindingsBound>> safeness;
 
   // AND term partitioning variables
   std::vector<antlr4::ParserRuleContext*> comparator_formulas;

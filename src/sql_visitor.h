@@ -139,18 +139,18 @@ class SQLVisitor : public BaseVisitor {
   std::pair<std::vector<IndexedContext>, std::vector<IndexedContext>> GetVariableAndNonVariableParams(
       psr::ApplBaseContext* base, const std::vector<psr::ApplParamContext*>& params);
 
-  std::unordered_set<TupleBinding> SafeFunction(psr::BindingInnerContext* binding_ctx,
+  std::unordered_set<BindingsBound> SafeFunction(psr::BindingInnerContext* binding_ctx,
                                                 antlr4::ParserRuleContext* expr_ctx);
 
-  std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> ComputeBindingsCTEs(
-      std::unordered_set<TupleBinding>& safe_result);
+  std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>> ComputeBindingsCTEs(
+      std::unordered_set<BindingsBound>& safe_result);
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> ComputeBindingsOutput(
-      const std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>>& safe_result);
+      const std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>>& safe_result);
 
   std::shared_ptr<sql::ast::Condition> BindingsEqualityShorthand(
       antlr4::ParserRuleContext* expr,
-      const std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>>& safe_result);
+      const std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>>& safe_result);
 
   void SpecialAddSourceToFreeVariablesInTerm(
       const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources,

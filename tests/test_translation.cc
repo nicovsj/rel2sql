@@ -201,7 +201,7 @@ TEST(TranslationTest, ExistentialFormula1) {
 }
 
 TEST(TranslationTest, ExistentialFormula2) {
-  EXPECT_EQ(TranslateRelFormula("exists ((y, z) | F(x, y, z))"),
+  EXPECT_EQ(TranslateRelFormula("exists ((y, z) | F(x, y, z))", {{"F", 3}}),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1");
 }
 

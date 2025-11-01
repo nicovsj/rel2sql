@@ -685,7 +685,8 @@ std::any SQLVisitor::VisitConjunctionWithTerms(psr::BinOpContext* ctx) {
   }
 
   for (auto comparator : comparator_formulas) {
-    auto comparator_sql = std::any_cast<std::shared_ptr<sql::ast::ComparisonCondition>>(visit(comparator));
+    auto comparator_sql = std::static_pointer_cast<sql::ast::ComparisonCondition>(
+        std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(comparator)));
 
     SpecialAddSourceToFreeVariablesInTerm(free_var_sources, comparator_sql->lhs);
     SpecialAddSourceToFreeVariablesInTerm(free_var_sources, comparator_sql->rhs);
@@ -1381,23 +1382,28 @@ SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext* base,
   return std::make_pair(var_params, non_var_params);
 }
 
-std::unordered_set<TupleBinding> SQLVisitor::SafeFunction(psr::BindingInnerContext* binding_ctx,
+std::unordered_set<BindingsBound> SQLVisitor::SafeFunction(psr::BindingInnerContext* binding_ctx,
                                                           antlr4::ParserRuleContext* expr_ctx) {
   /*
    * Computes the safe function from the paper.
    */
 
-  std::unordered_set<TupleBinding> safe_result;
+  std::unordered_set<BindingsBound> safe_result;
 
   std::set<std::string> binding_vars(GetNode(binding_ctx).variables);
 
   for (auto binding : binding_ctx->binding()) {
     if (binding->id_domain) {
       auto found = ast_data_->arity_by_id.find(binding->id_domain->getText());
+
       int domain_arity = found != ast_data_->arity_by_id.end() ? found->second : 0;
-      ProjectionTable projection_table(binding->id_domain->getText(), domain_arity);
-      auto tuple_binding = TupleBinding({binding->id->getText()}, {projection_table});
-      safe_result.insert(tuple_binding);
+
+      auto table_source = TableSource(binding->id_domain->getText(), domain_arity);
+      auto projection_table = SourceProjection(table_source);
+
+      auto bindings_bound = BindingsBound({binding->id->getText()}, {projection_table});
+      safe_result.insert(bindings_bound);
+
       binding_vars.erase(binding->id->getText());
     }
   }
@@ -1428,48 +1434,72 @@ std::unordered_set<TupleBinding> SQLVisitor::SafeFunction(psr::BindingInnerConte
   throw std::runtime_error("Not all variables are bound");
 }
 
-std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::ComputeBindingsCTEs(
-    std::unordered_set<TupleBinding>& safe_result) {
+std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>> SQLVisitor::ComputeBindingsCTEs(
+    std::unordered_set<BindingsBound>& safe_result) {
   /*
    * Computes the CTEs for the bindings. Associates each safe result with the CTE that it generates for after use.
    */
 
-  std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> cte_map;
+  std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>> cte_map;
 
   for (auto& elem : safe_result) {
-    if (elem.union_domain.empty()) {
+    if (elem.domain.empty()) {
       throw std::runtime_error("Empty union domain");
     }
 
     // Build selects for each domain
     std::vector<std::shared_ptr<sql::ast::Sourceable>> selects;
-      for (auto domain : elem.union_domain) {
+    for (auto projection : elem.domain) {
       // Create table with attribute names from EDBInfo (whether custom or standard A1, A2, etc.)
+
+      auto bound_source = projection.source;
+      auto table_bound = std::dynamic_pointer_cast<TableSource>(bound_source);
+      auto constant_bound = std::dynamic_pointer_cast<ConstantSource>(bound_source);
+
+      std::shared_ptr<sql::ast::Sourceable> sourceable;
         std::shared_ptr<sql::ast::Table> table;
-        auto edb_info = ast_data_->GetEDBInfo(domain.table_name);
+
+      if (table_bound) {
+        auto edb_info = ast_data_->GetEDBInfo(table_bound->table_name);
         if (edb_info && edb_info->arity() > 0) {
           std::vector<std::string> attribute_names;
           for (int i = 0; i < edb_info->arity(); ++i) {
             attribute_names.push_back(edb_info->get_attribute_name(i));
           }
-          table = std::make_shared<sql::ast::Table>(domain.table_name, edb_info->arity(), attribute_names);
+          table = std::make_shared<sql::ast::Table>(table_bound->table_name, edb_info->arity(), attribute_names);
         } else {
-          table = std::make_shared<sql::ast::Table>(domain.table_name, ast_data_->arity_by_id[domain.table_name]);
+          table = std::make_shared<sql::ast::Table>(table_bound->table_name,
+                                                    ast_data_->arity_by_id[table_bound->table_name]);
         }
+        sourceable = table;
+      } else if (constant_bound) {
+        auto sql_constant = std::make_shared<sql::ast::Constant>(constant_bound->value);
+        auto selectable = std::make_shared<sql::ast::TermSelectable>(sql_constant, "A1");
 
-      auto table_source = std::make_shared<sql::ast::Source>(table);
-      auto from = std::make_shared<sql::ast::FromStatement>(table_source);
+        auto constant_select =
+            std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable});
+
+        sourceable = constant_select;
+
+        // Create a dummy table for consistency with the column access logic
+        table = std::make_shared<sql::ast::Table>("", 1);
+      } else {
+        throw std::runtime_error("Unknown domain source type");
+      }
+
+      auto source = std::make_shared<sql::ast::Source>(sourceable);
+      auto from = std::make_shared<sql::ast::FromStatement>(source);
 
       // Create columns based on domain.indices
       // If all columns are selected, use wildcard for better readability
       std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
-      if (static_cast<int>(domain.indices.size()) == table->arity) {
+      if (static_cast<int>(projection.projected_indices.size()) == table->arity) {
         auto wildcard = std::make_shared<sql::ast::Wildcard>();
         columns.push_back(wildcard);
       } else {
-        for (int index : domain.indices) {
+        for (int index : projection.projected_indices) {
           std::string column_name = table->GetAttributeName(index);
-          auto column = std::make_shared<sql::ast::Column>(column_name, table_source);
+          auto column = std::make_shared<sql::ast::Column>(column_name, source);
           auto term_selectable = std::make_shared<sql::ast::TermSelectable>(column);
           columns.push_back(term_selectable);
         }
@@ -1481,11 +1511,11 @@ std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::
 
     // Create final source - either from union or single select
     std::shared_ptr<sql::ast::Source> source;
-    if (elem.union_domain.size() > 1) {
+    if (elem.domain.size() > 1) {
       auto union_cte = std::make_shared<sql::ast::Union>(selects);
-      source = std::make_shared<sql::ast::Source>(union_cte, GenerateTableAlias("S"), true, elem.vars_tuple);
+      source = std::make_shared<sql::ast::Source>(union_cte, GenerateTableAlias("S"), true, elem.variables);
       } else {
-      source = std::make_shared<sql::ast::Source>(selects[0], GenerateTableAlias("S"), true, elem.vars_tuple);
+      source = std::make_shared<sql::ast::Source>(selects[0], GenerateTableAlias("S"), true, elem.variables);
     }
 
       cte_map[elem] = source;
@@ -1495,7 +1525,7 @@ std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>> SQLVisitor::
 }
 
 std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::ComputeBindingsOutput(
-    const std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>>& safe_result) {
+    const std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>>& safe_result) {
   /*
    * Computes the output for the bindings.
    */
@@ -1520,7 +1550,7 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::ComputeBindingsOu
 
 std::shared_ptr<sql::ast::Condition> SQLVisitor::BindingsEqualityShorthand(
     antlr4::ParserRuleContext* expr,
-    const std::unordered_map<TupleBinding, std::shared_ptr<sql::ast::Source>>& safe_result) {
+    const std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>>& safe_result) {
   /*
    * Generates a condition that equates all the repeated variables in the input map. This is the EQ function
    * in the paper.

@@ -68,8 +68,13 @@ class SafeVisitor : public BaseVisitor {
 
   std::any VisitDisjunction(psr::BinOpContext* ctx);
 
-  std::unordered_set<TupleBinding> SpecialIntersectionOfTupleBindings(
-      const std::vector<std::unordered_set<TupleBinding>>& sets) const;
+  std::unordered_set<BindingsBound> SpecialIntersectionOfBindingBounds(
+      const std::vector<std::unordered_set<BindingsBound>>& sets) const;
+
+  // Helper function to remove bound variables from a BindingsBound
+  std::unordered_set<BindingsBound> RemoveBoundVariables(
+      const std::unordered_set<BindingsBound>& bindings_bound,
+      psr::BindingInnerContext* binding_inner) const;
 };
 
 }  // namespace rel2sql
