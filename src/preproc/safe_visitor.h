@@ -51,6 +51,8 @@ class SafeVisitor : public BaseVisitor {
 
   std::any visitParen(psr::ParenContext* ctx) override;
 
+  std::any visitComparison(psr::ComparisonContext* ctx) override;
+
   //  Binding branches
 
   // std::any visitBindingInner(psr::BindingInnerContext *ctx) override;

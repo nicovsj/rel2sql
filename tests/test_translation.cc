@@ -510,4 +510,9 @@ TEST(EDBTranslationTest, ExistentialNotBoundingAllVariables) {
             "B AS T2) AS T3) AS T4");
 }
 
+// TODO: This test fails because we don't have a way to translate a comparison formula that is an equality
+TEST(TranslationTest, DISABLED_BindingEquality) {
+  EXPECT_EQ(TranslateRelExpression("(x): x = 1"), "SELECT T0.name AS x FROM F AS T0");
+}
+
 }  // namespace rel2sql

@@ -1,5 +1,6 @@
 #include "sql_visitor.h"
 
+#include "exceptions.h"
 #include "structs/sql_ast.h"
 
 namespace rel2sql {
@@ -53,7 +54,7 @@ std::any SQLVisitor::visitRelDef(psr::RelDefContext* ctx) {
     child_sql = special_child;
   } else {
     child_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
-      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->relAbs())));
+        std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->relAbs())));
   }
 
   std::string def_id = ctx->T_ID()->getText();
@@ -495,7 +496,7 @@ std::any SQLVisitor::visitBinOp(psr::BinOpContext* ctx) {
   } else if (ctx->K_or()) {
     return VisitDisjunction(ctx);
   } else {
-    throw std::runtime_error("Unknown binary operation");
+    throw SemanticException("Unknown binary operation", ErrorCode::UNKNOWN_BINARY_OPERATOR);
   }
 }
 
@@ -503,7 +504,7 @@ std::any SQLVisitor::visitUnOp(psr::UnOpContext* ctx) {
   /*
    * Generates an SQL query from the unary operation.
    */
-  throw std::runtime_error("Not implemented yet");
+  throw NotImplementedException("Unary operation translation not implemented yet");
 }
 
 std::any SQLVisitor::visitQuantification(psr::QuantificationContext* ctx) {
@@ -512,7 +513,7 @@ std::any SQLVisitor::visitQuantification(psr::QuantificationContext* ctx) {
   } else if (ctx->K_forall()) {
     return VisitUniversal(ctx);
   } else {
-    throw std::runtime_error("Unknown quantification");
+    throw SemanticException("Unknown quantification", ErrorCode::UNKNOWN_QUANTIFICATION);
   }
 }
 
@@ -551,7 +552,8 @@ std::any SQLVisitor::visitComparison(psr::ComparisonContext* ctx) {
     throw std::runtime_error("Unknown comparator");
   }
 
-  return std::make_shared<sql::ast::ComparisonCondition>(lhs_term, op, rhs_term);
+  auto condition = std::make_shared<sql::ast::ComparisonCondition>(lhs_term, op, rhs_term);
+  return std::static_pointer_cast<sql::ast::Expression>(condition);
 }
 
 std::any SQLVisitor::visitApplBase(psr::ApplBaseContext* ctx) {
@@ -1383,7 +1385,7 @@ SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext* base,
 }
 
 std::unordered_set<BindingsBound> SQLVisitor::SafeFunction(psr::BindingInnerContext* binding_ctx,
-                                                          antlr4::ParserRuleContext* expr_ctx) {
+                                                           antlr4::ParserRuleContext* expr_ctx) {
   /*
    * Computes the safe function from the paper.
    */
@@ -1415,7 +1417,7 @@ std::unordered_set<BindingsBound> SQLVisitor::SafeFunction(psr::BindingInnerCont
   auto safeness = GetNode(expr_ctx).safeness;
 
   if (!safeness.has_value()) {
-    throw std::runtime_error("No safeness value for expression");
+    throw InternalException("No safeness value for expression");
   }
 
   for (auto [vars, union_domain] : safeness.value()) {
@@ -1431,7 +1433,7 @@ std::unordered_set<BindingsBound> SQLVisitor::SafeFunction(psr::BindingInnerCont
     return safe_result;
   }
 
-  throw std::runtime_error("Not all variables are bound");
+  throw SemanticException("Not all variables are bound", ErrorCode::UNBALANCED_VARIABLE);
 }
 
 std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>> SQLVisitor::ComputeBindingsCTEs(
@@ -1456,11 +1458,20 @@ std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>> SQLVisitor:
       auto table_bound = std::dynamic_pointer_cast<TableSource>(bound_source);
       auto constant_bound = std::dynamic_pointer_cast<ConstantSource>(bound_source);
 
-      std::shared_ptr<sql::ast::Sourceable> sourceable;
-        std::shared_ptr<sql::ast::Table> table;
+      std::shared_ptr<sql::ast::SelectStatement> select;
 
-      if (table_bound) {
+      if (!constant_bound && !table_bound) {
+        throw std::runtime_error("Unknown domain source type");
+      } else if (constant_bound) {
+        auto sql_constant = std::make_shared<sql::ast::Constant>(constant_bound->value);
+        auto selectable = std::make_shared<sql::ast::TermSelectable>(sql_constant, "A1");
+
+        select =
+            std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable});
+
+      } else {
         auto edb_info = ast_data_->GetEDBInfo(table_bound->table_name);
+        std::shared_ptr<sql::ast::Table> table;
         if (edb_info && edb_info->arity() > 0) {
           std::vector<std::string> attribute_names;
           for (int i = 0; i < edb_info->arity(); ++i) {
@@ -1471,41 +1482,26 @@ std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>> SQLVisitor:
           table = std::make_shared<sql::ast::Table>(table_bound->table_name,
                                                     ast_data_->arity_by_id[table_bound->table_name]);
         }
-        sourceable = table;
-      } else if (constant_bound) {
-        auto sql_constant = std::make_shared<sql::ast::Constant>(constant_bound->value);
-        auto selectable = std::make_shared<sql::ast::TermSelectable>(sql_constant, "A1");
 
-        auto constant_select =
-            std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable});
-
-        sourceable = constant_select;
-
-        // Create a dummy table for consistency with the column access logic
-        table = std::make_shared<sql::ast::Table>("", 1);
-      } else {
-        throw std::runtime_error("Unknown domain source type");
-      }
-
-      auto source = std::make_shared<sql::ast::Source>(sourceable);
-      auto from = std::make_shared<sql::ast::FromStatement>(source);
-
-      // Create columns based on domain.indices
-      // If all columns are selected, use wildcard for better readability
-      std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
-      if (static_cast<int>(projection.projected_indices.size()) == table->arity) {
-        auto wildcard = std::make_shared<sql::ast::Wildcard>();
-        columns.push_back(wildcard);
-      } else {
-        for (int index : projection.projected_indices) {
-          std::string column_name = table->GetAttributeName(index);
-          auto column = std::make_shared<sql::ast::Column>(column_name, source);
-          auto term_selectable = std::make_shared<sql::ast::TermSelectable>(column);
-          columns.push_back(term_selectable);
+        auto source = std::make_shared<sql::ast::Source>(table);
+        auto from = std::make_shared<sql::ast::FromStatement>(source);
+        // Create columns based on domain.indices
+        // If all columns are selected, use wildcard for better readability
+        std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
+        if (static_cast<int>(projection.projected_indices.size()) == table->arity) {
+          auto wildcard = std::make_shared<sql::ast::Wildcard>();
+          columns.push_back(wildcard);
+        } else {
+          for (int index : projection.projected_indices) {
+            std::string column_name = table->GetAttributeName(index);
+            auto column = std::make_shared<sql::ast::Column>(column_name, source);
+            auto term_selectable = std::make_shared<sql::ast::TermSelectable>(column);
+            columns.push_back(term_selectable);
+          }
         }
+        select = std::make_shared<sql::ast::SelectStatement>(columns, from);
       }
 
-      auto select = std::make_shared<sql::ast::SelectStatement>(columns, from);
       selects.push_back(select);
     }
 
@@ -1514,11 +1510,11 @@ std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>> SQLVisitor:
     if (elem.domain.size() > 1) {
       auto union_cte = std::make_shared<sql::ast::Union>(selects);
       source = std::make_shared<sql::ast::Source>(union_cte, GenerateTableAlias("S"), true, elem.variables);
-      } else {
+    } else {
       source = std::make_shared<sql::ast::Source>(selects[0], GenerateTableAlias("S"), true, elem.variables);
     }
 
-      cte_map[elem] = source;
+    cte_map[elem] = source;
   }
 
   return cte_map;

@@ -258,7 +258,8 @@ std::any LiteralVisitor::visitComparator(psr::ComparatorContext* ctx) {
 
 std::any LiteralVisitor::visitNumTerm(psr::NumTermContext* ctx) {
   visitChildren(ctx);
-  GetNode(ctx).constant = GetNode(ctx->numericalConstant()).constant;
+  auto& current_node = GetNode(ctx);
+  current_node.constant = GetNode(ctx->numericalConstant()).constant;
   return {};
 }
 

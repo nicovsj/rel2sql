@@ -188,7 +188,11 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
 
 std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
   visit(ctx->applBase());
+  for (auto& param : ctx->applParams()->applParam()) {
+    visit(param);
+  }
 
+  // If the base is not an ID, the safeness is empty
   if (!ctx->applBase()->T_ID()) {
     return {};
   }
@@ -303,6 +307,48 @@ std::any SafeVisitor::visitParen(psr::ParenContext* ctx) {
   visit(ctx->formula());
 
   GetNode(ctx).safeness = GetNode(ctx->formula()).safeness;
+
+  return {};
+}
+
+std::any SafeVisitor::visitComparison(psr::ComparisonContext* ctx) {
+  visit(ctx->lhs);
+  visit(ctx->rhs);
+
+  // A comparison is safe only if it's of the form x = c or c = x,
+  // where x is a variable and c is a constant.
+  // TODO: Maybe we can allow for bounded variables if we have a type system?
+
+  auto& current_node = GetNode(ctx);
+  current_node.safeness = std::unordered_set<BindingsBound>{};
+
+  // If the comparator is not an equality, the comparison is not safe
+  if (!ctx->comparator()->T_OP_EQ()) return {};
+
+  auto lhs_id_term = dynamic_cast<psr::IDTermContext*>(ctx->lhs);
+  auto rhs_id_term = dynamic_cast<psr::IDTermContext*>(ctx->rhs);
+
+  auto& lhs_node = GetNode(ctx->lhs);
+  auto& rhs_node = GetNode(ctx->rhs);
+
+  std::string variable_name;
+  sql::ast::constant_t constant;
+
+  if (lhs_id_term && rhs_node.constant.has_value()) {
+    variable_name = lhs_id_term->T_ID()->getText();
+    constant = rhs_node.constant.value();
+  } else if (rhs_id_term && lhs_node.constant.has_value()) {
+    variable_name = rhs_id_term->T_ID()->getText();
+    constant = lhs_node.constant.value();
+  } else {
+    // If the equality is not between a variable and a constant, the comparison is not safe
+    return {};
+  }
+
+  BindingsBound binding_bound;
+  binding_bound.variables.push_back(variable_name);
+  binding_bound.Add(SourceProjection(ConstantSource(constant)));
+  current_node.safeness.value().insert(binding_bound);
 
   return {};
 }
