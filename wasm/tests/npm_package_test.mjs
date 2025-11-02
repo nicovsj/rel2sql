@@ -112,35 +112,15 @@ writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2));
 execSync(`npm install "${tarballPath}"`, { cwd: tmpDir, stdio: "inherit" });
 
 console.log("[5/6] Running Node.js consumption test...");
-const testContent = `
-import { loadRel2Sql } from "@nicovsj/rel2sql-wasm";
-
-const mod = await loadRel2Sql();
-const out = mod.translate("def output {1}");
-if (!out || typeof out !== "string")
-  throw new Error("Unexpected translate output");
-console.log("OK:", out.substring(0, 60));
-`;
-writeFileSync(join(tmpDir, "test.mjs"), testContent);
-execSync(`node ${join(tmpDir, "test.mjs")}`, { stdio: "inherit" });
+// Copy the npm smoke test to the temp directory
+const npmSmokeTest = readFileSync(join(__dirname, "npm_smoke_test.mjs"), "utf8");
+writeFileSync(join(tmpDir, "npm_smoke_test.mjs"), npmSmokeTest);
+execSync(`node ${join(tmpDir, "npm_smoke_test.mjs")}`, { stdio: "inherit" });
 
 console.log("[6/6] Testing browser loader (simulated browser environment)...");
-const browserTestContent = `
-// Simulate browser environment for testing
-global.window = {};
-global.document = { head: { appendChild: () => {} } };
-
-import { loadRel2Sql } from "@nicovsj/rel2sql-wasm/browser";
-
-// Test that the browser loader can be imported and has the right interface
-if (typeof loadRel2Sql !== 'function') {
-  throw new Error('loadRel2Sql should be a function');
-}
-
-console.log("Browser loader interface OK - function exported correctly");
-console.log("Note: Full browser test requires actual browser environment");
-`;
-writeFileSync(join(tmpDir, "browser-test.mjs"), browserTestContent);
-execSync(`node ${join(tmpDir, "browser-test.mjs")}`, { stdio: "inherit" });
+// Copy the browser smoke test to the temp directory
+const browserSmokeTest = readFileSync(join(__dirname, "npm_browser_smoke_test.mjs"), "utf8");
+writeFileSync(join(tmpDir, "npm_browser_smoke_test.mjs"), browserSmokeTest);
+execSync(`node ${join(tmpDir, "npm_browser_smoke_test.mjs")}`, { stdio: "inherit" });
 
 console.log("All good ✅");
