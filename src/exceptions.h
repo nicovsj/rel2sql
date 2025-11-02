@@ -31,7 +31,12 @@ enum class ErrorCode {
   UNSAFE_QUANTIFICATION = 103,
   UNKNOWN_BINARY_OPERATOR = 104,
   EXPECTED_SINGLE_PROJECTION = 105,
-  QUANTIFIED_VARIABLE_NOT_FOUND = 106
+  QUANTIFIED_VARIABLE_NOT_FOUND = 106,
+  UNKNOWN_QUANTIFICATION = 107,
+
+  // Internal/infra errors (E900+)
+  INTERNAL_ERROR = 900,
+  NOT_IMPLEMENTED = 901
 };
 
 // Base exception class for all rel2sql errors
@@ -85,6 +90,20 @@ class QuantificationException : public SemanticException {
  public:
   QuantificationException(const std::string& message, std::optional<SourceLocation> location = std::nullopt)
       : SemanticException(message, ErrorCode::UNSAFE_QUANTIFICATION, location) {}
+};
+
+// Internal errors
+class InternalException : public TranslationException {
+ public:
+  InternalException(const std::string& message, std::optional<SourceLocation> location = std::nullopt)
+      : TranslationException(message, ErrorCode::INTERNAL_ERROR, location) {}
+};
+
+// Not implemented feature
+class NotImplementedException : public TranslationException {
+ public:
+  NotImplementedException(const std::string& message, std::optional<SourceLocation> location = std::nullopt)
+      : TranslationException(message, ErrorCode::NOT_IMPLEMENTED, location) {}
 };
 
 }  // namespace rel2sql
