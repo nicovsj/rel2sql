@@ -30,7 +30,7 @@ inline std::unique_ptr<rel_parser::PrunedCoreRelParser> GetParser(std::string_vi
   return parser;
 }
 
-inline ExtendedAST GetExtendedASTFromTree(
+inline ExtendedAST GetExtendedASTFromParsingTree(
     antlr4::ParserRuleContext* tree,
     std::shared_ptr<ExtendedASTData> extended_ast_data = std::make_shared<ExtendedASTData>()) {
   IDsVisitor ids_visitor(extended_ast_data);
@@ -65,13 +65,13 @@ inline ExtendedAST GetExtendedAST(std::string_view input) {
 
   auto tree = parser->program();
 
-  return GetExtendedASTFromTree(tree);
+  return GetExtendedASTFromParsingTree(tree);
 };
 
-inline std::shared_ptr<sql::ast::Expression> GetSQLFromTree(antlr4::ParserRuleContext* tree,
+inline std::shared_ptr<sql::ast::Expression> GetSQLFromAST(antlr4::ParserRuleContext* tree,
                                                             std::optional<ExtendedAST> ast = std::nullopt) {
   if (!ast) {
-    ast = GetExtendedASTFromTree(tree);
+    ast = GetExtendedASTFromParsingTree(tree);
   }
 
   SQLVisitor visitor(ast.value().Data());
@@ -86,9 +86,9 @@ inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input) {
 
   auto tree = parser->program();
 
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
 
-  auto sql = GetSQLFromTree(tree);
+  auto sql = GetSQLFromAST(tree);
 
   sql::ast::Optimizer optimizer;
 
@@ -100,11 +100,11 @@ inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input) {
 inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input, const rel2sql::EDBMap& edb_map) {
   auto parser = GetParser(input);
 
-  auto tree = parser->program();
+  auto parsing_ast = parser->program();
 
-  auto ast = GetExtendedASTFromTree(tree, std::make_shared<ExtendedASTData>(edb_map));
+  auto extended_ast = GetExtendedASTFromParsingTree(parsing_ast, std::make_shared<ExtendedASTData>(edb_map));
 
-  auto sql = GetSQLFromTree(tree, ast);
+  auto sql = GetSQLFromAST(parsing_ast, extended_ast);
 
   sql::ast::Optimizer optimizer;
 
@@ -118,7 +118,7 @@ inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQL(std::string_view 
 
   auto tree = parser->program();
 
-  return GetSQLFromTree(tree);
+  return GetSQLFromAST(tree);
 }
 
 inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQL(std::string_view input, const rel2sql::EDBMap& edb_map) {
@@ -126,9 +126,9 @@ inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQL(std::string_view 
 
   auto tree = parser->program();
 
-  auto ast = GetExtendedASTFromTree(tree, std::make_shared<ExtendedASTData>(edb_map));
+  auto ast = GetExtendedASTFromParsingTree(tree, std::make_shared<ExtendedASTData>(edb_map));
 
-  return GetSQLFromTree(tree, ast);
+  return GetSQLFromAST(tree, ast);
 }
 
 }  // namespace rel2sql

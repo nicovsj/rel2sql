@@ -1052,7 +1052,7 @@ std::shared_ptr<sql::ast::Source> SQLVisitor::CreateTableSource(const std::strin
     }
     table = std::make_shared<sql::ast::Table>(table_name, edb_info->arity(), attribute_names);
     // Create a source with an alias that includes the attribute names
-    auto alias = std::make_shared<sql::ast::AliasStatement>(GenerateTableAlias(), attribute_names);
+    auto alias = std::make_shared<sql::ast::AliasStatement>(GenerateTableAlias());
     return std::make_shared<sql::ast::Source>(table, alias);
   } else {
     // Fallback to default table creation if EDBInfo not found

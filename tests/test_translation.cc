@@ -13,15 +13,14 @@ std::string TranslateRel(const std::string& input, ContextType* (*parse_method)(
                          DataType&& ast_data) {
   auto parser = GetParser(input);
   auto tree = dynamic_cast<ContextType*>(parse_method(parser.get()));
-  auto ast = GetExtendedASTFromTree(tree, ast_data);
-  auto result = GetSQLFromTree(tree, ast);
+  auto ast = GetExtendedASTFromParsingTree(tree, ast_data);
+  auto result = GetSQLFromAST(tree, ast);
   std::ostringstream os;
   os << *result;
   return os.str();
 }
 
-std::string TranslateRelProgram(const std::string& input,
-                                std::unordered_map<std::string, int> external_arity_map = {}) {
+std::string TranslateProgram(const std::string& input, std::unordered_map<std::string, int> external_arity_map = {}) {
   /*
    * This function takes a string CoreRel program input and returns the SQL translation.
    */
@@ -30,7 +29,8 @@ std::string TranslateRelProgram(const std::string& input,
       input, [](rel_parser::PrunedCoreRelParser* p) { return p->program(); }, ast_data);
 }
 
-std::string TranslateRelDef(const std::string& input, std::unordered_map<std::string, int> external_arity_map = {}) {
+std::string TranslateDefinition(const std::string& input,
+                                std::unordered_map<std::string, int> external_arity_map = {}) {
   /*
    * This function takes a string CoreRel program input and returns the SQL translation.
    */
@@ -39,8 +39,7 @@ std::string TranslateRelDef(const std::string& input, std::unordered_map<std::st
       input, [](rel_parser::PrunedCoreRelParser* p) { return p->relDef(); }, ast_data);
 }
 
-std::string TranslateRelFormula(const std::string& input,
-                                std::unordered_map<std::string, int> external_arity_map = {}) {
+std::string TranslateFormula(const std::string& input, std::unordered_map<std::string, int> external_arity_map = {}) {
   /*
    * This function takes a string CoreRel formula input and returns the SQL translation.
    */
@@ -49,8 +48,8 @@ std::string TranslateRelFormula(const std::string& input,
       input, [](rel_parser::PrunedCoreRelParser* p) { return p->formula(); }, ast_data);
 }
 
-std::string TranslateRelExpression(const std::string& input,
-                                   std::unordered_map<std::string, int> external_arity_map = {}) {
+std::string TranslateExpression(const std::string& input,
+                                std::unordered_map<std::string, int> external_arity_map = {}) {
   /*
    * This function takes a string CoreRel expression input and returns the SQL translation.
    */
@@ -102,7 +101,7 @@ TEST(SQLVisitorTest, EqualitySpecialCondition) {
 
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::BinOpContext*>(parser->formula());
 
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
 
   auto table_F = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("F", 1));
   auto table_G = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("G", 1));
@@ -128,7 +127,7 @@ TEST(SQLVisitorTest, SpecialVarList) {
 
   auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::BinOpContext*>(parser->formula());
 
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
 
   auto table_F = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("F", 1));
   auto table_G = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("G", 2));
@@ -154,181 +153,179 @@ TEST(SQLVisitorTest, SpecialVarList) {
 //   def G { (1, 2); (2, 3); (3, 4)}
 //   def H { (1, 2, 3); (2, 3, 4); (3, 4, 5)}
 
-TEST(TranslationTest, FullApplicationFormula) {
-  EXPECT_EQ(TranslateRelFormula("F(x)"), "SELECT T0.A1 AS x FROM F AS T0");
-}
+TEST(TranslationTest, FullApplicationFormula) { EXPECT_EQ(TranslateFormula("F(x)"), "SELECT T0.A1 AS x FROM F AS T0"); }
 
 TEST(TranslationTest, FullApplicationFormulaMultipleParams1) {
-  EXPECT_EQ(TranslateRelFormula("G(x, y)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM G AS T0");
+  EXPECT_EQ(TranslateFormula("G(x, y)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM G AS T0");
 }
 
 TEST(TranslationTest, FullApplicationFormulaMultipleParams2) {
-  EXPECT_EQ(TranslateRelFormula("H(x, y, z)"), "SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM H AS T0");
+  EXPECT_EQ(TranslateFormula("H(x, y, z)"), "SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM H AS T0");
 }
 
 TEST(TranslationTest, RepeatedVariableFormula1) {
-  EXPECT_EQ(TranslateRelFormula("G(x, x)"), "SELECT T0.A1 AS x FROM G AS T0 WHERE T0.A1 = T0.A2");
+  EXPECT_EQ(TranslateFormula("G(x, x)"), "SELECT T0.A1 AS x FROM G AS T0 WHERE T0.A1 = T0.A2");
 }
 
 TEST(TranslationTest, RepeatedVariableFormula2) {
-  EXPECT_EQ(TranslateRelFormula("H(x, x, x)"), "SELECT T0.A1 AS x FROM H AS T0 WHERE T0.A1 = T0.A2 AND T0.A2 = T0.A3");
+  EXPECT_EQ(TranslateFormula("H(x, x, x)"), "SELECT T0.A1 AS x FROM H AS T0 WHERE T0.A1 = T0.A2 AND T0.A2 = T0.A3");
 }
 
 TEST(TranslationTest, RepeatedVariableFormula3) {
-  EXPECT_EQ(TranslateRelFormula("H(x, y, x)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM H AS T0 WHERE T0.A1 = T0.A3");
+  EXPECT_EQ(TranslateFormula("H(x, y, x)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM H AS T0 WHERE T0.A1 = T0.A3");
 }
 
 TEST(TranslationTest, OperatorFormula) {
-  EXPECT_EQ(TranslateRelFormula("F(x) and x*x > 5"),
+  EXPECT_EQ(TranslateFormula("F(x) and x*x > 5"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x FROM F AS T0) AS T1 WHERE T1.x * T1.x > 5");
 }
 
 TEST(TranslationTest, ConjunctionFormula) {
-  EXPECT_EQ(TranslateRelFormula("F(x) and G(x)"),
+  EXPECT_EQ(TranslateFormula("F(x) and G(x)"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x FROM F AS T0) AS T1, (SELECT T2.A1 AS x FROM G AS T2) AS T3 WHERE "
             "T1.x = T3.x");
 }
 
 TEST(TranslationTest, DisjunctionFormula) {
-  EXPECT_EQ(TranslateRelFormula("F(x) or G(x)"),
+  EXPECT_EQ(TranslateFormula("F(x) or G(x)"),
             "SELECT T2.x FROM (SELECT T0.A1 AS x FROM F AS T0) AS T2 UNION SELECT T3.x FROM (SELECT T1.A1 AS x FROM G "
             "AS T1) AS T3");
 }
 
 TEST(TranslationTest, ExistentialFormula1) {
-  EXPECT_EQ(TranslateRelFormula("exists ((y) | F(x, y))", {{"F", 2}}),
+  EXPECT_EQ(TranslateFormula("exists ((y) | F(x, y))", {{"F", 2}}),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1");
 }
 
 TEST(TranslationTest, ExistentialFormula2) {
-  EXPECT_EQ(TranslateRelFormula("exists ((y, z) | F(x, y, z))", {{"F", 3}}),
+  EXPECT_EQ(TranslateFormula("exists ((y, z) | F(x, y, z))", {{"F", 3}}),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1");
 }
 
 TEST(TranslationTest, ExistentialFormula3) {
-  EXPECT_EQ(TranslateRelFormula("exists ((y in G) | F(x, y))"),
+  EXPECT_EQ(TranslateFormula("exists ((y in G) | F(x, y))"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1, G WHERE T1.y = G.A1");
 }
 
 TEST(TranslationTest, ExistentialFormula4) {
-  EXPECT_EQ(TranslateRelFormula("exists ((y in G, z in H) | F(x, y, z))"),
+  EXPECT_EQ(TranslateFormula("exists ((y in G, z in H) | F(x, y, z))"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1, G, H WHERE T1.y = G.A1 "
             "AND T1.z = H.A1");
 }
 
 TEST(TranslationTest, ExistentialFormula5) {
-  EXPECT_EQ(TranslateRelFormula("exists ((y in G, z) | F(x, y, z))"),
+  EXPECT_EQ(TranslateFormula("exists ((y in G, z) | F(x, y, z))"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1, G WHERE T1.y = G.A1");
 }
 
 TEST(TranslationTest, UniversalFormula1) {
   // TODO: Must remove inner-most FROM subquery alias (final "AS T1")
-  EXPECT_EQ(TranslateRelFormula("forall ((y in G) | F(x, y))"),
+  EXPECT_EQ(TranslateFormula("forall ((y in G) | F(x, y))"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1 WHERE EXISTS (SELECT * FROM G WHERE "
             "(T1.x, G.A1) NOT IN (SELECT * FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1))");
 }
 
 TEST(TranslationTest, UniversalFormula2) {
-  EXPECT_EQ(TranslateRelFormula("forall ((y in G, z in H) | F(x, y, z))"),
+  EXPECT_EQ(TranslateFormula("forall ((y in G, z in H) | F(x, y, z))"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM F AS T0) AS T1 WHERE EXISTS (SELECT * "
             "FROM G, H WHERE (T1.x, G.A1, H.A1) NOT IN (SELECT * FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM "
             "F AS T0) AS T1))");
 }
 
-TEST(TranslationTest, ProductExpression) { EXPECT_EQ(TranslateRelExpression("(1, 2)"), "SELECT 1, 2"); }
+TEST(TranslationTest, ProductExpression) { EXPECT_EQ(TranslateExpression("(1, 2)"), "SELECT 1, 2"); }
 
 TEST(TranslationTest, ConditionExpression) {
-  EXPECT_EQ(TranslateRelExpression("F[x] where G(x)", {{"F", 2}, {"G", 1}}),
+  EXPECT_EQ(TranslateExpression("F[x] where G(x)", {{"F", 2}, {"G", 1}}),
             "SELECT T2.x, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM F AS T0) AS T2, (SELECT T1.A1 AS x FROM G AS "
             "T1) AS T3 WHERE T2.x = T3.x");
 }
 
 TEST(TranslationTest, PartialApplication1) {
-  EXPECT_EQ(TranslateRelExpression("F[x]", {{"F", 2}}), "SELECT T0.A1 AS x, T0.A2 AS A1 FROM F AS T0");
+  EXPECT_EQ(TranslateExpression("F[x]", {{"F", 2}}), "SELECT T0.A1 AS x, T0.A2 AS A1 FROM F AS T0");
 }
 
 TEST(TranslationTest, PartialApplication2) {
-  EXPECT_EQ(TranslateRelExpression("F[1]", {{"F", 2}}),
+  EXPECT_EQ(TranslateExpression("F[1]", {{"F", 2}}),
             "SELECT T0.A2 AS A1 FROM F AS T0, (SELECT 1 AS A1) AS T1 WHERE T0.A1 = T1.A1");
 }
 
 TEST(TranslationTest, NestedPartialApplication1) {
   EXPECT_EQ(
-      TranslateRelExpression("F[G[x]]", {{"F", 2}, {"G", 2}}),
+      TranslateExpression("F[G[x]]", {{"F", 2}, {"G", 2}}),
       "SELECT T2.x, T0.A2 AS A1 FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM G AS T1) AS T2 WHERE T0.A1 = T2.A1");
 }
 
 TEST(TranslationTest, NestedPartialApplication2) {
-  EXPECT_EQ(TranslateRelExpression("F[G[H[x]]]", {{"F", 2}, {"G", 2}, {"H", 2}}),
+  EXPECT_EQ(TranslateExpression("F[G[H[x]]]", {{"F", 2}, {"G", 2}, {"H", 2}}),
             "SELECT T4.x, T0.A2 AS A1 FROM F AS T0, (SELECT T3.x, T1.A2 AS A1 FROM G AS T1, (SELECT T2.A1 AS x, T2.A2 "
             "AS A1 FROM H AS T2) AS T3 WHERE T1.A1 = T3.A1) AS T4 WHERE T0.A1 = T4.A1");
 }
 
 TEST(TranslationTest, PartialApplicationMixedParams1) {
-  EXPECT_EQ(TranslateRelExpression("F[G[x], y]", {{"F", 3}, {"G", 2}}),
+  EXPECT_EQ(TranslateExpression("F[G[x], y]", {{"F", 3}, {"G", 2}}),
             "SELECT T2.x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM G AS T1) AS T2 "
             "WHERE T0.A1 = T2.A1");
 }
 
 TEST(TranslationTest, PartialApplicationMixedParams2) {
-  EXPECT_EQ(TranslateRelExpression("F[x, 1]", {{"F", 3}}),
+  EXPECT_EQ(TranslateExpression("F[x, 1]", {{"F", 3}}),
             "SELECT T0.A1 AS x, T0.A3 AS A1 FROM F AS T0, (SELECT 1 AS A1) AS T1 WHERE T0.A2 = T1.A1");
 }
 
 TEST(TranslationTest, PartialApplicationMixedParams3) {
-  EXPECT_EQ(TranslateRelExpression("F[G[x], H[y]]", {{"F", 3}, {"G", 2}, {"H", 2}}),
+  EXPECT_EQ(TranslateExpression("F[G[x], H[y]]", {{"F", 3}, {"G", 2}, {"H", 2}}),
             "SELECT T2.x, T4.y, T0.A3 AS A1 FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM G AS T1) AS T2, (SELECT "
             "T3.A1 AS y, T3.A2 AS A1 FROM H AS T3) AS T4 WHERE T0.A1 = T2.A1 AND T0.A2 = T4.A1");
 }
 
 TEST(TranslationTest, PartialApplicationSharingVariables1) {
-  EXPECT_EQ(TranslateRelExpression("F[G[x], H[x]]", {{"F", 3}, {"G", 2}, {"H", 2}}),
+  EXPECT_EQ(TranslateExpression("F[G[x], H[x]]", {{"F", 3}, {"G", 2}, {"H", 2}}),
             "SELECT T2.x, T0.A3 AS A1 FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM G AS T1) AS T2, (SELECT T3.A1 "
             "AS x, T3.A2 AS A1 FROM H AS T3) AS T4 WHERE T0.A1 = T2.A1 AND T0.A2 = T4.A1 AND T2.x = T4.x");
 }
 
 TEST(TranslationTest, PartialApplicationSharingVariables2) {
-  EXPECT_EQ(TranslateRelExpression("F[G[x, y], H[y, z]]", {{"F", 3}, {"G", 3}, {"H", 3}}),
+  EXPECT_EQ(TranslateExpression("F[G[x, y], H[y, z]]", {{"F", 3}, {"G", 3}, {"H", 3}}),
             "SELECT T2.x, T2.y, T4.z, T0.A3 AS A1 FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS y, T1.A3 AS A1 FROM G AS "
             "T1) AS T2, (SELECT T3.A1 AS y, T3.A2 AS z, T3.A3 AS A1 FROM H AS T3) AS T4 WHERE T0.A1 = T2.A1 AND T0.A2 "
             "= T4.A1 AND T2.y = T4.y");
 }
 
 TEST(TranslationTest, PartialApplicationSharingVariables3) {
-  EXPECT_EQ(TranslateRelExpression("F[G[x], x]", {{"F", 3}, {"G", 2}}),
+  EXPECT_EQ(TranslateExpression("F[G[x], x]", {{"F", 3}, {"G", 2}}),
             "SELECT T2.x, T0.A3 AS A1 FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM G AS T1) AS T2 WHERE T2.x = "
             "T0.A2 AND T0.A1 = T2.A1");
 }
 
 TEST(TranslationTest, PartialApplicationSharingVariables4) {
-  EXPECT_EQ(TranslateRelExpression("F[G[x], x, y]", {{"F", 3}, {"G", 2}}),
+  EXPECT_EQ(TranslateExpression("F[G[x], x, y]", {{"F", 3}, {"G", 2}}),
             "SELECT T2.x, T0.A3 AS y FROM F AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM G AS T1) AS T2 WHERE T2.x = "
             "T0.A2 AND T0.A1 = T2.A1");
 }
 
 TEST(TranslationTest, AggregateExpression1) {
-  EXPECT_EQ(TranslateRelExpression("sum[F]", {{"F", 2}}), "SELECT SUM(T0.A2) AS A1 FROM F AS T0");
+  EXPECT_EQ(TranslateExpression("sum[F]", {{"F", 2}}), "SELECT SUM(T0.A2) AS A1 FROM F AS T0");
 }
 
 TEST(TranslationTest, AggregateExpression2) {
-  EXPECT_EQ(TranslateRelExpression("average[F]", {{"F", 2}}), "SELECT AVG(T0.A2) AS A1 FROM F AS T0");
+  EXPECT_EQ(TranslateExpression("average[F]", {{"F", 2}}), "SELECT AVG(T0.A2) AS A1 FROM F AS T0");
 }
 
 TEST(TranslationTest, AggregateExpression3) {
-  EXPECT_EQ(TranslateRelExpression("min[F]", {{"F", 2}}), "SELECT MIN(T0.A2) AS A1 FROM F AS T0");
+  EXPECT_EQ(TranslateExpression("min[F]", {{"F", 2}}), "SELECT MIN(T0.A2) AS A1 FROM F AS T0");
 }
 
 TEST(TranslationTest, AggregateExpression4) {
-  EXPECT_EQ(TranslateRelExpression("max[F]", {{"F", 2}}), "SELECT MAX(T0.A2) AS A1 FROM F AS T0");
+  EXPECT_EQ(TranslateExpression("max[F]", {{"F", 2}}), "SELECT MAX(T0.A2) AS A1 FROM F AS T0");
 }
 
 TEST(TranslationTest, AggregateExpression5) {
-  EXPECT_EQ(TranslateRelExpression("max[F[x]]", {{"F", 2}}),
+  EXPECT_EQ(TranslateExpression("max[F[x]]", {{"F", 2}}),
             "SELECT T1.x, MAX(T1.A1) AS A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM F AS T0) AS T1 GROUP BY T1.x");
 }
 
 TEST(TranslationTest, RelationalAbstraction) {
-  EXPECT_EQ(TranslateRelExpression("{(1,2); (3,4)}"),
+  EXPECT_EQ(TranslateExpression("{(1,2); (3,4)}"),
             "SELECT CASE WHEN Ind0.I = 1 THEN T0.A1 WHEN Ind0.I = 2 THEN T1.A1 END AS A1, CASE WHEN Ind0.I = 1 THEN "
             "T0.A2 WHEN Ind0.I = 2 THEN T1.A2 END AS A2 FROM (SELECT 1, 2) AS T0, (SELECT 3, 4) AS T1, (VALUES (1), "
             "(2)) AS Ind0(I)");
@@ -336,27 +333,27 @@ TEST(TranslationTest, RelationalAbstraction) {
 
 TEST(TranslationTest, BindingExpression) {
   EXPECT_EQ(
-      TranslateRelExpression("[x in T, y in R]: F[x, y]", {{"T", 1}, {"R", 1}, {"F", 3}}),
+      TranslateExpression("[x in T, y in R]: F[x, y]", {{"T", 1}, {"R", 1}, {"F", 3}}),
       "WITH S1(x) AS (SELECT * FROM T), S0(y) AS (SELECT * FROM R) SELECT S1.x AS A1, S0.y AS A2, T1.A1 AS A3 FROM "
       "(SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
 }
 
 TEST(TranslationTest, BindingExpressionBounded) {
   EXPECT_EQ(
-      TranslateRelExpression("[x in T, y]: F[x, y] where R(y)", {{"T", 1}, {"R", 1}, {"F", 3}}),
+      TranslateExpression("[x in T, y]: F[x, y] where R(y)", {{"T", 1}, {"R", 1}, {"F", 3}}),
       "WITH S1(x) AS (SELECT * FROM T), S0(y) AS (SELECT * FROM R) SELECT S1.x AS A1, S0.y AS A2, T4.A1 AS A3 FROM "
       "(SELECT T2.x, T2.y, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T2, (SELECT T1.A1 "
       "AS y FROM R AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S1, S0 WHERE S1.x = T4.x AND S0.y = T4.y");
 }
 
 TEST(TranslationTest, BindingFormula) {
-  EXPECT_EQ(TranslateRelExpression("[x in T, y in R]: F(x, y)", {{"T", 1}, {"R", 1}, {"F", 2}}),
+  EXPECT_EQ(TranslateExpression("[x in T, y in R]: F(x, y)", {{"T", 1}, {"R", 1}, {"F", 2}}),
             "WITH S1(x) AS (SELECT * FROM T), S0(y) AS (SELECT * FROM R) SELECT S1.x AS A1, S0.y AS A2 FROM (SELECT "
             "T0.A1 AS x, T0.A2 AS y FROM F AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
 }
 
 TEST(TranslationTest, Program) {
-  EXPECT_EQ(TranslateRelDef("def F {[x in H]: G[x]}", {{"H", 1}, {"G", 2}}),
+  EXPECT_EQ(TranslateDefinition("def F {[x in H]: G[x]}", {{"H", 1}, {"G", 2}}),
             "CREATE OR REPLACE VIEW F AS (WITH S0(x) AS (SELECT * FROM H) SELECT S0.x AS A1, T1.A1 AS A2 FROM (SELECT "
             "T0.A1 AS x, "
             "T0.A2 AS A1 FROM G AS T0) AS T1, S0 WHERE S0.x = T1.x)");
@@ -364,12 +361,12 @@ TEST(TranslationTest, Program) {
 
 TEST(TranslationTest, MultipleDefs1) {
   EXPECT_EQ(
-      TranslateRelProgram("def F {(1, 2); (3, 4)} \n def F {(1, 4); (3, 4)}"),
+      TranslateProgram("def F {(1, 2); (3, 4)} \n def F {(1, 4); (3, 4)}"),
       "CREATE OR REPLACE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4), (1, 4), (3, 4)) AS T0(A1, A2));");
 }
 
 TEST(TranslationTest, MultipleDefs2) {
-  EXPECT_EQ(TranslateRelProgram("def G {(1, 2); (3, 4)} \n def F {G[1]} \n def F {G[3]}"),
+  EXPECT_EQ(TranslateProgram("def G {(1, 2); (3, 4)} \n def F {G[1]} \n def F {G[3]}"),
             "CREATE OR REPLACE VIEW G AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE OR "
             "REPLACE VIEW F AS "
             "SELECT T1.A2 AS A1 FROM G AS T1, (SELECT 1 AS A1) AS T2 WHERE T1.A1 = T2.A1 UNION SELECT T3.A2 AS A1 FROM "
@@ -377,7 +374,7 @@ TEST(TranslationTest, MultipleDefs2) {
 }
 
 TEST(TranslationTest, TableDefinition) {
-  EXPECT_EQ(TranslateRelDef("def F {(1, 2); (3, 4)}"),
+  EXPECT_EQ(TranslateDefinition("def F {(1, 2); (3, 4)}"),
             "CREATE OR REPLACE VIEW F AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2))");
 }
 
@@ -405,8 +402,8 @@ TEST(EDBTranslationTest, NamedAttributesExistential) {
   edb_map["G"] = rel2sql::EDBInfo({"course_id"});
 
   EXPECT_EQ(TranslateRelFormulaWithEDB("exists ((y in G) | F(x, y))", edb_map),
-            "SELECT T2.x FROM (SELECT T1.student_id AS x, T1.course_id AS y FROM F AS T1) AS T2, G AS T0(course_id) "
-            "WHERE T2.y = T0.course_id");
+            "SELECT T2.x FROM (SELECT T1.student_id AS x, T1.course_id AS y FROM F AS T1) AS T2, G AS T0 WHERE T2.y = "
+            "T0.course_id");
 }
 
 TEST(EDBTranslationTest, NamedAttributesPartialApplication) {
@@ -512,7 +509,7 @@ TEST(EDBTranslationTest, ExistentialNotBoundingAllVariables) {
 
 // TODO: This test fails because we don't have a way to translate a comparison formula that is an equality
 TEST(TranslationTest, DISABLED_BindingEquality) {
-  EXPECT_EQ(TranslateRelExpression("(x): x = 1"), "SELECT T0.name AS x FROM F AS T0");
+  EXPECT_EQ(TranslateExpression("(x): x = 1"), "SELECT T0.name AS x FROM F AS T0");
 }
 
 }  // namespace rel2sql

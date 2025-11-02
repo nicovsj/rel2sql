@@ -10,7 +10,7 @@ TEST(SortedIDsTest, DefaultOrder) {
   std::string input = "def R{S}\ndef S{T}\n";
   auto parser = GetParser(input);
   auto tree = parser->program();
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
   auto data = ast.Data();
   std::vector<std::string> expected_order = {"S", "R"};
   EXPECT_EQ(data->sorted_ids, expected_order);
@@ -20,7 +20,7 @@ TEST(SortedIDsTest, ReverseOrder) {
   std::string input = "def S{T}\ndef R{S}\n";
   auto parser = GetParser(input);
   auto tree = parser->program();
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
   auto data = ast.Data();
   std::vector<std::string> expected_order = {"S", "R"};
   EXPECT_EQ(data->sorted_ids, expected_order);
@@ -30,7 +30,7 @@ TEST(SortedIDsTest, RandomOrder) {
   std::string input = "def S{T}\ndef R{S}\ndef T{1}\n";
   auto parser = GetParser(input);
   auto tree = parser->program();
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
   auto data = ast.Data();
   std::vector<std::string> expected_order = {"T", "S", "R"};
   EXPECT_EQ(data->sorted_ids, expected_order);
@@ -40,7 +40,7 @@ TEST(SortedIDsTest, BranchingOrder) {
   std::string input = "def S{T;U}\ndef R{S;T}\ndef T{U}\ndef U{1}\n";
   auto parser = GetParser(input);
   auto tree = parser->program();
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
   auto data = ast.Data();
   std::vector<std::string> expected_order = {"U", "T", "S", "R"};
   EXPECT_EQ(data->sorted_ids, expected_order);
@@ -50,7 +50,7 @@ TEST(SortedIDsTest, AmbiguousOrder) {
   std::string input = "def S{T;U}\ndef R{S;U}\ndef T{U}\ndef U{1}\n";
   auto parser = GetParser(input);
   auto tree = parser->program();
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
   auto data = ast.Data();
   std::vector<std::string> expected_order = {"U", "T", "S", "R"};
   EXPECT_EQ(data->sorted_ids, expected_order);
@@ -138,7 +138,7 @@ TEST(FreeVarsTest, NegationExpr) {
 TEST(FreeVarsTest, BindingsExpr) {
   auto edb_map = rel2sql::edb_utils::FromArityMap({{"F", 2}});
   auto ast =
-      GetExtendedASTFromTree(GetParser("def R { [x]:  F[x]}")->program(), std::make_shared<ExtendedASTData>(edb_map));
+      GetExtendedASTFromParsingTree(GetParser("def R { [x]:  F[x]}")->program(), std::make_shared<ExtendedASTData>(edb_map));
 
   auto free_vars = ast.Root().free_variables;
 
@@ -147,7 +147,7 @@ TEST(FreeVarsTest, BindingsExpr) {
 
 TEST(FreeVarsTest, ConditionExpr) {
   auto edb_map = rel2sql::edb_utils::FromArityMap({{"F", 2}, {"G", 1}});
-  auto ast = GetExtendedASTFromTree(GetParser("def R { F[x] where G(y) }")->program(),
+  auto ast = GetExtendedASTFromParsingTree(GetParser("def R { F[x] where G(y) }")->program(),
                                     std::make_shared<ExtendedASTData>(edb_map));
 
   auto free_vars = ast.Root().free_variables;
@@ -182,7 +182,7 @@ TEST(LiteralVisitorTest, Int) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -198,7 +198,7 @@ TEST(LiteralVisitorTest, NegInt) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -214,7 +214,7 @@ TEST(LiteralVisitorTest, Float) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -230,7 +230,7 @@ TEST(LiteralVisitorTest, NegFloat) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -246,7 +246,7 @@ TEST(LiteralVisitorTest, Char) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -262,7 +262,7 @@ TEST(LiteralVisitorTest, Str) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -278,7 +278,7 @@ TEST(LiteralVisitorTest, Bool) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -294,7 +294,7 @@ TEST(LiteralVisitorTest, BoolFalse) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -310,7 +310,7 @@ TEST(LiteralVisitorTest, NumericalConstantInt) {
 
   auto tree = parser->numericalConstant();
 
-  auto ast = GetExtendedASTFromTree(tree);
+  auto ast = GetExtendedASTFromParsingTree(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -366,7 +366,7 @@ TEST(ArityVisitorTest, Binding) {
   std::unordered_map<std::string, int> arity_map = {{"F", 1}, {"G", 2}};
   auto edb_map = rel2sql::edb_utils::FromArityMap(arity_map);
 
-  auto ast = GetExtendedASTFromTree(GetParser("def R { [x in F]: G[x] }")->program(),
+  auto ast = GetExtendedASTFromParsingTree(GetParser("def R { [x in F]: G[x] }")->program(),
                                     std::make_shared<ExtendedASTData>(edb_map));
 
   EXPECT_EQ(ast.Arity("R"), 2);
