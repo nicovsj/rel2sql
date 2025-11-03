@@ -6,173 +6,145 @@
 
 namespace rel2sql {
 
-TEST(SortedIDsTest, DefaultOrder) {
-  std::string input = "def R{S}\ndef S{T}\n";
+std::vector<std::string> GetSortedIDs(const std::string& input, const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
   auto parser = GetParser(input);
   auto tree = parser->program();
-  auto ast = GetExtendedASTFromParsingTree(tree);
-  auto data = ast.Data();
+  auto ast = Preprocessor(edb_map).Process(tree);
+  return ast.Data()->sorted_ids;
+}
+
+std::set<std::string> GetFreeVariables(const std::string& input, const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(edb_map).Process(tree);
+  return ast.Root().free_variables;
+}
+
+TEST(SortedIDsTest, DefaultOrder) {
+  std::string input = "def R{S}\ndef S{T}\n";
   std::vector<std::string> expected_order = {"S", "R"};
-  EXPECT_EQ(data->sorted_ids, expected_order);
+
+  EXPECT_EQ(GetSortedIDs(input), expected_order);
 }
 
 TEST(SortedIDsTest, ReverseOrder) {
   std::string input = "def S{T}\ndef R{S}\n";
-  auto parser = GetParser(input);
-  auto tree = parser->program();
-  auto ast = GetExtendedASTFromParsingTree(tree);
-  auto data = ast.Data();
   std::vector<std::string> expected_order = {"S", "R"};
-  EXPECT_EQ(data->sorted_ids, expected_order);
+
+  EXPECT_EQ(GetSortedIDs(input), expected_order);
 }
 
 TEST(SortedIDsTest, RandomOrder) {
   std::string input = "def S{T}\ndef R{S}\ndef T{1}\n";
-  auto parser = GetParser(input);
-  auto tree = parser->program();
-  auto ast = GetExtendedASTFromParsingTree(tree);
-  auto data = ast.Data();
   std::vector<std::string> expected_order = {"T", "S", "R"};
-  EXPECT_EQ(data->sorted_ids, expected_order);
+  EXPECT_EQ(GetSortedIDs(input), expected_order);
 }
 
 TEST(SortedIDsTest, BranchingOrder) {
   std::string input = "def S{T;U}\ndef R{S;T}\ndef T{U}\ndef U{1}\n";
-  auto parser = GetParser(input);
-  auto tree = parser->program();
-  auto ast = GetExtendedASTFromParsingTree(tree);
-  auto data = ast.Data();
   std::vector<std::string> expected_order = {"U", "T", "S", "R"};
-  EXPECT_EQ(data->sorted_ids, expected_order);
+  EXPECT_EQ(GetSortedIDs(input), expected_order);
 }
 
 TEST(SortedIDsTest, AmbiguousOrder) {
   std::string input = "def S{T;U}\ndef R{S;U}\ndef T{U}\ndef U{1}\n";
-  auto parser = GetParser(input);
-  auto tree = parser->program();
-  auto ast = GetExtendedASTFromParsingTree(tree);
-  auto data = ast.Data();
   std::vector<std::string> expected_order = {"U", "T", "S", "R"};
-  EXPECT_EQ(data->sorted_ids, expected_order);
+  EXPECT_EQ(GetSortedIDs(input), expected_order);
 }
 
 TEST(FreeVarsTest, LitExpr) {
-  auto ast = GetExtendedAST("def R { 1 }");
+  std::string input = "def R { 1 }";
+  std::set<std::string> expected_free_vars = {};
 
-  EXPECT_EQ(ast.Root().free_variables.size(), 0);
+  EXPECT_EQ(GetFreeVariables(input), expected_free_vars);
 }
 
 TEST(FreeVarsTest, VarExpr) {
-  auto ast = GetExtendedAST("def R { x }");
+  std::string input = "def R { x }";
+  std::set<std::string> expected_free_vars = {"x"};
 
-  auto free_vars = ast.Root().free_variables;
-
-  EXPECT_EQ(free_vars.size(), 1);
-  EXPECT_NE(free_vars.find("x"), free_vars.end());
+  EXPECT_EQ(GetFreeVariables(input), expected_free_vars);
 }
 
 TEST(FreeVarsTest, ProductExpr) {
-  auto ast = GetExtendedAST("def R { x ; y }");
+  std::string input = "def R { x ; y }";
 
-  auto free_vars = ast.Root().free_variables;
+  std::set<std::string> expected_free_vars = {"x", "y"};
 
-  EXPECT_EQ(free_vars.size(), 2);
-  EXPECT_NE(free_vars.find("x"), free_vars.end());
-  EXPECT_NE(free_vars.find("y"), free_vars.end());
+  EXPECT_EQ(GetFreeVariables(input), expected_free_vars);
 }
 
 TEST(FreeVarsTest, UnionExpr) {
-  auto ast = GetExtendedAST("def R {(x, x, x)}");
+  std::string input = "def R {(x, x, x)}";
 
-  auto free_vars = ast.Root().free_variables;
+  std::set<std::string> expected_free_vars = {"x"};
 
-  EXPECT_EQ(free_vars.size(), 1);
-  EXPECT_NE(free_vars.find("x"), free_vars.end());
+  EXPECT_EQ(GetFreeVariables(input), expected_free_vars);
 }
 
 TEST(FreeVarsTest, ExistenceQuantificationExpr) {
-  auto ast = GetExtendedAST("def R { exists ((x) | x > 5) }");
+  std::string input = "def R { exists ((x) | x > 5) }";
 
-  auto free_vars = ast.Root().free_variables;
+  std::set<std::string> expected_free_vars = {};
 
-  EXPECT_EQ(free_vars.size(), 0);
+  EXPECT_EQ(GetFreeVariables(input), expected_free_vars);
 }
 
 TEST(FreeVarsTest, UniversalQuantificationExpr) {
-  auto ast = GetExtendedAST("def R { forall ((x) | x > 5) }");
+  std::string input = "def R { forall ((x) | x > 5) }";
 
-  auto free_vars = ast.Root().free_variables;
+  std::set<std::string> expected_free_vars = {};
 
-  EXPECT_EQ(free_vars.size(), 0);
+  EXPECT_EQ(GetFreeVariables(input), expected_free_vars);
 }
 
 TEST(FreeVarsTest, ConjunctionExpr) {
-  auto ast = GetExtendedAST("def R { F(x) and G(y) }");
+  std::string input = "def R { F(x) and G(y) }";
 
-  auto free_vars = ast.Root().free_variables;
+  std::set<std::string> expected_free_vars = {"x", "y"};
 
-  EXPECT_EQ(free_vars.size(), 2);
-  EXPECT_NE(free_vars.find("x"), free_vars.end());
-  EXPECT_NE(free_vars.find("y"), free_vars.end());
+  EXPECT_EQ(GetFreeVariables(input), expected_free_vars);
 }
 
 TEST(FreeVarsTest, DisjunctionExpr) {
-  auto ast = GetExtendedAST("def R { F(x) or G(y) }");
+  std::string input = "def R { F(x) or G(y) }";
 
-  auto free_vars = ast.Root().free_variables;
+  std::set<std::string> expected_free_vars = {"x", "y"};
 
-  EXPECT_EQ(free_vars.size(), 2);
-  EXPECT_NE(free_vars.find("x"), free_vars.end());
-  EXPECT_NE(free_vars.find("y"), free_vars.end());
+  EXPECT_EQ(GetFreeVariables(input), expected_free_vars);
 }
 
 TEST(FreeVarsTest, NegationExpr) {
-  auto ast = GetExtendedAST("def R { not x > 5 }");
+  std::string input = "def R { not x > 5 }";
 
-  auto free_vars = ast.Root().free_variables;
+  std::set<std::string> expected_free_vars = {"x"};
 
-  EXPECT_EQ(free_vars.size(), 1);
-  EXPECT_NE(free_vars.find("x"), free_vars.end());
+  EXPECT_EQ(GetFreeVariables(input), expected_free_vars);
 }
 
 TEST(FreeVarsTest, BindingsExpr) {
-  auto edb_map = rel2sql::edb_utils::FromArityMap({{"F", 2}});
-  auto ast =
-      GetExtendedASTFromParsingTree(GetParser("def R { [x]:  F[x]}")->program(), std::make_shared<ExtendedASTData>(edb_map));
+  std::string input = "def R {[x]: F[x]}";
+  rel2sql::EDBMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 2}});
 
-  auto free_vars = ast.Root().free_variables;
+  std::set<std::string> expected_free_vars = {};
 
-  EXPECT_EQ(free_vars.size(), 0);
-}
-
-TEST(FreeVarsTest, ConditionExpr) {
-  auto edb_map = rel2sql::edb_utils::FromArityMap({{"F", 2}, {"G", 1}});
-  auto ast = GetExtendedASTFromParsingTree(GetParser("def R { F[x] where G(y) }")->program(),
-                                    std::make_shared<ExtendedASTData>(edb_map));
-
-  auto free_vars = ast.Root().free_variables;
-
-  EXPECT_EQ(free_vars.size(), 2);
-  EXPECT_NE(free_vars.find("x"), free_vars.end());
-  EXPECT_NE(free_vars.find("y"), free_vars.end());
+  EXPECT_EQ(GetFreeVariables(input, edb_map), expected_free_vars);
 }
 
 TEST(FreeVarsTest, RelationTest) {
-  auto ast = GetExtendedAST("def F { 1 }\ndef R { F; 1; x }");
+  std::string input = "def F { 1 }\ndef R { F; 1; x }";
 
-  auto free_vars = ast.Root().free_variables;
+  std::set<std::string> expected_free_vars = {"x"};
 
-  EXPECT_EQ(free_vars.size(), 1);
-  EXPECT_NE(free_vars.find("x"), free_vars.end());
+  EXPECT_EQ(GetFreeVariables(input), expected_free_vars);
 }
 
 TEST(FreeVarsTest, Terms) {
-  auto ast = GetExtendedAST("def F { x+x < 5 }");
+  std::string input = "def F { x+x < 5 }";
 
-  auto free_vars = ast.Root().free_variables;
+  std::set<std::string> expected_free_vars = {"x"};
 
-  EXPECT_EQ(free_vars.size(), 1);
-  EXPECT_NE(free_vars.find("x"), free_vars.end());
+  EXPECT_EQ(GetFreeVariables(input), expected_free_vars);
 }
 
 TEST(LiteralVisitorTest, Int) {
@@ -182,7 +154,7 @@ TEST(LiteralVisitorTest, Int) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromParsingTree(tree);
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -198,7 +170,7 @@ TEST(LiteralVisitorTest, NegInt) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromParsingTree(tree);
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -214,7 +186,7 @@ TEST(LiteralVisitorTest, Float) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromParsingTree(tree);
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -230,7 +202,7 @@ TEST(LiteralVisitorTest, NegFloat) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromParsingTree(tree);
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -246,7 +218,7 @@ TEST(LiteralVisitorTest, Char) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromParsingTree(tree);
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -262,7 +234,7 @@ TEST(LiteralVisitorTest, Str) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromParsingTree(tree);
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -278,7 +250,7 @@ TEST(LiteralVisitorTest, Bool) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromParsingTree(tree);
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -294,7 +266,7 @@ TEST(LiteralVisitorTest, BoolFalse) {
 
   auto tree = parser->literal();
 
-  auto ast = GetExtendedASTFromParsingTree(tree);
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -310,7 +282,7 @@ TEST(LiteralVisitorTest, NumericalConstantInt) {
 
   auto tree = parser->numericalConstant();
 
-  auto ast = GetExtendedASTFromParsingTree(tree);
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root().constant.has_value());
 
@@ -320,54 +292,83 @@ TEST(LiteralVisitorTest, NumericalConstantInt) {
 }
 
 TEST(ArityVisitorTest, LitExpr) {
-  auto ast = GetExtendedAST("def R { 1 }");
+  std::string input = "def R { 1 }";
+
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_EQ(ast.Arity("R"), 1);
 }
 
 TEST(ArityVisitorTest, SingleVariable) {
-  auto ast = GetExtendedAST("def R { x }");
+  std::string input = "def R { x }";
+
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_EQ(ast.Arity("R"), 1);
 }
 
 TEST(ArityVisitorTest, SimpleAbstraction) {
-  auto ast = GetExtendedAST("def R { 1; 2; 3 }");
+  std::string input = "def R { 1; 2; 3 }";
+
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_EQ(ast.Arity("R"), 1);
 }
 
 TEST(ArityVisitorTest, Product) {
-  auto ast = GetExtendedAST("def R { (1, 2) }");
+  std::string input = "def R { (1, 2) }";
+
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_EQ(ast.Arity("R"), 2);
 }
 
 TEST(ArityVisitorTest, Abstraction) {
-  auto ast = GetExtendedAST("def R {(1, 1); (2, 2); (3, 3)}");
+  std::string input = "def R {(1, 1); (2, 2); (3, 3)}";
+
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_EQ(ast.Arity("R"), 2);
 }
 
 TEST(ArityVisitorTest, Formula) {
   // NOTE: Formulas are hardcoded to have 0-arity regardless of evaluation
-  auto ast = GetExtendedAST("def R { F(1) and G(2,3) }");
+  std::string input = "def R { F(1) and G(2,3) }";
+
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_EQ(ast.Arity("R"), 0);
 }
 
 TEST(ArityVisitorTest, PartialApplication) {
-  auto ast = GetExtendedAST("def R { F[1] }\n def F { (1, 2, 3) }");
+  std::string input = "def R { F[1] }\n def F { (1, 2, 3) }";
+
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_EQ(ast.Arity("R"), 2);
 }
 
 TEST(ArityVisitorTest, Binding) {
-  std::unordered_map<std::string, int> arity_map = {{"F", 1}, {"G", 2}};
-  auto edb_map = rel2sql::edb_utils::FromArityMap(arity_map);
+  std::string input = "def R { [x in F]: G[x] }";
+  rel2sql::EDBMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 1}, {"G", 2}});
 
-  auto ast = GetExtendedASTFromParsingTree(GetParser("def R { [x in F]: G[x] }")->program(),
-                                    std::make_shared<ExtendedASTData>(edb_map));
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(edb_map).Process(tree);
 
   EXPECT_EQ(ast.Arity("R"), 2);
 }

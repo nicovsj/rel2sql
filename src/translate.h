@@ -5,12 +5,7 @@
 #include "PrunedCoreRelParser.h"
 #include "error_listener.h"
 #include "optimizer/optimizer.h"
-#include "preproc/arity_visitor.h"
-#include "preproc/balancing_visitor.h"
-#include "preproc/ids_visitor.h"
-#include "preproc/lit_visitor.h"
-#include "preproc/safe_visitor.h"
-#include "preproc/vars_visitor.h"
+#include "preproc/preprocessor.h"
 #include "sql_visitor.h"
 #include "structs/edb_info.h"
 
@@ -30,105 +25,40 @@ inline std::unique_ptr<rel_parser::PrunedCoreRelParser> GetParser(std::string_vi
   return parser;
 }
 
-inline ExtendedAST GetExtendedASTFromParsingTree(
-    antlr4::ParserRuleContext* tree,
-    std::shared_ptr<ExtendedASTData> extended_ast_data = std::make_shared<ExtendedASTData>()) {
-  IDsVisitor ids_visitor(extended_ast_data);
+inline std::shared_ptr<sql::ast::Expression> GetSQLFromAST(const ExtendedAST& ast) {
+  SQLVisitor visitor(ast.Data());
 
-  ArityVisitor arity_visitor(extended_ast_data);
+  auto sql = visitor.visit(ast.ParseTree());
 
-  VariablesVisitor free_vars_visitor(extended_ast_data);
-
-  LiteralVisitor literal_visitor(extended_ast_data);
-
-  BalancingVisitor balancing_visitor(extended_ast_data);
-
-  SafeVisitor safeness_visitor(extended_ast_data);
-
-  ids_visitor.visit(tree);
-
-  arity_visitor.visit(tree);
-
-  free_vars_visitor.visit(tree);
-
-  literal_visitor.visit(tree);
-
-  balancing_visitor.visit(tree);
-
-  safeness_visitor.visit(tree);
-
-  return ExtendedAST{tree, extended_ast_data};
+  return std::any_cast<std::shared_ptr<sql::ast::Expression>>(sql);
 }
 
-inline ExtendedAST GetExtendedAST(std::string_view input) {
+inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input,
+                                                    const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
   auto parser = GetParser(input);
+  auto parse_tree = parser->program();
 
-  auto tree = parser->program();
+  Preprocessor preprocessor(edb_map);
+  auto ast = preprocessor.Process(parse_tree);
 
-  return GetExtendedASTFromParsingTree(tree);
-};
-
-inline std::shared_ptr<sql::ast::Expression> GetSQLFromAST(antlr4::ParserRuleContext* tree,
-                                                            std::optional<ExtendedAST> ast = std::nullopt) {
-  if (!ast) {
-    ast = GetExtendedASTFromParsingTree(tree);
-  }
-
-  SQLVisitor visitor(ast.value().Data());
-
-  auto sql = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visitor.visit(tree));
-
-  return sql;
-}
-
-inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input) {
-  auto parser = GetParser(input);
-
-  auto tree = parser->program();
-
-  auto ast = GetExtendedASTFromParsingTree(tree);
-
-  auto sql = GetSQLFromAST(tree);
+  auto sql = GetSQLFromAST(ast);
 
   sql::ast::Optimizer optimizer;
-
   optimizer.Visit(*sql);
 
   return sql;
 }
 
-inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input, const rel2sql::EDBMap& edb_map) {
-  auto parser = GetParser(input);
-
-  auto parsing_ast = parser->program();
-
-  auto extended_ast = GetExtendedASTFromParsingTree(parsing_ast, std::make_shared<ExtendedASTData>(edb_map));
-
-  auto sql = GetSQLFromAST(parsing_ast, extended_ast);
-
-  sql::ast::Optimizer optimizer;
-
-  optimizer.Visit(*sql);
-
-  return sql;
-}
-
-inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQL(std::string_view input) {
+inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQL(std::string_view input,
+                                                               const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
   auto parser = GetParser(input);
 
   auto tree = parser->program();
 
-  return GetSQLFromAST(tree);
-}
+  Preprocessor preprocessor(edb_map);
+  auto ast = preprocessor.Process(tree);
 
-inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQL(std::string_view input, const rel2sql::EDBMap& edb_map) {
-  auto parser = GetParser(input);
-
-  auto tree = parser->program();
-
-  auto ast = GetExtendedASTFromParsingTree(tree, std::make_shared<ExtendedASTData>(edb_map));
-
-  return GetSQLFromAST(tree, ast);
+  return GetSQLFromAST(ast);
 }
 
 }  // namespace rel2sql

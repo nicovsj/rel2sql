@@ -166,8 +166,8 @@ class SQLVisitor : public BaseVisitor {
 
   // Testing bindings
 
-  FRIEND_TEST(SQLVisitorTest, EqualitySpecialCondition);
-  FRIEND_TEST(SQLVisitorTest, SpecialVarList);
+  FRIEND_TEST(TranslationTest, EqualitySpecialCondition);
+  FRIEND_TEST(TranslationTest, SpecialVarList);
 };
 
 }  // namespace rel2sql

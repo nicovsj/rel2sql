@@ -2,21 +2,21 @@
 #include <gtest/gtest.h>
 
 #include "structs/edb_info.h"
-#include "structs/sql_ast.h"
 #include "translate.h"
 
 namespace rel2sql {
 
 std::string TranslateWithOptimization(const std::string& input, antlr4::ParserRuleContext* tree,
                                       const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
-  auto ast_data = std::make_shared<ExtendedASTData>(edb_map);
-  auto ast = GetExtendedASTFromParsingTree(tree, ast_data);
-  auto result = GetSQLFromAST(tree, ast);
+  Preprocessor preprocessor(edb_map);
+  auto ast = preprocessor.Process(tree);
+
+  auto sql = GetSQLFromAST(ast);
+
   sql::ast::Optimizer optimizer;
-  optimizer.Visit(*result);
-  std::ostringstream os;
-  os << *result;
-  return os.str();
+  optimizer.Visit(*sql);
+
+  return sql->ToString();
 }
 
 class OptimizationTest : public ::testing::Test {
@@ -265,9 +265,20 @@ TEST_F(OptimizationTest, EDBBindingFormula) {
   EXPECT_EQ(TranslateExpression("(x): A(x)"), "SELECT T0.A1 AS A1 FROM A AS T0");
 }
 
-TEST_F(OptimizationTest, EDBBindingFormulaWithCondition) {
+TEST_F(OptimizationTest, BindingConjunction) {
   EXPECT_EQ(TranslateExpression("(x, y): A(x) and B(x, y)"),
             "SELECT T0.A1 AS A1, T2.A2 AS A2 FROM A AS T0, B AS T2 WHERE T2.A1 = T0.A1");
+}
+
+// TODO: We should try to optimize this case
+TEST_F(OptimizationTest, DISABLED_BindingDisjunction) {
+  EXPECT_EQ(TranslateExpression("(x): A(x) or B(x)"),
+            "SELECT T0.A1 AS A1 FROM A AS T0 UNION SELECT T2.A2 AS A2 FROM B AS T2 WHERE T2.A1 = T0.A1");
+}
+
+TEST_F(OptimizationTest, DISABLED_Composition) {
+  EXPECT_EQ(TranslateExpression("(x, y) : exists( (z) | B(x, z) and E(z, y) )"),
+            "SELECT T1.A1 AS A1, T3.A2 AS A2 FROM B AS T1, E AS T3 WHERE T1.A1 = T3.A1");
 }
 
 }  // namespace rel2sql

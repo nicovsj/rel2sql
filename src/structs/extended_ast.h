@@ -170,6 +170,8 @@ class ExtendedAST {
 
   int Arity(const std::string& id) const { return data_->arity_by_id.at(id); }
 
+  antlr4::ParserRuleContext* ParseTree() const { return root_; }
+
  private:
   antlr4::ParserRuleContext* root_;
   std::shared_ptr<ExtendedASTData> data_;
