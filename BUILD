@@ -22,6 +22,13 @@ antlr_cc_library(
     parser_src = "grammar/PrunedCoreRelParser.g4",
 )
 
+antlr_cc_library(
+    name = "sql_parser",
+    lexer_src = "grammar/SqlLexer.g4",
+    package = "sql_parser",
+    parser_src = "grammar/SqlParser.g4",
+)
+
 cc_library(
     name = "rel2sql",
     hdrs = ["include/rel2sql/rel2sql.h"],
@@ -40,6 +47,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//:rel_parser",
+        "//:sql_parser",
         "@googletest//:gtest_main",
         "@fmt",
     ],

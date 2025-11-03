@@ -56,3 +56,14 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "test_sql_parser",
+    srcs = [
+        "test_sql_parser.cc",
+    ],
+    deps = [
+        "//:rel2sql",
+        "@googletest//:gtest_main",
+    ],
+)
