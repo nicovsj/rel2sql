@@ -38,6 +38,7 @@ cc_library(
         "src/optimizer/*.cc",
         "src/structs/*.cc",
         "src/preproc/*.cc",
+        "src/utils/*.cc",
         "src/optimizer/*.h",
         "src/structs/*.h",
         "src/preproc/*.h",

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "exceptions.h"
+#include "utils/exceptions.h"
 #include "rel2sql/rel2sql.h"
 
 namespace rel2sql {

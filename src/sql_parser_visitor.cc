@@ -1,7 +1,7 @@
 #include "sql_parser_visitor.h"
 
-#include "exceptions.h"
 #include "structs/sql_ast.h"
+#include "utils/exceptions.h"
 
 namespace rel2sql {
 

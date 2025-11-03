@@ -4,8 +4,8 @@
 #include <antlr4-runtime.h>
 
 #include "PrunedCoreRelParserBaseVisitor.h"
-#include "exceptions.h"
 #include "structs/extended_ast.h"
+#include "utils/exceptions.h"
 
 namespace rel2sql {
 

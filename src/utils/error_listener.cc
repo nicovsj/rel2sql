@@ -2,7 +2,7 @@
 
 #include <sstream>
 
-#include "exceptions.h"
+#include "utils/exceptions.h"
 
 namespace rel2sql {
 

@@ -3,11 +3,11 @@
 
 #include "CoreRelLexer.h"
 #include "PrunedCoreRelParser.h"
-#include "error_listener.h"
 #include "optimizer/optimizer.h"
 #include "preproc/preprocessor.h"
 #include "sql_visitor.h"
 #include "structs/edb_info.h"
+#include "utils/error_listener.h"
 
 namespace rel2sql {
 
