@@ -13,8 +13,6 @@ class ConstantOptimizer : public BaseOptimizer {
 
   void Visit(FromStatement& from_statement) override;
 
- private:
-  bool TryReplaceConstantInWhere(const std::shared_ptr<Source>& source, FromStatement& from_statement);
 };  // class ConstantOptimizer
 
 }  // namespace sql::ast

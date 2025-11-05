@@ -1,7 +1,5 @@
 #include "self_join_optimizer.h"
 
-#include <unordered_set>
-
 #include "replacers.h"
 
 namespace rel2sql {

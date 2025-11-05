@@ -5,8 +5,6 @@
 
 namespace rel2sql {
 
-SqlParserVisitor::SqlParserVisitor() = default;
-
 SqlParserVisitor::~SqlParserVisitor() = default;
 
 std::any SqlParserVisitor::visitStatements(psr::StatementsContext* ctx) {
@@ -39,15 +37,15 @@ std::any SqlParserVisitor::visitStatement(psr::StatementContext* ctx) {
 }
 
 std::any SqlParserVisitor::visitSelect(psr::SelectContext* ctx) {
+  // Push new per-SELECT scope frame
+  select_stack_.emplace_back();
+
   // Handle WITH clause (CTEs)
   std::vector<std::shared_ptr<sql::ast::Source>> ctes;
   if (ctx->with()) {
     auto ctes_result = visit(ctx->with());
     ctes = std::any_cast<std::vector<std::shared_ptr<sql::ast::Source>>>(ctes_result);
   }
-
-  // Clear alias map for this SELECT statement
-  alias_map_.clear();
 
   // Handle DISTINCT
   bool is_distinct = ctx->DISTINCT() != nullptr;
@@ -83,6 +81,12 @@ std::any SqlParserVisitor::visitSelect(psr::SelectContext* ctx) {
     group_by = std::any_cast<std::shared_ptr<sql::ast::GroupBy>>(group_by_result);
   }
 
+  // If we have CTEs but no FROM clause, we need to resolve pending references here
+  // since visitFrom won't be called to do it
+  if (!ctx->from()) {
+    ResolvePendingReferences();
+  }
+
   // Create SelectStatement
   // Handle CTEs without FROM clause (SQL allows this, but we need an empty FROM)
   std::shared_ptr<sql::ast::FromStatement> effective_from = nullptr;
@@ -93,16 +97,21 @@ std::any SqlParserVisitor::visitSelect(psr::SelectContext* ctx) {
   }
 
   // Build SelectStatement with appropriate constructor
+  std::shared_ptr<sql::ast::SelectStatement> result;
   if (!ctes.empty()) {
-    return std::make_shared<sql::ast::SelectStatement>(columns, effective_from, ctes, is_distinct);
+    result = std::make_shared<sql::ast::SelectStatement>(columns, effective_from, ctes, is_distinct);
+  } else if (group_by.has_value()) {
+    result = std::make_shared<sql::ast::SelectStatement>(columns, effective_from, group_by.value(), is_distinct);
+  } else if (from_stmt.has_value()) {
+    result = std::make_shared<sql::ast::SelectStatement>(columns, from_stmt.value(), is_distinct);
+  } else {
+    result = std::make_shared<sql::ast::SelectStatement>(columns, is_distinct);
   }
-  if (group_by.has_value()) {
-    return std::make_shared<sql::ast::SelectStatement>(columns, effective_from, group_by.value(), is_distinct);
-  }
-  if (from_stmt.has_value()) {
-    return std::make_shared<sql::ast::SelectStatement>(columns, from_stmt.value(), is_distinct);
-  }
-  return std::make_shared<sql::ast::SelectStatement>(columns, is_distinct);
+
+  // Pop per-SELECT scope frame (avoid leaking inner state)
+  select_stack_.pop_back();
+
+  return result;
 }
 
 std::any SqlParserVisitor::visitSelectList(psr::SelectListContext* ctx) {
@@ -143,10 +152,18 @@ std::any SqlParserVisitor::visitSimpleWildcard(psr::SimpleWildcardContext* ctx) 
 std::any SqlParserVisitor::visitQualifiedWildcard(psr::QualifiedWildcardContext* ctx) {
   std::string alias = ctx->tableAlias->getText();
   auto source = FindSourceByAlias(alias);
+
+  // If source not found yet, defer resolution (for CTEs referenced before FROM)
+  std::shared_ptr<sql::ast::Wildcard> wildcard;
   if (!source) {
-    throw ParseException("Unknown table alias: " + alias);
+    wildcard = std::make_shared<sql::ast::Wildcard>();
+    if (select_stack_.empty()) select_stack_.emplace_back();
+    select_stack_.back().pending_wildcard_refs.push_back({wildcard, alias});
+  } else {
+    wildcard = std::make_shared<sql::ast::Wildcard>(source);
   }
-  return std::make_shared<sql::ast::Wildcard>(source);
+
+  return wildcard;
 }
 
 std::any SqlParserVisitor::visitFrom(psr::FromContext* ctx) {
@@ -159,9 +176,16 @@ std::any SqlParserVisitor::visitFrom(psr::FromContext* ctx) {
 
     // Register alias in map
     if (source->alias.has_value()) {
-      alias_map_[source->alias.value()->Access()] = source;
+      if (select_stack_.empty()) select_stack_.emplace_back();
+      select_stack_.back().alias_map[source->alias.value()->Access()] = source;
+    } else if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(source->sourceable)) {
+      if (select_stack_.empty()) select_stack_.emplace_back();
+      select_stack_.back().alias_map[table->name] = source;
     }
   }
+
+  // Now that all sources are registered, resolve any pending references
+  ResolvePendingReferences();
 
   // Note: WHERE clause is handled separately in visitSelectStatement
   // to match the AST structure where WHERE is part of FromStatement
@@ -171,9 +195,15 @@ std::any SqlParserVisitor::visitFrom(psr::FromContext* ctx) {
 std::any SqlParserVisitor::visitTableSource(psr::TableSourceContext* ctx) {
   std::string table_name = ctx->tableName->getText();
 
-  // Create table - we don't know arity from SQL, so use 0 as default
-  // This might need to be improved with schema information
-  auto table = std::make_shared<sql::ast::Table>(table_name, 0);
+  int arity = 0;
+  std::vector<std::string> attribute_names;
+  // Try to look up table info in EDB map for better schema information
+  auto edb_it = edb_map_.map.find(table_name);
+  if (edb_it != edb_map_.map.end()) {
+    arity = edb_it->second.arity();
+    attribute_names = edb_it->second.attribute_names;
+  }
+  auto table = std::make_shared<sql::ast::Table>(table_name, arity, attribute_names);
 
   if (ctx->alias) {
     return std::make_shared<sql::ast::Source>(table, ctx->alias->getText());
@@ -184,7 +214,8 @@ std::any SqlParserVisitor::visitTableSource(psr::TableSourceContext* ctx) {
 
 std::any SqlParserVisitor::visitSubquerySource(psr::SubquerySourceContext* ctx) {
   auto select_result = visit(ctx->select());
-  auto selectable = std::any_cast<std::shared_ptr<sql::ast::Sourceable>>(select_result);
+  auto select_statement = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(select_result);
+  auto selectable = std::static_pointer_cast<sql::ast::Sourceable>(select_statement);
 
   if (ctx->alias) {
     return std::make_shared<sql::ast::Source>(selectable, ctx->alias->getText());
@@ -287,7 +318,8 @@ std::any SqlParserVisitor::visitWith(psr::WithContext* ctx) {
 
     // Register CTE alias
     if (cte_source->alias.has_value()) {
-      alias_map_[cte_source->alias.value()->Access()] = cte_source;
+      if (select_stack_.empty()) select_stack_.emplace_back();
+      select_stack_.back().alias_map[cte_source->alias.value()->Access()] = cte_source;
     }
   }
 
@@ -476,11 +508,17 @@ std::any SqlParserVisitor::visitQualifiedColumn(psr::QualifiedColumnContext* ctx
   std::string name = ctx->columnName->getText();
 
   auto source = FindSourceByAlias(alias);
+
+  // If source not found yet, defer resolution (for CTEs referenced before FROM)
+  auto column = std::make_shared<sql::ast::Column>(name);
   if (!source) {
-    throw ParseException("Unknown table alias: " + alias);
+    if (select_stack_.empty()) select_stack_.emplace_back();
+    select_stack_.back().pending_column_refs.push_back({column, alias});
+  } else {
+    column->source = source;
   }
 
-  return std::make_shared<sql::ast::Column>(name, source);
+  return column;
 }
 
 std::any SqlParserVisitor::visitCountFunction(psr::CountFunctionContext* ctx) {
@@ -647,11 +685,39 @@ std::string SqlParserVisitor::UnquoteString(const std::string& quoted) {
 }
 
 std::shared_ptr<sql::ast::Source> SqlParserVisitor::FindSourceByAlias(const std::string& alias) {
-  auto it = alias_map_.find(alias);
-  if (it != alias_map_.end()) {
+  if (select_stack_.empty()) {
+    return nullptr;
+  }
+  auto& current_map = select_stack_.back().alias_map;
+  auto it = current_map.find(alias);
+  if (it != current_map.end()) {
     return it->second;
   }
   return nullptr;
+}
+
+void SqlParserVisitor::ResolvePendingReferences() {
+  // Resolve pending column references
+  if (!select_stack_.empty()) {
+    for (auto& [column, alias] : select_stack_.back().pending_column_refs) {
+      auto source = FindSourceByAlias(alias);
+      if (!source) {
+        throw ParseException("Unknown table alias: " + alias);
+      }
+      column->source = source;
+    }
+    select_stack_.back().pending_column_refs.clear();
+
+    // Resolve pending wildcard references
+    for (auto& [wildcard, alias] : select_stack_.back().pending_wildcard_refs) {
+      auto source = FindSourceByAlias(alias);
+      if (!source) {
+        throw ParseException("Unknown table alias: " + alias);
+      }
+      wildcard->source = source;
+    }
+    select_stack_.back().pending_wildcard_refs.clear();
+  }
 }
 
 }  // namespace rel2sql

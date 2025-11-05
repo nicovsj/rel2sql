@@ -135,4 +135,12 @@ TEST_F(SqlParserTest, ParseUnionAll) {
   EXPECT_EQ(union_all->members.size(), 2);
 }
 
+TEST_F(SqlParserTest, ParseSelectWhereEqualsConstant) {
+  std::string sql = "SELECT * FROM A WHERE A.A1 = 1;";
+  auto expr = ParseSQL(sql);
+  std::string result = expr->ToString();
+
+  ASSERT_TRUE(result.find("WHERE A.A1 = 1") != std::string::npos);
+}
+
 }  // namespace rel2sql

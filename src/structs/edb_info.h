@@ -58,6 +58,9 @@ struct EDBInfo {
 };
 
 struct EDBMap {
+  using iterator = std::unordered_map<std::string, EDBInfo>::iterator;
+  using const_iterator = std::unordered_map<std::string, EDBInfo>::const_iterator;
+
   std::unordered_map<std::string, EDBInfo> map;
 
   EDBMap() = default;
@@ -71,6 +74,10 @@ struct EDBMap {
   EDBInfo get(const std::string& name) const { return map.at(name); }
 
   void set(const std::string& name, const EDBInfo& info) { map[name] = info; }
+
+  const_iterator find(const std::string& name) const { return map.find(name); }
+
+  iterator find(const std::string& name) { return map.find(name); }
 
   // Subscript operators
   EDBInfo& operator[](const std::string& name) { return map[name]; }

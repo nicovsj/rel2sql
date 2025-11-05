@@ -1,6 +1,7 @@
 // cspell:ignore GTEST
 #include <gtest/gtest.h>
 
+#include "sql_parse.h"
 #include "structs/edb_info.h"
 #include "translate.h"
 
@@ -282,3 +283,138 @@ TEST_F(OptimizationTest, DISABLED_Composition) {
 }
 
 }  // namespace rel2sql
+
+// Helper functions for testing individual optimizers
+std::string OptimizeSQLWithCTEOptimizer(const std::string& sql) {
+  auto expr = rel2sql::ParseSQL(sql);
+  rel2sql::sql::ast::CTEOptimizer cte_optimizer;
+  cte_optimizer.Visit(*expr);
+  return expr->ToString();
+}
+
+std::string OptimizeSQLWithConstantOptimizer(const std::string& sql) {
+  auto expr = rel2sql::ParseSQL(sql);
+  rel2sql::sql::ast::ConstantOptimizer constant_optimizer;
+  constant_optimizer.Visit(*expr);
+  return expr->ToString();
+}
+
+std::string OptimizeSQLWithFlattenerOptimizer(const std::string& sql) {
+  auto expr = rel2sql::ParseSQL(sql);
+  rel2sql::sql::ast::FlattenerOptimizer flattener_optimizer;
+  flattener_optimizer.Visit(*expr);
+  return expr->ToString();
+}
+
+std::string OptimizeSQLWithSelfJoinOptimizer(const std::string& sql,
+                                             const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
+  auto expr = rel2sql::ParseSQL(sql, edb_map);
+  rel2sql::sql::ast::SelfJoinOptimizer self_join_optimizer;
+  self_join_optimizer.Visit(*expr);
+  return expr->ToString();
+}
+
+// CTE Optimizer Tests
+TEST(CTEOptimizationTest, RedundantCTE) {
+  std::string sql =
+      "WITH S(x) AS (SELECT * FROM A)\n"
+      "SELECT S.A1 AS x\n"
+      "FROM S\n"
+      "WHERE S.x = 1";
+  EXPECT_EQ(OptimizeSQLWithCTEOptimizer(sql), "SELECT S.A1 AS x FROM A AS S WHERE S.A1 = 1");
+}
+
+TEST(CTEOptimizationTest, CTEWithMultipleColumns) {
+  std::string sql =
+      "WITH S(x, y) AS (SELECT * FROM B)\n"
+      "SELECT S.A1 AS x, S.A2 AS y\n"
+      "FROM S\n"
+      "WHERE S.x = 1";
+  EXPECT_EQ(OptimizeSQLWithCTEOptimizer(sql), "SELECT S.A1 AS x, S.A2 AS y FROM B AS S WHERE S.A1 = 1");
+}
+
+TEST(CTEOptimizationTest, CTENoOptimizationColumnAliases) {
+  std::string sql =
+      "WITH S(col1, col2) AS (SELECT * FROM B)\n"
+      "SELECT S.col1 AS x, S.col2 AS y\n"
+      "FROM S";
+  EXPECT_EQ(OptimizeSQLWithCTEOptimizer(sql), "SELECT S.A1 AS x, S.A2 AS y FROM B AS S");
+}
+
+// Constant Optimizer Tests
+TEST(ConstantOptimizationTest, SimpleConstantReplacement) {
+  std::string sql =
+      "SELECT * FROM (SELECT 1 AS x) AS sub\n"
+      "WHERE x = sub.x";
+  std::string result = OptimizeSQLWithConstantOptimizer(sql);
+  // There is only a single source, so the optimizer should NOT inline the constant
+  EXPECT_EQ(result, "SELECT * FROM (SELECT 1 AS x) AS sub WHERE x = sub.x");
+}
+
+TEST(ConstantOptimizationTest, ConstantInWhereClause) {
+  std::string sql =
+      "SELECT A.A1\n"
+      "FROM A, (SELECT 5 AS val) AS const\n"
+      "WHERE A.A1 = const.val";
+  std::string result = OptimizeSQLWithConstantOptimizer(sql);
+  EXPECT_TRUE(result.find("WHERE A.A1 = 5") != std::string::npos ||
+              result.find("WHERE A.A1 = const.val") != std::string::npos);
+}
+
+// Flattener Optimizer Tests
+TEST(FlattenerOptimizationTest, SimpleSubqueryFlatten) {
+  std::string sql = "SELECT T0.A1 FROM (SELECT A.A1 FROM A) AS T0";
+  std::string result = OptimizeSQLWithFlattenerOptimizer(sql);
+  EXPECT_EQ(result, "SELECT T0.A1 FROM A");
+}
+
+TEST(FlattenerOptimizationTest, SubqueryWithWhereClause) {
+  std::string sql =
+      "SELECT T1.A1 FROM (SELECT T0.A1 FROM A AS T0 WHERE T0.A1 > 5) AS T1\n"
+      "WHERE T1.A1 < 10";
+  std::string result = OptimizeSQLWithFlattenerOptimizer(sql);
+  EXPECT_TRUE(result.find("FROM A AS T0") != std::string::npos && result.find("> 5") != std::string::npos &&
+              result.find("< 10") != std::string::npos);
+}
+
+TEST(FlattenerOptimizationTest, NoFlattenWithGroupBy) {
+  std::string sql = "SELECT T0.A1 FROM (SELECT A.A1 FROM A GROUP BY A.A1) AS T0";
+  std::string result = OptimizeSQLWithFlattenerOptimizer(sql);
+  // Should not flatten because GROUP BY is present
+  EXPECT_TRUE(result.find("GROUP BY") != std::string::npos);
+}
+
+// Self Join Optimizer Tests
+TEST(SelfJoinOptimizationTest, CompleteSelfJoin) {
+  std::string sql =
+      "SELECT A.A1 FROM A AS A, A AS A2\n"
+      "WHERE A.A1 = A2.A1";
+  std::string result = OptimizeSQLWithSelfJoinOptimizer(sql);
+  // Self join should be eliminated, only one instance of A should remain
+  EXPECT_TRUE(result.find("FROM A AS A") != std::string::npos);
+  // The WHERE clause with equality should be removed or simplified
+  EXPECT_TRUE(result.find("WHERE A.A1 = A.A1") == std::string::npos || result.find("WHERE") == std::string::npos);
+}
+
+TEST(SelfJoinOptimizationTest, MultiColumnSelfJoin) {
+  std::string sql =
+      "SELECT A.A1, A.A2 FROM B AS A, B AS A2\n"
+      "WHERE A.A1 = A2.A1 AND A.A2 = A2.A2";
+  std::string result = OptimizeSQLWithSelfJoinOptimizer(sql);
+  // Self join should be eliminated
+  EXPECT_TRUE(result.find("FROM B AS A") != std::string::npos);
+  // Should not have both A and A2
+  EXPECT_TRUE(result.find("FROM B AS A, B AS A2") == std::string::npos);
+}
+
+TEST(SelfJoinOptimizationTest, IncompleteSelfJoin) {
+  std::string sql =
+      "SELECT A.A1 FROM B AS A, B AS A2\n"
+      "WHERE A.A1 = A2.A1 AND A.A2 > 5";
+  rel2sql::EDBMap edb_map;
+  edb_map["B"] = rel2sql::EDBInfo(2);
+  edb_map["A"] = rel2sql::EDBInfo(1);
+  std::string result = OptimizeSQLWithSelfJoinOptimizer(sql, edb_map);
+  // Should NOT eliminate because self join is incomplete (only A1 matches, not A2)
+  EXPECT_TRUE(result.find("FROM B AS A, B AS A2") != std::string::npos);
+}

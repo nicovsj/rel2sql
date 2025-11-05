@@ -2,8 +2,8 @@
 #define SQL_PARSE_H
 
 #include <string>
-#include <string_view>
 
+#include "structs/edb_info.h"
 #include "structs/sql_ast.h"
 
 namespace rel2sql {
@@ -15,7 +15,7 @@ namespace rel2sql {
  * @return A shared pointer to the parsed SQL AST Expression.
  * @throws ParseException if the SQL syntax is invalid.
  */
-std::shared_ptr<sql::ast::Expression> ParseSQL(const std::string& sql_text);
+std::shared_ptr<sql::ast::Expression> ParseSQL(const std::string& sql_text, const EDBMap& edb_map = EDBMap());
 
 }  // namespace rel2sql
 
