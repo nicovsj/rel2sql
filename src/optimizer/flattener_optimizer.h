@@ -14,6 +14,13 @@ class FlattenerOptimizer : public BaseOptimizer {
 
  private:
   bool TryFlattenSubquery(SelectStatement& select_statement);
+
+  // Helper functions for subquery flattening
+  static bool CanFlattenSubquery(const std::shared_ptr<Source>& source);
+  static std::unordered_map<std::string, std::shared_ptr<Column>> BuildColumnMap(
+      const std::shared_ptr<SelectStatement>& subquery);
+  static void MergeWhereConditions(FromStatement& outer_from,
+                                   const std::shared_ptr<Condition>& subquery_where);
 };  // class FlattenerOptimizer
 
 }  // namespace sql::ast
