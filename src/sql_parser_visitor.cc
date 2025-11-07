@@ -11,7 +11,7 @@ std::any SqlParserVisitor::visitStatements(psr::StatementsContext* ctx) {
   std::vector<std::shared_ptr<sql::ast::Expression>> statements;
 
   for (auto* stmt_ctx : ctx->statement()) {
-    auto expr = std::any_cast<std::shared_ptr<sql::ast::Sourceable>>(visit(stmt_ctx));
+    auto expr = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(stmt_ctx));
     statements.push_back(expr);
   }
 
@@ -25,13 +25,18 @@ std::any SqlParserVisitor::visitStatements(psr::StatementsContext* ctx) {
 std::any SqlParserVisitor::visitStatement(psr::StatementContext* ctx) {
   if (ctx->select()) {
     auto select_statement = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->select()));
-    return std::static_pointer_cast<sql::ast::Sourceable>(select_statement);
+    return std::static_pointer_cast<sql::ast::Expression>(select_statement);
   } else if (ctx->values()) {
     auto values_expr = std::any_cast<std::shared_ptr<sql::ast::Values>>(visit(ctx->values()));
-    return std::static_pointer_cast<sql::ast::Sourceable>(values_expr);
+    return std::static_pointer_cast<sql::ast::Expression>(values_expr);
   } else if (ctx->unionClause()) {
-    // Union clause visitor will return a Sourceable
-    return visit(ctx->unionClause());
+    // Union clause visitor will return a Sourceable, cast to Expression
+    auto union_expr = std::any_cast<std::shared_ptr<sql::ast::Sourceable>>(visit(ctx->unionClause()));
+    return std::static_pointer_cast<sql::ast::Expression>(union_expr);
+  } else if (ctx->createView()) {
+    return visit(ctx->createView());
+  } else if (ctx->createTable()) {
+    return visit(ctx->createTable());
   }
   throw InternalException("Unknown SQL statement type");
 }
@@ -718,6 +723,54 @@ void SqlParserVisitor::ResolvePendingReferences() {
     }
     select_stack_.back().pending_wildcard_refs.clear();
   }
+}
+
+std::any SqlParserVisitor::visitCreateView(psr::CreateViewContext* ctx) {
+  std::string view_name = ctx->viewName->getText();
+
+  // Get the SELECT statement
+  auto select_statement = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->select()));
+  auto sourceable = std::static_pointer_cast<sql::ast::Sourceable>(select_statement);
+
+  // Handle column list if present
+  std::vector<std::string> def_columns;
+  if (ctx->columnList()) {
+    for (auto* col_ctx : ctx->columnList()->IDENTIFIER()) {
+      def_columns.push_back(col_ctx->getText());
+    }
+  }
+
+  // Create a Source with the view name as alias and column list
+  // is_cte is false for views (only true for CTEs)
+  auto source = std::make_shared<sql::ast::Source>(sourceable, view_name, false, def_columns);
+
+  // Create View expression
+  auto view = std::make_shared<sql::ast::View>(source);
+  return std::static_pointer_cast<sql::ast::Expression>(view);
+}
+
+std::any SqlParserVisitor::visitCreateTable(psr::CreateTableContext* ctx) {
+  std::string table_name = ctx->tableName->getText();
+
+  // Get the SELECT statement
+  auto select_statement = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->select()));
+  auto sourceable = std::static_pointer_cast<sql::ast::Sourceable>(select_statement);
+
+  // Handle column list if present
+  std::vector<std::string> def_columns;
+  if (ctx->columnList()) {
+    for (auto* col_ctx : ctx->columnList()->IDENTIFIER()) {
+      def_columns.push_back(col_ctx->getText());
+    }
+  }
+
+  // Create a Source with the table name as alias and column list
+  // is_cte is false for tables (only true for CTEs)
+  auto source = std::make_shared<sql::ast::Source>(sourceable, table_name, false, def_columns);
+
+  // Create CreateTable expression
+  auto create_table = std::make_shared<sql::ast::CreateTable>(source);
+  return std::static_pointer_cast<sql::ast::Expression>(create_table);
 }
 
 }  // namespace rel2sql

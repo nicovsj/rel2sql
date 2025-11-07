@@ -134,6 +134,11 @@ class SqlParserVisitor : public sql_parser::SqlParserBaseVisitor {
 
   std::any visitFalseConstant(psr::FalseConstantContext* ctx) override;
 
+  // CREATE statements
+  std::any visitCreateView(psr::CreateViewContext* ctx) override;
+
+  std::any visitCreateTable(psr::CreateTableContext* ctx) override;
+
  private:
   // Helper methods
   sql::ast::CompOp ParseComparisonOp(psr::ComparisonOpContext* ctx);

@@ -32,6 +32,10 @@ AND: 'AND' | 'and';
 OR: 'OR' | 'or';
 TRUE: 'TRUE' | 'true';
 FALSE: 'FALSE' | 'false';
+CREATE: 'CREATE' | 'create';
+REPLACE: 'REPLACE' | 'replace';
+VIEW: 'VIEW' | 'view';
+TABLE: 'TABLE' | 'table';
 
 // Aggregate functions
 COUNT: 'COUNT' | 'count';

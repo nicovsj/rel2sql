@@ -8,7 +8,7 @@ options {
 // Top-level entry point
 statements: statement (SEMICOLON statement)* SEMICOLON? EOF;
 
-statement: select | values | unionClause;
+statement: select | values | unionClause | createView | createTable;
 
 // WITH clause (CTEs) - can precede SELECT
 with: WITH cte (COMMA cte)*;
@@ -98,6 +98,11 @@ aggregateFunction:
 caseWhenExpr: CASE whenClause+ END;
 
 whenClause: WHEN condition THEN term;
+
+// CREATE statements
+createView: CREATE OR REPLACE VIEW viewName = IDENTIFIER (LPAREN columnList RPAREN)? AS LPAREN select RPAREN;
+
+createTable: CREATE TABLE tableName = IDENTIFIER (LPAREN columnList RPAREN)? AS LPAREN select RPAREN;
 
 // Constants
 constant:
