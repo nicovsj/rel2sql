@@ -1,6 +1,17 @@
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "test_common",
+    srcs = [
+        "test_common.h",
+    ],
+    deps = [
+        "//:rel2sql",
+    ],
+)
 
 cc_test(
     name = "test_extended_ast",
@@ -9,6 +20,7 @@ cc_test(
     ],
     deps = [
         "//:rel2sql",
+        ":test_common",
         "@googletest//:gtest_main",
     ],
 )
@@ -20,6 +32,7 @@ cc_test(
     ],
     deps = [
         "//:rel2sql",
+        ":test_common",
         "@googletest//:gtest_main",
     ],
 )
@@ -31,6 +44,7 @@ cc_test(
     ],
     deps = [
         "//:rel2sql",
+        ":test_common",
         "@googletest//:gtest_main",
     ],
 )
@@ -42,6 +56,7 @@ cc_test(
     ],
     deps = [
         "//:rel2sql",
+        ":test_common",
         "@googletest//:gtest_main",
     ],
 )
@@ -53,6 +68,7 @@ cc_test(
     ],
     deps = [
         "//:rel2sql",
+        ":test_common",
         "@googletest//:gtest_main",
     ],
 )
@@ -64,6 +80,19 @@ cc_test(
     ],
     deps = [
         "//:rel2sql",
+        ":test_common",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "test_sql_parser_roundtrip",
+    srcs = [
+        "test_sql_parser_roundtrip.cc",
+    ],
+    deps = [
+        "//:rel2sql",
+        ":test_common",
         "@googletest//:gtest_main",
     ],
 )

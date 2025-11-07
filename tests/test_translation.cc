@@ -3,6 +3,7 @@
 
 #include "structs/edb_info.h"
 #include "structs/sql_ast.h"
+#include "test_common.h"
 #include "translate.h"
 
 namespace rel2sql {
@@ -19,19 +20,7 @@ std::string TranslateWithoutOptimization(const std::string& input, antlr4::Parse
 
 class TranslationTest : public ::testing::Test {
  protected:
-  void SetUp() override {
-    default_edb_map["A"] = rel2sql::EDBInfo(1);
-    default_edb_map["B"] = rel2sql::EDBInfo(2);
-    default_edb_map["C"] = rel2sql::EDBInfo(3);
-
-    default_edb_map["D"] = rel2sql::EDBInfo(1);
-    default_edb_map["E"] = rel2sql::EDBInfo(2);
-    default_edb_map["F"] = rel2sql::EDBInfo(3);
-
-    default_edb_map["G"] = rel2sql::EDBInfo(1);
-    default_edb_map["H"] = rel2sql::EDBInfo(2);
-    default_edb_map["I"] = rel2sql::EDBInfo(3);
-  }
+  void SetUp() override { default_edb_map = CreateDefaultEDBMap(); }
 
   std::string TranslateFormula(const std::string& input, const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
     auto parser = GetParser(input);

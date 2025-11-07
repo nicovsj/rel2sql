@@ -143,4 +143,114 @@ TEST_F(SqlParserTest, ParseSelectWhereEqualsConstant) {
   ASSERT_TRUE(result.find("WHERE A.A1 = 1") != std::string::npos);
 }
 
+TEST_F(SqlParserTest, ParseCreateView) {
+  std::string sql = "CREATE OR REPLACE VIEW R AS (SELECT * FROM T);";
+  auto expr = ParseSQL(sql);
+
+  ASSERT_NE(expr, nullptr);
+
+  auto view = std::dynamic_pointer_cast<sql::ast::View>(expr);
+  ASSERT_NE(view, nullptr);
+  ASSERT_NE(view->source, nullptr);
+  EXPECT_EQ(view->source->alias.has_value(), true);
+  EXPECT_EQ(view->source->alias.value()->Access(), "R");
+}
+
+TEST_F(SqlParserTest, ParseCreateViewWithColumnList) {
+  std::string sql = "CREATE OR REPLACE VIEW R (A1, A2) AS (SELECT A, B FROM T);";
+  auto expr = ParseSQL(sql);
+
+  ASSERT_NE(expr, nullptr);
+
+  auto view = std::dynamic_pointer_cast<sql::ast::View>(expr);
+  ASSERT_NE(view, nullptr);
+  ASSERT_NE(view->source, nullptr);
+  EXPECT_EQ(view->source->alias.value()->Access(), "R");
+  EXPECT_EQ(view->source->def_columns.size(), 2);
+  EXPECT_EQ(view->source->def_columns[0], "A1");
+  EXPECT_EQ(view->source->def_columns[1], "A2");
+}
+
+TEST_F(SqlParserTest, ParseCreateViewWithValues) {
+  std::string sql = "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0 (A1, A2));";
+  auto expr = ParseSQL(sql);
+
+  ASSERT_NE(expr, nullptr);
+
+  auto view = std::dynamic_pointer_cast<sql::ast::View>(expr);
+  ASSERT_NE(view, nullptr);
+  ASSERT_NE(view->source, nullptr);
+  EXPECT_EQ(view->source->alias.value()->Access(), "R");
+
+  // Verify the output string contains the expected elements
+  std::string result = expr->ToString();
+  ASSERT_TRUE(result.find("CREATE OR REPLACE VIEW") != std::string::npos);
+  ASSERT_TRUE(result.find("VALUES") != std::string::npos);
+}
+
+TEST_F(SqlParserTest, ParseCreateTable) {
+  std::string sql = "CREATE TABLE T AS (SELECT * FROM R);";
+  auto expr = ParseSQL(sql);
+
+  ASSERT_NE(expr, nullptr);
+
+  auto create_table = std::dynamic_pointer_cast<sql::ast::CreateTable>(expr);
+  ASSERT_NE(create_table, nullptr);
+  ASSERT_NE(create_table->source, nullptr);
+  EXPECT_EQ(create_table->source->alias.value()->Access(), "T");
+}
+
+TEST_F(SqlParserTest, ParseCreateTableWithColumnList) {
+  std::string sql = "CREATE TABLE T (col1, col2) AS (SELECT A, B FROM R);";
+  auto expr = ParseSQL(sql);
+
+  ASSERT_NE(expr, nullptr);
+
+  auto create_table = std::dynamic_pointer_cast<sql::ast::CreateTable>(expr);
+  ASSERT_NE(create_table, nullptr);
+  ASSERT_NE(create_table->source, nullptr);
+  EXPECT_EQ(create_table->source->alias.value()->Access(), "T");
+  EXPECT_EQ(create_table->source->def_columns.size(), 2);
+  EXPECT_EQ(create_table->source->def_columns[0], "col1");
+  EXPECT_EQ(create_table->source->def_columns[1], "col2");
+}
+
+TEST_F(SqlParserTest, ParseValuesSourceWithColumnList) {
+  std::string sql = "SELECT * FROM (VALUES (1, 2), (3, 4)) AS T0 (A1, A2);";
+  auto expr = ParseSQL(sql);
+
+  ASSERT_NE(expr, nullptr);
+
+  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  ASSERT_NE(select, nullptr);
+  ASSERT_TRUE(select->from.has_value());
+  EXPECT_EQ(select->from.value()->sources.size(), 1);
+
+  auto source = select->from.value()->sources[0];
+  ASSERT_NE(source, nullptr);
+  EXPECT_EQ(source->alias.value()->Access(), "T0");
+  EXPECT_EQ(source->def_columns.size(), 2);
+  EXPECT_EQ(source->def_columns[0], "A1");
+  EXPECT_EQ(source->def_columns[1], "A2");
+}
+
+TEST_F(SqlParserTest, ParseSubquerySourceWithColumnList) {
+  std::string sql = "SELECT * FROM (SELECT A, B FROM R) AS T (col1, col2);";
+  auto expr = ParseSQL(sql);
+
+  ASSERT_NE(expr, nullptr);
+
+  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  ASSERT_NE(select, nullptr);
+  ASSERT_TRUE(select->from.has_value());
+  EXPECT_EQ(select->from.value()->sources.size(), 1);
+
+  auto source = select->from.value()->sources[0];
+  ASSERT_NE(source, nullptr);
+  EXPECT_EQ(source->alias.value()->Access(), "T");
+  EXPECT_EQ(source->def_columns.size(), 2);
+  EXPECT_EQ(source->def_columns[0], "col1");
+  EXPECT_EQ(source->def_columns[1], "col2");
+}
+
 }  // namespace rel2sql
