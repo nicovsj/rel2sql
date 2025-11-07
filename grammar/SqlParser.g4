@@ -38,8 +38,10 @@ from: FROM source (COMMA source)*;
 
 source:
 	tableName = IDENTIFIER (AS alias = IDENTIFIER)?	# tableSource
-	| LPAREN select RPAREN (AS alias = IDENTIFIER)?	# subquerySource
-	| LPAREN values RPAREN (AS alias = IDENTIFIER)?	# valuesSource;
+	| LPAREN select RPAREN sourceAlias?	# subquerySource
+	| LPAREN values RPAREN sourceAlias?	# valuesSource;
+
+sourceAlias: AS alias = IDENTIFIER (LPAREN columnList RPAREN)?;
 
 // WHERE clause
 where: WHERE condition;

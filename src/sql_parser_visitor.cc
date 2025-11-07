@@ -222,8 +222,13 @@ std::any SqlParserVisitor::visitSubquerySource(psr::SubquerySourceContext* ctx) 
   auto select_statement = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(select_result);
   auto selectable = std::static_pointer_cast<sql::ast::Sourceable>(select_statement);
 
-  if (ctx->alias) {
-    return std::make_shared<sql::ast::Source>(selectable, ctx->alias->getText());
+  if (ctx->sourceAlias()) {
+    auto alias_result = visit(ctx->sourceAlias());
+    auto alias_info = std::any_cast<std::pair<std::string, std::vector<std::string>>>(alias_result);
+    std::string alias_name = alias_info.first;
+    std::vector<std::string> def_columns = alias_info.second;
+
+    return std::make_shared<sql::ast::Source>(selectable, alias_name, false, def_columns);
   }
 
   return std::make_shared<sql::ast::Source>(selectable);
@@ -233,11 +238,30 @@ std::any SqlParserVisitor::visitValuesSource(psr::ValuesSourceContext* ctx) {
   auto values_result = visit(ctx->values());
   auto values = std::any_cast<std::shared_ptr<sql::ast::Values>>(values_result);
 
-  if (ctx->alias) {
-    return std::make_shared<sql::ast::Source>(values, ctx->alias->getText());
+  if (ctx->sourceAlias()) {
+    auto alias_result = visit(ctx->sourceAlias());
+    auto alias_info = std::any_cast<std::pair<std::string, std::vector<std::string>>>(alias_result);
+    std::string alias_name = alias_info.first;
+    std::vector<std::string> def_columns = alias_info.second;
+
+    return std::make_shared<sql::ast::Source>(values, alias_name, false, def_columns);
   }
 
   return std::make_shared<sql::ast::Source>(values);
+}
+
+std::any SqlParserVisitor::visitSourceAlias(psr::SourceAliasContext* ctx) {
+  std::string alias_name = ctx->alias->getText();
+
+  // Handle column list if present
+  std::vector<std::string> def_columns;
+  if (ctx->columnList()) {
+    for (auto* col_ctx : ctx->columnList()->IDENTIFIER()) {
+      def_columns.push_back(col_ctx->getText());
+    }
+  }
+
+  return std::make_pair(alias_name, def_columns);
 }
 
 std::any SqlParserVisitor::visitWhere(psr::WhereContext* ctx) { return visit(ctx->condition()); }
