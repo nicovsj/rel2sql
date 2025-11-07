@@ -499,7 +499,8 @@ std::any SqlParserVisitor::visitMultDivTerm(psr::MultDivTermContext* ctx) {
   auto rhs_result = visit(ctx->term(1));
   auto rhs = std::any_cast<std::shared_ptr<sql::ast::Term>>(rhs_result);
 
-  return std::make_shared<sql::ast::Operation>(lhs, rhs, op);
+  auto operation = std::make_shared<sql::ast::Operation>(lhs, rhs, op);
+  return std::static_pointer_cast<sql::ast::Term>(operation);
 }
 
 std::any SqlParserVisitor::visitAddSubTerm(psr::AddSubTermContext* ctx) {
@@ -516,7 +517,8 @@ std::any SqlParserVisitor::visitAddSubTerm(psr::AddSubTermContext* ctx) {
   auto rhs_result = visit(ctx->term(1));
   auto rhs = std::any_cast<std::shared_ptr<sql::ast::Term>>(rhs_result);
 
-  return std::make_shared<sql::ast::Operation>(lhs, rhs, op);
+  auto operation = std::make_shared<sql::ast::Operation>(lhs, rhs, op);
+  return std::static_pointer_cast<sql::ast::Term>(operation);
 }
 
 std::any SqlParserVisitor::visitParenTerm(psr::ParenTermContext* ctx) { return visit(ctx->term()); }
