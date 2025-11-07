@@ -130,7 +130,7 @@ class Source : public Expression {
     os << Definition();
 
     if (alias.has_value()) {
-      os << " AS " << alias.value()->Declaration();
+      os << " AS " << Declaration();
     }
 
     return os;
