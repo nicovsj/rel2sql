@@ -36,6 +36,9 @@ bool SelfJoinOptimizer::EliminateRedundantSelfJoins(SelectStatement& select_stat
   // If no comparisons are found, there's no possible self-join.
   if (comparisons.empty()) return false;
 
+  // Compute transitive closure to find equivalence classes
+  auto equivalence_classes = ComputeColumnEquivalenceClasses(comparisons);
+
   for (const auto& [_, candidate_sources] : grouped_sources) {
     // No possible self-join if there's only one source.
     if (candidate_sources.size() <= 1) continue;
@@ -45,9 +48,6 @@ bool SelfJoinOptimizer::EliminateRedundantSelfJoins(SelectStatement& select_stat
 
     // Process each source pair to check for complete equivalence classes
     for (const auto& source_pair : source_pairs) {
-      // Compute transitive closure to find equivalence classes
-      auto equivalence_classes = ComputeColumnEquivalenceClasses(comparisons);
-
       // Check if this source pair forms a self join in the query
       if (IsSelfJoin(source_pair, equivalence_classes)) {
         SourceReplacer replacer(source_pair.second->Alias(), source_pair.first);
@@ -187,34 +187,48 @@ bool SelfJoinOptimizer::IsSelfJoin(const SourcePair& source_pair, const Equivale
   return true;
 }
 
+bool SelfJoinOptimizer::IsEquivalenceCandidate(const std::shared_ptr<ComparisonCondition>& comp_condition) {
+  if (!comp_condition) return false;
+  if (comp_condition->op != CompOp::EQ) return false;
+
+  auto left_col = std::dynamic_pointer_cast<Column>(comp_condition->lhs);
+  auto right_col = std::dynamic_pointer_cast<Column>(comp_condition->rhs);
+
+  if (!left_col || !right_col) return false;
+  if (!left_col->source.has_value() || !right_col->source.has_value()) return false;
+
+  return true;
+}
+
 std::vector<std::shared_ptr<ComparisonCondition>> SelfJoinOptimizer::CollectEquivalenceConditions(
     const std::shared_ptr<Condition>& where_condition) {
   // We can assume that the LogicalConditions are already flattened. This is guaranteed by the flattener optimizer.
   // So we need to check if the WHERE condition is a LogicalCondition with AND operator and
   // then collect all the equivalences in it.
+  // If the WHERE condition is a single ComparisonCondition, we should check it as if it was
+  // contained inside an AND LogicalCondition.
 
   std::vector<std::shared_ptr<ComparisonCondition>> equivalences;
 
-  auto logical_condition = std::dynamic_pointer_cast<LogicalCondition>(where_condition);
+  // First check if it's a single ComparisonCondition
+  auto comp_condition = std::dynamic_pointer_cast<ComparisonCondition>(where_condition);
+  if (comp_condition) {
+    if (IsEquivalenceCandidate(comp_condition)) {
+      equivalences.push_back(comp_condition);
+    }
+    return equivalences;
+  }
 
-  // Check if condition is a LogicalCondition with AND operator
+  // Otherwise, check if it's a LogicalCondition with AND operator
+  auto logical_condition = std::dynamic_pointer_cast<LogicalCondition>(where_condition);
   if (!logical_condition) return {};
   if (logical_condition->op != LogicalOp::AND) return {};
 
   for (const auto& sub_condition : logical_condition->conditions) {
-    auto comp_condition = std::dynamic_pointer_cast<ComparisonCondition>(sub_condition);
-
-    // Check if condition is an equivalence condition
-    if (!comp_condition) continue;
-    if (comp_condition->op != CompOp::EQ) continue;
-
-    auto left_col = std::dynamic_pointer_cast<Column>(comp_condition->lhs);
-    auto right_col = std::dynamic_pointer_cast<Column>(comp_condition->rhs);
-
-    if (!left_col || !right_col) continue;
-    if (!left_col->source.has_value() || !right_col->source.has_value()) continue;
-
-    equivalences.push_back(comp_condition);
+    auto sub_comp_condition = std::dynamic_pointer_cast<ComparisonCondition>(sub_condition);
+    if (IsEquivalenceCandidate(sub_comp_condition)) {
+      equivalences.push_back(sub_comp_condition);
+    }
   }
   return equivalences;
 }

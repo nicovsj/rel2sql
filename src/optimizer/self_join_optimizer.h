@@ -78,6 +78,16 @@ class SelfJoinOptimizer : public BaseOptimizer {
   std::vector<std::shared_ptr<ComparisonCondition>> CollectEquivalenceConditions(
       const std::shared_ptr<Condition>& condition);
 
+  /**
+   * Checks if a ComparisonCondition is a valid equivalence condition candidate.
+   * A valid equivalence condition must be an equality (EQ) operation between two columns
+   * that both have source information.
+   *
+   * @param comp_condition The comparison condition to check
+   * @return true if the condition is a valid equivalence candidate, false otherwise
+   */
+  static bool IsEquivalenceCandidate(const std::shared_ptr<ComparisonCondition>& comp_condition);
+
 };  // class SelfJoinOptimizer
 
 }  // namespace sql::ast

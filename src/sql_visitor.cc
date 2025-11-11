@@ -430,7 +430,13 @@ std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
 
   conditions.push_back(EqualityShorthand(source_ctxs));
 
-  auto condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
+  std::shared_ptr<sql::ast::Condition> condition;
+
+  if (conditions.size() == 1) {
+    condition = conditions[0];
+  } else {
+    condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
+  }
 
   auto select_cols = SpecialAppliedVarList(ctx->applBase(), non_var_params, var_params, non_var_param_by_free_vars);
 
@@ -480,7 +486,13 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext* ctx) {
 
   conditions.push_back(EqualityShorthand(source_ctxs));
 
-  auto condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
+  std::shared_ptr<sql::ast::Condition> condition;
+
+  if (conditions.size() == 1) {
+    condition = conditions[0];
+  } else {
+    condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
+  }
 
   auto select_cols = SpecialAppliedVarList(ctx->applBase(), non_var_params, var_params, non_var_param_by_free_vars);
   auto from_statement = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
@@ -696,7 +708,13 @@ std::any SQLVisitor::VisitConjunctionWithTerms(psr::BinOpContext* ctx) {
     new_conditions.push_back(std::dynamic_pointer_cast<sql::ast::Condition>(comparator_sql));
   }
 
-  auto new_where = std::make_shared<sql::ast::LogicalCondition>(new_conditions, sql::ast::LogicalOp::AND);
+  std::shared_ptr<sql::ast::Condition> new_where;
+
+  if (new_conditions.size() == 1) {
+    new_where = new_conditions[0];
+  } else {
+    new_where = std::make_shared<sql::ast::LogicalCondition>(new_conditions, sql::ast::LogicalOp::AND);
+  }
 
   from_statement->where = new_where;
 
@@ -798,7 +816,13 @@ std::any SQLVisitor::VisitExistential(psr::QuantificationContext* ctx) {
         std::make_shared<sql::ast::ComparisonCondition>(free_var_column, sql::ast::CompOp::EQ, bound_column));
   }
 
-  auto condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
+  std::shared_ptr<sql::ast::Condition> condition;
+
+  if (conditions.size() == 1) {
+    condition = conditions[0];
+  } else {
+    condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
+  }
 
   auto from = std::make_shared<sql::ast::FromStatement>(sources, condition);
 
@@ -1195,7 +1219,15 @@ std::shared_ptr<sql::ast::Condition> SQLVisitor::EqualityShorthand(std::vector<a
     }
   }
 
-  return std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
+  std::shared_ptr<sql::ast::Condition> condition;
+
+  if (conditions.size() == 1) {
+    condition = conditions[0];
+  } else {
+    condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
+  }
+
+  return condition;
 }
 
 std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::VarListShorthand(
@@ -1587,7 +1619,15 @@ std::shared_ptr<sql::ast::Condition> SQLVisitor::BindingsEqualityShorthand(
     }
   }
 
-  return std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
+  std::shared_ptr<sql::ast::Condition> condition;
+
+  if (conditions.size() == 1) {
+    condition = conditions[0];
+  } else {
+    condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
+  }
+
+  return condition;
 }
 
 }  // namespace rel2sql

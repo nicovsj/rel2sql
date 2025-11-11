@@ -205,6 +205,20 @@ class RedundancyReplacer : public ExpressionVisitor {
 
     if (from_statement.where) {
       ExpressionVisitor::Visit(*from_statement.where.value());
+
+      // Check if the WHERE condition should be removed
+      // Case 1: Single ComparisonCondition that's redundant
+      auto comp_condition = std::dynamic_pointer_cast<ComparisonCondition>(from_statement.where.value());
+      if (comp_condition) {
+        std::set<EqualityPair> seen_equalities;
+        if (IsRedundantEquality(from_statement.where.value(), seen_equalities)) {
+          from_statement.where = std::nullopt;
+        }
+      }
+      // Case 2: LogicalCondition that became empty after removing redundant conditions
+      else if (from_statement.where.value()->IsEmpty()) {
+        from_statement.where = std::nullopt;
+      }
     }
   }
 
@@ -225,6 +239,7 @@ class RedundancyReplacer : public ExpressionVisitor {
 
     logical_condition.conditions.erase(new_end, logical_condition.conditions.end());
   }
+
 
  private:
   using ColumnId = std::pair<std::string, std::string>;  // (source_alias, column_name)
