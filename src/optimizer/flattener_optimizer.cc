@@ -18,6 +18,7 @@ void FlattenerOptimizer::Visit(SelectStatement& select_statement) {
 }
 
 bool FlattenerOptimizer::CanFlattenSubquery(const std::shared_ptr<Source>& source) {
+  if (source->is_cte) return false;
   auto select_subquery = std::dynamic_pointer_cast<SelectStatement>(source->sourceable);
   if (!select_subquery) return false;
   if (!select_subquery->from.has_value()) return false;
