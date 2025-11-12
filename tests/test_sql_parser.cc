@@ -113,6 +113,55 @@ TEST_F(SqlParserTest, ParseWithCTE) {
   EXPECT_FALSE(select->ctes.empty());
 }
 
+TEST_F(SqlParserTest, ParseWithRecursiveCTE) {
+  std::string sql = "WITH RECURSIVE T AS (SELECT 1) SELECT * FROM T;";
+  auto expr = ParseSQL(sql);
+
+  ASSERT_NE(expr, nullptr);
+
+  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  ASSERT_NE(select, nullptr);
+  ASSERT_FALSE(select->ctes.empty());
+  EXPECT_TRUE(select->ctes[0]->is_recursive_cte);
+  ASSERT_EQ(select->ctes.size(), 1);
+  ASSERT_TRUE(select->ctes[0]->alias.has_value());
+  EXPECT_EQ(select->ctes[0]->alias.value()->Access(), "T");
+
+  auto result_str = expr->ToString();
+  EXPECT_NE(result_str.find("WITH RECURSIVE"), std::string::npos);
+}
+
+TEST_F(SqlParserTest, ParseWithMixedRecursiveAndNormalCTE) {
+  std::string sql = "WITH T1 AS (SELECT 1), RECURSIVE T2 AS (SELECT 2) SELECT * FROM T1, T2;";
+  auto expr = ParseSQL(sql);
+
+  ASSERT_NE(expr, nullptr);
+
+  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  ASSERT_NE(select, nullptr);
+  ASSERT_FALSE(select->ctes.empty());
+  ASSERT_EQ(select->ctes.size(), 2);
+
+  // First CTE should not be recursive
+  ASSERT_TRUE(select->ctes[0]->alias.has_value());
+  EXPECT_EQ(select->ctes[0]->alias.value()->Access(), "T1");
+  EXPECT_FALSE(select->ctes[0]->is_recursive_cte);
+
+  // Second CTE should be recursive
+  ASSERT_TRUE(select->ctes[1]->alias.has_value());
+  EXPECT_EQ(select->ctes[1]->alias.value()->Access(), "T2");
+  EXPECT_TRUE(select->ctes[1]->is_recursive_cte);
+
+  // Verify the output string has both CTEs with RECURSIVE only on T2
+  auto result_str = expr->ToString();
+  EXPECT_NE(result_str.find("WITH T1 AS"), std::string::npos);
+  EXPECT_NE(result_str.find("RECURSIVE T2 AS"), std::string::npos);
+  // Ensure T1 doesn't have RECURSIVE
+  size_t t1_pos = result_str.find("T1 AS");
+  size_t recursive_before_t1 = result_str.find("RECURSIVE", t1_pos - 20);
+  EXPECT_EQ(recursive_before_t1, std::string::npos);
+}
+
 TEST_F(SqlParserTest, ParseUnion) {
   std::string sql = "SELECT * FROM R UNION SELECT * FROM S;";
   auto expr = ParseSQL(sql);

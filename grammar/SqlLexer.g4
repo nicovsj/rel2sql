@@ -34,6 +34,7 @@ TRUE: 'TRUE' | 'true';
 FALSE: 'FALSE' | 'false';
 CREATE: 'CREATE' | 'create';
 REPLACE: 'REPLACE' | 'replace';
+RECURSIVE: 'RECURSIVE' | 'recursive';
 VIEW: 'VIEW' | 'view';
 TABLE: 'TABLE' | 'table';
 

@@ -370,7 +370,9 @@ std::any SqlParserVisitor::visitCte(psr::CteContext* ctx) {
     }
   }
 
-  return std::make_shared<sql::ast::Source>(sourceable, cte_name, true, def_columns);
+  auto source = std::make_shared<sql::ast::Source>(sourceable, cte_name, true, def_columns);
+  source->is_recursive_cte = ctx->getToken(sql_parser::SqlParser::RECURSIVE, 0) != nullptr;
+  return source;
 }
 
 std::any SqlParserVisitor::visitNotCondition(psr::NotConditionContext* ctx) {

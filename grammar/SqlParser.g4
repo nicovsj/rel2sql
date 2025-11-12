@@ -14,7 +14,7 @@ statement: select | values | unionClause | createView | createTable;
 with: WITH cte (COMMA cte)*;
 
 cte:
-	cteName = IDENTIFIER (LPAREN columnList RPAREN)? AS LPAREN select RPAREN;
+	RECURSIVE? cteName = IDENTIFIER (LPAREN columnList RPAREN)? AS LPAREN select RPAREN;
 
 columnList: IDENTIFIER (COMMA IDENTIFIER)*;
 

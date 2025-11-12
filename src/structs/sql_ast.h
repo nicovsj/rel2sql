@@ -92,6 +92,7 @@ class Source : public Expression {
   std::vector<std::string> def_columns;
   bool is_subquery;
   bool is_cte;
+  bool is_recursive_cte;
 
   static bool CheckIsSubquery(std::shared_ptr<Sourceable> sourceable) {
     return std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr ||
@@ -99,7 +100,7 @@ class Source : public Expression {
   }
 
   Source(std::shared_ptr<Sourceable> sourceable)
-      : sourceable(sourceable), is_subquery(CheckIsSubquery(sourceable)), is_cte(false) {
+      : sourceable(sourceable), is_subquery(CheckIsSubquery(sourceable)), is_cte(false), is_recursive_cte(false) {
     if (is_subquery) {
       throw std::runtime_error("Subquery must have an alias");
     }
@@ -111,7 +112,8 @@ class Source : public Expression {
         alias(std::make_shared<AliasStatement>(alias)),
         def_columns(def_columns),
         is_subquery(CheckIsSubquery(sourceable)),
-        is_cte(is_cte) {}
+        is_cte(is_cte),
+        is_recursive_cte(false) {}
 
   Source(std::shared_ptr<Sourceable> sourceable, std::shared_ptr<AliasStatement> alias, bool is_cte = false,
          const std::vector<std::string>& def_columns = {})
@@ -119,7 +121,8 @@ class Source : public Expression {
         alias(alias),
         def_columns(def_columns),
         is_subquery(CheckIsSubquery(sourceable)),
-        is_cte(is_cte) {}
+        is_cte(is_cte),
+        is_recursive_cte(false) {}
 
   virtual std::ostream& Print(std::ostream& os) const override {
     if (is_cte) {
@@ -645,12 +648,15 @@ class SelectStatement : public Sourceable {
 
   SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from,
                   std::vector<std::shared_ptr<Source>> ctes, bool is_distinct = false)
-      : columns(columns), from(from), ctes(ctes), is_distinct(is_distinct) {}
+      : columns(columns), from(from), ctes(ctes), group_by(std::nullopt), is_distinct(is_distinct) {}
 
   std::ostream& Print(std::ostream& os) const override {
     for (int i = 0; i < ctes.size(); i++) {
       if (i == 0) {
         os << "WITH ";
+      }
+      if (ctes[i]->is_recursive_cte) {
+        os << "RECURSIVE ";
       }
       os << ctes[i]->Declaration() << " AS " << ctes[i]->Definition();
 
