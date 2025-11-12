@@ -1515,7 +1515,9 @@ std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>> SQLVisitor:
                                                     ast_data_->arity_by_id[table_bound->table_name]);
         }
 
-        auto source = std::make_shared<sql::ast::Source>(table);
+        auto alias = std::make_shared<sql::ast::AliasStatement>(GenerateTableAlias());
+
+        auto source = std::make_shared<sql::ast::Source>(table, alias);
         auto from = std::make_shared<sql::ast::FromStatement>(source);
         // Create columns based on domain.indices
         // If all columns are selected, use wildcard for better readability
@@ -1527,7 +1529,7 @@ std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>> SQLVisitor:
           for (int index : projection.projected_indices) {
             std::string column_name = table->GetAttributeName(index);
             auto column = std::make_shared<sql::ast::Column>(column_name, source);
-            auto term_selectable = std::make_shared<sql::ast::TermSelectable>(column);
+            auto term_selectable = std::make_shared<sql::ast::TermSelectable>(column, fmt::format("A{}", index + 1));
             columns.push_back(term_selectable);
           }
         }

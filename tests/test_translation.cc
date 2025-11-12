@@ -286,30 +286,30 @@ TEST_F(TranslationTest, RelationalAbstraction) {
 }
 
 TEST_F(TranslationTest, BindingExpression) {
-  EXPECT_EQ(
-      TranslateExpression("[x in T, y in R]: F[x, y]"),
-      "WITH S1(x) AS (SELECT * FROM T), S0(y) AS (SELECT * FROM R) SELECT S1.x AS A1, S0.y AS A2, T1.A1 AS A3 FROM "
-      "(SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
+  EXPECT_EQ(TranslateExpression("[x in T, y in R]: F[x, y]"),
+            "WITH S1(x) AS (SELECT * FROM T AS T3), S0(y) AS (SELECT * FROM R AS T2) SELECT S1.x AS A1, S0.y AS A2, "
+            "T1.A1 AS A3 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T1, S1, S0 WHERE S1.x = "
+            "T1.x AND S0.y = T1.y");
 }
 
 TEST_F(TranslationTest, BindingExpressionBounded) {
   EXPECT_EQ(
       TranslateExpression("[x in A, y]: C[x, y] where D(y)"),
-      "WITH S1(x) AS (SELECT * FROM A), S0(y) AS (SELECT * FROM D) SELECT S1.x AS A1, S0.y AS A2, T4.A1 AS A3 FROM "
-      "(SELECT T2.x, T2.y, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM C AS T0) AS T2, (SELECT T1.A1 "
-      "AS y FROM D AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S1, S0 WHERE S1.x = T4.x AND S0.y = T4.y");
+      "WITH S1(x) AS (SELECT * FROM A AS T6), S0(y) AS (SELECT * FROM D AS T5) SELECT S1.x AS A1, S0.y AS A2, T4.A1 AS "
+      "A3 FROM (SELECT T2.x, T2.y, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM C AS T0) AS T2, (SELECT "
+      "T1.A1 AS y FROM D AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S1, S0 WHERE S1.x = T4.x AND S0.y = T4.y");
 }
 
 TEST_F(TranslationTest, BindingFormula) {
   EXPECT_EQ(TranslateExpression("[x in A, y in D]: B(x, y)"),
-            "WITH S1(x) AS (SELECT * FROM A), S0(y) AS (SELECT * FROM D) SELECT S1.x AS A1, S0.y AS A2 FROM (SELECT "
-            "T0.A1 AS x, T0.A2 AS y FROM B AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
+            "WITH S1(x) AS (SELECT * FROM A AS T3), S0(y) AS (SELECT * FROM D AS T2) SELECT S1.x AS A1, S0.y AS A2 "
+            "FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
 }
 
 TEST_F(TranslationTest, Program) {
   EXPECT_EQ(TranslateDefinition("def R {[x in A]: B[x]}"),
-            "CREATE OR REPLACE VIEW R AS (WITH S0(x) AS (SELECT * FROM A) SELECT S0.x AS A1, T1.A1 AS A2 FROM (SELECT "
-            "T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1, S0 WHERE S0.x = T1.x)");
+            "CREATE OR REPLACE VIEW R AS (WITH S0(x) AS (SELECT * FROM A AS T2) SELECT S0.x AS A1, T1.A1 AS A2 FROM "
+            "(SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1, S0 WHERE S0.x = T1.x)");
 }
 
 TEST_F(TranslationTest, MultipleDefs1) {
@@ -396,16 +396,16 @@ TEST_F(TranslationTest, NamedAttributesBindingFormula) {
   default_edb_map["F"] = rel2sql::EDBInfo({"name"});
 
   EXPECT_EQ(TranslateExpression("(x): F(x)"),
-            "WITH S0(x) AS (SELECT * FROM F) SELECT S0.x AS A1 FROM (SELECT T0.name AS x FROM F AS T0) AS T1, S0 WHERE "
-            "S0.x = T1.x");
+            "WITH S0(x) AS (SELECT * FROM F AS T2) SELECT S0.x AS A1 FROM (SELECT T0.name AS x FROM F AS T0) AS T1, S0 "
+            "WHERE S0.x = T1.x");
 }
 
 TEST_F(TranslationTest, CompositionRelation) {
-  EXPECT_EQ(
-      TranslateExpression("(x, y): exists((z) | A(x, z) and B(z, y))"),
-      "WITH S1(x) AS (SELECT * FROM A), S0(y) AS (SELECT B.A2 FROM B) SELECT S1.x AS A1, S0.y AS A2 FROM (SELECT T4.x, "
-      "T4.y FROM (SELECT T1.x, T1.z, T3.y FROM (SELECT T0.A1 AS x, T0.A2 AS z FROM A AS T0) AS T1, (SELECT T2.A1 AS z, "
-      "T2.A2 AS y FROM B AS T2) AS T3 WHERE T1.z = T3.z) AS T4) AS T5, S1, S0 WHERE S1.x = T5.x AND S0.y = T5.y");
+  EXPECT_EQ(TranslateExpression("(x, y): exists((z) | A(x, z) and B(z, y))"),
+            "WITH S1(x) AS (SELECT * FROM A AS T7), S0(y) AS (SELECT T6.A2 AS A2 FROM B AS T6) SELECT S1.x AS A1, S0.y "
+            "AS A2 FROM (SELECT T4.x, T4.y FROM (SELECT T1.x, T1.z, T3.y FROM (SELECT T0.A1 AS x, T0.A2 AS z FROM A AS "
+            "T0) AS T1, (SELECT T2.A1 AS z, T2.A2 AS y FROM B AS T2) AS T3 WHERE T1.z = T3.z) AS T4) AS T5, S1, S0 "
+            "WHERE S1.x = T5.x AND S0.y = T5.y");
 }
 
 TEST_F(TranslationTest, SimpleReferenceDefinition) {
