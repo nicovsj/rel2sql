@@ -39,7 +39,8 @@ std::unordered_map<std::string, std::shared_ptr<Column>> FlattenerOptimizer::Bui
     if (!term) {
       continue;
     }
-    column_map[term_selectable->Alias()] = term;
+    std::string aliased_column_name = term_selectable->HasAlias() ? term_selectable->Alias() : term->name;
+    column_map[aliased_column_name] = term;
   }
 
   return column_map;
