@@ -2,7 +2,7 @@
 
 #include <queue>
 
-using str_set = std::unordered_set<std::string>;
+using StringSet = std::unordered_set<std::string>;
 
 namespace rel2sql {
 
@@ -25,7 +25,7 @@ std::any IDsVisitor::visitRelDef(psr::RelDefContext* ctx) {
 
   ast_data_->AddIDB(id);  // If defined in the program, it is an IDB
 
-  auto deps = std::any_cast<str_set>(visit(ctx->relAbs()));
+  auto deps = std::any_cast<StringSet>(visit(ctx->relAbs()));
 
   for (const auto& dep : deps) {
     ast_data_->AddDependency(id, dep);
@@ -35,10 +35,10 @@ std::any IDsVisitor::visitRelDef(psr::RelDefContext* ctx) {
 }
 
 std::any IDsVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
-  str_set deps;
+  StringSet deps;
 
   for (auto& child_ctx : ctx->expr()) {
-    auto child_deps = std::any_cast<str_set>(visit(child_ctx));
+    auto child_deps = std::any_cast<StringSet>(visit(child_ctx));
     std::set_union(deps.begin(), deps.end(), child_deps.begin(), child_deps.end(), std::inserter(deps, deps.begin()));
   }
 
@@ -50,38 +50,38 @@ std::any IDsVisitor::visitIDTerm(psr::IDTermContext* ctx) {
 
   ast_data_->AddVar(id);
 
-  return str_set{id};
+  return StringSet{id};
 }
 
-std::any IDsVisitor::visitNumTerm(psr::NumTermContext* ctx) { return str_set{}; }
+std::any IDsVisitor::visitNumTerm(psr::NumTermContext* ctx) { return StringSet{}; }
 
 std::any IDsVisitor::visitOpTerm(psr::OpTermContext* ctx) {
-  str_set deps;
+  StringSet deps;
 
-  auto lhs_deps = std::any_cast<str_set>(visit(ctx->lhs));
+  auto lhs_deps = std::any_cast<StringSet>(visit(ctx->lhs));
   std::set_union(deps.begin(), deps.end(), lhs_deps.begin(), lhs_deps.end(), std::inserter(deps, deps.begin()));
 
-  auto rhs_deps = std::any_cast<str_set>(visit(ctx->rhs));
+  auto rhs_deps = std::any_cast<StringSet>(visit(ctx->rhs));
   std::set_union(deps.begin(), deps.end(), rhs_deps.begin(), rhs_deps.end(), std::inserter(deps, deps.begin()));
 
   return deps;
 }
 
-std::any IDsVisitor::visitLitExpr(psr::LitExprContext* ctx) { return str_set{}; }
+std::any IDsVisitor::visitLitExpr(psr::LitExprContext* ctx) { return StringSet{}; }
 
 std::any IDsVisitor::visitIDExpr(psr::IDExprContext* ctx) {
   std::string id = ctx->T_ID()->getText();
 
   ast_data_->AddVar(id);
 
-  return str_set{id};
+  return StringSet{id};
 }
 
 std::any IDsVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
-  str_set deps;
+  StringSet deps;
 
   for (auto& child_ctx : ctx->productInner()->expr()) {
-    auto child_deps = std::any_cast<str_set>(visit(child_ctx));
+    auto child_deps = std::any_cast<StringSet>(visit(child_ctx));
     std::set_union(deps.begin(), deps.end(), child_deps.begin(), child_deps.end(), std::inserter(deps, deps.begin()));
   }
 
@@ -89,12 +89,12 @@ std::any IDsVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
 }
 
 std::any IDsVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
-  str_set deps;
+  StringSet deps;
 
-  auto lhs_deps = std::any_cast<str_set>(visit(ctx->expr()));
+  auto lhs_deps = std::any_cast<StringSet>(visit(ctx->expr()));
   std::set_union(deps.begin(), deps.end(), lhs_deps.begin(), lhs_deps.end(), std::inserter(deps, deps.begin()));
 
-  auto rhs_deps = std::any_cast<str_set>(visit(ctx->formula()));
+  auto rhs_deps = std::any_cast<StringSet>(visit(ctx->formula()));
   std::set_union(deps.begin(), deps.end(), rhs_deps.begin(), rhs_deps.end(), std::inserter(deps, deps.begin()));
 
   return deps;
@@ -113,13 +113,13 @@ std::any IDsVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) { return v
 std::any IDsVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) { return visit(ctx->formula()); }
 
 std::any IDsVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
-  str_set deps;
+  StringSet deps;
 
-  auto base_deps = std::any_cast<str_set>(visit(ctx->applBase()));
+  auto base_deps = std::any_cast<StringSet>(visit(ctx->applBase()));
 
   std::set_union(deps.begin(), deps.end(), base_deps.begin(), base_deps.end(), std::inserter(deps, deps.begin()));
 
-  auto params_deps = std::any_cast<str_set>(visit(ctx->applParams()));
+  auto params_deps = std::any_cast<StringSet>(visit(ctx->applParams()));
 
   std::set_union(deps.begin(), deps.end(), params_deps.begin(), params_deps.end(), std::inserter(deps, deps.begin()));
 
@@ -127,13 +127,13 @@ std::any IDsVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
 }
 
 std::any IDsVisitor::visitFullAppl(psr::FullApplContext* ctx) {
-  str_set deps;
+  StringSet deps;
 
-  auto base_deps = std::any_cast<str_set>(visit(ctx->applBase()));
+  auto base_deps = std::any_cast<StringSet>(visit(ctx->applBase()));
 
   std::set_union(deps.begin(), deps.end(), base_deps.begin(), base_deps.end(), std::inserter(deps, deps.begin()));
 
-  auto params_deps = std::any_cast<str_set>(visit(ctx->applParams()));
+  auto params_deps = std::any_cast<StringSet>(visit(ctx->applParams()));
 
   std::set_union(deps.begin(), deps.end(), params_deps.begin(), params_deps.end(), std::inserter(deps, deps.begin()));
 
@@ -141,12 +141,12 @@ std::any IDsVisitor::visitFullAppl(psr::FullApplContext* ctx) {
 }
 
 std::any IDsVisitor::visitBinOp(psr::BinOpContext* ctx) {
-  str_set deps;
+  StringSet deps;
 
-  auto lhs_deps = std::any_cast<str_set>(visit(ctx->lhs));
+  auto lhs_deps = std::any_cast<StringSet>(visit(ctx->lhs));
   std::set_union(deps.begin(), deps.end(), deps.begin(), deps.end(), std::inserter(deps, deps.begin()));
 
-  auto rhs_deps = std::any_cast<str_set>(visit(ctx->rhs));
+  auto rhs_deps = std::any_cast<StringSet>(visit(ctx->rhs));
   std::set_union(deps.begin(), deps.end(), deps.begin(), deps.end(), std::inserter(deps, deps.begin()));
 
   return deps;
@@ -159,22 +159,22 @@ std::any IDsVisitor::visitQuantification(psr::QuantificationContext* ctx) { retu
 std::any IDsVisitor::visitParen(psr::ParenContext* ctx) { return visit(ctx->formula()); }
 
 std::any IDsVisitor::visitComparison(psr::ComparisonContext* ctx) {
-  str_set deps;
+  StringSet deps;
 
-  auto lhs_deps = std::any_cast<str_set>(visit(ctx->lhs));
+  auto lhs_deps = std::any_cast<StringSet>(visit(ctx->lhs));
   std::set_union(deps.begin(), deps.end(), deps.begin(), deps.end(), std::inserter(deps, deps.begin()));
 
-  auto rhs_deps = std::any_cast<str_set>(visit(ctx->rhs));
+  auto rhs_deps = std::any_cast<StringSet>(visit(ctx->rhs));
   std::set_union(deps.begin(), deps.end(), deps.begin(), deps.end(), std::inserter(deps, deps.begin()));
 
   return deps;
 }
 
 std::any IDsVisitor::visitBindingInner(psr::BindingInnerContext* ctx) {
-  str_set deps;
+  StringSet deps;
 
   for (auto& child_ctx : ctx->binding()) {
-    auto child_deps = std::any_cast<str_set>(visit(child_ctx));
+    auto child_deps = std::any_cast<StringSet>(visit(child_ctx));
     std::set_union(deps.begin(), deps.end(), child_deps.begin(), child_deps.end(), std::inserter(deps, deps.begin()));
   }
 
@@ -182,7 +182,7 @@ std::any IDsVisitor::visitBindingInner(psr::BindingInnerContext* ctx) {
 }
 
 std::any IDsVisitor::visitBinding(psr::BindingContext* ctx) {
-  str_set deps;
+  StringSet deps;
 
   if (ctx->id_domain) {
     std::string id = ctx->id->getText();
@@ -193,7 +193,7 @@ std::any IDsVisitor::visitBinding(psr::BindingContext* ctx) {
 }
 
 std::any IDsVisitor::visitApplBase(psr::ApplBaseContext* ctx) {
-  str_set deps;
+  StringSet deps;
 
   if (ctx->relAbs()) {
     return visit(ctx->relAbs());
@@ -208,10 +208,10 @@ std::any IDsVisitor::visitApplBase(psr::ApplBaseContext* ctx) {
 }
 
 std::any IDsVisitor::visitApplParams(psr::ApplParamsContext* ctx) {
-  str_set deps;
+  StringSet deps;
 
   for (auto& child_ctx : ctx->applParam()) {
-    auto child_deps = std::any_cast<str_set>(visit(child_ctx));
+    auto child_deps = std::any_cast<StringSet>(visit(child_ctx));
     std::set_union(deps.begin(), deps.end(), child_deps.begin(), child_deps.end(), std::inserter(deps, deps.begin()));
   }
 
@@ -219,10 +219,10 @@ std::any IDsVisitor::visitApplParams(psr::ApplParamsContext* ctx) {
 }
 
 std::any IDsVisitor::visitApplParam(psr::ApplParamContext* ctx) {
-  str_set deps;
+  StringSet deps;
 
   if (ctx->expr()) {
-    auto child_deps = std::any_cast<str_set>(visit(ctx->expr()));
+    auto child_deps = std::any_cast<StringSet>(visit(ctx->expr()));
     std::set_union(deps.begin(), deps.end(), child_deps.begin(), child_deps.end(), std::inserter(deps, deps.begin()));
   }
 

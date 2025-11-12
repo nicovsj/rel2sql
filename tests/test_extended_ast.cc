@@ -373,4 +373,14 @@ TEST(ArityVisitorTest, Binding) {
   EXPECT_EQ(ast.Arity("R"), 2);
 }
 
+TEST(ArityVisitorTest, DoubleDependency) {
+  std::string input = "def X { (1, 2) }\ndef Y { (3, 4) }\ndef Z { X; Y }";
+
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+
+  EXPECT_EQ(ast.Arity("Z"), 2);
+}
+
 }  // namespace rel2sql
