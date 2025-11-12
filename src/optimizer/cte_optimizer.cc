@@ -20,6 +20,18 @@ bool CTEOptimizer::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, Se
   // CTE must be a SELECT statement
   if (!cte_select) return false;
 
+  // Try the simple case first: wildcard CTE with single table source
+  if (TryReplaceSimpleWildcardCTE(cte, cte_select, select_stmt)) {
+    return true;
+  }
+
+  // General case: move CTE as subquery into FROM clause
+  return TryReplaceGeneralCTE(cte, cte_select, select_stmt);
+}
+
+bool CTEOptimizer::TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& cte,
+                                                const std::shared_ptr<SelectStatement>& cte_select,
+                                                SelectStatement& select_stmt) {
   // CTE must have a single wildcard column
   if (cte_select->columns.size() != 1 || !std::dynamic_pointer_cast<Wildcard>(cte_select->columns[0])) return false;
 
@@ -46,6 +58,86 @@ bool CTEOptimizer::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, Se
   base_expr_->Accept(replacer);
 
   return true;
+}
+
+bool CTEOptimizer::TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte,
+                                         const std::shared_ptr<SelectStatement>& cte_select,
+                                         SelectStatement& select_stmt) {
+  // Create a subquery source from the CTE's SELECT statement
+  auto subquery_sourceable = std::static_pointer_cast<Sourceable>(cte_select);
+  auto new_source = std::make_shared<Source>(subquery_sourceable, cte->Alias(), false);
+
+  // Build column mapping
+  // If def_columns is provided, use those as the column names
+  // Otherwise, derive column names from the SELECT columns
+  std::unordered_map<std::string, std::shared_ptr<Column>> column_map;
+
+  if (!cte->def_columns.empty()) {
+    // def_columns override the SELECT column names
+    if (cte->def_columns.size() != cte_select->columns.size()) {
+      // Mismatch in column count - cannot optimize
+      return false;
+    }
+    for (size_t i = 0; i < cte->def_columns.size(); ++i) {
+      std::string def_column_name = cte->def_columns[i];
+      std::string select_column_name = GetColumnNameFromSelectable(cte_select->columns[i], i);
+      column_map[def_column_name] = std::make_shared<Column>(select_column_name, new_source);
+    }
+  } else {
+    // No def_columns - use SELECT column aliases or derive names
+    for (size_t i = 0; i < cte_select->columns.size(); ++i) {
+      std::string column_name = GetColumnNameFromSelectable(cte_select->columns[i], i);
+      column_map[column_name] = std::make_shared<Column>(column_name, new_source);
+    }
+  }
+
+  // Check if the CTE is referenced in FROM clause
+  bool cte_in_from = false;
+  if (select_stmt.from.has_value()) {
+    for (auto& source : select_stmt.from.value()->sources) {
+      if (source->Alias() == cte->Alias() && source->is_cte) {
+        cte_in_from = true;
+        break;
+      }
+    }
+  }
+
+  // If CTE is not in FROM, we need to add the new source to FROM
+  // (The replacer will replace it if it is in FROM)
+  if (!cte_in_from) {
+    if (!select_stmt.from.has_value()) {
+      select_stmt.from = std::make_shared<FromStatement>(new_source);
+    } else {
+      select_stmt.from.value()->sources.push_back(new_source);
+    }
+  }
+
+  // Create a replacer that handles both source name and column name replacements
+  SourceAndColumnReplacer replacer(cte->Alias(), new_source, column_map, false);
+  base_expr_->Accept(replacer);
+
+  return true;
+}
+
+std::string CTEOptimizer::GetColumnNameFromSelectable(const std::shared_ptr<Selectable>& selectable, size_t index) {
+  // If the selectable has an alias, use it
+  if (selectable->HasAlias()) {
+    return selectable->Alias();
+  }
+
+  // If it's a TermSelectable with a Column term, use the column name
+  auto term_selectable = std::dynamic_pointer_cast<TermSelectable>(selectable);
+  if (term_selectable) {
+    auto column = std::dynamic_pointer_cast<Column>(term_selectable->term);
+    if (column) {
+      return column->name;
+    }
+    // For other terms (constants, operations, etc.), use the term's string representation
+    return term_selectable->term->ToString();
+  }
+
+  // For wildcards or other cases, derive a name
+  return "A" + std::to_string(index + 1);
 }
 
 }  // namespace sql::ast
