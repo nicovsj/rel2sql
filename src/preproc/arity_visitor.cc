@@ -1,7 +1,5 @@
 #include "arity_visitor.h"
 
-#include <ranges>
-
 #include "utils/exceptions.h"
 
 namespace rel2sql {
@@ -25,7 +23,7 @@ std::any ArityVisitor::visitProgram(psr::ProgramContext* ctx) {
     defs_by_id[child_ctx->name->getText()].push_back(child_ctx);
   }
 
-  for (auto& id : std::ranges::reverse_view(ast_data_->sorted_ids)) {
+  for (auto& id : ast_data_->sorted_ids) {
     if (AGGREGATE_MAP.find(id) != AGGREGATE_MAP.end()) {
       // Skip aggregate functions
       continue;
