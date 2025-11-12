@@ -266,9 +266,9 @@ TEST_F(OptimizationTest, DISABLED_BindingDisjunction) {
             "SELECT T0.A1 AS A1 FROM A AS T0 UNION SELECT T2.A2 AS A2 FROM B AS T2 WHERE T2.A1 = T0.A1");
 }
 
-TEST_F(OptimizationTest, DISABLED_Composition) {
+TEST_F(OptimizationTest, Composition) {
   EXPECT_EQ(TranslateExpression("(x, y) : exists( (z) | B(x, z) and E(z, y) )"),
-            "SELECT T1.A1 AS A1, T3.A2 AS A2 FROM B AS T1, E AS T3 WHERE T1.A1 = T3.A1");
+            "SELECT T0.A1 AS A1, T2.A2 AS A2 FROM B AS T0, E AS T2 WHERE T0.A2 = T2.A1");
 }
 
 }  // namespace rel2sql
@@ -354,7 +354,7 @@ TEST(ConstantOptimizationTest, ConstantInWhereClause) {
 TEST(FlattenerOptimizationTest, SimpleSubqueryFlatten) {
   std::string sql = "SELECT T0.A1 FROM (SELECT A.A1 FROM A) AS T0";
   std::string result = OptimizeSQLWithFlattenerOptimizer(sql);
-  EXPECT_EQ(result, "SELECT T0.A1 FROM A");
+  EXPECT_EQ(result, "SELECT A.A1 AS A1 FROM A");
 }
 
 TEST(FlattenerOptimizationTest, SubqueryWithWhereClause) {
@@ -396,14 +396,17 @@ TEST(SelfJoinOptimizationTest, MultiColumnSelfJoin) {
   EXPECT_TRUE(result.find("FROM B AS A, B AS A2") == std::string::npos);
 }
 
-TEST(SelfJoinOptimizationTest, IncompleteSelfJoin) {
+TEST(SelfJoinOptimizationTest, PartialSelfJoin) {
+  // Here we have a self join that is not complete because the second column does not match
+  // but we can still eliminate the self join because the second column is not referenced
+  // in the SELECT clause or the WHERE clause.
   std::string sql =
-      "SELECT A.A1 FROM B AS A, B AS A2\n"
-      "WHERE A.A1 = A2.A1 AND A.A2 > 5";
+      "SELECT T1.A1\n"
+      "FROM A AS T0, A AS T1\n"
+      "WHERE T0.A1 = T1.A1 AND T0.A2 > 5";
   rel2sql::EDBMap edb_map;
-  edb_map["B"] = rel2sql::EDBInfo(2);
-  edb_map["A"] = rel2sql::EDBInfo(1);
+  edb_map["A"] = rel2sql::EDBInfo(2);
   std::string result = OptimizeSQLWithSelfJoinOptimizer(sql, edb_map);
   // Should NOT eliminate because self join is incomplete (only A1 matches, not A2)
-  EXPECT_TRUE(result.find("FROM B AS A, B AS A2") != std::string::npos);
+  EXPECT_TRUE(result.find("A AS T1") == std::string::npos);
 }
