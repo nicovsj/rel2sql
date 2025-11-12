@@ -7,6 +7,7 @@
 #include "preproc/balancing_visitor.h"
 #include "preproc/ids_visitor.h"
 #include "preproc/lit_visitor.h"
+#include "preproc/recursion_visitor.h"
 #include "preproc/safe_visitor.h"
 #include "preproc/vars_visitor.h"
 #include "structs/extended_ast.h"
@@ -30,6 +31,7 @@ class Preprocessor {
                    ids_visitor_(ast_data_),
                    arity_visitor_(ast_data_),
                    variables_visitor_(ast_data_),
+                   recursion_visitor_(ast_data_),
                    literal_visitor_(ast_data_),
                    balancing_visitor_(ast_data_),
                    safeness_visitor_(ast_data_) {}
@@ -39,6 +41,7 @@ class Preprocessor {
         ids_visitor_(ast_data_),
         arity_visitor_(ast_data_),
         variables_visitor_(ast_data_),
+        recursion_visitor_(ast_data_),
         literal_visitor_(ast_data_),
         balancing_visitor_(ast_data_),
         safeness_visitor_(ast_data_) {}
@@ -52,6 +55,7 @@ class Preprocessor {
     ids_visitor_.visit(tree);
     arity_visitor_.visit(tree);
     variables_visitor_.visit(tree);
+    recursion_visitor_.visit(tree);
     literal_visitor_.visit(tree);
     balancing_visitor_.visit(tree);
     safeness_visitor_.visit(tree);
@@ -64,6 +68,7 @@ class Preprocessor {
   IDsVisitor ids_visitor_;
   ArityVisitor arity_visitor_;
   VariablesVisitor variables_visitor_;
+  RecursionVisitor recursion_visitor_;
   LiteralVisitor literal_visitor_;
   BalancingVisitor balancing_visitor_;
   SafeVisitor safeness_visitor_;

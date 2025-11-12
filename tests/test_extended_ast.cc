@@ -6,6 +6,8 @@
 
 namespace rel2sql {
 
+using psr = rel_parser::PrunedCoreRelParser;
+
 std::vector<std::string> GetSortedIDs(const std::string& input, const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
   auto parser = GetParser(input);
   auto tree = parser->program();
@@ -381,6 +383,46 @@ TEST(ArityVisitorTest, DoubleDependency) {
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
   EXPECT_EQ(ast.Arity("Z"), 2);
+}
+
+TEST(RecursionVisitorTest, MatchesRecursionPattern) {
+  std::string input = "def Q {(x in E) : G(x) or exists ((y) | Q(y) and F(y))}";
+  auto edb_map = rel2sql::edb_utils::FromArityMap({{"E", 1}, {"F", 1}, {"G", 1}});
+
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(edb_map).Process(tree);
+
+  ASSERT_EQ(tree->relDef().size(), 1);
+  auto rel_def = tree->relDef()[0];
+  auto rel_abs = rel_def->relAbs();
+  ASSERT_EQ(rel_abs->expr().size(), 1);
+  auto bindings_formula = dynamic_cast<psr::BindingsFormulaContext*>(rel_abs->expr()[0]);
+  ASSERT_NE(bindings_formula, nullptr);
+
+  auto data = ast.Data();
+  EXPECT_TRUE(data->index.at(rel_abs).is_recursive);
+  EXPECT_TRUE(data->index.at(bindings_formula).is_recursive);
+}
+
+TEST(RecursionVisitorTest, RejectsNonRecursionPattern) {
+  std::string input = "def Q {(x in E) : G(x) or exists ((y) | F(y) and H(y))}";
+  auto edb_map = rel2sql::edb_utils::FromArityMap({{"E", 1}, {"F", 1}, {"G", 1}, {"H", 1}});
+
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(edb_map).Process(tree);
+
+  ASSERT_EQ(tree->relDef().size(), 1);
+  auto rel_def = tree->relDef()[0];
+  auto rel_abs = rel_def->relAbs();
+  ASSERT_EQ(rel_abs->expr().size(), 1);
+  auto bindings_formula = dynamic_cast<psr::BindingsFormulaContext*>(rel_abs->expr()[0]);
+  ASSERT_NE(bindings_formula, nullptr);
+
+  auto data = ast.Data();
+  EXPECT_FALSE(data->index.at(rel_abs).is_recursive);
+  EXPECT_FALSE(data->index.at(bindings_formula).is_recursive);
 }
 
 }  // namespace rel2sql

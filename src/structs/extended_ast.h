@@ -30,6 +30,9 @@ struct ExtendedNode {
   bool has_only_literal_values = false;
   std::vector<antlr4::ParserRuleContext*> multiple_defs;
 
+  // Flag to mark if the expression matches a recursion pattern
+  bool is_recursive = false;
+
   // Arity of the current context
   int arity;
 
