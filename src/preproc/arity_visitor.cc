@@ -1,6 +1,6 @@
 #include "arity_visitor.h"
 
-#include "exceptions.h"
+#include "utils/exceptions.h"
 
 namespace rel2sql {
 

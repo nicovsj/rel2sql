@@ -1,6 +1,6 @@
 #include "sql_visitor.h"
 
-#include "exceptions.h"
+#include "utils/exceptions.h"
 #include "structs/sql_ast.h"
 
 namespace rel2sql {
