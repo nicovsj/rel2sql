@@ -47,13 +47,22 @@ bool SelfJoinOptimizer::EliminateRedundantSelfJoins(SelectStatement& select_stat
     auto source_pairs = GenerateSourcePairs(candidate_sources);
 
     // Process each source pair to check for complete equivalence classes
-    for (const auto& source_pair : source_pairs) {
+    for (auto source_pair : source_pairs) {
       // Check if this source pair forms a self join in the query
-      if (IsSelfJoin(source_pair, equivalence_classes)) {
+      // IsSelfJoin checks if source2 can be eliminated, so we try both directions
+      if (IsSelfJoin(source_pair, equivalence_classes, select_statement)) {
         SourceReplacer replacer(source_pair.second->Alias(), source_pair.first);
         base_expr_->Accept(replacer);
-
         simplified = true;
+      } else {
+        // Try the reverse: swap sources and check if source1 can be eliminated
+        std::swap(source_pair.first, source_pair.second);
+        if (IsSelfJoin(source_pair, equivalence_classes, select_statement)) {
+          // Now source_pair.second is the original source_pair.first, which can be eliminated
+          SourceReplacer replacer(source_pair.second->Alias(), source_pair.first);
+          base_expr_->Accept(replacer);
+          simplified = true;
+        }
       }
     }
   }
@@ -151,8 +160,115 @@ SelfJoinOptimizer::EquivalenceClassesMap SelfJoinOptimizer::ComputeColumnEquival
   return result;
 }
 
-bool SelfJoinOptimizer::IsSelfJoin(const SourcePair& source_pair, const EquivalenceClassesMap& eq_class_map) {
-  // Get table information to know the expected arity
+std::unordered_set<std::string> SelfJoinOptimizer::CollectReferencedColumns(const SelectStatement& select_stmt,
+                                                                             const std::string& source_alias) {
+  std::unordered_set<std::string> referenced;
+
+  // Collect from SELECT clause
+  for (const auto& selectable : select_stmt.columns) {
+    if (auto term_selectable = std::dynamic_pointer_cast<TermSelectable>(selectable)) {
+      CollectColumnsFromTerm(term_selectable->term, source_alias, referenced);
+    }
+    // Note: Wildcard selectables are not handled here as they would reference all columns,
+    // which would make the optimization more complex
+  }
+
+  // Collect from WHERE clause
+  if (select_stmt.from.has_value() && select_stmt.from.value()->where.has_value()) {
+    CollectColumnsFromConditionRecursive(select_stmt.from.value()->where.value(), source_alias, referenced);
+  }
+
+  // Collect from GROUP BY clause if present
+  if (select_stmt.group_by.has_value()) {
+    for (const auto& group_item : select_stmt.group_by.value()->columns) {
+      if (auto term_selectable = std::dynamic_pointer_cast<TermSelectable>(group_item)) {
+        CollectColumnsFromTerm(term_selectable->term, source_alias, referenced);
+      }
+    }
+  }
+
+  return referenced;
+}
+
+void SelfJoinOptimizer::CollectColumnsFromTerm(const std::shared_ptr<Term>& term, const std::string& source_alias,
+                                                std::unordered_set<std::string>& referenced) {
+  if (!term) return;
+
+  // Check if it's a Column
+  if (auto column = std::dynamic_pointer_cast<Column>(term)) {
+    if (column->source && column->source.value()->Alias() == source_alias) {
+      referenced.insert(column->name);
+    }
+    return;
+  }
+
+  // Check if it's an Operation (has lhs and rhs Terms)
+  if (auto operation = std::dynamic_pointer_cast<Operation>(term)) {
+    CollectColumnsFromTerm(operation->lhs, source_alias, referenced);
+    CollectColumnsFromTerm(operation->rhs, source_alias, referenced);
+    return;
+  }
+
+  // Check if it's a Function (has an arg Term)
+  if (auto function = std::dynamic_pointer_cast<Function>(term)) {
+    CollectColumnsFromTerm(function->arg, source_alias, referenced);
+    return;
+  }
+
+  // Check if it's a CaseWhen (has conditions and terms)
+  if (auto case_when = std::dynamic_pointer_cast<CaseWhen>(term)) {
+    for (const auto& [condition, case_term] : case_when->cases) {
+      CollectColumnsFromConditionRecursive(condition, source_alias, referenced);
+      CollectColumnsFromTerm(case_term, source_alias, referenced);
+    }
+    return;
+  }
+
+  // Constant and other types don't reference columns, so we're done
+}
+
+void SelfJoinOptimizer::CollectColumnsFromConditionRecursive(const std::shared_ptr<Condition>& condition,
+                                                              const std::string& source_alias,
+                                                              std::unordered_set<std::string>& referenced) {
+  if (!condition) return;
+
+  // Check if it's a ComparisonCondition
+  if (auto comp_condition = std::dynamic_pointer_cast<ComparisonCondition>(condition)) {
+    // Check left side
+    CollectColumnsFromTerm(comp_condition->lhs, source_alias, referenced);
+    // Check right side
+    CollectColumnsFromTerm(comp_condition->rhs, source_alias, referenced);
+    return;
+  }
+
+  // Check if it's a LogicalCondition
+  if (auto logical_condition = std::dynamic_pointer_cast<LogicalCondition>(condition)) {
+    // Recursively visit all sub-conditions
+    for (const auto& sub_condition : logical_condition->conditions) {
+      CollectColumnsFromConditionRecursive(sub_condition, source_alias, referenced);
+    }
+    return;
+  }
+
+  // Check if it's an Inclusion condition
+  if (auto inclusion = std::dynamic_pointer_cast<Inclusion>(condition)) {
+    for (const auto& column : inclusion->columns) {
+      if (column->source && column->source.value()->Alias() == source_alias) {
+        referenced.insert(column->name);
+      }
+    }
+    // Note: We don't recurse into the subquery as it's in a different scope
+    return;
+  }
+
+  // Check if it's an Exists condition
+  // Note: We don't recurse into the subquery as it's in a different scope
+  // Exists conditions don't reference columns from the outer query in a way that affects self-join elimination
+}
+
+bool SelfJoinOptimizer::IsSelfJoin(const SourcePair& source_pair, const EquivalenceClassesMap& eq_class_map,
+                                    const SelectStatement& select_stmt) {
+  // Get table information
   auto table1 = std::dynamic_pointer_cast<Table>(source_pair.first->sourceable);
   auto table2 = std::dynamic_pointer_cast<Table>(source_pair.second->sourceable);
 
@@ -164,26 +280,41 @@ bool SelfJoinOptimizer::IsSelfJoin(const SourcePair& source_pair, const Equivale
   std::string source1_alias = source_pair.first->Alias();
   std::string source2_alias = source_pair.second->Alias();
 
-  // Iterate through both tables' attribute names simultaneously
-  for (size_t i = 0; i < table1->attribute_names.size(); ++i) {
-    const auto& attribute_name1 = table1->attribute_names[i];
-    const auto& attribute_name2 = table2->attribute_names[i];
+  // Collect columns referenced from each source
+  auto source1_refs = CollectReferencedColumns(select_stmt, source1_alias);
+  auto source2_refs = CollectReferencedColumns(select_stmt, source2_alias);
 
-    // Check if the corresponding columns are in the same equivalence class
-    auto eq_class_1 = eq_class_map.column_to_class.find({source1_alias, attribute_name1});
-    auto eq_class_2 = eq_class_map.column_to_class.find({source2_alias, attribute_name2});
+  // The caller always eliminates source2 (source_pair.second), so we need to check
+  // if source2 can be safely eliminated by checking if all its referenced columns
+  // are equivalent to source1's corresponding columns
 
-    // If either column is not found in any equivalence class, it's not complete
-    if (eq_class_1 == eq_class_map.column_to_class.end() || eq_class_2 == eq_class_map.column_to_class.end()) {
-      return false;
-    }
+  // If source2 has no referenced columns, we can safely eliminate it
+  if (source2_refs.empty()) {
+    // However, we should be conservative: if source1 has referenced columns but source2 doesn't,
+    // it might mean source2 is not used at all, which is a different optimization (unused source removal)
+    // For self-join elimination, we want both sources to be used, so we require source2 to have references
+    // But if source1 also has no references, we can't determine equivalence, so be conservative
+    return false;
+  }
 
-    // If the columns are not in the same equivalence class, it's not complete
-    if (eq_class_1->second != eq_class_2->second) {
+  // Check if all referenced columns from source2 are equivalent to source1
+  for (const auto& col_name : source2_refs) {
+    // Check if source2.col_name is equivalent to source1.col_name
+    ColumnId source2_id = {source2_alias, col_name};
+    ColumnId source1_id = {source1_alias, col_name};
+
+    auto source2_eq = eq_class_map.column_to_class.find(source2_id);
+    auto source1_eq = eq_class_map.column_to_class.find(source1_id);
+
+    // If either column is not found in any equivalence class, or they're not in the same class
+    if (source2_eq == eq_class_map.column_to_class.end() ||
+        source1_eq == eq_class_map.column_to_class.end() ||
+        source2_eq->second != source1_eq->second) {
       return false;
     }
   }
 
+  // All referenced columns from source2 are equivalent to source1, so we can eliminate source2
   return true;
 }
 

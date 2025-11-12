@@ -2,6 +2,7 @@
 #define SELF_JOIN_OPTIMIZER_H
 
 #include <unordered_map>
+#include <unordered_set>
 
 #include "base_optimizer.h"
 
@@ -62,13 +63,47 @@ class SelfJoinOptimizer : public BaseOptimizer {
       const std::vector<std::shared_ptr<ComparisonCondition>>& equivalences);
 
   /**
-   * Checks if a source pair forms a complete equivalence class.
+   * Checks if a source pair forms a complete equivalence class based on referenced columns.
    *
    * @param source_pair The source pair to check
    * @param eq_class_map The computed equivalence classes map
+   * @param select_stmt The SELECT statement to analyze for column references
    * @return true if the source pair forms a self join in the query, false otherwise
    */
-  bool IsSelfJoin(const SourcePair& source_pair, const EquivalenceClassesMap& eq_class_map);
+  bool IsSelfJoin(const SourcePair& source_pair, const EquivalenceClassesMap& eq_class_map,
+                  const SelectStatement& select_stmt);
+
+  /**
+   * Collects all columns from a specific source that are referenced in the SELECT statement.
+   * This includes columns from SELECT clause, WHERE clause, and GROUP BY clause.
+   *
+   * @param select_stmt The SELECT statement to analyze
+   * @param source_alias The alias of the source to collect columns for
+   * @return Set of column names referenced from the source
+   */
+  std::unordered_set<std::string> CollectReferencedColumns(const SelectStatement& select_stmt,
+                                                            const std::string& source_alias);
+
+  /**
+   * Recursively collects columns from a Term that reference a specific source.
+   *
+   * @param term The term to analyze
+   * @param source_alias The alias of the source to collect columns for
+   * @param referenced Set to add referenced column names to
+   */
+  void CollectColumnsFromTerm(const std::shared_ptr<Term>& term, const std::string& source_alias,
+                               std::unordered_set<std::string>& referenced);
+
+  /**
+   * Recursively collects columns from a Condition that reference a specific source.
+   *
+   * @param condition The condition to analyze
+   * @param source_alias The alias of the source to collect columns for
+   * @param referenced Set to add referenced column names to
+   */
+  void CollectColumnsFromConditionRecursive(const std::shared_ptr<Condition>& condition,
+                                             const std::string& source_alias,
+                                             std::unordered_set<std::string>& referenced);
 
   /**
    * Recursively extracts all ComparisonCondition objects from a Condition tree.
