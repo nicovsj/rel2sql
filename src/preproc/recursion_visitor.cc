@@ -60,14 +60,12 @@ std::any RecursionVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx
 }
 
 std::any RecursionVisitor::visitBinOp(psr::BinOpContext* ctx) {
-  // Visit children to collect information
   visit(ctx->lhs);
   visit(ctx->rhs);
   return {};
 }
 
 std::any RecursionVisitor::visitQuantification(psr::QuantificationContext* ctx) {
-  // Visit the formula inside
   visit(ctx->formula());
   return {};
 }
@@ -171,15 +169,12 @@ bool RecursionVisitor::OnlyEDBsOrNonRecursiveIDBs(const std::unordered_set<std::
     }
 
     // Check if it's an EDB
-    if (ast_data_->external_dbs.find(id) != ast_data_->external_dbs.end()) {
-      continue;  // EDB is OK
-    }
+    if (ast_data_->IsEDB(id)) continue;
 
     // Check if it's a non-recursive IDB
-    if (ast_data_->internal_dbs.find(id) != ast_data_->internal_dbs.end()) {
-      if (IsRecursiveID(id)) {
-        return false;  // Recursive IDB is not allowed
-      }
+    if (ast_data_->IsIDB(id)) {
+      if (IsRecursiveID(id)) return false;  // Recursive IDB is not allowed
+
       continue;  // Non-recursive IDB is OK
     }
 
@@ -332,7 +327,7 @@ bool RecursionVisitor::CheckExistsPattern(psr::FormulaContext* formula_ctx, cons
         auto id_expr = dynamic_cast<psr::IDExprContext*>(param->expr());
         if (id_expr) {
           std::string var = id_expr->T_ID()->getText();
-          if (ast_data_->vars.find(var) != ast_data_->vars.end()) {
+          if (ast_data_->IsVar(var)) {
             w_vars.insert(var);
           }
         }

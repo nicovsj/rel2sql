@@ -153,6 +153,14 @@ struct ExtendedASTData {
     }
     return std::nullopt;
   }
+
+  bool IsIDB(const std::string& id) const { return internal_dbs.find(id) != internal_dbs.end(); }
+
+  bool IsEDB(const std::string& id) const { return external_dbs.find(id) != external_dbs.end(); }
+
+  bool IsVar(const std::string& var) const { return vars.find(var) != vars.end(); }
+
+  bool IsID(const std::string& id) const { return ids.find(id) != ids.end(); }
 };
 
 class ExtendedAST {
