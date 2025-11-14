@@ -43,8 +43,20 @@ class Expression {
   // Convenience method that returns a string representation using the Print method
   std::string ToString() const;
 
+  // Virtual equality method for polymorphic comparison
+  virtual bool Equals(const Expression& other) const = 0;
+
   friend std::ostream& operator<<(std::ostream& os, const Expression& expr) { return expr.Print(os); }
 };
+
+// Non-member operator== for Expression
+inline bool operator==(const Expression& lhs, const Expression& rhs) {
+  return lhs.Equals(rhs);
+}
+
+inline bool operator!=(const Expression& lhs, const Expression& rhs) {
+  return !(lhs == rhs);
+}
 
 class Sourceable : public Expression {
  public:
@@ -65,6 +77,12 @@ class AliasStatement : public Expression {
   std::ostream& Print(std::ostream& os) const override { return os << Access(); }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_alias = dynamic_cast<const AliasStatement*>(&other);
+    if (!other_alias) return false;
+    return name == other_alias->name && columns == other_alias->columns;
+  }
 
   std::string Declaration() const {
     std::stringstream os;
@@ -141,6 +159,18 @@ class Source : public Expression {
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
+  bool Equals(const Expression& other) const override {
+    const auto* other_source = dynamic_cast<const Source*>(&other);
+    if (!other_source) return false;
+    if (is_subquery != other_source->is_subquery || is_cte != other_source->is_cte) return false;
+    if (def_columns != other_source->def_columns) return false;
+    if ((alias.has_value() != other_source->alias.has_value())) return false;
+    if (alias.has_value() && other_source->alias.has_value()) {
+      if (*alias.value() != *other_source->alias.value()) return false;
+    }
+    return *sourceable == *other_source->sourceable;
+  }
+
   virtual std::string Alias() const {
     std::stringstream os;
 
@@ -200,6 +230,13 @@ class Table : public Sourceable {
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
+  bool Equals(const Expression& other) const override {
+    const auto* other_table = dynamic_cast<const Table*>(&other);
+    if (!other_table) return false;
+    return name == other_table->name && arity == other_table->arity &&
+           attribute_names == other_table->attribute_names;
+  }
+
   bool HasNamedAttributes() const { return !attribute_names.empty(); }
 
   std::string GetAttributeName(int index) const {
@@ -239,6 +276,16 @@ class Wildcard : public Selectable {
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
+  bool Equals(const Expression& other) const override {
+    const auto* other_wildcard = dynamic_cast<const Wildcard*>(&other);
+    if (!other_wildcard) return false;
+    if (source.has_value() != other_wildcard->source.has_value()) return false;
+    if (source.has_value() && other_wildcard->source.has_value()) {
+      return *source.value() == *other_wildcard->source.value();
+    }
+    return true;
+  }
+
   std::string Alias() const override { return "*"; }
 
   bool HasAlias() const override { return false; }
@@ -265,6 +312,13 @@ class TermSelectable : public Selectable {
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
+  bool Equals(const Expression& other) const override {
+    const auto* other_term_selectable = dynamic_cast<const TermSelectable*>(&other);
+    if (!other_term_selectable) return false;
+    if (alias != other_term_selectable->alias) return false;
+    return *term == *other_term_selectable->term;
+  }
+
   std::string Alias() const override {
     if (alias.has_value())
       return alias.value();
@@ -284,6 +338,12 @@ class Constant : public Term {
   std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_constant = dynamic_cast<const Constant*>(&other);
+    if (!other_constant) return false;
+    return value == other_constant->value;
+  }
 
   std::string ToString() const override {
     return std::visit(
@@ -306,6 +366,12 @@ class Operation : public Term {
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
+  bool Equals(const Expression& other) const override {
+    const auto* other_operation = dynamic_cast<const Operation*>(&other);
+    if (!other_operation) return false;
+    return op == other_operation->op && *lhs == *other_operation->lhs && *rhs == *other_operation->rhs;
+  }
+
   std::string ToString() const override {
     std::stringstream ss;
     ss << *lhs << " " << op << " " << *rhs;
@@ -323,6 +389,12 @@ class Function : public Term {
   std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_function = dynamic_cast<const Function*>(&other);
+    if (!other_function) return false;
+    return name == other_function->name && *arg == *other_function->arg;
+  }
 
   std::string ToString() const override {
     std::string result = "";
@@ -369,6 +441,17 @@ class Column : public Term {
   std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_column = dynamic_cast<const Column*>(&other);
+    if (!other_column) return false;
+    if (name != other_column->name) return false;
+    if (source.has_value() != other_column->source.has_value()) return false;
+    if (source.has_value() && other_column->source.has_value()) {
+      return *source.value() == *other_column->source.value();
+    }
+    return true;
+  }
 };
 
 class Values : public Sourceable {
@@ -407,6 +490,19 @@ class Values : public Sourceable {
   }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_values = dynamic_cast<const Values*>(&other);
+    if (!other_values) return false;
+    if (values.size() != other_values->values.size()) return false;
+    for (size_t i = 0; i < values.size(); i++) {
+      if (values[i].size() != other_values->values[i].size()) return false;
+      for (size_t j = 0; j < values[i].size(); j++) {
+        if (values[i][j] != other_values->values[i][j]) return false;
+      }
+    }
+    return true;
+  }
 };
 
 class Condition : public Expression {
@@ -452,6 +548,12 @@ class ComparisonCondition : public Condition {
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
+  bool Equals(const Expression& other) const override {
+    const auto* other_comp = dynamic_cast<const ComparisonCondition*>(&other);
+    if (!other_comp) return false;
+    return op == other_comp->op && *lhs == *other_comp->lhs && *rhs == *other_comp->rhs;
+  }
+
   bool IsEmpty() const override { return false; }
 };
 
@@ -493,6 +595,16 @@ class LogicalCondition : public Condition {
                            this->conditions.end());
   }
 
+  bool Equals(const Expression& other) const override {
+    const auto* other_logical = dynamic_cast<const LogicalCondition*>(&other);
+    if (!other_logical) return false;
+    if (op != other_logical->op || conditions.size() != other_logical->conditions.size()) return false;
+    for (size_t i = 0; i < conditions.size(); i++) {
+      if (*conditions[i] != *other_logical->conditions[i]) return false;
+    }
+    return true;
+  }
+
   bool IsEmpty() const override {
     return std::all_of(conditions.begin(), conditions.end(),
                        [](std::shared_ptr<Condition> cond) { return cond->IsEmpty(); });
@@ -512,6 +624,8 @@ class Inclusion : public Condition {
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
+  bool Equals(const Expression& other) const override;
+
   bool IsEmpty() const override { return false; }
 };
 
@@ -525,6 +639,8 @@ class Exists : public Condition {
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
+  bool Equals(const Expression& other) const override;
+
   bool IsEmpty() const override { return false; }
 };
 
@@ -537,6 +653,19 @@ class CaseWhen : public Term {
   std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_case = dynamic_cast<const CaseWhen*>(&other);
+    if (!other_case) return false;
+    if (cases.size() != other_case->cases.size()) return false;
+    for (size_t i = 0; i < cases.size(); i++) {
+      if (*cases[i].first != *other_case->cases[i].first ||
+          *cases[i].second != *other_case->cases[i].second) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   std::string ToString() const override {
     std::stringstream ss;
@@ -588,6 +717,20 @@ class FromStatement : public Expression {
   }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_from = dynamic_cast<const FromStatement*>(&other);
+    if (!other_from) return false;
+    if (sources.size() != other_from->sources.size()) return false;
+    for (size_t i = 0; i < sources.size(); i++) {
+      if (*sources[i] != *other_from->sources[i]) return false;
+    }
+    if (where.has_value() != other_from->where.has_value()) return false;
+    if (where.has_value() && other_from->where.has_value()) {
+      if (*where.value() != *other_from->where.value()) return false;
+    }
+    return true;
+  }
 };
 
 class View : public Expression {
@@ -604,6 +747,12 @@ class View : public Expression {
   }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_view = dynamic_cast<const View*>(&other);
+    if (!other_view) return false;
+    return *source == *other_view->source;
+  }
 };
 
 class GroupBy : public Expression {
@@ -625,6 +774,16 @@ class GroupBy : public Expression {
   }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_groupby = dynamic_cast<const GroupBy*>(&other);
+    if (!other_groupby) return false;
+    if (columns.size() != other_groupby->columns.size()) return false;
+    for (size_t i = 0; i < columns.size(); i++) {
+      if (*columns[i] != *other_groupby->columns[i]) return false;
+    }
+    return true;
+  }
 };
 
 class SelectStatement : public Sourceable {
@@ -692,6 +851,29 @@ class SelectStatement : public Sourceable {
   }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_select = dynamic_cast<const SelectStatement*>(&other);
+    if (!other_select) return false;
+    if (is_distinct != other_select->is_distinct) return false;
+    if (columns.size() != other_select->columns.size()) return false;
+    for (size_t i = 0; i < columns.size(); i++) {
+      if (*columns[i] != *other_select->columns[i]) return false;
+    }
+    if (from.has_value() != other_select->from.has_value()) return false;
+    if (from.has_value() && other_select->from.has_value()) {
+      if (*from.value() != *other_select->from.value()) return false;
+    }
+    if (ctes.size() != other_select->ctes.size()) return false;
+    for (size_t i = 0; i < ctes.size(); i++) {
+      if (*ctes[i] != *other_select->ctes[i]) return false;
+    }
+    if (group_by.has_value() != other_select->group_by.has_value()) return false;
+    if (group_by.has_value() && other_select->group_by.has_value()) {
+      if (*group_by.value() != *other_select->group_by.value()) return false;
+    }
+    return true;
+  }
 };
 
 class Union : public Sourceable {
@@ -713,6 +895,16 @@ class Union : public Sourceable {
   }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_union = dynamic_cast<const Union*>(&other);
+    if (!other_union) return false;
+    if (members.size() != other_union->members.size()) return false;
+    for (size_t i = 0; i < members.size(); i++) {
+      if (*members[i] != *other_union->members[i]) return false;
+    }
+    return true;
+  }
 };
 
 class UnionAll : public Sourceable {
@@ -734,6 +926,16 @@ class UnionAll : public Sourceable {
   }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_union_all = dynamic_cast<const UnionAll*>(&other);
+    if (!other_union_all) return false;
+    if (members.size() != other_union_all->members.size()) return false;
+    for (size_t i = 0; i < members.size(); i++) {
+      if (*members[i] != *other_union_all->members[i]) return false;
+    }
+    return true;
+  }
 };
 
 class CreateTable : public Expression {
@@ -751,6 +953,12 @@ class CreateTable : public Expression {
   }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_create = dynamic_cast<const CreateTable*>(&other);
+    if (!other_create) return false;
+    return *source == *other_create->source;
+  }
 };
 
 class MultipleStatements : public Expression {
@@ -770,6 +978,16 @@ class MultipleStatements : public Expression {
   }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_multiple = dynamic_cast<const MultipleStatements*>(&other);
+    if (!other_multiple) return false;
+    if (statements.size() != other_multiple->statements.size()) return false;
+    for (size_t i = 0; i < statements.size(); i++) {
+      if (*statements[i] != *other_multiple->statements[i]) return false;
+    }
+    return true;
+  }
 };
 
 // UTILITY FUNCTIONS

@@ -22,13 +22,13 @@ inline EDBMap CreateDefaultEDBMap() {
 }
 
 // Helper function to compare two sql::ast::Expression structures
-// Currently uses ToString() comparison for simplicity
-// Returns true if the ASTs are equivalent (same string representation)
+// Uses deep equality comparison via operator== overloads
+// Returns true if the ASTs are structurally equivalent
 inline bool AreASTsEqual(const std::shared_ptr<sql::ast::Expression>& ast1,
                          const std::shared_ptr<sql::ast::Expression>& ast2) {
   if (!ast1 && !ast2) return true;
   if (!ast1 || !ast2) return false;
-  return ast1->ToString() == ast2->ToString();
+  return *ast1 == *ast2;
 }
 
 // Helper function to normalize SQL strings for comparison
