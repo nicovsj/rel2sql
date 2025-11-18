@@ -7,8 +7,8 @@
 #include <string>
 #include <unordered_set>
 
-#include "structs/expr_visitor.h"
-#include "structs/sql_ast.h"
+#include "sql_ast/expr_visitor.h"
+#include "sql_ast/sql_ast.h"
 
 namespace rel2sql {
 

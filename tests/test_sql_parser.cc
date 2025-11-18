@@ -1,8 +1,8 @@
 // cspell:ignore GTEST
 #include <gtest/gtest.h>
 
-#include "sql_parse.h"
-#include "structs/sql_ast.h"
+#include "parser/sql_parse.h"
+#include "sql_ast/sql_ast.h"
 
 namespace rel2sql {
 

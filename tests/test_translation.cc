@@ -4,13 +4,13 @@
 #include <regex>
 
 #include "PrunedCoreRelParser.h"
-#include "preproc/preprocessor.h"
-#include "structs/edb_info.h"
-#include "structs/extended_ast.h"
-#include "structs/sql_ast.h"
+#include "api/translate.h"
+#include "preprocessing/preprocessor.h"
+#include "rel_ast/edb_info.h"
+#include "rel_ast/extended_ast.h"
+#include "sql_ast/sql_ast.h"
 #include "test_common.h"
-#include "translate.h"
-#include "utils/extended_node_exceptions.h"
+#include "support/extended_node_exceptions.h"
 
 namespace rel2sql {
 

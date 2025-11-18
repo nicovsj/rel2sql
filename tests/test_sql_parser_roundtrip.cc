@@ -1,10 +1,11 @@
 // cspell:ignore GTEST
 #include <gtest/gtest.h>
 
-#include "sql_parse.h"
-#include "structs/edb_info.h"
+#include "api/translate.h"
+#include "parser/sql_parse.h"
+#include "preprocessing/preprocessor.h"
+#include "rel_ast/edb_info.h"
 #include "test_common.h"
-#include "translate.h"
 
 namespace rel2sql {
 
