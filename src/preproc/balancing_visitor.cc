@@ -4,7 +4,7 @@
 
 namespace rel2sql {
 
-BalancingVisitor::BalancingVisitor(std::shared_ptr<ExtendedASTData> ast_data) : BaseVisitor(ast_data) {}
+BalancingVisitor::BalancingVisitor(std::shared_ptr<RelAST> ast) : BaseVisitor(ast) {}
 
 std::any BalancingVisitor::visitProgram(psr::ProgramContext* ctx) {
   visitChildren(ctx);
@@ -68,22 +68,22 @@ std::any BalancingVisitor::visitFullAppl(psr::FullApplContext* ctx) {
 
 std::any BalancingVisitor::visitBinOp(psr::BinOpContext* ctx) {
   if (ctx->K_and()) {
-    auto& node = GetNode(ctx);
+    auto node = GetNode(ctx);
 
     // Collect and store comparator formulas and other formulas
-    CollectComparatorFormulas(ctx, node.comparator_formulas, node.other_formulas);
+    CollectComparatorFormulas(ctx, node->comparator_formulas, node->other_formulas);
 
     // Check that all free variables in comparator formulas are also in other formulas
-    if (!node.comparator_formulas.empty()) {
+    if (!node->comparator_formulas.empty()) {
       std::set<std::string> other_free_variables;
 
-      for (auto other_formula : node.other_formulas) {
-        other_free_variables.insert(GetNode(other_formula).free_variables.begin(),
-                                    GetNode(other_formula).free_variables.end());
+      for (auto other_formula : node->other_formulas) {
+        other_free_variables.insert(GetNode(other_formula)->free_variables.begin(),
+                                    GetNode(other_formula)->free_variables.end());
       }
 
-      for (auto comparator_formula : node.comparator_formulas) {
-        for (auto free_variable : GetNode(comparator_formula).free_variables) {
+      for (auto comparator_formula : node->comparator_formulas) {
+        for (auto free_variable : GetNode(comparator_formula)->free_variables) {
           if (other_free_variables.find(free_variable) == other_free_variables.end()) {
             SourceLocation location = GetSourceLocation(comparator_formula);
             throw VariableException(
@@ -95,7 +95,7 @@ std::any BalancingVisitor::visitBinOp(psr::BinOpContext* ctx) {
     }
 
     // Recursively visit other formulas
-    for (auto other_formula : node.other_formulas) {
+    for (auto other_formula : node->other_formulas) {
       visit(other_formula);
     }
   }

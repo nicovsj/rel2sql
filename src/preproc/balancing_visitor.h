@@ -14,7 +14,7 @@ class BalancingVisitor : public BaseVisitor {
    * stores them in the LitExprContext nodes.
    */
  public:
-  BalancingVisitor(std::shared_ptr<ExtendedASTData> ast_data);
+  explicit BalancingVisitor(std::shared_ptr<RelAST> ast);
 
   std::any visitProgram(psr::ProgramContext* ctx) override;
 

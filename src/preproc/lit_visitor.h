@@ -14,7 +14,7 @@ class LiteralVisitor : public BaseVisitor {
    * stores them in the LitExprContext nodes.
    */
  public:
-  LiteralVisitor(std::shared_ptr<ExtendedASTData> ast_data);
+  explicit LiteralVisitor(std::shared_ptr<RelAST> ast);
 
   std::any visitProgram(psr::ProgramContext* ctx) override;
 

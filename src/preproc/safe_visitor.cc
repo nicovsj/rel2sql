@@ -4,7 +4,7 @@
 
 namespace rel2sql {
 
-SafeVisitor::SafeVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
+SafeVisitor::SafeVisitor(std::shared_ptr<RelAST> ast) : BaseVisitor(ast) {}
 
 std::any SafeVisitor::visitProgram(psr::ProgramContext* ctx) {
   visitChildren(ctx);
@@ -20,31 +20,31 @@ std::any SafeVisitor::visitRelDef(psr::RelDefContext* ctx) {
 std::any SafeVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
   visitChildren(ctx);
 
-  auto& current_node = GetNode(ctx);
+  auto current_node = GetNode(ctx);
 
   std::vector<std::unordered_set<BindingsBound>> sets_to_intersect;
 
   for (auto& expr_ctx : ctx->expr()) {
-    if (!GetNode(expr_ctx).safeness.has_value()) {
-      current_node.safeness = std::nullopt;
+    if (!GetNode(expr_ctx)->safeness.has_value()) {
+      current_node->safeness = std::nullopt;
       return {};
     }
-    auto& expr_safeness = GetNode(expr_ctx).safeness.value();
+    auto& expr_safeness = GetNode(expr_ctx)->safeness.value();
     sets_to_intersect.push_back(expr_safeness);
   }
 
   // Intersect all the sets
-  current_node.safeness = utl::IntersectSets(sets_to_intersect);
+  current_node->safeness = utl::IntersectSets(sets_to_intersect);
 
   auto special_intersection = SpecialIntersectionOfBindingBounds(sets_to_intersect);
 
-  current_node.safeness.value().insert(special_intersection.begin(), special_intersection.end());
+  current_node->safeness.value().insert(special_intersection.begin(), special_intersection.end());
 
   return {};
 }
 
 std::any SafeVisitor::visitIDExpr(psr::IDExprContext* ctx) {
-  GetNode(ctx).safeness = {};
+  GetNode(ctx)->safeness = {};
 
   return {};
 }
@@ -52,18 +52,18 @@ std::any SafeVisitor::visitIDExpr(psr::IDExprContext* ctx) {
 std::any SafeVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
   visitChildren(ctx);
 
-  auto& current_node = GetNode(ctx);
+  auto current_node = GetNode(ctx);
 
-  current_node.safeness = std::unordered_set<BindingsBound>();
+  current_node->safeness = std::unordered_set<BindingsBound>();
 
   for (auto sub_ctx : ctx->productInner()->expr()) {
-    if (!GetNode(sub_ctx).safeness.has_value()) {
-      current_node.safeness = std::nullopt;
+    if (!GetNode(sub_ctx)->safeness.has_value()) {
+      current_node->safeness = std::nullopt;
       return {};
     }
 
-    current_node.safeness.value().insert(GetNode(sub_ctx).safeness.value().begin(),
-                                         GetNode(sub_ctx).safeness.value().end());
+    current_node->safeness.value().insert(GetNode(sub_ctx)->safeness.value().begin(),
+                                         GetNode(sub_ctx)->safeness.value().end());
   }
 
   return {};
@@ -73,13 +73,13 @@ std::any SafeVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
   visit(ctx->expr());
   visit(ctx->formula());
 
-  auto& current_node = GetNode(ctx);
+  auto current_node = GetNode(ctx);
 
-  current_node.safeness = std::unordered_set<BindingsBound>();
+  current_node->safeness = std::unordered_set<BindingsBound>();
 
   auto formula_node = GetNode(ctx->formula());
 
-  current_node.safeness.value().insert(formula_node.safeness.value().begin(), formula_node.safeness.value().end());
+  current_node->safeness.value().insert(formula_node->safeness.value().begin(), formula_node->safeness.value().end());
 
   return {};
 }
@@ -87,7 +87,7 @@ std::any SafeVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
 std::any SafeVisitor::visitRelAbsExpr(psr::RelAbsExprContext* ctx) {
   visitChildren(ctx);
 
-  GetNode(ctx).safeness = GetNode(ctx->relAbs()).safeness;
+  GetNode(ctx)->safeness = GetNode(ctx->relAbs())->safeness;
 
   return {};
 }
@@ -95,25 +95,25 @@ std::any SafeVisitor::visitRelAbsExpr(psr::RelAbsExprContext* ctx) {
 std::any SafeVisitor::visitFormulaExpr(psr::FormulaExprContext* ctx) {
   visit(ctx->formula());
 
-  GetNode(ctx).safeness = GetNode(ctx->formula()).safeness;
+  GetNode(ctx)->safeness = GetNode(ctx->formula())->safeness;
 
   return {};
 }
 
 std::any SafeVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
-  auto& current_node = GetNode(ctx);
+  auto current_node = GetNode(ctx);
 
   visit(ctx->expr());
 
   auto expr_node = GetNode(ctx->expr());
 
   // If the expression is not safe, the whole expression is not safe
-  if (!expr_node.safeness.has_value()) {
-    current_node.safeness = std::nullopt;
+    if (!expr_node->safeness.has_value()) {
+      current_node->safeness = std::nullopt;
     return {};
   }
 
-  current_node.safeness = RemoveBoundVariables(expr_node.safeness.value(), ctx->bindingInner());
+    current_node->safeness = RemoveBoundVariables(expr_node->safeness.value(), ctx->bindingInner());
 
   return {};
 }
@@ -123,7 +123,7 @@ std::any SafeVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
 
   auto formula_node = GetNode(ctx->formula());
 
-  GetNode(ctx).safeness = {};
+  GetNode(ctx)->safeness = {};
 
   for (auto& binding : ctx->bindingInner()->binding()) {
     visit(binding);
@@ -137,11 +137,11 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
     auto param_ctx = *ctx->applParams()->applParam().begin();
     visit(param_ctx);
 
-    auto& node = GetNode(ctx);
+    auto node = GetNode(ctx);
 
-    auto& child_node = GetNode(param_ctx);
+    auto child_node = GetNode(param_ctx);
 
-    node.safeness = child_node.safeness;
+    node->safeness = child_node->safeness;
 
     return {};
   }
@@ -150,7 +150,7 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
     bool all_vars = true;
     for (auto& param : ctx->applParams()->applParam()) {
       visit(param);
-      if (*GetNode(param).variables.begin() != param->getText()) {
+      if (*GetNode(param)->variables.begin() != param->getText()) {
         all_vars = false;
       }
     }
@@ -164,7 +164,10 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
 
       BindingsBound binding_bound;
 
-      auto table_source = TableSource(ctx->applBase()->T_ID()->getText(), GetNode(ctx->applBase()).arity);
+      std::string id = ctx->applBase()->T_ID()->getText();
+      auto arity = ast_->GetArity(id);
+
+      auto table_source = TableSource(id, arity);
       auto projection = SourceProjection(table_source);
 
       binding_bound.Add(projection);
@@ -175,7 +178,7 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
         binding_bound.variables.push_back(variable);
       }
 
-      GetNode(ctx).safeness = {binding_bound};
+      GetNode(ctx)->safeness = {binding_bound};
 
       return {};
     }
@@ -199,7 +202,10 @@ std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
 
   BindingsBound binding_bound;
 
-  auto table_source = TableSource(ctx->applBase()->T_ID()->getText(), GetNode(ctx->applBase()).arity);
+  std::string id = ctx->applBase()->T_ID()->getText();
+  auto arity = ast_->GetArity(id);
+
+  auto table_source = TableSource(id, arity);
   auto projection = SourceProjection(table_source);
 
   binding_bound.Add(projection);
@@ -215,7 +221,7 @@ std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
     binding_bound.variables.push_back(variable);
   }
 
-  GetNode(ctx).safeness = {binding_bound};
+  GetNode(ctx)->safeness = {binding_bound};
 
   return {};
 }
@@ -235,20 +241,20 @@ std::any SafeVisitor::VisitConjunction(psr::BinOpContext* ctx) {
   visit(ctx->lhs);
   visit(ctx->rhs);
 
-  auto lhs_safeness = GetNode(ctx->lhs).safeness;
-  auto rhs_safeness = GetNode(ctx->rhs).safeness;
+  auto lhs_safeness = GetNode(ctx->lhs)->safeness;
+  auto rhs_safeness = GetNode(ctx->rhs)->safeness;
 
-  auto& current_node = GetNode(ctx);
+  auto current_node = GetNode(ctx);
 
   if (!lhs_safeness.has_value() || !rhs_safeness.has_value()) {
-    current_node.safeness = std::nullopt;
+    current_node->safeness = std::nullopt;
     return {};
   }
 
-  current_node.safeness = std::unordered_set<BindingsBound>();
+  current_node->safeness = std::unordered_set<BindingsBound>();
 
-  current_node.safeness.value().insert(lhs_safeness.value().begin(), lhs_safeness.value().end());
-  current_node.safeness.value().insert(rhs_safeness.value().begin(), rhs_safeness.value().end());
+    current_node->safeness.value().insert(lhs_safeness.value().begin(), lhs_safeness.value().end());
+    current_node->safeness.value().insert(rhs_safeness.value().begin(), rhs_safeness.value().end());
 
   return {};
 }
@@ -257,20 +263,20 @@ std::any SafeVisitor::VisitDisjunction(psr::BinOpContext* ctx) {
   visit(ctx->lhs);
   visit(ctx->rhs);
 
-  auto lhs_safeness = GetNode(ctx->lhs).safeness;
-  auto rhs_safeness = GetNode(ctx->rhs).safeness;
+  auto lhs_safeness = GetNode(ctx->lhs)->safeness;
+  auto rhs_safeness = GetNode(ctx->rhs)->safeness;
 
-  GetNode(ctx).safeness = std::unordered_set<BindingsBound>();
+  GetNode(ctx)->safeness = std::unordered_set<BindingsBound>();
 
   if (!lhs_safeness.has_value() || !rhs_safeness.has_value()) {
-    GetNode(ctx).safeness = std::nullopt;
+    GetNode(ctx)->safeness = std::nullopt;
     return {};
   }
 
   for (const auto& lhs : lhs_safeness.value()) {
     for (const auto& rhs : rhs_safeness.value()) {
       if (lhs.variables == rhs.variables) {
-        GetNode(ctx).safeness.value().insert(lhs.mergedWith(rhs));
+        GetNode(ctx)->safeness.value().insert(lhs.mergedWith(rhs));
       }
     }
   }
@@ -281,24 +287,24 @@ std::any SafeVisitor::VisitDisjunction(psr::BinOpContext* ctx) {
 std::any SafeVisitor::visitUnOp(psr::UnOpContext* ctx) {
   visit(ctx->formula());
 
-  GetNode(ctx).safeness = GetNode(ctx->formula()).safeness;
+  GetNode(ctx)->safeness = GetNode(ctx->formula())->safeness;
 
   return {};
 }
 
 std::any SafeVisitor::visitQuantification(psr::QuantificationContext* ctx) {
-  auto& current_node = GetNode(ctx);
+  auto current_node = GetNode(ctx);
 
   visit(ctx->formula());
 
   auto formula_node = GetNode(ctx->formula());
 
-  if (!formula_node.safeness.has_value()) {
-    GetNode(ctx).safeness = std::nullopt;
+  if (!formula_node->safeness.has_value()) {
+    current_node->safeness = std::nullopt;
     return {};
   }
 
-  current_node.safeness = RemoveBoundVariables(formula_node.safeness.value(), ctx->bindingInner());
+  current_node->safeness = RemoveBoundVariables(formula_node->safeness.value(), ctx->bindingInner());
 
   return {};
 }
@@ -306,7 +312,7 @@ std::any SafeVisitor::visitQuantification(psr::QuantificationContext* ctx) {
 std::any SafeVisitor::visitParen(psr::ParenContext* ctx) {
   visit(ctx->formula());
 
-  GetNode(ctx).safeness = GetNode(ctx->formula()).safeness;
+  GetNode(ctx)->safeness = GetNode(ctx->formula())->safeness;
 
   return {};
 }
@@ -319,8 +325,8 @@ std::any SafeVisitor::visitComparison(psr::ComparisonContext* ctx) {
   // where x is a variable and c is a constant.
   // TODO: Maybe we can allow for bounded variables if we have a type system?
 
-  auto& current_node = GetNode(ctx);
-  current_node.safeness = std::unordered_set<BindingsBound>{};
+  auto current_node = GetNode(ctx);
+  current_node->safeness = std::unordered_set<BindingsBound>{};
 
   // If the comparator is not an equality, the comparison is not safe
   if (!ctx->comparator()->T_OP_EQ()) return {};
@@ -328,18 +334,18 @@ std::any SafeVisitor::visitComparison(psr::ComparisonContext* ctx) {
   auto lhs_id_term = dynamic_cast<psr::IDTermContext*>(ctx->lhs);
   auto rhs_id_term = dynamic_cast<psr::IDTermContext*>(ctx->rhs);
 
-  auto& lhs_node = GetNode(ctx->lhs);
-  auto& rhs_node = GetNode(ctx->rhs);
+  auto lhs_node = GetNode(ctx->lhs);
+  auto rhs_node = GetNode(ctx->rhs);
 
   std::string variable_name;
   sql::ast::constant_t constant;
 
-  if (lhs_id_term && rhs_node.constant.has_value()) {
+    if (lhs_id_term && rhs_node->constant.has_value()) {
     variable_name = lhs_id_term->T_ID()->getText();
-    constant = rhs_node.constant.value();
-  } else if (rhs_id_term && lhs_node.constant.has_value()) {
+    constant = rhs_node->constant.value();
+  } else if (rhs_id_term && lhs_node->constant.has_value()) {
     variable_name = rhs_id_term->T_ID()->getText();
-    constant = lhs_node.constant.value();
+    constant = lhs_node->constant.value();
   } else {
     // If the equality is not between a variable and a constant, the comparison is not safe
     return {};
@@ -348,7 +354,7 @@ std::any SafeVisitor::visitComparison(psr::ComparisonContext* ctx) {
   BindingsBound binding_bound;
   binding_bound.variables.push_back(variable_name);
   binding_bound.Add(SourceProjection(ConstantSource(constant)));
-  current_node.safeness.value().insert(binding_bound);
+  current_node->safeness.value().insert(binding_bound);
 
   return {};
 }
@@ -356,7 +362,7 @@ std::any SafeVisitor::visitComparison(psr::ComparisonContext* ctx) {
 std::any SafeVisitor::visitApplBase(psr::ApplBaseContext* ctx) {
   visitChildren(ctx);
 
-  GetNode(ctx).safeness = std::unordered_set<BindingsBound>{};
+  GetNode(ctx)->safeness = std::unordered_set<BindingsBound>{};
 
   return {};
 }
@@ -365,7 +371,7 @@ std::any SafeVisitor::visitApplParam(psr::ApplParamContext* ctx) {
   visitChildren(ctx);
 
   if (ctx->expr()) {
-    GetNode(ctx).safeness = GetNode(ctx->expr()).safeness;
+    GetNode(ctx)->safeness = GetNode(ctx->expr())->safeness;
   }
 
   return {};

@@ -405,7 +405,7 @@ TEST(SelfJoinOptimizationTest, PartialSelfJoin) {
       "FROM A AS T0, A AS T1\n"
       "WHERE T0.A1 = T1.A1 AND T0.A2 > 5";
   rel2sql::EDBMap edb_map;
-  edb_map["A"] = rel2sql::EDBInfo(2);
+  edb_map["A"] = rel2sql::RelationInfo(2);
   std::string result = OptimizeSQLWithSelfJoinOptimizer(sql, edb_map);
   // Should NOT eliminate because self join is incomplete (only A1 matches, not A2)
   EXPECT_TRUE(result.find("A AS T1") == std::string::npos);

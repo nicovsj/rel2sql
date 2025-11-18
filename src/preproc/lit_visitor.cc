@@ -2,17 +2,17 @@
 
 namespace rel2sql {
 
-LiteralVisitor::LiteralVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
+LiteralVisitor::LiteralVisitor(std::shared_ptr<RelAST> ast) : BaseVisitor(ast) {}
 
 std::any LiteralVisitor::visitLitExpr(psr::LitExprContext* ctx) {
   visit(ctx->literal());
 
-  auto& lit_expr_node = GetNode(ctx);
-  auto& lit_node = GetNode(ctx->literal());
+  auto lit_expr_node = GetNode(ctx);
+  auto lit_node = GetNode(ctx->literal());
 
-  lit_expr_node.has_only_literal_values = true;
+  lit_expr_node->has_only_literal_values = true;
 
-  lit_expr_node.constant = lit_node.constant;
+  lit_expr_node->constant = lit_node->constant;
 
   return {};
 }
@@ -20,7 +20,7 @@ std::any LiteralVisitor::visitLitExpr(psr::LitExprContext* ctx) {
 std::any LiteralVisitor::visitInt(psr::IntContext* ctx) {
   int constant = std::stoi(ctx->getText());
 
-  GetNode(ctx).constant = constant;
+  GetNode(ctx)->constant = constant;
 
   return {};
 }
@@ -28,7 +28,7 @@ std::any LiteralVisitor::visitInt(psr::IntContext* ctx) {
 std::any LiteralVisitor::visitNegInt(psr::NegIntContext* ctx) {
   int constant = std::stoi(ctx->getText());
 
-  GetNode(ctx).constant = constant;
+  GetNode(ctx)->constant = constant;
 
   return {};
 }
@@ -36,7 +36,7 @@ std::any LiteralVisitor::visitNegInt(psr::NegIntContext* ctx) {
 std::any LiteralVisitor::visitFloat(psr::FloatContext* ctx) {
   float constant = std::stof(ctx->getText());
 
-  GetNode(ctx).constant = constant;
+  GetNode(ctx)->constant = constant;
 
   return {};
 }
@@ -44,7 +44,7 @@ std::any LiteralVisitor::visitFloat(psr::FloatContext* ctx) {
 std::any LiteralVisitor::visitNegFloat(psr::NegFloatContext* ctx) {
   float constant = std::stof(ctx->getText());
 
-  GetNode(ctx).constant = constant;
+  GetNode(ctx)->constant = constant;
 
   return {};
 }
@@ -54,7 +54,7 @@ std::any LiteralVisitor::visitChar(psr::CharContext* ctx) {
 
   constant.erase(std::remove(constant.begin(), constant.end(), '\''), constant.end());
 
-  GetNode(ctx).constant = constant;
+  GetNode(ctx)->constant = constant;
 
   return {};
 }
@@ -64,7 +64,7 @@ std::any LiteralVisitor::visitStr(psr::StrContext* ctx) {
 
   constant.erase(std::remove(constant.begin(), constant.end(), '\"'), constant.end());
 
-  GetNode(ctx).constant = constant;
+  GetNode(ctx)->constant = constant;
 
   return {};
 }
@@ -72,7 +72,7 @@ std::any LiteralVisitor::visitStr(psr::StrContext* ctx) {
 std::any LiteralVisitor::visitBool(psr::BoolContext* ctx) {
   bool constant = ctx->getText() == "true";
 
-  GetNode(ctx).constant = constant;
+  GetNode(ctx)->constant = constant;
 
   return {};
 }
@@ -80,7 +80,7 @@ std::any LiteralVisitor::visitBool(psr::BoolContext* ctx) {
 std::any LiteralVisitor::visitNumInt(psr::NumIntContext* ctx) {
   int constant = std::stoi(ctx->getText());
 
-  GetNode(ctx).constant = constant;
+  GetNode(ctx)->constant = constant;
 
   return {};
 }
@@ -88,7 +88,7 @@ std::any LiteralVisitor::visitNumInt(psr::NumIntContext* ctx) {
 std::any LiteralVisitor::visitNumNegInt(psr::NumNegIntContext* ctx) {
   int constant = std::stoi(ctx->getText());
 
-  GetNode(ctx).constant = constant;
+  GetNode(ctx)->constant = constant;
 
   return {};
 }
@@ -96,7 +96,7 @@ std::any LiteralVisitor::visitNumNegInt(psr::NumNegIntContext* ctx) {
 std::any LiteralVisitor::visitNumFloat(psr::NumFloatContext* ctx) {
   float constant = std::stof(ctx->getText());
 
-  GetNode(ctx).constant = constant;
+  GetNode(ctx)->constant = constant;
 
   return {};
 }
@@ -104,7 +104,7 @@ std::any LiteralVisitor::visitNumFloat(psr::NumFloatContext* ctx) {
 std::any LiteralVisitor::visitNumNegFloat(psr::NumNegFloatContext* ctx) {
   float constant = std::stof(ctx->getText());
 
-  GetNode(ctx).constant = constant;
+  GetNode(ctx)->constant = constant;
 
   return {};
 }
@@ -115,21 +115,21 @@ std::any LiteralVisitor::visitProgram(psr::ProgramContext* ctx) {
 }
 
 std::any LiteralVisitor::visitRelDef(psr::RelDefContext* ctx) {
-  GetNode(ctx).has_only_literal_values = true;
-  GetNode(ctx->relAbs()).has_only_literal_values = true;
+  GetNode(ctx)->has_only_literal_values = true;
+  GetNode(ctx->relAbs())->has_only_literal_values = true;
   for (auto& child : ctx->relAbs()->expr()) {
     visit(child);
-    auto& child_node = GetNode(child);
-    if (!child_node.has_only_literal_values) {
-      GetNode(ctx).has_only_literal_values = false;
-      GetNode(ctx->relAbs()).has_only_literal_values = false;
+    auto child_node = GetNode(child);
+    if (!child_node->has_only_literal_values) {
+      GetNode(ctx)->has_only_literal_values = false;
+      GetNode(ctx->relAbs())->has_only_literal_values = false;
       break;
     }
   }
 
-  if (!GetNode(ctx).has_only_literal_values) {
+  if (!GetNode(ctx)->has_only_literal_values) {
     for (auto& child : ctx->relAbs()->expr()) {
-      GetNode(child).has_only_literal_values = false;
+      GetNode(child)->has_only_literal_values = false;
     }
   }
   return {};
@@ -145,7 +145,7 @@ std::any LiteralVisitor::visitIDExpr(psr::IDExprContext* ctx) { return {}; }
 std::any LiteralVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
   visit(ctx->productInner());
 
-  GetNode(ctx).has_only_literal_values = GetNode(ctx->productInner()).has_only_literal_values;
+  GetNode(ctx)->has_only_literal_values = GetNode(ctx->productInner())->has_only_literal_values;
 
   return {};
 }
@@ -158,7 +158,7 @@ std::any LiteralVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
 std::any LiteralVisitor::visitRelAbsExpr(psr::RelAbsExprContext* ctx) {
   visitChildren(ctx);
 
-  GetNode(ctx).has_only_literal_values = GetNode(ctx->relAbs()).has_only_literal_values;
+  GetNode(ctx)->has_only_literal_values = GetNode(ctx->relAbs())->has_only_literal_values;
 
   return {};
 }
@@ -184,11 +184,11 @@ std::any LiteralVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
 }
 
 std::any LiteralVisitor::visitProductInner(psr::ProductInnerContext* ctx) {
-  GetNode(ctx).has_only_literal_values = true;
+  GetNode(ctx)->has_only_literal_values = true;
   for (auto& child : ctx->expr()) {
     visit(child);
-    if (!GetNode(child).constant.has_value()) {
-      GetNode(ctx).has_only_literal_values = false;
+    if (!GetNode(child)->constant.has_value()) {
+      GetNode(ctx)->has_only_literal_values = false;
       break;
     }
   }
@@ -258,8 +258,8 @@ std::any LiteralVisitor::visitComparator(psr::ComparatorContext* ctx) {
 
 std::any LiteralVisitor::visitNumTerm(psr::NumTermContext* ctx) {
   visitChildren(ctx);
-  auto& current_node = GetNode(ctx);
-  current_node.constant = GetNode(ctx->numericalConstant()).constant;
+  auto current_node = GetNode(ctx);
+  current_node->constant = GetNode(ctx->numericalConstant())->constant;
   return {};
 }
 

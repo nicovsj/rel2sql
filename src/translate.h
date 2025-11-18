@@ -25,8 +25,11 @@ inline std::unique_ptr<rel_parser::PrunedCoreRelParser> GetParser(std::string_vi
   return parser;
 }
 
-inline std::shared_ptr<sql::ast::Expression> GetSQLFromAST(const ExtendedAST& ast) {
-  SQLVisitor visitor(ast.Data());
+inline std::shared_ptr<sql::ast::Expression> GetSQLFromAST(const RelAST& ast) {
+  // Create a shared_ptr to pass to SQLVisitor (visitors need shared_ptr for BaseVisitor)
+  // Note: This shared_ptr doesn't own the ExtendedAST, but that's okay since it's used temporarily
+  auto ast_ptr = std::shared_ptr<RelAST>(const_cast<RelAST*>(&ast), [](RelAST*) {});
+  SQLVisitor visitor(ast_ptr);
 
   auto sql = visitor.visit(ast.ParseTree());
 

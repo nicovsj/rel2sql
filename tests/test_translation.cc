@@ -1,10 +1,16 @@
 // cspell:ignore GTEST
 #include <gtest/gtest.h>
 
+#include <regex>
+
+#include "PrunedCoreRelParser.h"
+#include "preproc/preprocessor.h"
 #include "structs/edb_info.h"
+#include "structs/extended_ast.h"
 #include "structs/sql_ast.h"
 #include "test_common.h"
 #include "translate.h"
+#include "utils/extended_node_exceptions.h"
 
 namespace rel2sql {
 
@@ -62,10 +68,11 @@ TEST_F(TranslationTest, EqualitySpecialCondition) {
   auto table_F = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("F", 1));
   auto table_G = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("G", 1));
 
-  ast.Get(tree->lhs).sql_expression = table_F;
-  ast.Get(tree->rhs).sql_expression = table_G;
+  ast.GetNode(tree->lhs)->sql_expression = table_F;
+  ast.GetNode(tree->rhs)->sql_expression = table_G;
 
-  auto visitor = SQLVisitor(ast.Data());
+  auto ast_ptr = std::shared_ptr<RelAST>(&ast, [](RelAST*) {});
+  auto visitor = SQLVisitor(ast_ptr);
 
   auto condition = visitor.EqualityShorthand(std::vector<antlr4::ParserRuleContext*>{tree->lhs, tree->rhs});
 
@@ -89,10 +96,11 @@ TEST_F(TranslationTest, SpecialVarList) {
   auto table_F = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("F", 1));
   auto table_G = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("G", 2));
 
-  ast.Get(tree->lhs).sql_expression = table_F;
-  ast.Get(tree->rhs).sql_expression = table_G;
+  ast.GetNode(tree->lhs)->sql_expression = table_F;
+  ast.GetNode(tree->rhs)->sql_expression = table_G;
 
-  auto visitor = SQLVisitor(ast.Data());
+  auto ast_ptr = std::shared_ptr<RelAST>(&ast, [](RelAST*) {});
+  auto visitor = SQLVisitor(ast_ptr);
 
   auto var_list = visitor.VarListShorthand(std::vector<antlr4::ParserRuleContext*>{tree->lhs, tree->rhs});
 
@@ -285,6 +293,19 @@ TEST_F(TranslationTest, RelationalAbstraction) {
             "(2)) AS Ind0(I)");
 }
 
+TEST_F(TranslationTest, Binding) {
+  EXPECT_EQ(TranslateExpression("(x): A(x)"),
+            "WITH S0(x) AS (SELECT * FROM A AS T2) SELECT S0.x AS A1 FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1, S0 "
+            "WHERE S0.x = T1.x");
+}
+
+TEST_F(TranslationTest, BindingRepeatedVariable) {
+  EXPECT_EQ(TranslateExpression("(x, x): A(x)"),
+            "WITH S0(x) AS (SELECT * FROM A AS T2) SELECT S0.x AS A1, S0.x AS A2 FROM (SELECT T0.A1 AS x FROM A AS T0) "
+            "AS T1, S0 "
+            "WHERE S0.x = T1.x");
+}
+
 TEST_F(TranslationTest, BindingExpression) {
   EXPECT_EQ(TranslateExpression("[x in T, y in R]: F[x, y]"),
             "WITH S1(x) AS (SELECT * FROM T AS T3), S0(y) AS (SELECT * FROM R AS T2) SELECT S1.x AS A1, S0.y AS A2, "
@@ -333,14 +354,14 @@ TEST_F(TranslationTest, TableDefinition) {
 
 // Tests for EDB with named attributes
 TEST_F(TranslationTest, NamedAttributesFormula) {
-  default_edb_map["R"] = rel2sql::EDBInfo({"id", "name"});
+  default_edb_map["R"] = RelationInfo({"id", "name"});
 
   EXPECT_EQ(TranslateFormula("R(x, y)"), "SELECT T0.id AS x, T0.name AS y FROM R AS T0");
 }
 
 TEST_F(TranslationTest, NamedAttributesConjunction) {
-  default_edb_map["R"] = rel2sql::EDBInfo({"id", "name"});
-  default_edb_map["S"] = rel2sql::EDBInfo({"student_id", "grade"});
+  default_edb_map["R"] = RelationInfo({"id", "name"});
+  default_edb_map["S"] = RelationInfo({"student_id", "grade"});
 
   EXPECT_EQ(TranslateFormula("R(x, y) and S(x, z)"),
             "SELECT T1.x, T1.y, T3.z FROM (SELECT T0.id AS x, T0.name AS y FROM R AS T0) AS T1, (SELECT T2.student_id "
@@ -348,8 +369,8 @@ TEST_F(TranslationTest, NamedAttributesConjunction) {
 }
 
 TEST_F(TranslationTest, NamedAttributesExistential) {
-  default_edb_map["R"] = rel2sql::EDBInfo({"student_id", "course_id"});
-  default_edb_map["S"] = rel2sql::EDBInfo({"course_id"});
+  default_edb_map["R"] = RelationInfo({"student_id", "course_id"});
+  default_edb_map["S"] = RelationInfo({"course_id"});
 
   EXPECT_EQ(TranslateFormula("exists ((y in S) | R(x, y))"),
             "SELECT T2.x FROM (SELECT T1.student_id AS x, T1.course_id AS y FROM R AS T1) AS T2, S AS T0 WHERE T2.y = "
@@ -357,14 +378,14 @@ TEST_F(TranslationTest, NamedAttributesExistential) {
 }
 
 TEST_F(TranslationTest, NamedAttributesPartialApplication) {
-  default_edb_map["R"] = rel2sql::EDBInfo({"student_id", "course_id", "grade"});
+  default_edb_map["R"] = RelationInfo({"student_id", "course_id", "grade"});
 
   EXPECT_EQ(TranslateDefinition("def S {R[x]}"),
             "CREATE OR REPLACE VIEW S AS (SELECT T0.student_id AS x, T0.course_id AS A1, T0.grade AS A2 FROM R AS T0)");
 }
 
 TEST_F(TranslationTest, NamedAttributesAggregate) {
-  default_edb_map["R"] = rel2sql::EDBInfo({"student_id", "grade"});
+  default_edb_map["R"] = RelationInfo({"student_id", "grade"});
 
   EXPECT_EQ(TranslateDefinition("def S {max[R[x]]}"),
             "CREATE OR REPLACE VIEW S AS (SELECT T1.x, MAX(T1.A1) AS A1 FROM (SELECT T0.student_id AS x, T0.grade AS "
@@ -373,27 +394,27 @@ TEST_F(TranslationTest, NamedAttributesAggregate) {
 
 // Tests for EDB with single attribute
 TEST_F(TranslationTest, SingleNamedAttribute) {
-  default_edb_map["R"] = rel2sql::EDBInfo({"id"});
+  default_edb_map["R"] = RelationInfo({"id"});
 
   EXPECT_EQ(TranslateFormula("R(x)"), "SELECT T0.id AS x FROM R AS T0");
 }
 
 // Tests for EDB with three attributes
 TEST_F(TranslationTest, ThreeNamedAttributes) {
-  default_edb_map["R"] = rel2sql::EDBInfo({"student_id", "course_id", "grade"});
+  default_edb_map["R"] = RelationInfo({"student_id", "course_id", "grade"});
 
   EXPECT_EQ(TranslateFormula("R(x, y, z)"), "SELECT T0.student_id AS x, T0.course_id AS y, T0.grade AS z FROM R AS T0");
 }
 
 // Test for EDB with repeated variables using named attributes
 TEST_F(TranslationTest, NamedAttributesRepeatedVariables) {
-  default_edb_map["R"] = rel2sql::EDBInfo({"id", "parent_id"});
+  default_edb_map["R"] = RelationInfo({"id", "parent_id"});
 
   EXPECT_EQ(TranslateFormula("R(x, x)"), "SELECT T0.id AS x FROM R AS T0 WHERE T0.id = T0.parent_id");
 }
 
 TEST_F(TranslationTest, NamedAttributesBindingFormula) {
-  default_edb_map["F"] = rel2sql::EDBInfo({"name"});
+  default_edb_map["F"] = RelationInfo({"name"});
 
   EXPECT_EQ(TranslateExpression("(x): F(x)"),
             "WITH S0(x) AS (SELECT * FROM F AS T2) SELECT S0.x AS A1 FROM (SELECT T0.name AS x FROM F AS T0) AS T1, S0 "
@@ -401,11 +422,11 @@ TEST_F(TranslationTest, NamedAttributesBindingFormula) {
 }
 
 TEST_F(TranslationTest, CompositionRelation) {
-  EXPECT_EQ(TranslateExpression("(x, y): exists((z) | A(x, z) and B(z, y))"),
-            "WITH S1(x) AS (SELECT * FROM A AS T7), S0(y) AS (SELECT T6.A2 AS A2 FROM B AS T6) SELECT S1.x AS A1, S0.y "
-            "AS A2 FROM (SELECT T4.x, T4.y FROM (SELECT T1.x, T1.z, T3.y FROM (SELECT T0.A1 AS x, T0.A2 AS z FROM A AS "
-            "T0) AS T1, (SELECT T2.A1 AS z, T2.A2 AS y FROM B AS T2) AS T3 WHERE T1.z = T3.z) AS T4) AS T5, S1, S0 "
-            "WHERE S1.x = T5.x AND S0.y = T5.y");
+  EXPECT_EQ(TranslateExpression("(x, y): exists((z) | B(x, z) and E(z, y))"),
+            "WITH S1(y) AS (SELECT T7.A2 AS A2 FROM E AS T7), S0(x) AS (SELECT T6.A1 AS A1 FROM B AS T6) SELECT S0.x "
+            "AS A1, S1.y AS A2 FROM (SELECT T4.x, T4.y FROM (SELECT T1.x, T1.z, T3.y FROM (SELECT T0.A1 AS x, T0.A2 AS "
+            "z FROM B AS T0) AS T1, (SELECT T2.A1 AS z, T2.A2 AS y FROM E AS T2) AS T3 WHERE T1.z = T3.z) AS T4) AS "
+            "T5, S1, S0 WHERE S1.y = T5.y AND S0.x = T5.x");
 }
 
 TEST_F(TranslationTest, SimpleReferenceDefinition) {
@@ -416,6 +437,83 @@ TEST_F(TranslationTest, ExistentialNotBoundingAllVariables) {
   EXPECT_EQ(TranslateFormula("exists((y) | A(x) and B(y))"),
             "SELECT T4.x FROM (SELECT T1.x, T3.y FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1, (SELECT T2.A1 AS y FROM "
             "B AS T2) AS T3) AS T4");
+}
+
+TEST_F(TranslationTest, WeirdEdgeCase1) {
+  std::string input1 =
+      "def r {(1,2); (1,3); (3,4)}\n"
+      "def s {(2,5); (4,7)}\n"
+      "def jrs {(x,y,z) : r(x,y) and s(y,z)}\n"
+      "def rng {2;3}\n"
+      "def tfa {(x) : forall( (y in rng) | r(x,y))}";
+
+  std::string input2 =
+      "def r {(1,2); (1,3); (3,4)}\n"
+      "def s {(2,5); (4,7)}\n"
+      "def jrs {(x,y,z) : r(x,y) and s(y,z)}";
+
+  std::string output1 = TranslateProgram(input1);
+  std::string output2 = TranslateProgram(input2);
+
+  // Extract the substring matching CREATE OR REPLACE VIEW jrs.*; from both outputs
+  std::regex pattern(R"(CREATE OR REPLACE VIEW jrs.*?;)");
+  std::smatch match1, match2;
+
+  bool found1 = std::regex_search(output1, match1, pattern);
+  bool found2 = std::regex_search(output2, match2, pattern);
+
+  ASSERT_TRUE(found1) << "Pattern not found in output1";
+  ASSERT_TRUE(found2) << "Pattern not found in output2";
+
+  EXPECT_EQ(match1.str(), match2.str());
+
+  // Compare ExtendedAST for the jrs definition
+  using psr = rel_parser::PrunedCoreRelParser;
+
+  auto parser1 = GetParser(input1);
+  auto tree1 = parser1->program();
+  Preprocessor preprocessor1(default_edb_map);
+  auto ast1 = preprocessor1.Process(tree1);
+
+  auto parser2 = GetParser(input2);
+  auto tree2 = parser2->program();
+  Preprocessor preprocessor2(default_edb_map);
+  auto ast2 = preprocessor2.Process(tree2);
+
+  // Find the jrs RelDefContext in both ASTs
+  psr::RelDefContext* jrs_ctx1 = nullptr;
+  psr::RelDefContext* jrs_ctx2 = nullptr;
+
+  for (auto& rel_def : tree1->relDef()) {
+    if (rel_def->T_ID()->getText() == "jrs") {
+      jrs_ctx1 = rel_def;
+      break;
+    }
+  }
+
+  for (auto& rel_def : tree2->relDef()) {
+    if (rel_def->T_ID()->getText() == "jrs") {
+      jrs_ctx2 = rel_def;
+      break;
+    }
+  }
+
+  ASSERT_NE(jrs_ctx1, nullptr) << "jrs definition not found in input1";
+  ASSERT_NE(jrs_ctx2, nullptr) << "jrs definition not found in input2";
+
+  // Compare ExtendedNode for the jrs definitions using operator==
+  const auto node1 = ast1.GetNode(jrs_ctx1);
+  const auto node2 = ast2.GetNode(jrs_ctx2);
+
+  ASSERT_NE(node1, nullptr) << "jrs node1 is null";
+  ASSERT_NE(node2, nullptr) << "jrs node2 is null";
+
+  try {
+    EXPECT_TRUE(*node1 == *node2) << "ExtendedNodes for jrs definition differ";
+  } catch (const ExtendedNodeDifferenceException& e) {
+    FAIL() << "ExtendedNode difference found: " << e.what() << " (field: " << e.GetFieldName()
+           << ", details: " << e.GetDetails() << ")";
+  }
 }
 
 // TODO: This test fails because we don't have a way to translate a comparison formula that is an equality

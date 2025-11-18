@@ -13,7 +13,7 @@ class ArityVisitor : public BaseVisitor {
    * Visitor that computes the arity of each ID in the Rel program.
    */
  public:
-  ArityVisitor(std::shared_ptr<ExtendedASTData> data);
+  explicit ArityVisitor(std::shared_ptr<RelAST> ast);
 
   std::any visitProgram(psr::ProgramContext* ctx) override;
 

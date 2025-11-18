@@ -6,7 +6,7 @@
 namespace rel2sql {
 
 // Forward declarations
-class EDBInfo;
+class IDInfo;
 class EDBMap;
 /*
  * Translates the given input string into SQL.

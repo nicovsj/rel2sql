@@ -7,7 +7,7 @@ using StringSet = std::unordered_set<std::string>;
 
 namespace rel2sql {
 
-RecursionVisitor::RecursionVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
+RecursionVisitor::RecursionVisitor(std::shared_ptr<RelAST> extended_ast) : BaseVisitor(extended_ast) {}
 
 std::any RecursionVisitor::visitProgram(psr::ProgramContext* ctx) {
   for (auto& child_ctx : ctx->relDef()) {
@@ -39,8 +39,8 @@ std::any RecursionVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
   visit(bindings_formula);
 
   // If the BindingsFormula is recursable, also mark the RelAbs as recursable
-  if (GetNode(bindings_formula).is_recursive) {
-    GetNode(ctx).is_recursive = true;
+  if (GetNode(bindings_formula)->is_recursive) {
+    GetNode(ctx)->is_recursive = true;
   }
 
   return {};
@@ -53,7 +53,7 @@ std::any RecursionVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx
 
   // Check if formula matches the recursable pattern
   if (CheckRecursionPattern(formula_ctx, binding_ctx)) {
-    GetNode(ctx).is_recursive = true;
+    GetNode(ctx)->is_recursive = true;
   }
 
   return {};
@@ -99,10 +99,11 @@ bool RecursionVisitor::IsRecursiveID(const std::string& id) const {
 
     visited.insert(current);
 
-    // Check if current has a dependency back to id (cycle detected)
-    auto it = ast_data_->ids_dependencies.find(current);
-    if (it != ast_data_->ids_dependencies.end()) {
-      for (const auto& dep : it->second) {
+    auto relation_info = ast_->GetRelationInfo(current);
+
+
+    if (relation_info != std::nullopt) {
+      for (const auto& dep : relation_info->dependencies) {
         if (dep == id) {
           return true;  // Found cycle back to id
         }
@@ -135,7 +136,7 @@ std::unordered_set<std::string> RecursionVisitor::CollectIDs(antlr4::ParserRuleC
     if (full_appl && full_appl->applBase() && full_appl->applBase()->T_ID()) {
       std::string id = full_appl->applBase()->T_ID()->getText();
       // Only add if it's not a variable
-      if (ast_data_->vars.find(id) == ast_data_->vars.end()) {
+      if (ast_->IsVar(id)) {
         ids.insert(id);
       }
     }
@@ -144,7 +145,7 @@ std::unordered_set<std::string> RecursionVisitor::CollectIDs(antlr4::ParserRuleC
     auto partial_appl = dynamic_cast<psr::PartialApplContext*>(tree);
     if (partial_appl && partial_appl->applBase() && partial_appl->applBase()->T_ID()) {
       std::string id = partial_appl->applBase()->T_ID()->getText();
-      if (ast_data_->vars.find(id) == ast_data_->vars.end()) {
+      if (ast_->IsVar(id)) {
         ids.insert(id);
       }
     }
@@ -169,10 +170,10 @@ bool RecursionVisitor::OnlyEDBsOrNonRecursiveIDBs(const std::unordered_set<std::
     }
 
     // Check if it's an EDB
-    if (ast_data_->IsEDB(id)) continue;
+    if (ast_->IsEDB(id)) continue;
 
     // Check if it's a non-recursive IDB
-    if (ast_data_->IsIDB(id)) {
+    if (ast_->IsIDB(id)) {
       if (IsRecursiveID(id)) return false;  // Recursive IDB is not allowed
 
       continue;  // Non-recursive IDB is OK
@@ -327,7 +328,7 @@ bool RecursionVisitor::CheckExistsPattern(psr::FormulaContext* formula_ctx, cons
         auto id_expr = dynamic_cast<psr::IDExprContext*>(param->expr());
         if (id_expr) {
           std::string var = id_expr->T_ID()->getText();
-          if (ast_data_->IsVar(var)) {
+          if (ast_->IsVar(var)) {
             w_vars.insert(var);
           }
         }
@@ -340,7 +341,7 @@ bool RecursionVisitor::CheckExistsPattern(psr::FormulaContext* formula_ctx, cons
 
   // Check variables in v (free variables in F)
   auto f_node = GetNode(f_part);
-  std::set<std::string> v_vars = f_node.free_variables;
+  std::set<std::string> v_vars = f_node->free_variables;
   if (!VariablesFromBindingOrQuantification(v_vars, outer_binding_ctx, quant_binding_ctx)) {
     return false;
   }

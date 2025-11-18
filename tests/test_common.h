@@ -9,15 +9,15 @@ namespace rel2sql {
 // Creates the default EDB map used in most tests
 inline EDBMap CreateDefaultEDBMap() {
   EDBMap edb_map;
-  edb_map["A"] = EDBInfo(1);
-  edb_map["B"] = EDBInfo(2);
-  edb_map["C"] = EDBInfo(3);
-  edb_map["D"] = EDBInfo(1);
-  edb_map["E"] = EDBInfo(2);
-  edb_map["F"] = EDBInfo(3);
-  edb_map["G"] = EDBInfo(1);
-  edb_map["H"] = EDBInfo(2);
-  edb_map["I"] = EDBInfo(3);
+  edb_map["A"] = RelationInfo(1);
+  edb_map["B"] = RelationInfo(2);
+  edb_map["C"] = RelationInfo(3);
+  edb_map["D"] = RelationInfo(1);
+  edb_map["E"] = RelationInfo(2);
+  edb_map["F"] = RelationInfo(3);
+  edb_map["G"] = RelationInfo(1);
+  edb_map["H"] = RelationInfo(2);
+  edb_map["I"] = RelationInfo(3);
   return edb_map;
 }
 

@@ -12,14 +12,14 @@ std::vector<std::string> GetSortedIDs(const std::string& input, const rel2sql::E
   auto parser = GetParser(input);
   auto tree = parser->program();
   auto ast = Preprocessor(edb_map).Process(tree);
-  return ast.Data()->sorted_ids;
+  return ast.SortedIDs();
 }
 
 std::set<std::string> GetFreeVariables(const std::string& input, const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
   auto parser = GetParser(input);
   auto tree = parser->program();
   auto ast = Preprocessor(edb_map).Process(tree);
-  return ast.Root().free_variables;
+  return ast.Root()->free_variables;
 }
 
 TEST(SortedIDsTest, DefaultOrder) {
@@ -102,18 +102,20 @@ TEST(FreeVarsTest, UniversalQuantificationExpr) {
 
 TEST(FreeVarsTest, ConjunctionExpr) {
   std::string input = "def R { F(x) and G(y) }";
+  rel2sql::EDBMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 1}, {"G", 2}});
 
   std::set<std::string> expected_free_vars = {"x", "y"};
 
-  EXPECT_EQ(GetFreeVariables(input), expected_free_vars);
+  EXPECT_EQ(GetFreeVariables(input, edb_map), expected_free_vars);
 }
 
 TEST(FreeVarsTest, DisjunctionExpr) {
   std::string input = "def R { F(x) or G(y) }";
+  rel2sql::EDBMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 1}, {"G", 2}});
 
   std::set<std::string> expected_free_vars = {"x", "y"};
 
-  EXPECT_EQ(GetFreeVariables(input), expected_free_vars);
+  EXPECT_EQ(GetFreeVariables(input, edb_map), expected_free_vars);
 }
 
 TEST(FreeVarsTest, NegationExpr) {
@@ -158,11 +160,11 @@ TEST(LiteralVisitorTest, Int) {
 
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_TRUE(ast.Root().constant.has_value());
+  EXPECT_TRUE(ast.Root()->constant.has_value());
 
-  EXPECT_TRUE(std::holds_alternative<int>(ast.Root().constant.value()));
+  EXPECT_TRUE(std::holds_alternative<int>(ast.Root()->constant.value()));
 
-  EXPECT_EQ(std::get<int>(ast.Root().constant.value()), 1);
+  EXPECT_EQ(std::get<int>(ast.Root()->constant.value()), 1);
 }
 
 TEST(LiteralVisitorTest, NegInt) {
@@ -174,11 +176,11 @@ TEST(LiteralVisitorTest, NegInt) {
 
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_TRUE(ast.Root().constant.has_value());
+  EXPECT_TRUE(ast.Root()->constant.has_value());
 
-  EXPECT_TRUE(std::holds_alternative<int>(ast.Root().constant.value()));
+  EXPECT_TRUE(std::holds_alternative<int>(ast.Root()->constant.value()));
 
-  EXPECT_EQ(std::get<int>(ast.Root().constant.value()), -1);
+  EXPECT_EQ(std::get<int>(ast.Root()->constant.value()), -1);
 }
 
 TEST(LiteralVisitorTest, Float) {
@@ -190,11 +192,11 @@ TEST(LiteralVisitorTest, Float) {
 
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_TRUE(ast.Root().constant.has_value());
+  EXPECT_TRUE(ast.Root()->constant.has_value());
 
-  EXPECT_TRUE(std::holds_alternative<double>(ast.Root().constant.value()));
+  EXPECT_TRUE(std::holds_alternative<double>(ast.Root()->constant.value()));
 
-  EXPECT_EQ(std::get<double>(ast.Root().constant.value()), 1.0);
+  EXPECT_EQ(std::get<double>(ast.Root()->constant.value()), 1.0);
 }
 
 TEST(LiteralVisitorTest, NegFloat) {
@@ -206,11 +208,11 @@ TEST(LiteralVisitorTest, NegFloat) {
 
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_TRUE(ast.Root().constant.has_value());
+  EXPECT_TRUE(ast.Root()->constant.has_value());
 
-  EXPECT_TRUE(std::holds_alternative<double>(ast.Root().constant.value()));
+  EXPECT_TRUE(std::holds_alternative<double>(ast.Root()->constant.value()));
 
-  EXPECT_EQ(std::get<double>(ast.Root().constant.value()), -1.0);
+  EXPECT_EQ(std::get<double>(ast.Root()->constant.value()), -1.0);
 }
 
 TEST(LiteralVisitorTest, Char) {
@@ -222,11 +224,11 @@ TEST(LiteralVisitorTest, Char) {
 
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_TRUE(ast.Root().constant.has_value());
+  EXPECT_TRUE(ast.Root()->constant.has_value());
 
-  EXPECT_TRUE(std::holds_alternative<std::string>(ast.Root().constant.value()));
+  EXPECT_TRUE(std::holds_alternative<std::string>(ast.Root()->constant.value()));
 
-  EXPECT_EQ(std::get<std::string>(ast.Root().constant.value()), "a");
+  EXPECT_EQ(std::get<std::string>(ast.Root()->constant.value()), "a");
 }
 
 TEST(LiteralVisitorTest, Str) {
@@ -238,11 +240,11 @@ TEST(LiteralVisitorTest, Str) {
 
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_TRUE(ast.Root().constant.has_value());
+  EXPECT_TRUE(ast.Root()->constant.has_value());
 
-  EXPECT_TRUE(std::holds_alternative<std::string>(ast.Root().constant.value()));
+  EXPECT_TRUE(std::holds_alternative<std::string>(ast.Root()->constant.value()));
 
-  EXPECT_EQ(std::get<std::string>(ast.Root().constant.value()), "abc");
+  EXPECT_EQ(std::get<std::string>(ast.Root()->constant.value()), "abc");
 }
 
 TEST(LiteralVisitorTest, Bool) {
@@ -254,11 +256,11 @@ TEST(LiteralVisitorTest, Bool) {
 
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_TRUE(ast.Root().constant.has_value());
+  EXPECT_TRUE(ast.Root()->constant.has_value());
 
-  EXPECT_TRUE(std::holds_alternative<bool>(ast.Root().constant.value()));
+  EXPECT_TRUE(std::holds_alternative<bool>(ast.Root()->constant.value()));
 
-  EXPECT_EQ(std::get<bool>(ast.Root().constant.value()), true);
+  EXPECT_EQ(std::get<bool>(ast.Root()->constant.value()), true);
 }
 
 TEST(LiteralVisitorTest, BoolFalse) {
@@ -270,11 +272,11 @@ TEST(LiteralVisitorTest, BoolFalse) {
 
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_TRUE(ast.Root().constant.has_value());
+  EXPECT_TRUE(ast.Root()->constant.has_value());
 
-  EXPECT_TRUE(std::holds_alternative<bool>(ast.Root().constant.value()));
+  EXPECT_TRUE(std::holds_alternative<bool>(ast.Root()->constant.value()));
 
-  EXPECT_EQ(std::get<bool>(ast.Root().constant.value()), false);
+  EXPECT_EQ(std::get<bool>(ast.Root()->constant.value()), false);
 }
 
 TEST(LiteralVisitorTest, NumericalConstantInt) {
@@ -286,11 +288,11 @@ TEST(LiteralVisitorTest, NumericalConstantInt) {
 
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_TRUE(ast.Root().constant.has_value());
+  EXPECT_TRUE(ast.Root()->constant.has_value());
 
-  EXPECT_TRUE(std::holds_alternative<int>(ast.Root().constant.value()));
+  EXPECT_TRUE(std::holds_alternative<int>(ast.Root()->constant.value()));
 
-  EXPECT_EQ(std::get<int>(ast.Root().constant.value()), 1);
+  EXPECT_EQ(std::get<int>(ast.Root()->constant.value()), 1);
 }
 
 TEST(ArityVisitorTest, LitExpr) {
@@ -300,7 +302,7 @@ TEST(ArityVisitorTest, LitExpr) {
   auto tree = parser->program();
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_EQ(ast.Arity("R"), 1);
+  EXPECT_EQ(ast.GetArity("R"), 1);
 }
 
 TEST(ArityVisitorTest, SingleVariable) {
@@ -310,7 +312,7 @@ TEST(ArityVisitorTest, SingleVariable) {
   auto tree = parser->program();
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_EQ(ast.Arity("R"), 1);
+  EXPECT_EQ(ast.GetArity("R"), 1);
 }
 
 TEST(ArityVisitorTest, SimpleAbstraction) {
@@ -320,7 +322,7 @@ TEST(ArityVisitorTest, SimpleAbstraction) {
   auto tree = parser->program();
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_EQ(ast.Arity("R"), 1);
+  EXPECT_EQ(ast.GetArity("R"), 1);
 }
 
 TEST(ArityVisitorTest, Product) {
@@ -330,7 +332,7 @@ TEST(ArityVisitorTest, Product) {
   auto tree = parser->program();
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_EQ(ast.Arity("R"), 2);
+  EXPECT_EQ(ast.GetArity("R"), 2);
 }
 
 TEST(ArityVisitorTest, Abstraction) {
@@ -340,18 +342,19 @@ TEST(ArityVisitorTest, Abstraction) {
   auto tree = parser->program();
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_EQ(ast.Arity("R"), 2);
+  EXPECT_EQ(ast.GetArity("R"), 2);
 }
 
 TEST(ArityVisitorTest, Formula) {
   // NOTE: Formulas are hardcoded to have 0-arity regardless of evaluation
+  rel2sql::EDBMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 1}, {"G", 2}});
   std::string input = "def R { F(1) and G(2,3) }";
 
   auto parser = GetParser(input);
   auto tree = parser->program();
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(edb_map).Process(tree);
 
-  EXPECT_EQ(ast.Arity("R"), 0);
+  EXPECT_EQ(ast.GetArity("R"), 0);
 }
 
 TEST(ArityVisitorTest, PartialApplication) {
@@ -361,7 +364,7 @@ TEST(ArityVisitorTest, PartialApplication) {
   auto tree = parser->program();
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_EQ(ast.Arity("R"), 2);
+  EXPECT_EQ(ast.GetArity("R"), 2);
 }
 
 TEST(ArityVisitorTest, Binding) {
@@ -372,7 +375,7 @@ TEST(ArityVisitorTest, Binding) {
   auto tree = parser->program();
   auto ast = Preprocessor(edb_map).Process(tree);
 
-  EXPECT_EQ(ast.Arity("R"), 2);
+  EXPECT_EQ(ast.GetArity("R"), 2);
 }
 
 TEST(ArityVisitorTest, DoubleDependency) {
@@ -382,7 +385,7 @@ TEST(ArityVisitorTest, DoubleDependency) {
   auto tree = parser->program();
   auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
 
-  EXPECT_EQ(ast.Arity("Z"), 2);
+  EXPECT_EQ(ast.GetArity("Z"), 2);
 }
 
 TEST(RecursionVisitorTest, MatchesRecursionPattern) {
@@ -400,9 +403,8 @@ TEST(RecursionVisitorTest, MatchesRecursionPattern) {
   auto bindings_formula = dynamic_cast<psr::BindingsFormulaContext*>(rel_abs->expr()[0]);
   ASSERT_NE(bindings_formula, nullptr);
 
-  auto data = ast.Data();
-  EXPECT_TRUE(data->index.at(rel_abs).is_recursive);
-  EXPECT_TRUE(data->index.at(bindings_formula).is_recursive);
+  EXPECT_TRUE(ast.GetNode(rel_abs)->is_recursive);
+  EXPECT_TRUE(ast.GetNode(bindings_formula)->is_recursive);
 }
 
 TEST(RecursionVisitorTest, RejectsNonRecursionPattern) {
@@ -420,9 +422,8 @@ TEST(RecursionVisitorTest, RejectsNonRecursionPattern) {
   auto bindings_formula = dynamic_cast<psr::BindingsFormulaContext*>(rel_abs->expr()[0]);
   ASSERT_NE(bindings_formula, nullptr);
 
-  auto data = ast.Data();
-  EXPECT_FALSE(data->index.at(rel_abs).is_recursive);
-  EXPECT_FALSE(data->index.at(bindings_formula).is_recursive);
+  EXPECT_FALSE(ast.GetNode(rel_abs)->is_recursive);
+  EXPECT_FALSE(ast.GetNode(bindings_formula)->is_recursive);
 }
 
 }  // namespace rel2sql

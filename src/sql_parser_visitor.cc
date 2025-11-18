@@ -205,7 +205,7 @@ std::any SqlParserVisitor::visitTableSource(psr::TableSourceContext* ctx) {
   // Try to look up table info in EDB map for better schema information
   auto edb_it = edb_map_.map.find(table_name);
   if (edb_it != edb_map_.map.end()) {
-    arity = edb_it->second.arity();
+    arity = edb_it->second.arity;
     attribute_names = edb_it->second.attribute_names;
   }
   auto table = std::make_shared<sql::ast::Table>(table_name, arity, attribute_names);

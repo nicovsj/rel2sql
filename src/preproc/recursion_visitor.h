@@ -15,7 +15,7 @@ class RecursionVisitor : public BaseVisitor {
    * and sets the recursion flag on the corresponding node.
    */
  public:
-  RecursionVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
+  explicit RecursionVisitor(std::shared_ptr<RelAST> ast);
 
   std::any visitProgram(psr::ProgramContext* ctx) override;
 

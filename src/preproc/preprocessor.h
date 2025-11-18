@@ -9,6 +9,7 @@
 #include "preproc/lit_visitor.h"
 #include "preproc/recursion_visitor.h"
 #include "preproc/safe_visitor.h"
+#include "preproc/tree_structure_visitor.h"
 #include "preproc/vars_visitor.h"
 #include "structs/extended_ast.h"
 
@@ -27,31 +28,37 @@ namespace rel2sql {
  */
 class Preprocessor {
  public:
-  Preprocessor() : ast_data_(std::make_shared<ExtendedASTData>()),
-                   ids_visitor_(ast_data_),
-                   arity_visitor_(ast_data_),
-                   variables_visitor_(ast_data_),
-                   recursion_visitor_(ast_data_),
-                   literal_visitor_(ast_data_),
-                   balancing_visitor_(ast_data_),
-                   safeness_visitor_(ast_data_) {}
+  Preprocessor()
+      : ast_(std::make_shared<RelAST>()),
+        tree_structure_visitor_(ast_),
+        ids_visitor_(ast_),
+        arity_visitor_(ast_),
+        variables_visitor_(ast_),
+        recursion_visitor_(ast_),
+        literal_visitor_(ast_),
+        balancing_visitor_(ast_),
+        safeness_visitor_(ast_) {}
 
   explicit Preprocessor(const rel2sql::EDBMap& edb_map)
-      : ast_data_(std::make_shared<ExtendedASTData>(edb_map)),
-        ids_visitor_(ast_data_),
-        arity_visitor_(ast_data_),
-        variables_visitor_(ast_data_),
-        recursion_visitor_(ast_data_),
-        literal_visitor_(ast_data_),
-        balancing_visitor_(ast_data_),
-        safeness_visitor_(ast_data_) {}
+      : ast_(std::make_shared<RelAST>(nullptr, edb_map)),
+        tree_structure_visitor_(ast_),
+        ids_visitor_(ast_),
+        arity_visitor_(ast_),
+        variables_visitor_(ast_),
+        recursion_visitor_(ast_),
+        literal_visitor_(ast_),
+        balancing_visitor_(ast_),
+        safeness_visitor_(ast_) {}
 
   /**
    * Process the parsing tree with all preprocessing visitors in the correct order.
    * @param tree The parsing tree to process
    * @return ExtendedAST containing the processed tree and extended data
    */
-  ExtendedAST Process(antlr4::ParserRuleContext* tree) {
+  RelAST Process(antlr4::ParserRuleContext* tree) {
+    ast_->SetParseTree(tree);
+
+    tree_structure_visitor_.visit(tree);
     ids_visitor_.visit(tree);
     arity_visitor_.visit(tree);
     variables_visitor_.visit(tree);
@@ -60,11 +67,12 @@ class Preprocessor {
     balancing_visitor_.visit(tree);
     safeness_visitor_.visit(tree);
 
-    return ExtendedAST{tree, ast_data_};
+    return *ast_;
   }
 
  private:
-  std::shared_ptr<ExtendedASTData> ast_data_;
+  std::shared_ptr<RelAST> ast_;
+  TreeStructureVisitor tree_structure_visitor_;
   IDsVisitor ids_visitor_;
   ArityVisitor arity_visitor_;
   VariablesVisitor variables_visitor_;

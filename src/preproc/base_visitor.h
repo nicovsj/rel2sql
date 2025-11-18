@@ -16,19 +16,18 @@ class BaseVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
  public:
   using psr = rel_parser::PrunedCoreRelParser;
 
-  BaseVisitor() : ast_data_(std::make_shared<ExtendedASTData>()) {}
+  BaseVisitor() : ast_(std::make_shared<RelAST>()) {}
 
-  BaseVisitor(std::shared_ptr<ExtendedASTData> ast_data) : ast_data_(ast_data) {}
+  BaseVisitor(std::shared_ptr<RelAST> ast) : ast_(ast) {}
 
  protected:
-  ExtendedNode& GetNode(antlr4::ParserRuleContext* ctx) { return ast_data_->index[ctx]; }
-
-  const ExtendedNode& GetNode(antlr4::ParserRuleContext* ctx) const { return ast_data_->index.at(ctx); }
+  std::shared_ptr<RelASTNode> GetNode(antlr4::ParserRuleContext* ctx) { return ast_->GetNode(ctx); }
+  std::shared_ptr<RelASTNode> GetNode(antlr4::ParserRuleContext* ctx) const { return ast_->GetNode(ctx); }
 
   // Helper method to extract source location from ANTLR context
   rel2sql::SourceLocation GetSourceLocation(antlr4::ParserRuleContext* ctx);
 
-  std::shared_ptr<ExtendedASTData> ast_data_;
+  std::shared_ptr<RelAST> ast_;
 };
 
 }  // namespace rel2sql

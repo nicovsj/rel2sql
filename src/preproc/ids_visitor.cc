@@ -1,21 +1,18 @@
 #include "ids_visitor.h"
 
-#include <queue>
-
 using StringSet = std::unordered_set<std::string>;
 
 namespace rel2sql {
 
-IDsVisitor::IDsVisitor(std::shared_ptr<ExtendedASTData> data) : BaseVisitor(data) {}
+IDsVisitor::IDsVisitor(std::shared_ptr<RelAST> extended_ast) : BaseVisitor(extended_ast) {}
 
 std::any IDsVisitor::visitProgram(psr::ProgramContext* ctx) {
   for (auto& child_ctx : ctx->relDef()) {
     visit(child_ctx);
   }
 
-  RemoveVarsFromDependencyGraph();
-
-  ast_data_->sorted_ids = InverseTopologicalOrderOfDependencyGraph();
+  ast_->RemoveVarsFromDependencyGraph();
+  ast_->ComputeTopologicalSort();
 
   return {};
 }
@@ -23,12 +20,12 @@ std::any IDsVisitor::visitProgram(psr::ProgramContext* ctx) {
 std::any IDsVisitor::visitRelDef(psr::RelDefContext* ctx) {
   std::string id = ctx->T_ID()->getText();
 
-  ast_data_->AddIDB(id);  // If defined in the program, it is an IDB
+  ast_->MarkAsIDB(id);  // If defined in the program, it is an IDB (arity will be set later)
 
   auto deps = std::any_cast<StringSet>(visit(ctx->relAbs()));
 
   for (const auto& dep : deps) {
-    ast_data_->AddDependency(id, dep);
+    ast_->AddDependency(id, dep);
   }
 
   return {};
@@ -48,7 +45,7 @@ std::any IDsVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
 std::any IDsVisitor::visitIDTerm(psr::IDTermContext* ctx) {
   std::string id = ctx->T_ID()->getText();
 
-  ast_data_->AddVar(id);
+  ast_->AddVar(id);
 
   return StringSet{id};
 }
@@ -72,7 +69,7 @@ std::any IDsVisitor::visitLitExpr(psr::LitExprContext* ctx) { return StringSet{}
 std::any IDsVisitor::visitIDExpr(psr::IDExprContext* ctx) {
   std::string id = ctx->T_ID()->getText();
 
-  ast_data_->AddVar(id);
+  ast_->AddVar(id);
 
   return StringSet{id};
 }
@@ -186,7 +183,7 @@ std::any IDsVisitor::visitBinding(psr::BindingContext* ctx) {
 
   if (ctx->id_domain) {
     std::string id = ctx->id->getText();
-    ast_data_->AddVar(id);
+    ast_->AddVar(id);
   }
 
   return deps;
@@ -229,60 +226,5 @@ std::any IDsVisitor::visitApplParam(psr::ApplParamContext* ctx) {
   return deps;
 }
 
-void IDsVisitor::RemoveVarsFromDependencyGraph() {
-  for (const auto& id : ast_data_->ids) {
-    if (ast_data_->vars.find(id) != ast_data_->vars.end()) {
-      ast_data_->ids_dependencies.erase(id);
-      continue;
-    }
-    std::vector<std::string> real_deps;
-    for (const auto& dep : ast_data_->ids_dependencies[id]) {
-      if (ast_data_->vars.find(dep) == ast_data_->vars.end()) {
-        real_deps.push_back(dep);
-      }
-    }
-    ast_data_->ids_dependencies[id] = std::move(real_deps);
-  }
-}
-
-std::vector<std::string> IDsVisitor::InverseTopologicalOrderOfDependencyGraph() {
-  std::unordered_map<std::string, int> in_degree;
-  std::unordered_map<std::string, std::vector<std::string>> graph = ast_data_->ids_dependencies;
-
-  for (const auto& [id, deps] : graph) {
-    in_degree[id] = 0;
-  }
-
-  for (const auto& [id, deps] : graph) {
-    for (const auto& dep : deps) {
-      in_degree[dep]++;
-    }
-  }
-
-  std::queue<std::string> q;
-  for (const auto& [id, degree] : in_degree) {
-    if (degree == 0) {
-      q.push(id);
-    }
-  }
-
-  std::vector<std::string> order;
-  while (!q.empty()) {
-    std::string id = q.front();
-    q.pop();
-    order.push_back(id);
-
-    for (const auto& dep : graph[id]) {
-      in_degree[dep]--;
-      if (in_degree[dep] == 0) {
-        q.push(dep);
-      }
-    }
-  }
-
-  std::reverse(order.begin(), order.end());
-
-  return order;
-}
 
 }  // namespace rel2sql

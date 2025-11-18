@@ -2,6 +2,7 @@
 #define SQL_VISITOR_H
 
 #include <antlr4-runtime.h>
+#include <functional>
 #include <gtest/gtest.h>
 
 #include "preproc/base_visitor.h"
@@ -24,7 +25,7 @@ class SQLVisitor : public BaseVisitor {
     bool operator<(const IndexedContext& other) const { return index < other.index; }
   };
 
-  SQLVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
+  explicit SQLVisitor(std::shared_ptr<RelAST> ast);
 
   virtual ~SQLVisitor();
 
@@ -131,7 +132,8 @@ class SQLVisitor : public BaseVisitor {
       std::vector<IndexedContext> variable_param_ctxs,
       std::unordered_map<std::string, IndexedContext> free_vars_in_non_variable_params) const;
 
-  std::shared_ptr<sql::ast::Expression> GetExpressionFromID(antlr4::ParserRuleContext* ctx, std::string id, bool is_top_level = false);
+  std::shared_ptr<sql::ast::Expression> GetExpressionFromID(antlr4::ParserRuleContext* ctx, std::string id,
+                                                            bool is_top_level = false);
 
   std::unordered_map<std::string, IndexedContext> GetFirstNonVarParamByFreeVariables(
       const std::vector<IndexedContext>& other_param_ctxs);
@@ -140,13 +142,17 @@ class SQLVisitor : public BaseVisitor {
       psr::ApplBaseContext* base, const std::vector<psr::ApplParamContext*>& params);
 
   std::unordered_set<BindingsBound> SafeFunction(psr::BindingInnerContext* binding_ctx,
-                                                antlr4::ParserRuleContext* expr_ctx);
+                                                 antlr4::ParserRuleContext* expr_ctx);
 
   std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>> ComputeBindingsCTEs(
       std::unordered_set<BindingsBound>& safe_result);
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> ComputeBindingsOutput(
-      const std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>>& safe_result);
+      const std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>>& safe_result,
+      psr::BindingInnerContext* binding_ctx);
+
+  std::function<std::shared_ptr<sql::ast::Source>(const std::string&)> MakeBindingCTEResolver(
+      const std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>>& safe_result) const;
 
   std::shared_ptr<sql::ast::Condition> BindingsEqualityShorthand(
       antlr4::ParserRuleContext* expr,

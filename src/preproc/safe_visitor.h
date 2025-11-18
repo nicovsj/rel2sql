@@ -13,7 +13,7 @@ class SafeVisitor : public BaseVisitor {
    * Visitor that computes the safeness analysis of each formula and expr in the Rel program.
    */
  public:
-  SafeVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
+  explicit SafeVisitor(std::shared_ptr<RelAST> ast);
 
   std::any visitProgram(psr::ProgramContext* ctx) override;
 

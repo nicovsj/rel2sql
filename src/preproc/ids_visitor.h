@@ -14,7 +14,7 @@ class IDsVisitor : public BaseVisitor {
    * and generates a topological order of the IDs.
    */
  public:
-  IDsVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
+  IDsVisitor(std::shared_ptr<RelAST> ast);
 
   std::any visitProgram(psr::ProgramContext* ctx) override;
 
@@ -73,11 +73,6 @@ class IDsVisitor : public BaseVisitor {
   std::any visitApplParams(psr::ApplParamsContext* ctx) override;
 
   std::any visitApplParam(psr::ApplParamContext* ctx) override;
-
- private:
-  void RemoveVarsFromDependencyGraph();
-
-  std::vector<std::string> InverseTopologicalOrderOfDependencyGraph();
 };
 
 }  // namespace rel2sql

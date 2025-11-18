@@ -14,7 +14,7 @@ class VariablesVisitor : public BaseVisitor {
    * for each node in the AST.
    */
  public:
-  VariablesVisitor(std::shared_ptr<ExtendedASTData> extended_ast);
+  VariablesVisitor(std::shared_ptr<RelAST> ast);
 
   std::any visitProgram(psr::ProgramContext* ctx) override;
 

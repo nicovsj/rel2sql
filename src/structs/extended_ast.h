@@ -3,16 +3,17 @@
 
 #include <antlr4-runtime.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "structs/bindings_bound.h"
 #include "structs/edb_info.h"
 #include "structs/sql_ast.h"
-#include "structs/bindings_bound.h"
 
 namespace rel2sql {
 
-struct ExtendedNode {
+struct RelASTNode {
   // Variables are the variables that are bound in the current context
   std::set<std::string> variables;
   std::set<std::string> free_variables;
@@ -43,13 +44,18 @@ struct ExtendedNode {
   std::vector<antlr4::ParserRuleContext*> comparator_formulas;
   std::vector<antlr4::ParserRuleContext*> other_formulas;
 
-  void VariablesInplaceUnion(const ExtendedNode& other) {
+  // Children nodes in the ExtendedAST tree structure
+  std::vector<std::shared_ptr<RelASTNode>> children;
+
+  const std::vector<std::shared_ptr<RelASTNode>>& GetChildren() const { return children; }
+
+  void VariablesInplaceUnion(const RelASTNode& other) {
     variables.insert(other.variables.begin(), other.variables.end());
     free_variables.insert(other.free_variables.begin(), other.free_variables.end());
   }
 
-  void VariablesInplaceDifference(const ExtendedNode& other) {
-    ExtendedNode result;
+  void VariablesInplaceDifference(const RelASTNode& other) {
+    RelASTNode result;
     variables.insert(other.variables.begin(), other.variables.end());
     for (const auto& var : other.free_variables) {
       free_variables.erase(var);
@@ -59,133 +65,100 @@ struct ExtendedNode {
   bool IsConjunctionWithTerms() const { return !comparator_formulas.empty(); }
 };
 
-struct ExtendedASTData {
-  std::unordered_map<antlr4::ParserRuleContext*, ExtendedNode> index;
-  std::unordered_map<std::string, int> arity_by_id;
-  std::unordered_map<std::string, std::vector<std::string>> edb_attribute_names;
-  std::unordered_map<std::string, rel2sql::EDBInfo> edb_info_map;
+// Forward declaration for operator==
+bool operator==(const RelASTNode& lhs, const RelASTNode& rhs);
+bool operator!=(const RelASTNode& lhs, const RelASTNode& rhs);
 
-  std::unordered_map<std::string, std::vector<std::string>> ids_dependencies;
-
-  std::unordered_set<std::string> ids;
-  std::unordered_set<std::string> internal_dbs;
-  std::unordered_set<std::string> external_dbs;
-  std::unordered_set<std::string> vars;
-
-  std::vector<std::string> sorted_ids;
-
-  ExtendedASTData() = default;
-
-  ExtendedASTData(const rel2sql::EDBMap& edb_map) {
-    for (const auto& [id, edb_info] : edb_map) {
-      // Store the EDBInfo for later use
-      edb_info_map[id] = edb_info;
-
-      if (edb_info.has_custom_named_attributes()) {
-        AddEDBWithNames(id, edb_info.attribute_names);
-      } else {
-        // For EDBs with standard A1, A2, etc. naming, use the standard AddEDB
-        AddEDB(id, edb_info.arity());
-      }
-    }
-  }
-
-  void AddIDB(const std::string& id) {
-    ids.insert(id);
-
-    if (external_dbs.find(id) != external_dbs.end()) {
-      throw std::runtime_error("IDB " + id + " already in the set of EDBs");
-    }
-
-    vars.erase(id);
-    internal_dbs.insert(id);
-  }
-
-  void AddEDB(const std::string& edb, int arity) {
-    if (internal_dbs.find(edb) != internal_dbs.end()) {
-      throw std::runtime_error("EDB " + edb + " already in the set of IDBs");
-    }
-
-    if (vars.find(edb) != vars.end()) {
-      throw std::runtime_error("EDB " + edb + " already in the set of variables");
-    }
-
-    ids.insert(edb);
-    external_dbs.insert(edb);
-
-    arity_by_id[edb] = arity;
-  }
-
-  void AddEDBWithNames(const std::string& edb, const std::vector<std::string>& attribute_names) {
-    if (internal_dbs.find(edb) != internal_dbs.end()) {
-      throw std::runtime_error("EDB " + edb + " already in the set of IDBs");
-    }
-
-    if (vars.find(edb) != vars.end()) {
-      throw std::runtime_error("EDB " + edb + " already in the set of variables");
-    }
-
-    ids.insert(edb);
-    external_dbs.insert(edb);
-
-    int arity = static_cast<int>(attribute_names.size());
-    arity_by_id[edb] = arity;
-    edb_attribute_names[edb] = attribute_names;
-  }
-
-  void AddVar(const std::string& var) {
-    if (internal_dbs.find(var) != internal_dbs.end() || external_dbs.find(var) != external_dbs.end()) {
-      // ID is already in the set of IDBs or EDBs then do nothing
-      return;
-    }
-
-    ids.insert(var);
-    vars.insert(var);
-  }
-
-  void AddDependency(const std::string& id, const std::string& dep) { ids_dependencies[id].push_back(dep); }
-
-  // Get EDBInfo for an EDB (if it exists)
-  std::optional<rel2sql::EDBInfo> GetEDBInfo(const std::string& edb) const {
-    auto it = edb_info_map.find(edb);
-    if (it != edb_info_map.end()) {
-      return it->second;
-    }
-    return std::nullopt;
-  }
-
-  bool IsIDB(const std::string& id) const { return internal_dbs.find(id) != internal_dbs.end(); }
-
-  bool IsEDB(const std::string& id) const { return external_dbs.find(id) != external_dbs.end(); }
-
-  bool IsVar(const std::string& var) const { return vars.find(var) != vars.end(); }
-
-  bool IsID(const std::string& id) const { return ids.find(id) != ids.end(); }
-};
-
-class ExtendedAST {
+// Represents the extended AST of the ANTLR parse tree.
+class RelAST {
  public:
-  ExtendedAST(antlr4::ParserRuleContext* root, std::shared_ptr<ExtendedASTData> data) : root_(root), data_(data) {}
+  RelAST();
 
-  ExtendedNode Root() const { return data_->index[root_]; }
+  explicit RelAST(antlr4::ParserRuleContext* root);
 
-  std::shared_ptr<ExtendedASTData> Data() const { return data_; }
+  RelAST(antlr4::ParserRuleContext* root, const rel2sql::EDBMap& edb_map);
 
-  ExtendedNode& Get(antlr4::ParserRuleContext* ctx) {
-    auto it = data_->index.find(ctx);
-    if (it == data_->index.end()) {
-      data_->index[ctx] = ExtendedNode{};
-    }
-    return it->second;
-  }
+  // Get the root node
+  std::shared_ptr<RelASTNode> Root() const;
 
-  int Arity(const std::string& id) const { return data_->arity_by_id.at(id); }
+  // Get the node for a context
+  std::shared_ptr<RelASTNode> GetNode(antlr4::ParserRuleContext* ctx);
 
-  antlr4::ParserRuleContext* ParseTree() const { return root_; }
+  // Get the arity of a relation
+  int GetArity(const std::string& id) const;
+
+  // Get the parse tree
+  antlr4::ParserRuleContext* ParseTree() const;
+
+  // Set the parse tree
+  void SetParseTree(antlr4::ParserRuleContext* root);
+
+  // Mark an ID as an IDB (without arity, arity will be set later)
+  void MarkAsIDB(const std::string& id);
+
+  // Add an IDB with arity (or update arity if already marked as IDB)
+  void AddIDB(const std::string& id, int arity);
+
+  // Add an EDB with an arity
+  void AddEDB(const std::string& edb, int arity);
+
+  // Add an EDB with named attributes
+  void AddEDB(const std::string& edb, const std::vector<std::string>& attribute_names);
+
+  // Add a variable
+  void AddVar(const std::string& var);
+
+  // Add a dependency between two relations
+  void AddDependency(const std::string& id, const std::string& dep);
+
+  // Get RelationInfo for a relation (if it exists)
+  std::optional<RelationInfo> GetRelationInfo(const std::string& edb) const;
+
+  // Check if a relation is an IDB
+  bool IsIDB(const std::string& id) const;
+
+  // Check if a relation is an EDB
+  bool IsEDB(const std::string& id) const;
+
+  // Check if a variable is a variable
+  bool IsVar(const std::string& var) const;
+
+  // Check if a relation is an ID
+  bool IsID(const std::string& id) const;
+
+  // Get all IDs sorted by their definition order (topological sort of the dependency graph)
+  const std::vector<std::string>& SortedIDs() const;
+
+  // Remove variables from the dependency graph
+  void RemoveVarsFromDependencyGraph();
+
+  // Compute and store the topological sort of the dependency graph
+  void ComputeTopologicalSort();
 
  private:
+  // The root context of the parse tree
   antlr4::ParserRuleContext* root_;
-  std::shared_ptr<ExtendedASTData> data_;
+
+  // Index of the nodes by context
+  std::unordered_map<antlr4::ParserRuleContext*, std::shared_ptr<RelASTNode>> index_;
+
+  // Relation information by ID
+  std::unordered_map<std::string, RelationInfo> relation_info_;
+
+  // All IDs
+  std::unordered_set<std::string> ids_;
+
+  // Intensional databases
+  std::unordered_set<std::string> idb_;
+
+  // Extensional databases
+  std::unordered_set<std::string> edb_;
+
+  // Variables
+  std::unordered_set<std::string> vars_;
+
+  // Topological sort of the dependency graph of IDs
+  std::vector<std::string> sorted_ids_;
 };
 
 const std::map<std::string, sql::ast::AggregateFunction> AGGREGATE_MAP = {

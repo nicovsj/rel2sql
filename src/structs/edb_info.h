@@ -8,21 +8,23 @@
 namespace rel2sql {
 
 /**
- * Represents information about an External Database (EDB) relation.
+ * Represents information about an ID relation.
  *
- * This structure can handle both named and unnamed EDB attributes:
+ * This structure can handle both named and unnamed ID attributes:
  * - If attribute_names is provided, it contains the ordered list of attribute names
  * - If attribute_names is empty, the EDB uses default A1, A2, A3... naming
  * - The arity is always inferred from the attribute_names size when provided
  */
-struct EDBInfo {
+struct RelationInfo {
   std::vector<std::string> attribute_names;
+  int arity;
+  std::vector<std::string> dependencies;
 
-  // Default constructor for unnamed EDBs (uses A1, A2, A3...)
-  EDBInfo() = default;
+  // Default constructor for unnamed relations (uses A1, A2, A3...)
+  RelationInfo() = default;
 
-  // Constructor for unnamed EDBs with explicit arity - auto-populates A1, A2, A3...
-  explicit EDBInfo(int arity) {
+  // Constructor for unnamed relations with explicit arity - auto-populates A1, A2, A3...
+  explicit RelationInfo(int arity) : arity(arity) {
     attribute_names.reserve(arity);
     for (int i = 0; i < arity; ++i) {
       attribute_names.push_back("A" + std::to_string(i + 1));
@@ -30,13 +32,10 @@ struct EDBInfo {
   }
 
   // Constructor for named EDBs
-  explicit EDBInfo(std::vector<std::string> names) : attribute_names(std::move(names)) {}
-
-  // Get the arity (number of attributes)
-  int arity() const { return static_cast<int>(attribute_names.size()); }
+  explicit RelationInfo(std::vector<std::string> names) : attribute_names(std::move(names)), arity(attribute_names.size()) {}
 
   // Check if this EDB has custom named attributes (vs auto-generated A1, A2, etc.)
-  bool has_custom_named_attributes() const {
+  bool HasCustomNamedAttributes() const {
     if (attribute_names.empty()) return false;
 
     // Check if all attributes follow the A1, A2, A3... pattern
@@ -49,40 +48,42 @@ struct EDBInfo {
   }
 
   // Get attribute name at position i (0-based)
-  std::string get_attribute_name(int i) const {
+  std::string AttributeName(int i) const {
     if (i < 0 || i >= static_cast<int>(attribute_names.size())) {
       throw std::runtime_error("Attribute index out of range");
     }
     return attribute_names[i];
   }
+
+  void AddDependency(const std::string& id) { dependencies.push_back(id); }
 };
 
 struct EDBMap {
-  using iterator = std::unordered_map<std::string, EDBInfo>::iterator;
-  using const_iterator = std::unordered_map<std::string, EDBInfo>::const_iterator;
+  using iterator = std::unordered_map<std::string, RelationInfo>::iterator;
+  using const_iterator = std::unordered_map<std::string, RelationInfo>::const_iterator;
 
-  std::unordered_map<std::string, EDBInfo> map;
+  std::unordered_map<std::string, RelationInfo> map;
 
   EDBMap() = default;
 
-  EDBMap(const std::unordered_map<std::string, EDBInfo>& map) : map(map) {}
+  EDBMap(const std::unordered_map<std::string, RelationInfo>& map) : map(map) {}
 
   size_t size() const { return map.size(); }
 
   bool has(const std::string& name) const { return map.find(name) != map.end(); }
 
-  EDBInfo get(const std::string& name) const { return map.at(name); }
+  RelationInfo get(const std::string& name) const { return map.at(name); }
 
-  void set(const std::string& name, const EDBInfo& info) { map[name] = info; }
+  void set(const std::string& name, const RelationInfo& info) { map[name] = info; }
 
   const_iterator find(const std::string& name) const { return map.find(name); }
 
   iterator find(const std::string& name) { return map.find(name); }
 
   // Subscript operators
-  EDBInfo& operator[](const std::string& name) { return map[name]; }
+  RelationInfo& operator[](const std::string& name) { return map[name]; }
 
-  const EDBInfo& operator[](const std::string& name) const { return map.at(name); }
+  const RelationInfo& operator[](const std::string& name) const { return map.at(name); }
 
   // Iterators
   auto begin() { return map.begin(); }
@@ -97,7 +98,7 @@ namespace edb_utils {
 inline EDBMap FromArityMap(const std::unordered_map<std::string, int>& arity_map) {
   EDBMap edb_map;
   for (const auto& [name, arity] : arity_map) {
-    edb_map[name] = EDBInfo(arity);  // Create unnamed EDB with explicit arity
+    edb_map[name] = RelationInfo(arity);  // Create unnamed EDB with explicit arity
   }
   return edb_map;
 }
@@ -106,7 +107,7 @@ inline EDBMap FromArityMap(const std::unordered_map<std::string, int>& arity_map
 inline EDBMap WithNamedAttributes(const std::unordered_map<std::string, std::vector<std::string>>& named_map) {
   EDBMap edb_map;
   for (const auto& [name, attributes] : named_map) {
-    edb_map[name] = EDBInfo(attributes);
+    edb_map[name] = RelationInfo(attributes);
   }
   return edb_map;
 }
