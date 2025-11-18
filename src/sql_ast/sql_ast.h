@@ -577,6 +577,13 @@ class LogicalCondition : public Condition {
   }
 
   std::ostream& Print(std::ostream& os) const override {
+    if (op == LogicalOp::NOT) {
+      if (!conditions.empty()) {
+        os << get_operator_string(op) << " " << *conditions.front();
+      }
+      return os;
+    }
+
     for (size_t i = 0; i < conditions.size(); i++) {
       os << *conditions[i];
       if (i < conditions.size() - 1) {

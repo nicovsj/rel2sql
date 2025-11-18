@@ -184,13 +184,13 @@ TEST_F(TranslationTest, ExistentialFormula5) {
 TEST_F(TranslationTest, UniversalFormula1) {
   // TODO: Must remove inner-most FROM subquery alias (final "AS T1")
   EXPECT_EQ(TranslateFormula("forall ((y in A) | B(x, y))"),
-            "SELECT T2.x FROM (SELECT T1.A1 AS x, T1.A2 AS y FROM B AS T1) AS T2 WHERE EXISTS (SELECT * FROM A AS T0 "
+            "SELECT T2.x FROM (SELECT T1.A1 AS x, T1.A2 AS y FROM B AS T1) AS T2 WHERE NOT EXISTS (SELECT * FROM A AS T0 "
             "WHERE (T2.x, T0.A1) NOT IN (SELECT * FROM (SELECT T1.A1 AS x, T1.A2 AS y FROM B AS T1) AS T2))");
 }
 
 TEST_F(TranslationTest, UniversalFormula2) {
   EXPECT_EQ(TranslateFormula("forall ((y in A, z in D) | C(x, y, z))"),
-            "SELECT T3.x FROM (SELECT T2.A1 AS x, T2.A2 AS y, T2.A3 AS z FROM C AS T2) AS T3 WHERE EXISTS (SELECT * "
+            "SELECT T3.x FROM (SELECT T2.A1 AS x, T2.A2 AS y, T2.A3 AS z FROM C AS T2) AS T3 WHERE NOT EXISTS (SELECT * "
             "FROM A AS T0, D AS T1 WHERE (T3.x, T0.A1, T1.A1) NOT IN (SELECT * FROM (SELECT T2.A1 AS x, T2.A2 AS y, "
             "T2.A3 AS z FROM C AS T2) AS T3))");
 }
