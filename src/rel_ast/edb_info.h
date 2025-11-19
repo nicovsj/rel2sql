@@ -32,7 +32,12 @@ struct RelationInfo {
   }
 
   // Constructor for named EDBs
-  explicit RelationInfo(std::vector<std::string> names) : attribute_names(std::move(names)), arity(attribute_names.size()) {}
+  explicit RelationInfo(std::vector<std::string> names)
+      : attribute_names(std::move(names)), arity(attribute_names.size()) {}
+
+  int Arity() const { return arity; }
+
+  bool HasNamedAttributes() const { return !attribute_names.empty(); }
 
   // Check if this EDB has custom named attributes (vs auto-generated A1, A2, etc.)
   bool HasCustomNamedAttributes() const {
