@@ -7,8 +7,8 @@
 namespace rel2sql {
 
 // Creates the default EDB map used in most tests
-inline EDBMap CreateDefaultEDBMap() {
-  EDBMap edb_map;
+inline RelationMap CreateDefaultEDBMap() {
+  RelationMap edb_map;
   edb_map["A"] = RelationInfo(1);
   edb_map["B"] = RelationInfo(2);
   edb_map["C"] = RelationInfo(3);

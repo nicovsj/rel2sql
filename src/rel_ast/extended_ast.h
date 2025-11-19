@@ -76,7 +76,7 @@ class RelAST {
 
   explicit RelAST(antlr4::ParserRuleContext* root);
 
-  RelAST(antlr4::ParserRuleContext* root, const rel2sql::EDBMap& edb_map);
+  RelAST(antlr4::ParserRuleContext* root, const rel2sql::RelationMap& edb_map);
 
   // Get the root node
   std::shared_ptr<RelASTNode> Root() const;

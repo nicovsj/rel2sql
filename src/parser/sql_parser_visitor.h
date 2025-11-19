@@ -19,7 +19,7 @@ class SqlParserVisitor : public sql_parser::SqlParserBaseVisitor {
  public:
   using psr = sql_parser::SqlParser;
 
-  SqlParserVisitor(const rel2sql::EDBMap& edb_map) : edb_map_(edb_map) {}
+  SqlParserVisitor(const rel2sql::RelationMap& edb_map) : edb_map_(edb_map) {}
 
   virtual ~SqlParserVisitor();
 
@@ -161,7 +161,7 @@ class SqlParserVisitor : public sql_parser::SqlParserBaseVisitor {
 
   // Single stack managing per-SELECT scope state
   std::vector<SelectScopeFrame> select_stack_;
-  rel2sql::EDBMap edb_map_;
+  rel2sql::RelationMap edb_map_;
 };
 
 }  // namespace rel2sql

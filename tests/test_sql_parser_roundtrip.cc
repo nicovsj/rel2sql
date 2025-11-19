@@ -81,7 +81,7 @@ class DISABLED_SqlParserRoundTripTest : public ::testing::Test {
         << "Parsed AST string: " << parsed_sql_ast->ToString();
   }
 
-  EDBMap default_edb_map;
+  RelationMap default_edb_map;
 };
 
 // Simple formula tests

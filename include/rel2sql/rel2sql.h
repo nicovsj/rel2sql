@@ -7,7 +7,7 @@ namespace rel2sql {
 
 // Forward declarations
 class IDInfo;
-class EDBMap;
+class RelationMap;
 /*
  * Translates the given input string into SQL.
  *
@@ -23,7 +23,7 @@ std::string Translate(std::string_view input);
  * @param edb_map Map of relation names to their EDB information (arity and optional attribute names).
  * @return The translated SQL string.
  */
-std::string Translate(std::string_view input, const EDBMap& edb_map);
+std::string Translate(std::string_view input, const RelationMap& edb_map);
 
 /*
  * Translates the given input string into SQL without optimizations.
@@ -40,7 +40,7 @@ std::string DumbTranslate(std::string_view input);
  * @param edb_map Map of relation names to their EDB information (arity and optional attribute names).
  * @return The translated SQL string.
  */
-std::string DumbTranslate(std::string_view input, const EDBMap& edb_map);
+std::string DumbTranslate(std::string_view input, const RelationMap& edb_map);
 
 }  // namespace rel2sql
 

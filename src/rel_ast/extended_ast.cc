@@ -13,7 +13,7 @@ RelAST::RelAST() : root_(nullptr) {}
 
 RelAST::RelAST(antlr4::ParserRuleContext* root) : root_(root) {}
 
-RelAST::RelAST(antlr4::ParserRuleContext* root, const rel2sql::EDBMap& edb_map) : root_(root) {
+RelAST::RelAST(antlr4::ParserRuleContext* root, const rel2sql::RelationMap& edb_map) : root_(root) {
   for (const auto& [id, rel_info] : edb_map) {
     // Store the EDBInfo for later use
     relation_info_.emplace(id, rel_info);

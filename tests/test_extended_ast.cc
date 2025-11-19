@@ -8,14 +8,14 @@ namespace rel2sql {
 
 using psr = rel_parser::PrunedCoreRelParser;
 
-std::vector<std::string> GetSortedIDs(const std::string& input, const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
+std::vector<std::string> GetSortedIDs(const std::string& input, const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   auto parser = GetParser(input);
   auto tree = parser->program();
   auto ast = Preprocessor(edb_map).Process(tree);
   return ast.SortedIDs();
 }
 
-std::set<std::string> GetFreeVariables(const std::string& input, const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
+std::set<std::string> GetFreeVariables(const std::string& input, const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   auto parser = GetParser(input);
   auto tree = parser->program();
   auto ast = Preprocessor(edb_map).Process(tree);
@@ -102,7 +102,7 @@ TEST(FreeVarsTest, UniversalQuantificationExpr) {
 
 TEST(FreeVarsTest, ConjunctionExpr) {
   std::string input = "def R { F(x) and G(y) }";
-  rel2sql::EDBMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 1}, {"G", 2}});
+  rel2sql::RelationMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 1}, {"G", 2}});
 
   std::set<std::string> expected_free_vars = {"x", "y"};
 
@@ -111,7 +111,7 @@ TEST(FreeVarsTest, ConjunctionExpr) {
 
 TEST(FreeVarsTest, DisjunctionExpr) {
   std::string input = "def R { F(x) or G(y) }";
-  rel2sql::EDBMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 1}, {"G", 2}});
+  rel2sql::RelationMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 1}, {"G", 2}});
 
   std::set<std::string> expected_free_vars = {"x", "y"};
 
@@ -128,7 +128,7 @@ TEST(FreeVarsTest, NegationExpr) {
 
 TEST(FreeVarsTest, BindingsExpr) {
   std::string input = "def R {[x]: F[x]}";
-  rel2sql::EDBMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 2}});
+  rel2sql::RelationMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 2}});
 
   std::set<std::string> expected_free_vars = {};
 
@@ -158,7 +158,7 @@ TEST(LiteralVisitorTest, Int) {
 
   auto tree = parser->literal();
 
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root()->constant.has_value());
 
@@ -174,7 +174,7 @@ TEST(LiteralVisitorTest, NegInt) {
 
   auto tree = parser->literal();
 
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root()->constant.has_value());
 
@@ -190,7 +190,7 @@ TEST(LiteralVisitorTest, Float) {
 
   auto tree = parser->literal();
 
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root()->constant.has_value());
 
@@ -206,7 +206,7 @@ TEST(LiteralVisitorTest, NegFloat) {
 
   auto tree = parser->literal();
 
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root()->constant.has_value());
 
@@ -222,7 +222,7 @@ TEST(LiteralVisitorTest, Char) {
 
   auto tree = parser->literal();
 
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root()->constant.has_value());
 
@@ -238,7 +238,7 @@ TEST(LiteralVisitorTest, Str) {
 
   auto tree = parser->literal();
 
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root()->constant.has_value());
 
@@ -254,7 +254,7 @@ TEST(LiteralVisitorTest, Bool) {
 
   auto tree = parser->literal();
 
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root()->constant.has_value());
 
@@ -270,7 +270,7 @@ TEST(LiteralVisitorTest, BoolFalse) {
 
   auto tree = parser->literal();
 
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root()->constant.has_value());
 
@@ -286,7 +286,7 @@ TEST(LiteralVisitorTest, NumericalConstantInt) {
 
   auto tree = parser->numericalConstant();
 
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_TRUE(ast.Root()->constant.has_value());
 
@@ -300,7 +300,7 @@ TEST(ArityVisitorTest, LitExpr) {
 
   auto parser = GetParser(input);
   auto tree = parser->program();
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_EQ(ast.GetArity("R"), 1);
 }
@@ -310,7 +310,7 @@ TEST(ArityVisitorTest, SingleVariable) {
 
   auto parser = GetParser(input);
   auto tree = parser->program();
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_EQ(ast.GetArity("R"), 1);
 }
@@ -320,7 +320,7 @@ TEST(ArityVisitorTest, SimpleAbstraction) {
 
   auto parser = GetParser(input);
   auto tree = parser->program();
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_EQ(ast.GetArity("R"), 1);
 }
@@ -330,7 +330,7 @@ TEST(ArityVisitorTest, Product) {
 
   auto parser = GetParser(input);
   auto tree = parser->program();
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_EQ(ast.GetArity("R"), 2);
 }
@@ -340,14 +340,14 @@ TEST(ArityVisitorTest, Abstraction) {
 
   auto parser = GetParser(input);
   auto tree = parser->program();
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_EQ(ast.GetArity("R"), 2);
 }
 
 TEST(ArityVisitorTest, Formula) {
   // NOTE: Formulas are hardcoded to have 0-arity regardless of evaluation
-  rel2sql::EDBMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 1}, {"G", 2}});
+  rel2sql::RelationMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 1}, {"G", 2}});
   std::string input = "def R { F(1) and G(2,3) }";
 
   auto parser = GetParser(input);
@@ -362,14 +362,14 @@ TEST(ArityVisitorTest, PartialApplication) {
 
   auto parser = GetParser(input);
   auto tree = parser->program();
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_EQ(ast.GetArity("R"), 2);
 }
 
 TEST(ArityVisitorTest, Binding) {
   std::string input = "def R { [x in F]: G[x] }";
-  rel2sql::EDBMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 1}, {"G", 2}});
+  rel2sql::RelationMap edb_map = rel2sql::edb_utils::FromArityMap({{"F", 1}, {"G", 2}});
 
   auto parser = GetParser(input);
   auto tree = parser->program();
@@ -383,7 +383,7 @@ TEST(ArityVisitorTest, DoubleDependency) {
 
   auto parser = GetParser(input);
   auto tree = parser->program();
-  auto ast = Preprocessor(rel2sql::EDBMap()).Process(tree);
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
 
   EXPECT_EQ(ast.GetArity("Z"), 2);
 }

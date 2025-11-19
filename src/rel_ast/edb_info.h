@@ -58,15 +58,15 @@ struct RelationInfo {
   void AddDependency(const std::string& id) { dependencies.push_back(id); }
 };
 
-struct EDBMap {
+struct RelationMap {
   using iterator = std::unordered_map<std::string, RelationInfo>::iterator;
   using const_iterator = std::unordered_map<std::string, RelationInfo>::const_iterator;
 
   std::unordered_map<std::string, RelationInfo> map;
 
-  EDBMap() = default;
+  RelationMap() = default;
 
-  EDBMap(const std::unordered_map<std::string, RelationInfo>& map) : map(map) {}
+  RelationMap(const std::unordered_map<std::string, RelationInfo>& map) : map(map) {}
 
   size_t size() const { return map.size(); }
 
@@ -95,8 +95,8 @@ struct EDBMap {
 // Helper functions for EDBMap
 namespace edb_utils {
 // Convert from old external_arity_map format to EDBMap
-inline EDBMap FromArityMap(const std::unordered_map<std::string, int>& arity_map) {
-  EDBMap edb_map;
+inline RelationMap FromArityMap(const std::unordered_map<std::string, int>& arity_map) {
+  RelationMap edb_map;
   for (const auto& [name, arity] : arity_map) {
     edb_map[name] = RelationInfo(arity);  // Create unnamed EDB with explicit arity
   }
@@ -104,8 +104,8 @@ inline EDBMap FromArityMap(const std::unordered_map<std::string, int>& arity_map
 }
 
 // Create EDBMap with named attributes
-inline EDBMap WithNamedAttributes(const std::unordered_map<std::string, std::vector<std::string>>& named_map) {
-  EDBMap edb_map;
+inline RelationMap WithNamedAttributes(const std::unordered_map<std::string, std::vector<std::string>>& named_map) {
+  RelationMap edb_map;
   for (const auto& [name, attributes] : named_map) {
     edb_map[name] = RelationInfo(attributes);
   }

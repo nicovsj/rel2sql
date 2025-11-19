@@ -10,7 +10,7 @@
 namespace rel2sql {
 
 std::string TranslateWithOptimization(const std::string& input, antlr4::ParserRuleContext* tree,
-                                      const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
+                                      const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   Preprocessor preprocessor(edb_map);
   auto ast = preprocessor.Process(tree);
 
@@ -50,7 +50,7 @@ class OptimizationTest : public ::testing::Test {
     return TranslateWithOptimization(input, tree, default_edb_map);
   }
 
-  rel2sql::EDBMap default_edb_map;
+  rel2sql::RelationMap default_edb_map;
 };
 
 TEST_F(OptimizationTest, FullApplicationFormula) {
@@ -298,7 +298,7 @@ std::string OptimizeSQLWithFlattenerOptimizer(const std::string& sql) {
 }
 
 std::string OptimizeSQLWithSelfJoinOptimizer(const std::string& sql,
-                                             const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
+                                             const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   auto expr = rel2sql::ParseSQL(sql, edb_map);
   rel2sql::sql::ast::SelfJoinOptimizer self_join_optimizer;
   self_join_optimizer.Visit(*expr);
@@ -406,7 +406,7 @@ TEST(SelfJoinOptimizationTest, PartialSelfJoin) {
       "SELECT T1.A1\n"
       "FROM A AS T0, A AS T1\n"
       "WHERE T0.A1 = T1.A1 AND T0.A2 > 5";
-  rel2sql::EDBMap edb_map;
+  rel2sql::RelationMap edb_map;
   edb_map["A"] = rel2sql::RelationInfo(2);
   std::string result = OptimizeSQLWithSelfJoinOptimizer(sql, edb_map);
   // Should NOT eliminate because self join is incomplete (only A1 matches, not A2)

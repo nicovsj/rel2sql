@@ -15,7 +15,7 @@ namespace rel2sql {
  * @return A shared pointer to the parsed SQL AST Expression.
  * @throws ParseException if the SQL syntax is invalid.
  */
-std::shared_ptr<sql::ast::Expression> ParseSQL(const std::string& sql_text, const EDBMap& edb_map = EDBMap());
+std::shared_ptr<sql::ast::Expression> ParseSQL(const std::string& sql_text, const RelationMap& edb_map = RelationMap());
 
 }  // namespace rel2sql
 

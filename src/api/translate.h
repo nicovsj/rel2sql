@@ -37,7 +37,7 @@ inline std::shared_ptr<sql::ast::Expression> GetSQLFromAST(const RelAST& ast) {
 }
 
 inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input,
-                                                    const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
+                                                    const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   auto parser = GetParser(input);
   auto parse_tree = parser->program();
 
@@ -53,7 +53,7 @@ inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input,
 }
 
 inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQL(std::string_view input,
-                                                               const rel2sql::EDBMap& edb_map = rel2sql::EDBMap()) {
+                                                               const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   auto parser = GetParser(input);
 
   auto tree = parser->program();

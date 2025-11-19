@@ -39,7 +39,7 @@ class Preprocessor {
         balancing_visitor_(ast_),
         safeness_visitor_(ast_) {}
 
-  explicit Preprocessor(const rel2sql::EDBMap& edb_map)
+  explicit Preprocessor(const rel2sql::RelationMap& edb_map)
       : ast_(std::make_shared<RelAST>(nullptr, edb_map)),
         tree_structure_visitor_(ast_),
         ids_visitor_(ast_),

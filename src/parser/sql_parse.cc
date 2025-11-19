@@ -8,7 +8,7 @@
 
 namespace rel2sql {
 
-std::shared_ptr<sql::ast::Expression> ParseSQL(const std::string& sql_text, const EDBMap& edb_map) {
+std::shared_ptr<sql::ast::Expression> ParseSQL(const std::string& sql_text, const RelationMap& edb_map) {
   auto input_stream = new antlr4::ANTLRInputStream(sql_text);
   auto lexer = new sql_parser::SqlLexer(input_stream);
   auto tokens = new antlr4::CommonTokenStream(lexer);
