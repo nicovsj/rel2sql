@@ -21,6 +21,28 @@ std::shared_ptr<sql::ast::Sourceable> SQLVisitor::TryGetTopLevelIDSelect(psr::Re
   return std::dynamic_pointer_cast<sql::ast::Sourceable>(expr);
 }
 
+void SQLVisitor::ApplyDistinctToDefinitionSelects(const std::shared_ptr<sql::ast::Sourceable>& sourceable) {
+  if (!sourceable) return;
+
+  if (auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(sourceable)) {
+    select->is_distinct = true;
+    return;
+  }
+
+  if (auto union_query = std::dynamic_pointer_cast<sql::ast::Union>(sourceable)) {
+    for (auto& member : union_query->members) {
+      ApplyDistinctToDefinitionSelects(member);
+    }
+    return;
+  }
+
+  if (auto union_all_query = std::dynamic_pointer_cast<sql::ast::UnionAll>(sourceable)) {
+    for (auto& member : union_all_query->members) {
+      ApplyDistinctToDefinitionSelects(std::static_pointer_cast<sql::ast::Sourceable>(member));
+    }
+  }
+}
+
 std::any SQLVisitor::visitProgram(psr::ProgramContext* ctx) {
   /*
    * Generates an SQL query from the program.
@@ -56,6 +78,8 @@ std::any SQLVisitor::visitRelDef(psr::RelDefContext* ctx) {
     child_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
         std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->relAbs())));
   }
+
+  ApplyDistinctToDefinitionSelects(child_sql);
 
   std::string def_id = ctx->T_ID()->getText();
 

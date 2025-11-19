@@ -33,7 +33,8 @@ class TranslationTest : public ::testing::Test {
     return TranslateWithoutOptimization(input, tree, default_edb_map);
   }
 
-  std::string TranslateExpression(const std::string& input, const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
+  std::string TranslateExpression(const std::string& input,
+                                  const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
     auto parser = GetParser(input);
     auto tree = parser->expr();
     return TranslateWithoutOptimization(input, tree, default_edb_map);
@@ -45,7 +46,8 @@ class TranslationTest : public ::testing::Test {
     return TranslateWithoutOptimization(input, tree, default_edb_map);
   }
 
-  std::string TranslateDefinition(const std::string& input, const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
+  std::string TranslateDefinition(const std::string& input,
+                                  const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
     auto parser = GetParser(input);
     auto tree = parser->relDef();
     return TranslateWithoutOptimization(input, tree, default_edb_map);
@@ -182,13 +184,15 @@ TEST_F(TranslationTest, ExistentialFormula5) {
 
 TEST_F(TranslationTest, UniversalFormula1) {
   // TODO: Must remove inner-most FROM subquery alias (final "AS T1")
-  EXPECT_EQ(TranslateFormula("forall ((y in A) | B(x, y))"),
+  EXPECT_EQ(
+      TranslateFormula("forall ((y in A) | B(x, y))"),
             "SELECT T2.x FROM (SELECT T1.A1 AS x, T1.A2 AS y FROM B AS T1) AS T2 WHERE NOT EXISTS (SELECT * FROM A AS T0 "
             "WHERE (T2.x, T0.A1) NOT IN (SELECT * FROM (SELECT T1.A1 AS x, T1.A2 AS y FROM B AS T1) AS T2))");
 }
 
 TEST_F(TranslationTest, UniversalFormula2) {
-  EXPECT_EQ(TranslateFormula("forall ((y in A, z in D) | C(x, y, z))"),
+  EXPECT_EQ(
+      TranslateFormula("forall ((y in A, z in D) | C(x, y, z))"),
             "SELECT T3.x FROM (SELECT T2.A1 AS x, T2.A2 AS y, T2.A3 AS z FROM C AS T2) AS T3 WHERE NOT EXISTS (SELECT * "
             "FROM A AS T0, D AS T1 WHERE (T3.x, T0.A1, T1.A1) NOT IN (SELECT * FROM (SELECT T2.A1 AS x, T2.A2 AS y, "
             "T2.A3 AS z FROM C AS T2) AS T3))");
@@ -328,8 +332,8 @@ TEST_F(TranslationTest, BindingFormula) {
 
 TEST_F(TranslationTest, Program) {
   EXPECT_EQ(TranslateDefinition("def R {[x in A]: B[x]}"),
-            "CREATE OR REPLACE VIEW R AS (WITH S0(x) AS (SELECT * FROM A AS T2) SELECT S0.x AS A1, T1.A1 AS A2 FROM "
-            "(SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1, S0 WHERE S0.x = T1.x)");
+            "CREATE OR REPLACE VIEW R AS (WITH S0(x) AS (SELECT * FROM A AS T2) SELECT DISTINCT S0.x AS A1, T1.A1 AS "
+            "A2 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1, S0 WHERE S0.x = T1.x)");
 }
 
 TEST_F(TranslationTest, MultipleDefs1) {
@@ -342,8 +346,8 @@ TEST_F(TranslationTest, MultipleDefs2) {
   EXPECT_EQ(
       TranslateProgram("def R {(1, 2); (3, 4)} \n def S {B[1]} \n def T {B[3]}"),
       "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE OR "
-      "REPLACE VIEW S AS (SELECT T1.A2 AS A1 FROM B AS T1, (SELECT 1 AS A1) AS T2 WHERE T1.A1 = T2.A1);\n\nCREATE OR "
-      "REPLACE VIEW T AS (SELECT T3.A2 AS A1 FROM B AS T3, (SELECT 3 AS A1) AS T4 WHERE T3.A1 = T4.A1);");
+      "REPLACE VIEW S AS (SELECT DISTINCT T1.A2 AS A1 FROM B AS T1, (SELECT 1 AS A1) AS T2 WHERE T1.A1 = T2.A1);\n\nCREATE "
+      "OR REPLACE VIEW T AS (SELECT DISTINCT T3.A2 AS A1 FROM B AS T3, (SELECT 3 AS A1) AS T4 WHERE T3.A1 = T4.A1);");
 }
 
 TEST_F(TranslationTest, TableDefinition) {
@@ -380,15 +384,16 @@ TEST_F(TranslationTest, NamedAttributesPartialApplication) {
   default_edb_map["R"] = RelationInfo({"student_id", "course_id", "grade"});
 
   EXPECT_EQ(TranslateDefinition("def S {R[x]}"),
-            "CREATE OR REPLACE VIEW S AS (SELECT T0.student_id AS x, T0.course_id AS A1, T0.grade AS A2 FROM R AS T0)");
+            "CREATE OR REPLACE VIEW S AS (SELECT DISTINCT T0.student_id AS x, T0.course_id AS A1, T0.grade AS A2 FROM R "
+            "AS T0)");
 }
 
 TEST_F(TranslationTest, NamedAttributesAggregate) {
   default_edb_map["R"] = RelationInfo({"student_id", "grade"});
 
   EXPECT_EQ(TranslateDefinition("def S {max[R[x]]}"),
-            "CREATE OR REPLACE VIEW S AS (SELECT T1.x, MAX(T1.A1) AS A1 FROM (SELECT T0.student_id AS x, T0.grade AS "
-            "A1 FROM R AS T0) AS T1 GROUP BY T1.x)");
+            "CREATE OR REPLACE VIEW S AS (SELECT DISTINCT T1.x, MAX(T1.A1) AS A1 FROM (SELECT T0.student_id AS x, "
+            "T0.grade AS A1 FROM R AS T0) AS T1 GROUP BY T1.x)");
 }
 
 // Tests for EDB with single attribute
@@ -429,7 +434,8 @@ TEST_F(TranslationTest, CompositionRelation) {
 }
 
 TEST_F(TranslationTest, SimpleReferenceDefinition) {
-  EXPECT_EQ(TranslateDefinition("def R {A}"), "CREATE OR REPLACE VIEW R AS (SELECT T0.A1 AS A1 FROM A AS T0)");
+  EXPECT_EQ(TranslateDefinition("def R {A}"),
+            "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0)");
 }
 
 TEST_F(TranslationTest, ExistentialNotBoundingAllVariables) {

@@ -163,6 +163,7 @@ class SQLVisitor : public BaseVisitor {
       std::shared_ptr<sql::ast::Term>& comparison);
 
   std::shared_ptr<sql::ast::Sourceable> VisitRelAbsLogic(psr::RelAbsContext* ctx);
+  void ApplyDistinctToDefinitionSelects(const std::shared_ptr<sql::ast::Sourceable>& sourceable);
 
   std::unordered_map<std::string, int> table_alias_prefix_counter_;
 

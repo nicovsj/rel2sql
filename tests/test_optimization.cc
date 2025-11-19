@@ -232,7 +232,8 @@ TEST_F(OptimizationTest, BindingFormula) {
 
 TEST_F(OptimizationTest, Program) {
   EXPECT_EQ(TranslateDefinition("def R {[x in A]: B[x]}"),
-            "CREATE OR REPLACE VIEW R AS (SELECT S0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, A AS S0 WHERE S0.A1 = T0.A1)");
+            "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT S0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, A AS S0 WHERE S0.A1 = "
+            "T0.A1)");
 }
 
 TEST_F(OptimizationTest, MultipleDefs1) {
@@ -243,9 +244,9 @@ TEST_F(OptimizationTest, MultipleDefs1) {
 
 TEST_F(OptimizationTest, MultipleDefs2) {
   EXPECT_EQ(TranslateProgram("def R {(1, 2); (3, 4)} \n def S {B[1]} \n def T {B[3]}"),
-            "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE OR "
-            "REPLACE VIEW S AS (SELECT T1.A2 AS A1 FROM B AS T1 WHERE T1.A1 = 1);\n\nCREATE OR REPLACE VIEW T AS "
-            "(SELECT T3.A2 AS A1 FROM B AS T3 WHERE T3.A1 = 3);");
+      "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE OR "
+      "REPLACE VIEW S AS (SELECT DISTINCT T1.A2 AS A1 FROM B AS T1 WHERE T1.A1 = 1);\n\nCREATE OR REPLACE VIEW T AS "
+      "(SELECT DISTINCT T3.A2 AS A1 FROM B AS T3 WHERE T3.A1 = 3);");
 }
 
 TEST_F(OptimizationTest, TableDefinition) {
