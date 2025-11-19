@@ -32,38 +32,38 @@ describe("WASM Bindings Contract Tests", () => {
       assert(result.length > 0);
     });
 
-    test("translateWithEDB function exists", () => {
-      assert.strictEqual(typeof Module.translateWithEDB, "function");
+    test("translateWithRelationMap function exists", () => {
+      assert.strictEqual(typeof Module.translateWithRelationMap, "function");
     });
 
-    test("translateWithEDB works with EDBMap", () => {
-      const map = new Module.EDBMap();
+    test("translateWithRelationMap works with RelationMap", () => {
+      const map = new Module.RelationMap();
       const vec = new Module.StringVector();
       vec.push_back("x");
       vec.push_back("y");
-      const edbInfo = new Module.EDBInfo(vec);
-      map.set("ExternalRelation", edbInfo);
+      const relationInfo = new Module.RelationInfo(vec);
+      map.set("ExternalRelation", relationInfo);
 
-      const result = Module.translateWithEDB("def output { ExternalRelation(x, y) }", map);
+      const result = Module.translateWithRelationMap("def output { ExternalRelation(x, y) }", map);
       assert.strictEqual(typeof result, "string");
       assert(result.length > 0);
     });
   });
 
-  describe("EDBMap Class", () => {
-    test("EDBMap class exists", () => {
-      assert.strictEqual(typeof Module.EDBMap, "function");
+  describe("RelationMap Class", () => {
+    test("RelationMap class exists", () => {
+      assert.strictEqual(typeof Module.RelationMap, "function");
     });
 
-    test("EDBMap creation and basic methods", () => {
-      const map = new Module.EDBMap();
+    test("RelationMap creation and basic methods", () => {
+      const map = new Module.RelationMap();
       assert.strictEqual(map.size(), 0);
 
       const vec = new Module.StringVector();
       vec.push_back("attr1");
       vec.push_back("attr2");
-      const edbInfo = new Module.EDBInfo(vec);
-      map.set("testRelation", edbInfo);
+      const relationInfo = new Module.RelationInfo(vec);
+      map.set("testRelation", relationInfo);
 
       assert.strictEqual(map.size(), 1);
       assert(map.has("testRelation"));
@@ -75,22 +75,22 @@ describe("WASM Bindings Contract Tests", () => {
     });
   });
 
-  describe("EDBInfo Class", () => {
-    test("EDBInfo class exists", () => {
-      assert.strictEqual(typeof Module.EDBInfo, "function");
+  describe("RelationInfo Class", () => {
+    test("RelationInfo class exists", () => {
+      assert.strictEqual(typeof Module.RelationInfo, "function");
     });
 
-    test("EDBInfo with named attributes", () => {
+    test("RelationInfo with named attributes", () => {
       const vec = new Module.StringVector();
       vec.push_back("name");
       vec.push_back("age");
       vec.push_back("city");
-      const edbInfo = new Module.EDBInfo(vec);
-      assert.strictEqual(edbInfo.arity(), 3);
-      assert(edbInfo.hasCustomNamedAttributes());
-      assert.strictEqual(edbInfo.getAttributeName(0), "name");
-      assert.strictEqual(edbInfo.getAttributeName(1), "age");
-      assert.strictEqual(edbInfo.getAttributeName(2), "city");
+      const relationInfo = new Module.RelationInfo(vec);
+      assert.strictEqual(relationInfo.arity(), 3);
+      assert(relationInfo.hasCustomNamedAttributes());
+      assert.strictEqual(relationInfo.getAttributeName(0), "name");
+      assert.strictEqual(relationInfo.getAttributeName(1), "age");
+      assert.strictEqual(relationInfo.getAttributeName(2), "city");
     });
   });
 
