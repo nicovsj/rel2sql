@@ -99,6 +99,22 @@ TEST_F(ExceptionTest, SemanticErrors) {
       ArityException);
 }
 
+TEST_F(ExceptionTest, ReservedRelationName) {
+  EXPECT_THROW(
+      {
+        try {
+          rel2sql::Translate("def SELECT { 1 }");
+        } catch (const SemanticException& e) {
+          EXPECT_EQ(e.getErrorCode(), ErrorCode::RESERVED_RELATION_NAME);
+          std::string error = e.what();
+          EXPECT_TRUE(error.find("reserved SQL keyword") != std::string::npos);
+          EXPECT_TRUE(error.find("SELECT") != std::string::npos);
+          throw e;
+        }
+      },
+      SemanticException);
+}
+
 // Test error message quality
 TEST_F(ExceptionTest, ErrorMessageQuality) {
   SourceLocation loc(2, 5, "def F { G(x) }");

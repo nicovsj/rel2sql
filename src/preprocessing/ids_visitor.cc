@@ -1,8 +1,29 @@
 #include "ids_visitor.h"
 
-using StringSet = std::unordered_set<std::string>;
+#include <algorithm>
+#include <cctype>
+#include <string>
+#include <unordered_set>
+
+#include "support/exceptions.h"
 
 namespace rel2sql {
+
+static const std::unordered_set<std::string> kSQLKeywords = {
+    "SELECT", "DISTINCT", "FROM",      "WHERE", "GROUP",  "BY",    "WITH", "AS",  "UNION", "ALL",  "VALUES",
+    "CASE",   "WHEN",     "THEN",      "END",   "EXISTS", "IN",    "NOT",  "AND", "OR",    "TRUE", "FALSE",
+    "CREATE", "REPLACE",  "RECURSIVE", "VIEW",  "TABLE",  "COUNT", "SUM",  "AVG", "MIN",   "MAX",  "JOIN"};
+
+static bool IsSQLKeyword(const std::string& identifier) {
+  std::string normalized;
+  normalized.reserve(identifier.size());
+  for (unsigned char ch : identifier) {
+    normalized.push_back(static_cast<char>(std::toupper(ch)));
+  }
+  return kSQLKeywords.find(normalized) != kSQLKeywords.end();
+}
+
+using StringSet = std::unordered_set<std::string>;
 
 IDsVisitor::IDsVisitor(std::shared_ptr<RelAST> extended_ast) : BaseVisitor(extended_ast) {}
 
@@ -19,6 +40,11 @@ std::any IDsVisitor::visitProgram(psr::ProgramContext* ctx) {
 
 std::any IDsVisitor::visitRelDef(psr::RelDefContext* ctx) {
   std::string id = ctx->T_ID()->getText();
+
+  if (IsSQLKeyword(id)) {
+    throw SemanticException("Relation name '" + id + "' is a reserved SQL keyword", ErrorCode::RESERVED_RELATION_NAME,
+                            GetSourceLocation(ctx));
+  }
 
   ast_->MarkAsIDB(id);  // If defined in the program, it is an IDB (arity will be set later)
 
@@ -225,6 +251,5 @@ std::any IDsVisitor::visitApplParam(psr::ApplParamContext* ctx) {
 
   return deps;
 }
-
 
 }  // namespace rel2sql
