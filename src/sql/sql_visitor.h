@@ -2,8 +2,9 @@
 #define SQL_VISITOR_H
 
 #include <antlr4-runtime.h>
-#include <functional>
 #include <gtest/gtest.h>
+
+#include <functional>
 
 #include "preprocessing/base_visitor.h"
 #include "rel_ast/extended_ast.h"
@@ -170,6 +171,8 @@ class SQLVisitor : public BaseVisitor {
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> table_index_;
 
   std::shared_ptr<sql::ast::Sourceable> TryGetTopLevelIDSelect(psr::RelAbsContext* ctx);
+
+  std::shared_ptr<sql::ast::Expression> SpecialVisitRecursiveRelAbs(psr::RelAbsContext* ctx);
 
   // Testing bindings
 

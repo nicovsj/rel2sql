@@ -1,5 +1,6 @@
 #include "sql_visitor.h"
 
+#include "optimizer/replacers.h"
 #include "sql_ast/sql_ast.h"
 #include "support/exceptions.h"
 
@@ -98,6 +99,10 @@ std::any SQLVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
 
   if (GetNode(ctx)->has_only_literal_values) {
     return SpecialVisitRelAbs(ctx);
+  }
+
+  if (GetNode(ctx)->is_recursive) {
+    return SpecialVisitRecursiveRelAbs(ctx);
   }
 
   auto query = VisitRelAbsLogic(ctx);
@@ -1672,6 +1677,56 @@ std::shared_ptr<sql::ast::Condition> SQLVisitor::BindingsEqualityShorthand(
   }
 
   return condition;
+}
+
+std::shared_ptr<sql::ast::Expression> SQLVisitor::SpecialVisitRecursiveRelAbs(psr::RelAbsContext* ctx) {
+  /*
+   * Generates an SQL query from the recursive relation abstraction.
+   */
+
+  auto expr_ctxs = ctx->expr();
+
+  if (expr_ctxs.size() != 1) {
+    throw InternalException("Recursive relation abstraction with multiple members or no members");
+  }
+
+  auto expr_ctx = expr_ctxs[0];
+
+  auto expr_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
+      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(expr_ctx)));
+
+  // We actually expect the expression to be a select statement
+  auto select_stmt = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr_sql);
+  if (!select_stmt) {
+    throw InternalException("Recursive relation abstraction member is not a select statement");
+  }
+
+  std::string recursive_alias = GenerateTableAlias("R");
+
+  sql::ast::TableNameUpdater updater(GetNode(ctx)->recursive_definition_name, recursive_alias);
+  select_stmt->Accept(updater);
+
+  std::vector<std::string> def_columns;
+  for (int i = 1; i <= GetNode(ctx)->arity; i++) {
+    def_columns.push_back(fmt::format("A{}", i));
+  }
+
+  auto recursive_source = std::make_shared<sql::ast::Source>(select_stmt, recursive_alias, true, def_columns);
+
+  auto select_columns = std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::Wildcard>()};
+  auto from = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{recursive_source});
+
+
+  std::vector<std::shared_ptr<sql::ast::Source>> new_ctes;
+
+  new_ctes.insert(new_ctes.end(), select_stmt->ctes.begin(), select_stmt->ctes.end());
+  new_ctes.push_back(recursive_source);
+
+  select_stmt->ctes.clear();
+
+  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from, new_ctes, false, true);
+
+  return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
 }  // namespace rel2sql
