@@ -98,6 +98,26 @@ tasks:
       - rm -f compile_commands.json
       - rm -f wasm/test_wasm.html
 
+  tag:
+    desc: Create a new version tag and push it to GitHub (defaults to patch)
+    cmds:
+      - scripts/tag.sh patch
+
+  tag:major:
+    desc: Create a new major version tag and push it to GitHub
+    cmds:
+      - scripts/tag.sh major
+
+  tag:minor:
+    desc: Create a new minor version tag and push it to GitHub
+    cmds:
+      - scripts/tag.sh minor
+
+  tag:patch:
+    desc: Create a new patch version tag and push it to GitHub
+    cmds:
+      - scripts/tag.sh patch
+
   default:
     desc: Display available tasks
     cmds:
