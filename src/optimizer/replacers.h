@@ -148,6 +148,22 @@ class SourceReplacer : public ExpressionVisitor {
   std::shared_ptr<Source> new_source_;
 };
 
+class TableNameUpdater : public ExpressionVisitor {
+ public:
+  TableNameUpdater(const std::string& old_table_name, const std::string& new_table_name)
+      : old_table_name_(old_table_name), new_table_name_(new_table_name) {}
+
+  void Visit(Table& table) override {
+    if (table.name == old_table_name_) {
+      table.name = new_table_name_;
+    }
+  }
+
+ private:
+  std::string old_table_name_;
+  std::string new_table_name_;
+};
+
 /**
  * Visitor that flattens nested LogicalConditions so that AND and OR operators are not nested
  * when they could be at the same level. For example: (A AND B) AND C becomes A AND B AND C.
@@ -239,7 +255,6 @@ class RedundancyReplacer : public ExpressionVisitor {
 
     logical_condition.conditions.erase(new_end, logical_condition.conditions.end());
   }
-
 
  private:
   using ColumnId = std::pair<std::string, std::string>;  // (source_alias, column_name)
