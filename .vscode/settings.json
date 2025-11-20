@@ -9,7 +9,7 @@
     "[cpp]": {
         "editor.tabSize": 2
     },
-    "files.exclude" : {
+    "files.exclude": {
         "**/external": true,
     },
     "search.exclude": {
@@ -19,4 +19,7 @@
     "cSpell.words": [
         "ctes"
     ],
+    "git.ignoredRepositories": [
+        "_main"
+    ]
 }
