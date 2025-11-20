@@ -34,6 +34,9 @@ struct RelASTNode {
   // Flag to mark if the expression matches a recursion pattern
   bool is_recursive = false;
 
+  // Name of the recursive source
+  std::string recursive_definition_name;
+
   // Arity of the current context
   int arity;
 

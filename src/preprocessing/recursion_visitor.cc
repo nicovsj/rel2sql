@@ -41,6 +41,7 @@ std::any RecursionVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
   // If the BindingsFormula is recursable, also mark the RelAbs as recursable
   if (GetNode(bindings_formula)->is_recursive) {
     GetNode(ctx)->is_recursive = true;
+    GetNode(ctx)->recursive_definition_name = current_q_;
   }
 
   return {};
@@ -54,6 +55,7 @@ std::any RecursionVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx
   // Check if formula matches the recursable pattern
   if (CheckRecursionPattern(formula_ctx, binding_ctx)) {
     GetNode(ctx)->is_recursive = true;
+    GetNode(ctx)->recursive_definition_name = current_q_;
   }
 
   return {};
