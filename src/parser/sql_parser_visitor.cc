@@ -47,9 +47,11 @@ std::any SqlParserVisitor::visitSelect(psr::SelectContext* ctx) {
 
   // Handle WITH clause (CTEs)
   std::vector<std::shared_ptr<sql::ast::Source>> ctes;
+  bool with_recursive_ctes = false;
   if (ctx->with()) {
     auto ctes_result = visit(ctx->with());
     ctes = std::any_cast<std::vector<std::shared_ptr<sql::ast::Source>>>(ctes_result);
+    with_recursive_ctes = ctx->with()->RECURSIVE() != nullptr;
   }
 
   // Handle DISTINCT
@@ -104,7 +106,8 @@ std::any SqlParserVisitor::visitSelect(psr::SelectContext* ctx) {
   // Build SelectStatement with appropriate constructor
   std::shared_ptr<sql::ast::SelectStatement> result;
   if (!ctes.empty()) {
-    result = std::make_shared<sql::ast::SelectStatement>(columns, effective_from, ctes, is_distinct);
+    result =
+        std::make_shared<sql::ast::SelectStatement>(columns, effective_from, ctes, is_distinct, with_recursive_ctes);
   } else if (group_by.has_value()) {
     result = std::make_shared<sql::ast::SelectStatement>(columns, effective_from, group_by.value(), is_distinct);
   } else if (from_stmt.has_value()) {
@@ -371,7 +374,7 @@ std::any SqlParserVisitor::visitCte(psr::CteContext* ctx) {
   }
 
   auto source = std::make_shared<sql::ast::Source>(sourceable, cte_name, true, def_columns);
-  source->is_recursive_cte = ctx->getToken(sql_parser::SqlParser::RECURSIVE, 0) != nullptr;
+
   return source;
 }
 

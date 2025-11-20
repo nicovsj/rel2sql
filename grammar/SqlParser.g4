@@ -11,10 +11,10 @@ statements: statement (SEMICOLON statement)* SEMICOLON? EOF;
 statement: select | values | unionClause | createView | createTable;
 
 // WITH clause (CTEs) - can precede SELECT
-with: WITH cte (COMMA cte)*;
+with: WITH RECURSIVE? cte (COMMA cte)*;
 
 cte:
-	RECURSIVE? cteName = IDENTIFIER (LPAREN columnList RPAREN)? AS LPAREN select RPAREN;
+	cteName = IDENTIFIER (LPAREN columnList RPAREN)? AS LPAREN select RPAREN;
 
 columnList: IDENTIFIER (COMMA IDENTIFIER)*;
 

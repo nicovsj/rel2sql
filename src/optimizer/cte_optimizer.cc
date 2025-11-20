@@ -13,6 +13,9 @@ void CTEOptimizer::Visit(SelectStatement& select_statement) {
     }
   }
   select_statement.ctes = new_ctes;
+  if (select_statement.ctes.empty()) {
+    select_statement.ctes_are_recursive = false;
+  }
 }
 
 bool CTEOptimizer::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, SelectStatement& select_stmt) {

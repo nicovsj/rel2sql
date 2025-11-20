@@ -50,13 +50,9 @@ class Expression {
 };
 
 // Non-member operator== for Expression
-inline bool operator==(const Expression& lhs, const Expression& rhs) {
-  return lhs.Equals(rhs);
-}
+inline bool operator==(const Expression& lhs, const Expression& rhs) { return lhs.Equals(rhs); }
 
-inline bool operator!=(const Expression& lhs, const Expression& rhs) {
-  return !(lhs == rhs);
-}
+inline bool operator!=(const Expression& lhs, const Expression& rhs) { return !(lhs == rhs); }
 
 class Sourceable : public Expression {
  public:
@@ -110,15 +106,15 @@ class Source : public Expression {
   std::vector<std::string> def_columns;
   bool is_subquery;
   bool is_cte;
-  bool is_recursive_cte;
 
   static bool CheckIsSubquery(std::shared_ptr<Sourceable> sourceable) {
     return std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr ||
-           std::dynamic_pointer_cast<Values>(sourceable) != nullptr;
+           std::dynamic_pointer_cast<Values>(sourceable) != nullptr ||
+           std::dynamic_pointer_cast<Union>(sourceable) != nullptr;
   }
 
   Source(std::shared_ptr<Sourceable> sourceable)
-      : sourceable(sourceable), is_subquery(CheckIsSubquery(sourceable)), is_cte(false), is_recursive_cte(false) {
+      : sourceable(sourceable), is_subquery(CheckIsSubquery(sourceable)), is_cte(false) {
     if (is_subquery) {
       throw std::runtime_error("Subquery must have an alias");
     }
@@ -130,8 +126,7 @@ class Source : public Expression {
         alias(std::make_shared<AliasStatement>(alias)),
         def_columns(def_columns),
         is_subquery(CheckIsSubquery(sourceable)),
-        is_cte(is_cte),
-        is_recursive_cte(false) {}
+        is_cte(is_cte) {}
 
   Source(std::shared_ptr<Sourceable> sourceable, std::shared_ptr<AliasStatement> alias, bool is_cte = false,
          const std::vector<std::string>& def_columns = {})
@@ -139,8 +134,7 @@ class Source : public Expression {
         alias(alias),
         def_columns(def_columns),
         is_subquery(CheckIsSubquery(sourceable)),
-        is_cte(is_cte),
-        is_recursive_cte(false) {}
+        is_cte(is_cte) {}
 
   virtual std::ostream& Print(std::ostream& os) const override {
     if (is_cte) {
@@ -233,8 +227,7 @@ class Table : public Sourceable {
   bool Equals(const Expression& other) const override {
     const auto* other_table = dynamic_cast<const Table*>(&other);
     if (!other_table) return false;
-    return name == other_table->name && arity == other_table->arity &&
-           attribute_names == other_table->attribute_names;
+    return name == other_table->name && arity == other_table->arity && attribute_names == other_table->attribute_names;
   }
 
   bool HasNamedAttributes() const { return !attribute_names.empty(); }
@@ -666,8 +659,7 @@ class CaseWhen : public Term {
     if (!other_case) return false;
     if (cases.size() != other_case->cases.size()) return false;
     for (size_t i = 0; i < cases.size(); i++) {
-      if (*cases[i].first != *other_case->cases[i].first ||
-          *cases[i].second != *other_case->cases[i].second) {
+      if (*cases[i].first != *other_case->cases[i].first || *cases[i].second != *other_case->cases[i].second) {
         return false;
       }
     }
@@ -800,6 +792,7 @@ class SelectStatement : public Sourceable {
   std::vector<std::shared_ptr<Source>> ctes;
   std::optional<std::shared_ptr<GroupBy>> group_by;
   bool is_distinct = false;
+  bool ctes_are_recursive = false;
 
   SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, bool is_distinct = false)
       : columns(columns), is_distinct(is_distinct) {}
@@ -813,23 +806,30 @@ class SelectStatement : public Sourceable {
       : columns(columns), from(from), group_by(group_by), is_distinct(is_distinct) {}
 
   SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from,
-                  std::vector<std::shared_ptr<Source>> ctes, bool is_distinct = false)
-      : columns(columns), from(from), ctes(ctes), group_by(std::nullopt), is_distinct(is_distinct) {}
+                  std::vector<std::shared_ptr<Source>> ctes, bool is_distinct = false,
+                  bool ctes_are_recursive = false)
+      : columns(columns),
+        from(from),
+        ctes(ctes),
+        group_by(std::nullopt),
+        is_distinct(is_distinct),
+        ctes_are_recursive(ctes_are_recursive) {}
 
   std::ostream& Print(std::ostream& os) const override {
-    for (int i = 0; i < ctes.size(); i++) {
-      if (i == 0) {
-        os << "WITH ";
-      }
-      if (ctes[i]->is_recursive_cte) {
+    if (!ctes.empty()) {
+      os << "WITH ";
+      if (ctes_are_recursive) {
         os << "RECURSIVE ";
       }
+    }
+    for (size_t i = 0; i < ctes.size(); i++) {
       os << ctes[i]->Declaration() << " AS " << ctes[i]->Definition();
 
       if (i < ctes.size() - 1) {
-        os << ",";
+        os << ", ";
+      } else {
+        os << " ";
       }
-      os << " ";
     }
     os << "SELECT ";
     if (is_distinct) {
@@ -872,6 +872,7 @@ class SelectStatement : public Sourceable {
       if (*from.value() != *other_select->from.value()) return false;
     }
     if (ctes.size() != other_select->ctes.size()) return false;
+    if (ctes_are_recursive != other_select->ctes_are_recursive) return false;
     for (size_t i = 0; i < ctes.size(); i++) {
       if (*ctes[i] != *other_select->ctes[i]) return false;
     }

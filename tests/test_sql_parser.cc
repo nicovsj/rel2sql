@@ -122,7 +122,7 @@ TEST_F(SqlParserTest, ParseWithRecursiveCTE) {
   auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
   ASSERT_NE(select, nullptr);
   ASSERT_FALSE(select->ctes.empty());
-  EXPECT_TRUE(select->ctes[0]->is_recursive_cte);
+  EXPECT_TRUE(select->ctes_are_recursive);
   ASSERT_EQ(select->ctes.size(), 1);
   ASSERT_TRUE(select->ctes[0]->alias.has_value());
   EXPECT_EQ(select->ctes[0]->alias.value()->Access(), "T");
@@ -131,8 +131,8 @@ TEST_F(SqlParserTest, ParseWithRecursiveCTE) {
   EXPECT_NE(result_str.find("WITH RECURSIVE"), std::string::npos);
 }
 
-TEST_F(SqlParserTest, ParseWithMixedRecursiveAndNormalCTE) {
-  std::string sql = "WITH T1 AS (SELECT 1), RECURSIVE T2 AS (SELECT 2) SELECT * FROM T1, T2;";
+TEST_F(SqlParserTest, ParseWithRecursiveMultipleCTEs) {
+  std::string sql = "WITH RECURSIVE T1 AS (SELECT 1), T2 AS (SELECT 2) SELECT * FROM T1, T2;";
   auto expr = ParseSQL(sql);
 
   ASSERT_NE(expr, nullptr);
@@ -142,24 +142,16 @@ TEST_F(SqlParserTest, ParseWithMixedRecursiveAndNormalCTE) {
   ASSERT_FALSE(select->ctes.empty());
   ASSERT_EQ(select->ctes.size(), 2);
 
-  // First CTE should not be recursive
   ASSERT_TRUE(select->ctes[0]->alias.has_value());
   EXPECT_EQ(select->ctes[0]->alias.value()->Access(), "T1");
-  EXPECT_FALSE(select->ctes[0]->is_recursive_cte);
-
-  // Second CTE should be recursive
   ASSERT_TRUE(select->ctes[1]->alias.has_value());
   EXPECT_EQ(select->ctes[1]->alias.value()->Access(), "T2");
-  EXPECT_TRUE(select->ctes[1]->is_recursive_cte);
+  EXPECT_TRUE(select->ctes_are_recursive);
 
-  // Verify the output string has both CTEs with RECURSIVE only on T2
+  // Verify the output string has a single RECURSIVE applied to the WITH clause
   auto result_str = expr->ToString();
-  EXPECT_NE(result_str.find("WITH T1 AS"), std::string::npos);
-  EXPECT_NE(result_str.find("RECURSIVE T2 AS"), std::string::npos);
-  // Ensure T1 doesn't have RECURSIVE
-  size_t t1_pos = result_str.find("T1 AS");
-  size_t recursive_before_t1 = result_str.find("RECURSIVE", t1_pos - 20);
-  EXPECT_EQ(recursive_before_t1, std::string::npos);
+  EXPECT_EQ(result_str.find("WITH T1 AS"), std::string::npos);
+  EXPECT_NE(result_str.find("WITH RECURSIVE"), std::string::npos);
 }
 
 TEST_F(SqlParserTest, ParseUnion) {
