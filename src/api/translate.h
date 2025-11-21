@@ -6,7 +6,7 @@
 #include "optimizer/optimizer.h"
 #include "parser/error_listener.h"
 #include "preprocessing/preprocessor.h"
-#include "rel_ast/edb_info.h"
+#include "rel_ast/relation_info.h"
 #include "sql/sql_visitor.h"
 
 namespace rel2sql {

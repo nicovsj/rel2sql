@@ -147,6 +147,8 @@ struct BindingsBound {
     return true;
   }
 
+  bool Empty() const { return variables.empty(); }
+
   BindingsBound WithRemovedIndices(const std::vector<size_t>& indices) const {
     std::vector<std::string> new_variables = variables;
     // Sort indices in descending order to safely erase from end to beginning
@@ -189,5 +191,85 @@ struct hash<rel2sql::BindingsBound> {
 };
 
 }  // namespace std
+
+namespace rel2sql {
+
+struct BindingBoundSet {
+  std::unordered_set<BindingsBound> bounds;
+
+  BindingBoundSet() = default;
+
+  explicit BindingBoundSet(std::unordered_set<BindingsBound> bounds) : bounds(std::move(bounds)) {}
+
+  size_t Size() const { return bounds.size(); }
+
+  bool Empty() const { return bounds.empty(); }
+
+  BindingBoundSet DisjunctMergeWith(const BindingBoundSet& other) const {
+    std::unordered_set<BindingsBound> merged;
+    for (const auto& bound : bounds) {
+      for (const auto& other_bound : other.bounds) {
+        if (bound.variables != other_bound.variables) continue;
+        merged.insert(bound.mergedWith(other_bound));
+      }
+    }
+    return BindingBoundSet(merged);
+  }
+
+  BindingBoundSet UnionWith(const BindingBoundSet& other) {
+    std::unordered_set<BindingsBound> merged;
+    merged.insert(bounds.begin(), bounds.end());
+    merged.insert(other.bounds.begin(), other.bounds.end());
+    return BindingBoundSet(merged);
+  }
+
+  BindingBoundSet WithRemovedVariables(const std::vector<std::string>& variables) const {
+    std::unordered_set<BindingsBound> result;
+
+    for (auto& binding_bound : bounds) {
+      std::vector<size_t> indices_to_remove;
+      for (auto& variable : variables) {
+        auto it = std::find(binding_bound.variables.begin(), binding_bound.variables.end(), variable);
+        if (it == binding_bound.variables.end()) continue;
+
+        int index = std::distance(binding_bound.variables.begin(), it);
+        indices_to_remove.push_back(index);
+      }
+
+      auto new_bindings_bound = binding_bound.WithRemovedIndices(indices_to_remove);
+
+      // If the new bindings bound is empty, we skip it
+      if (new_bindings_bound.Empty()) continue;
+
+      result.insert(new_bindings_bound);
+    }
+
+    return BindingBoundSet(result);
+  }
+
+  BindingBoundSet IntersectWith(const BindingBoundSet& other) const {
+    std::unordered_set<BindingsBound> result;
+
+    // Start with normal intersection
+    for (const auto& bound : bounds) {
+      if (other.bounds.contains(bound)) {
+        result.insert(bound);
+      }
+    }
+
+    // Then union compatible domains
+    for (const auto& bound : bounds) {
+      for (const auto& other_bound : other.bounds) {
+        if (bound.variables == other_bound.variables) {
+          result.insert(bound.mergedWith(other_bound));
+        }
+      }
+    }
+
+    return BindingBoundSet(result);
+  }
+};
+
+}  // namespace rel2sql
 
 #endif  // TUPLE_BINDING_H

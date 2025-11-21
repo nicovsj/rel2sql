@@ -4,7 +4,7 @@
 #include "api/translate.h"
 #include "parser/sql_parse.h"
 #include "preprocessing/preprocessor.h"
-#include "rel_ast/edb_info.h"
+#include "rel_ast/relation_info.h"
 #include "test_common.h"
 
 namespace rel2sql {
@@ -261,7 +261,7 @@ TEST_F(OptimizationTest, EDBBindingFormula) {
 
 TEST_F(OptimizationTest, BindingConjunction) {
   EXPECT_EQ(TranslateExpression("(x, y): A(x) and B(x, y)"),
-            "SELECT T0.A1 AS A1, T2.A2 AS A2 FROM A AS T0, B AS T2 WHERE T2.A1 = T0.A1");
+            "SELECT T2.A1 AS A1, T2.A2 AS A2 FROM A AS T0, B AS T2 WHERE T2.A1 = T0.A1");
 }
 
 // TODO: We should try to optimize this case

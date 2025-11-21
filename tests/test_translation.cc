@@ -6,7 +6,7 @@
 #include "PrunedCoreRelParser.h"
 #include "api/translate.h"
 #include "preprocessing/preprocessor.h"
-#include "rel_ast/edb_info.h"
+#include "rel_ast/relation_info.h"
 #include "rel_ast/extended_ast.h"
 #include "sql_ast/sql_ast.h"
 #include "test_common.h"
@@ -455,6 +455,12 @@ TEST_F(TranslationTest, RecursiveDefinition) {
             "A1 FROM (SELECT T6.x FROM (SELECT T0.A1 AS x FROM B AS T0) AS T6 UNION SELECT  FROM (SELECT  FROM (SELECT "
             "T2.y FROM (SELECT T1.A1 AS y FROM R0 AS T1) AS T2, (SELECT T3.A1 AS y FROM C AS T3) AS T4 WHERE T2.y = "
             "T4.y) AS T5) AS T7) AS T8, S0 WHERE S0.x = T8.x) SELECT DISTINCT * FROM R0)");
+}
+
+TEST_F(TranslationTest, RecursiveDefinition2) {
+  default_edb_map["R"] = RelationInfo(2);
+
+  EXPECT_EQ(TranslateDefinition("def Q {(x,y) : R(x,y) or exists((z) | R(x,z) and Q(z,y))}"), "");
 }
 
 TEST_F(TranslationTest, WeirdEdgeCase1) {

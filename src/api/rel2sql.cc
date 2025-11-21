@@ -1,6 +1,6 @@
 #include <rel2sql/rel2sql.h>
 
-#include "rel_ast/edb_info.h"
+#include "rel_ast/relation_info.h"
 #include "api/translate.h"
 
 namespace rel2sql {

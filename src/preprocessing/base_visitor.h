@@ -1,5 +1,5 @@
-#ifndef ABS_VISITOR_H
-#define ABS_VISITOR_H
+#ifndef BASE_VISITOR_H
+#define BASE_VISITOR_H
 
 #include <antlr4-runtime.h>
 
@@ -32,4 +32,4 @@ class BaseVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
 
 }  // namespace rel2sql
 
-#endif  // ABS_VISITOR_H
+#endif  // BASE_VISITOR_H

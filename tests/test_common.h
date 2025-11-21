@@ -1,7 +1,7 @@
 #ifndef TEST_COMMON_H
 #define TEST_COMMON_H
 
-#include "rel_ast/edb_info.h"
+#include "rel_ast/relation_info.h"
 #include "sql_ast/sql_ast.h"
 
 namespace rel2sql {

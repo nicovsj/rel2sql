@@ -263,7 +263,7 @@ bool operator==(const RelASTNode& lhs, const RelASTNode& rhs) {
   }
 
   // Compare safeness
-  if (lhs.safeness != rhs.safeness) {
+  if (lhs.safety.bounds != rhs.safety.bounds) {
     throw ExtendedNodeDifferenceException(nullptr, "safeness", "Safeness sets differ");
   }
 

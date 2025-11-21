@@ -97,9 +97,9 @@ struct RelationMap {
   auto end() const { return map.end(); }
 };
 
-// Helper functions for EDBMap
-namespace edb_utils {
-// Convert from old external_arity_map format to EDBMap
+// Helper functions for RelationMap
+namespace relation_map {
+// Convert from old external_arity_map format to RelationMap
 inline RelationMap FromArityMap(const std::unordered_map<std::string, int>& arity_map) {
   RelationMap edb_map;
   for (const auto& [name, arity] : arity_map) {
@@ -108,7 +108,7 @@ inline RelationMap FromArityMap(const std::unordered_map<std::string, int>& arit
   return edb_map;
 }
 
-// Create EDBMap with named attributes
+// Create RelationMap with named attributes
 inline RelationMap WithNamedAttributes(const std::unordered_map<std::string, std::vector<std::string>>& named_map) {
   RelationMap edb_map;
   for (const auto& [name, attributes] : named_map) {
@@ -117,7 +117,7 @@ inline RelationMap WithNamedAttributes(const std::unordered_map<std::string, std
   return edb_map;
 }
 
-}  // namespace edb_utils
+}  // namespace relation_map
 
 }  // namespace rel2sql
 

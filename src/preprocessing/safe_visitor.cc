@@ -22,29 +22,18 @@ std::any SafeVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
 
   auto current_node = GetNode(ctx);
 
-  std::vector<std::unordered_set<BindingsBound>> sets_to_intersect;
+  current_node->safety = GetNode(ctx->expr()[0])->safety;
 
-  for (auto& expr_ctx : ctx->expr()) {
-    if (!GetNode(expr_ctx)->safeness.has_value()) {
-      current_node->safeness = std::nullopt;
-      return {};
-    }
-    auto& expr_safeness = GetNode(expr_ctx)->safeness.value();
-    sets_to_intersect.push_back(expr_safeness);
+  for (int i = 1; i < ctx->expr().size(); i++) {
+    auto& sub_safety = GetNode(ctx->expr()[i])->safety;
+    current_node->safety = current_node->safety.IntersectWith(sub_safety);
   }
-
-  // Intersect all the sets
-  current_node->safeness = utl::IntersectSets(sets_to_intersect);
-
-  auto special_intersection = SpecialIntersectionOfBindingBounds(sets_to_intersect);
-
-  current_node->safeness.value().insert(special_intersection.begin(), special_intersection.end());
 
   return {};
 }
 
 std::any SafeVisitor::visitIDExpr(psr::IDExprContext* ctx) {
-  GetNode(ctx)->safeness = {};
+  GetNode(ctx)->safety = {};
 
   return {};
 }
@@ -54,16 +43,9 @@ std::any SafeVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
 
   auto current_node = GetNode(ctx);
 
-  current_node->safeness = std::unordered_set<BindingsBound>();
-
   for (auto sub_ctx : ctx->productInner()->expr()) {
-    if (!GetNode(sub_ctx)->safeness.has_value()) {
-      current_node->safeness = std::nullopt;
-      return {};
-    }
-
-    current_node->safeness.value().insert(GetNode(sub_ctx)->safeness.value().begin(),
-                                         GetNode(sub_ctx)->safeness.value().end());
+    auto& sub_safety = GetNode(sub_ctx)->safety;
+    current_node->safety = current_node->safety.UnionWith(sub_safety);
   }
 
   return {};
@@ -75,11 +57,9 @@ std::any SafeVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
 
   auto current_node = GetNode(ctx);
 
-  current_node->safeness = std::unordered_set<BindingsBound>();
-
   auto formula_node = GetNode(ctx->formula());
 
-  current_node->safeness.value().insert(formula_node->safeness.value().begin(), formula_node->safeness.value().end());
+  current_node->safety = formula_node->safety;
 
   return {};
 }
@@ -87,7 +67,7 @@ std::any SafeVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
 std::any SafeVisitor::visitRelAbsExpr(psr::RelAbsExprContext* ctx) {
   visitChildren(ctx);
 
-  GetNode(ctx)->safeness = GetNode(ctx->relAbs())->safeness;
+  GetNode(ctx)->safety = GetNode(ctx->relAbs())->safety;
 
   return {};
 }
@@ -95,7 +75,7 @@ std::any SafeVisitor::visitRelAbsExpr(psr::RelAbsExprContext* ctx) {
 std::any SafeVisitor::visitFormulaExpr(psr::FormulaExprContext* ctx) {
   visit(ctx->formula());
 
-  GetNode(ctx)->safeness = GetNode(ctx->formula())->safeness;
+  GetNode(ctx)->safety = GetNode(ctx->formula())->safety;
 
   return {};
 }
@@ -107,13 +87,12 @@ std::any SafeVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
 
   auto expr_node = GetNode(ctx->expr());
 
-  // If the expression is not safe, the whole expression is not safe
-    if (!expr_node->safeness.has_value()) {
-      current_node->safeness = std::nullopt;
-    return {};
+  std::vector<std::string> variables;
+  for (auto& binding : ctx->bindingInner()->binding()) {
+    variables.push_back(binding->id->getText());
   }
 
-    current_node->safeness = RemoveBoundVariables(expr_node->safeness.value(), ctx->bindingInner());
+  current_node->safety = expr_node->safety.WithRemovedVariables(variables);
 
   return {};
 }
@@ -123,7 +102,7 @@ std::any SafeVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
 
   auto formula_node = GetNode(ctx->formula());
 
-  GetNode(ctx)->safeness = {};
+  GetNode(ctx)->safety = {};
 
   for (auto& binding : ctx->bindingInner()->binding()) {
     visit(binding);
@@ -141,7 +120,7 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
 
     auto child_node = GetNode(param_ctx);
 
-    node->safeness = child_node->safeness;
+    node->safety = child_node->safety;
 
     return {};
   }
@@ -178,7 +157,7 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
         binding_bound.variables.push_back(variable);
       }
 
-      GetNode(ctx)->safeness = {binding_bound};
+      GetNode(ctx)->safety = BindingBoundSet({binding_bound});
 
       return {};
     }
@@ -221,7 +200,7 @@ std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
     binding_bound.variables.push_back(variable);
   }
 
-  GetNode(ctx)->safeness = {binding_bound};
+  GetNode(ctx)->safety = BindingBoundSet({binding_bound});
 
   return {};
 }
@@ -241,20 +220,12 @@ std::any SafeVisitor::VisitConjunction(psr::BinOpContext* ctx) {
   visit(ctx->lhs);
   visit(ctx->rhs);
 
-  auto lhs_safeness = GetNode(ctx->lhs)->safeness;
-  auto rhs_safeness = GetNode(ctx->rhs)->safeness;
+  auto lhs_safety = GetNode(ctx->lhs)->safety;
+  auto rhs_safety = GetNode(ctx->rhs)->safety;
 
   auto current_node = GetNode(ctx);
 
-  if (!lhs_safeness.has_value() || !rhs_safeness.has_value()) {
-    current_node->safeness = std::nullopt;
-    return {};
-  }
-
-  current_node->safeness = std::unordered_set<BindingsBound>();
-
-    current_node->safeness.value().insert(lhs_safeness.value().begin(), lhs_safeness.value().end());
-    current_node->safeness.value().insert(rhs_safeness.value().begin(), rhs_safeness.value().end());
+  current_node->safety = lhs_safety.UnionWith(rhs_safety);
 
   return {};
 }
@@ -263,23 +234,10 @@ std::any SafeVisitor::VisitDisjunction(psr::BinOpContext* ctx) {
   visit(ctx->lhs);
   visit(ctx->rhs);
 
-  auto lhs_safeness = GetNode(ctx->lhs)->safeness;
-  auto rhs_safeness = GetNode(ctx->rhs)->safeness;
+  auto lhs_safeness = GetNode(ctx->lhs)->safety;
+  auto rhs_safeness = GetNode(ctx->rhs)->safety;
 
-  GetNode(ctx)->safeness = std::unordered_set<BindingsBound>();
-
-  if (!lhs_safeness.has_value() || !rhs_safeness.has_value()) {
-    GetNode(ctx)->safeness = std::nullopt;
-    return {};
-  }
-
-  for (const auto& lhs : lhs_safeness.value()) {
-    for (const auto& rhs : rhs_safeness.value()) {
-      if (lhs.variables == rhs.variables) {
-        GetNode(ctx)->safeness.value().insert(lhs.mergedWith(rhs));
-      }
-    }
-  }
+  GetNode(ctx)->safety = lhs_safeness.DisjunctMergeWith(rhs_safeness);
 
   return {};
 }
@@ -287,7 +245,7 @@ std::any SafeVisitor::VisitDisjunction(psr::BinOpContext* ctx) {
 std::any SafeVisitor::visitUnOp(psr::UnOpContext* ctx) {
   visit(ctx->formula());
 
-  GetNode(ctx)->safeness = GetNode(ctx->formula())->safeness;
+  GetNode(ctx)->safety = GetNode(ctx->formula())->safety;
 
   return {};
 }
@@ -299,12 +257,12 @@ std::any SafeVisitor::visitQuantification(psr::QuantificationContext* ctx) {
 
   auto formula_node = GetNode(ctx->formula());
 
-  if (!formula_node->safeness.has_value()) {
-    current_node->safeness = std::nullopt;
-    return {};
+  std::vector<std::string> variables;
+  for (auto& binding : ctx->bindingInner()->binding()) {
+    variables.push_back(binding->id->getText());
   }
 
-  current_node->safeness = RemoveBoundVariables(formula_node->safeness.value(), ctx->bindingInner());
+  current_node->safety = formula_node->safety.WithRemovedVariables(variables);
 
   return {};
 }
@@ -312,7 +270,7 @@ std::any SafeVisitor::visitQuantification(psr::QuantificationContext* ctx) {
 std::any SafeVisitor::visitParen(psr::ParenContext* ctx) {
   visit(ctx->formula());
 
-  GetNode(ctx)->safeness = GetNode(ctx->formula())->safeness;
+  GetNode(ctx)->safety = GetNode(ctx->formula())->safety;
 
   return {};
 }
@@ -326,7 +284,6 @@ std::any SafeVisitor::visitComparison(psr::ComparisonContext* ctx) {
   // TODO: Maybe we can allow for bounded variables if we have a type system?
 
   auto current_node = GetNode(ctx);
-  current_node->safeness = std::unordered_set<BindingsBound>{};
 
   // If the comparator is not an equality, the comparison is not safe
   if (!ctx->comparator()->T_OP_EQ()) return {};
@@ -340,7 +297,7 @@ std::any SafeVisitor::visitComparison(psr::ComparisonContext* ctx) {
   std::string variable_name;
   sql::ast::constant_t constant;
 
-    if (lhs_id_term && rhs_node->constant.has_value()) {
+  if (lhs_id_term && rhs_node->constant.has_value()) {
     variable_name = lhs_id_term->T_ID()->getText();
     constant = rhs_node->constant.value();
   } else if (rhs_id_term && lhs_node->constant.has_value()) {
@@ -354,16 +311,13 @@ std::any SafeVisitor::visitComparison(psr::ComparisonContext* ctx) {
   BindingsBound binding_bound;
   binding_bound.variables.push_back(variable_name);
   binding_bound.Add(SourceProjection(ConstantSource(constant)));
-  current_node->safeness.value().insert(binding_bound);
+  current_node->safety = BindingBoundSet({binding_bound});
 
   return {};
 }
 
 std::any SafeVisitor::visitApplBase(psr::ApplBaseContext* ctx) {
   visitChildren(ctx);
-
-  GetNode(ctx)->safeness = std::unordered_set<BindingsBound>{};
-
   return {};
 }
 
@@ -371,64 +325,23 @@ std::any SafeVisitor::visitApplParam(psr::ApplParamContext* ctx) {
   visitChildren(ctx);
 
   if (ctx->expr()) {
-    GetNode(ctx)->safeness = GetNode(ctx->expr())->safeness;
+    GetNode(ctx)->safety = GetNode(ctx->expr())->safety;
   }
 
   return {};
 }
 
-std::unordered_set<BindingsBound> SafeVisitor::SpecialIntersectionOfBindingBounds(
-    const std::vector<std::unordered_set<BindingsBound>>& sets) const {
-  if (sets.empty()) {
-    return {};
-  }
 
-  std::unordered_set<BindingsBound> intersection = sets[0];
-
-  for (size_t i = 1; i < sets.size(); ++i) {
-    std::unordered_set<BindingsBound> currentIntersection;
-
-    for (const BindingsBound& binding_bound1 : intersection) {
-      // If the element is in the next set, add it to the current intersection
-      for (const BindingsBound& binding_bound2 : sets[i]) {
-        if (binding_bound1.variables == binding_bound2.variables) {
-          ;
-          currentIntersection.insert(binding_bound1.mergedWith(binding_bound2));
-        }
-      }
-    }
-
-    intersection = std::move(currentIntersection);
-
-    if (intersection.empty()) {
-      break;
-    }
-  }
-
-  return intersection;
-}
-
-std::unordered_set<BindingsBound> SafeVisitor::RemoveBoundVariables(
-    const std::unordered_set<BindingsBound>& bindings_bound, psr::BindingInnerContext* binding_inner) const {
-  std::unordered_set<BindingsBound> result;
-
-  for (auto& binding_bound : bindings_bound) {
-    std::vector<size_t> indices_to_remove;
-    for (auto& binding : binding_inner->binding()) {
-      std::string binding_var = binding->id->getText();
-
-      auto it = std::find(binding_bound.variables.begin(), binding_bound.variables.end(), binding_var);
-      if (it == binding_bound.variables.end()) continue;
-
-      int index = std::distance(binding_bound.variables.begin(), it);
-      indices_to_remove.push_back(index);
-    }
-
-    auto new_bindings_bound = binding_bound.WithRemovedIndices(indices_to_remove);
-    result.insert(new_bindings_bound);
-  }
-
-  return result;
+std::unordered_set<BindingsBound> SafeVisitor::MergeCompatibleProjections(
+    const std::unordered_set<BindingsBound>& bindings) const {
+  // TODO: Implement projection merging logic
+  // For now, this is a black box that just returns the input unchanged
+  // The implementation should:
+  // 1. Group BindingsBound objects by their source table (if all projections come from same table)
+  // 2. Find projections with disjoint indices from the same table
+  // 3. Merge them, especially when they form a complete covering of the table
+  // 4. Return the merged result
+  return bindings;
 }
 
 }  // namespace rel2sql

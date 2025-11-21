@@ -1471,13 +1471,9 @@ std::unordered_set<BindingsBound> SQLVisitor::SafeFunction(psr::BindingInnerCont
     return safe_result;
   }
 
-  auto safeness = GetNode(expr_ctx)->safeness;
+  auto safeness = GetNode(expr_ctx)->safety;
 
-  if (!safeness.has_value()) {
-    throw InternalException("No safety value for expression");
-  }
-
-  for (auto [vars, union_domain] : safeness.value()) {
+  for (auto [vars, union_domain] : safeness.bounds) {
     for (auto var : vars) {
       if (binding_vars.find(var) != binding_vars.end()) {
         binding_vars.erase(var);
@@ -1486,7 +1482,7 @@ std::unordered_set<BindingsBound> SQLVisitor::SafeFunction(psr::BindingInnerCont
   }
 
   if (binding_vars.empty()) {
-    safe_result.insert(safeness.value().begin(), safeness.value().end());
+    safe_result.insert(safeness.bounds.begin(), safeness.bounds.end());
     return safe_result;
   }
 

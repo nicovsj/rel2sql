@@ -70,13 +70,11 @@ class SafeVisitor : public BaseVisitor {
 
   std::any VisitDisjunction(psr::BinOpContext* ctx);
 
-  std::unordered_set<BindingsBound> SpecialIntersectionOfBindingBounds(
-      const std::vector<std::unordered_set<BindingsBound>>& sets) const;
-
-  // Helper function to remove bound variables from a BindingsBound
-  std::unordered_set<BindingsBound> RemoveBoundVariables(
-      const std::unordered_set<BindingsBound>& bindings_bound,
-      psr::BindingInnerContext* binding_inner) const;
+  // Helper function to merge compatible projections from the same table
+  // Attempts to merge BindingsBound objects that have projections from the same table
+  // with disjoint indices, especially when they form a complete covering.
+  std::unordered_set<BindingsBound> MergeCompatibleProjections(
+      const std::unordered_set<BindingsBound>& bindings) const;
 };
 
 }  // namespace rel2sql

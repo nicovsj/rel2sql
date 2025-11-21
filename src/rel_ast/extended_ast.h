@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "rel_ast/bindings_bound.h"
-#include "rel_ast/edb_info.h"
+#include "rel_ast/relation_info.h"
 #include "sql_ast/sql_ast.h"
 
 namespace rel2sql {
@@ -40,8 +40,8 @@ struct RelASTNode {
   // Arity of the current context
   int arity;
 
-  // Output of the safeness analysis
-  std::optional<std::unordered_set<BindingsBound>> safeness;
+  // Output of the safety analysis
+  BindingBoundSet safety;
 
   // AND term partitioning variables
   std::vector<antlr4::ParserRuleContext*> comparator_formulas;
