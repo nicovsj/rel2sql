@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "rel_ast/bindings_bound.h"
+#include "rel_ast/bound_set.h"
 #include "rel_ast/relation_info.h"
 #include "sql_ast/sql_ast.h"
 
@@ -41,7 +41,7 @@ struct RelASTNode {
   int arity;
 
   // Output of the safety analysis
-  BindingBoundSet safety;
+  BoundSet safety;
 
   // AND term partitioning variables
   std::vector<antlr4::ParserRuleContext*> comparator_formulas;

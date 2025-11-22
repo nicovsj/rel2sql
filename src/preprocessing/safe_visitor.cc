@@ -141,13 +141,13 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
         indices.push_back(i);
       }
 
-      BindingsBound binding_bound;
+      Bound binding_bound;
 
       std::string id = ctx->applBase()->T_ID()->getText();
       auto arity = ast_->GetArity(id);
 
       auto table_source = TableSource(id, arity);
-      auto projection = SourceProjection(table_source);
+      auto projection = Projection(table_source);
 
       binding_bound.Add(projection);
 
@@ -157,7 +157,7 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
         binding_bound.variables.push_back(variable);
       }
 
-      GetNode(ctx)->safety = BindingBoundSet({binding_bound});
+      GetNode(ctx)->safety = BoundSet({binding_bound});
 
       return {};
     }
@@ -179,13 +179,13 @@ std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
     return {};
   }
 
-  BindingsBound binding_bound;
+  Bound binding_bound;
 
   std::string id = ctx->applBase()->T_ID()->getText();
   auto arity = ast_->GetArity(id);
 
   auto table_source = TableSource(id, arity);
-  auto projection = SourceProjection(table_source);
+  auto projection = Projection(table_source);
 
   binding_bound.Add(projection);
 
@@ -200,7 +200,7 @@ std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
     binding_bound.variables.push_back(variable);
   }
 
-  GetNode(ctx)->safety = BindingBoundSet({binding_bound});
+  GetNode(ctx)->safety = BoundSet({binding_bound});
 
   return {};
 }
@@ -237,7 +237,7 @@ std::any SafeVisitor::VisitDisjunction(psr::BinOpContext* ctx) {
   auto lhs_safeness = GetNode(ctx->lhs)->safety;
   auto rhs_safeness = GetNode(ctx->rhs)->safety;
 
-  GetNode(ctx)->safety = lhs_safeness.DisjunctMergeWith(rhs_safeness);
+  GetNode(ctx)->safety = lhs_safeness.MergeWith(rhs_safeness);
 
   return {};
 }
@@ -308,10 +308,11 @@ std::any SafeVisitor::visitComparison(psr::ComparisonContext* ctx) {
     return {};
   }
 
-  BindingsBound binding_bound;
-  binding_bound.variables.push_back(variable_name);
-  binding_bound.Add(SourceProjection(ConstantSource(constant)));
-  current_node->safety = BindingBoundSet({binding_bound});
+  auto projection = Projection(ConstantSource(constant));
+
+  Bound bound({variable_name}, {projection});
+
+  current_node->safety = BoundSet({bound});
 
   return {};
 }
@@ -329,19 +330,6 @@ std::any SafeVisitor::visitApplParam(psr::ApplParamContext* ctx) {
   }
 
   return {};
-}
-
-
-std::unordered_set<BindingsBound> SafeVisitor::MergeCompatibleProjections(
-    const std::unordered_set<BindingsBound>& bindings) const {
-  // TODO: Implement projection merging logic
-  // For now, this is a black box that just returns the input unchanged
-  // The implementation should:
-  // 1. Group BindingsBound objects by their source table (if all projections come from same table)
-  // 2. Find projections with disjoint indices from the same table
-  // 3. Merge them, especially when they form a complete covering of the table
-  // 4. Return the merged result
-  return bindings;
 }
 
 }  // namespace rel2sql

@@ -4,7 +4,7 @@
 #include <variant>
 
 #include "api/translate.h"
-#include "rel_ast/bindings_bound.h"
+#include "rel_ast/bound_set.h"
 
 namespace rel2sql {
 

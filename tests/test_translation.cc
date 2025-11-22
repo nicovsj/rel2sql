@@ -6,8 +6,8 @@
 #include "PrunedCoreRelParser.h"
 #include "api/translate.h"
 #include "preprocessing/preprocessor.h"
-#include "rel_ast/relation_info.h"
 #include "rel_ast/extended_ast.h"
+#include "rel_ast/relation_info.h"
 #include "sql_ast/sql_ast.h"
 #include "test_common.h"
 
@@ -435,6 +435,22 @@ TEST_F(TranslationTest, CompositionRelation) {
             "T5, S1, S0 WHERE S1.y = T5.y AND S0.x = T5.x");
 }
 
+TEST_F(TranslationTest, SelfComposition) {
+  EXPECT_EQ(TranslateExpression("(x, y): exists((z) | B(x, z) and B(z, y))"),
+            "WITH S0(x, y) AS (SELECT * FROM B AS T6) SELECT S0.x AS A1, S0.y AS A2 FROM (SELECT T4.x, T4.y FROM "
+            "(SELECT T1.x, T1.z, T3.y FROM (SELECT T0.A1 AS x, T0.A2 AS z FROM B AS T0) AS T1, (SELECT T2.A1 AS z, "
+            "T2.A2 AS y FROM B AS T2) AS T3 WHERE T1.z = T3.z) AS T4) AS T5, S0 WHERE S0.x = T5.x AND S0.y = T5.y");
+}
+
+TEST_F(TranslationTest, FirstTransitivityComposition) {
+  EXPECT_EQ(
+      TranslateExpression("(x, y): B(x, y) or exists((z) | B(x, z) and B(z, y))"),
+      "WITH S0(x, y) AS (SELECT * FROM B AS T9) SELECT S0.x AS A1, S0.y AS A2 FROM (SELECT T6.x, T6.y FROM (SELECT "
+      "T0.A1 AS x, T0.A2 AS y FROM B AS T0) AS T6 UNION SELECT T7.x, T7.y FROM (SELECT T5.x, T5.y FROM (SELECT T2.x, "
+      "T2.z, T4.y FROM (SELECT T1.A1 AS x, T1.A2 AS z FROM B AS T1) AS T2, (SELECT T3.A1 AS z, T3.A2 AS y FROM B AS "
+      "T3) AS T4 WHERE T2.z = T4.z) AS T5) AS T7) AS T8, S0 WHERE S0.x = T8.x AND S0.y = T8.y");
+}
+
 TEST_F(TranslationTest, SimpleReferenceDefinition) {
   EXPECT_EQ(TranslateDefinition("def R {A}"), "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0)");
 }
@@ -457,7 +473,7 @@ TEST_F(TranslationTest, RecursiveDefinition) {
             "T4.y) AS T5) AS T7) AS T8, S0 WHERE S0.x = T8.x) SELECT DISTINCT * FROM R0)");
 }
 
-TEST_F(TranslationTest, RecursiveDefinition2) {
+TEST_F(TranslationTest, TransitiveClosure) {
   default_edb_map["R"] = RelationInfo(2);
 
   EXPECT_EQ(TranslateDefinition("def Q {(x,y) : R(x,y) or exists((z) | R(x,z) and Q(z,y))}"), "");

@@ -1443,13 +1443,13 @@ SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext* base,
   return std::make_pair(var_params, non_var_params);
 }
 
-std::unordered_set<BindingsBound> SQLVisitor::SafeFunction(psr::BindingInnerContext* binding_ctx,
-                                                           antlr4::ParserRuleContext* expr_ctx) {
+std::unordered_set<Bound> SQLVisitor::SafeFunction(psr::BindingInnerContext* binding_ctx,
+                                                   antlr4::ParserRuleContext* expr_ctx) {
   /*
    * Computes the safe function from the paper.
    */
 
-  std::unordered_set<BindingsBound> safe_result;
+  std::unordered_set<Bound> safe_result;
 
   std::set<std::string> binding_vars(GetNode(binding_ctx)->variables);
 
@@ -1459,9 +1459,9 @@ std::unordered_set<BindingsBound> SQLVisitor::SafeFunction(psr::BindingInnerCont
     int domain_arity = ast_->GetArity(binding->id_domain->getText());
 
     auto table_source = TableSource(binding->id_domain->getText(), domain_arity);
-    auto projection_table = SourceProjection(table_source);
+    auto projection_table = Projection(table_source);
 
-    auto bindings_bound = BindingsBound({binding->id->getText()}, {projection_table});
+    auto bindings_bound = Bound({binding->id->getText()}, {projection_table});
     safe_result.insert(bindings_bound);
 
     binding_vars.erase(binding->id->getText());
@@ -1489,13 +1489,13 @@ std::unordered_set<BindingsBound> SQLVisitor::SafeFunction(psr::BindingInnerCont
   throw SemanticException("Not all variables are bound", ErrorCode::UNBALANCED_VARIABLE);
 }
 
-std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>> SQLVisitor::ComputeBindingsCTEs(
-    std::unordered_set<BindingsBound>& safe_result) {
+std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::ComputeBindingsCTEs(
+    std::unordered_set<Bound>& safe_result) {
   /*
    * Computes the CTEs for the bindings. Associates each safe result with the CTE that it generates for after use.
    */
 
-  std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>> cte_map;
+  std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> cte_map;
 
   for (auto& elem : safe_result) {
     if (elem.domain.empty()) {
@@ -1575,7 +1575,7 @@ std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>> SQLVisitor:
 }
 
 std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::ComputeBindingsOutput(
-    const std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>>& cte_map,
+    const std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>>& cte_map,
     psr::BindingInnerContext* binding_ctx) {
   /*
    * Computes the output for the bindings.
@@ -1598,7 +1598,7 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::ComputeBindingsOu
 }
 
 std::function<std::shared_ptr<sql::ast::Source>(const std::string&)> SQLVisitor::MakeBindingCTEResolver(
-    const std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>>& cte_map) const {
+    const std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>>& cte_map) const {
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> seen_vars;
 
   auto resolver = [&cte_map, seen_vars](const std::string& binding_var) mutable -> std::shared_ptr<sql::ast::Source> {
@@ -1622,8 +1622,7 @@ std::function<std::shared_ptr<sql::ast::Source>(const std::string&)> SQLVisitor:
 }
 
 std::shared_ptr<sql::ast::Condition> SQLVisitor::BindingsEqualityShorthand(
-    antlr4::ParserRuleContext* expr,
-    const std::unordered_map<BindingsBound, std::shared_ptr<sql::ast::Source>>& safe_result) {
+    antlr4::ParserRuleContext* expr, const std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>>& safe_result) {
   /*
    * Generates a condition that equates all the repeated variables in the input map. This is the EQ function
    * in the paper.
@@ -1637,8 +1636,8 @@ std::shared_ptr<sql::ast::Condition> SQLVisitor::BindingsEqualityShorthand(
 
   std::vector<std::shared_ptr<sql::ast::Condition>> conditions;
 
-  for (auto const& [tuple_binding, cte] : safe_result) {
-    auto const& [vars, union_domain] = tuple_binding;
+  for (auto const& [bound, cte] : safe_result) {
+    auto const& [vars, union_domain] = bound;
     for (auto const& var : vars) {
       if (expr_free_vars.find(var) != expr_free_vars.end()) {
         auto condition = std::make_shared<sql::ast::ComparisonCondition>(
@@ -1710,8 +1709,8 @@ std::shared_ptr<sql::ast::Expression> SQLVisitor::SpecialVisitRecursiveRelAbs(ps
   auto recursive_source = std::make_shared<sql::ast::Source>(select_stmt, recursive_alias, true, def_columns);
 
   auto select_columns = std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::Wildcard>()};
-  auto from = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{recursive_source});
-
+  auto from =
+      std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{recursive_source});
 
   std::vector<std::shared_ptr<sql::ast::Source>> new_ctes;
 

@@ -69,12 +69,6 @@ class SafeVisitor : public BaseVisitor {
   std::any VisitConjunction(psr::BinOpContext* ctx);
 
   std::any VisitDisjunction(psr::BinOpContext* ctx);
-
-  // Helper function to merge compatible projections from the same table
-  // Attempts to merge BindingsBound objects that have projections from the same table
-  // with disjoint indices, especially when they form a complete covering.
-  std::unordered_set<BindingsBound> MergeCompatibleProjections(
-      const std::unordered_set<BindingsBound>& bindings) const;
 };
 
 }  // namespace rel2sql
