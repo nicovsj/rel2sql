@@ -40,8 +40,6 @@ Bound Bound::MergeWith(const Bound& other) const {
   return Bound{variables, std::move(merged)};
 }
 
-bool Bound::operator==(const Bound& other) const {
-  return variables == other.variables && domain == other.domain;
-}
+bool Bound::operator==(const Bound& other) const { return variables == other.variables && domain == other.domain; }
 
 }  // namespace rel2sql

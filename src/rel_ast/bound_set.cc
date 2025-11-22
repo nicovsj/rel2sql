@@ -11,8 +11,7 @@ namespace {
 
 // Checks if the union of projection indices from a set of bindings forms a complete table.
 // Returns true if union of projected_indices = [0, 1, ..., table_arity-1] with no clashes.
-std::vector<std::string> FormsCompleteTableByProjections(const std::vector<Bound>& bindings,
-                                                         size_t table_arity) {
+std::vector<std::string> FormsCompleteTableByProjections(const std::vector<Bound>& bindings, size_t table_arity) {
   std::unordered_set<size_t> all_indices;
   std::vector<std::string> variables(table_arity);
 
@@ -38,8 +37,7 @@ std::vector<std::string> FormsCompleteTableByProjections(const std::vector<Bound
 
 // Merges bindings that form a complete table into a single BindingBound.
 // Precondition: FormsCompleteTableByProjections(bindings, table_arity) && HaveSameVariables(bindings)
-Bound MergeBindingsToCompleteTable(const std::vector<Bound>& bindings,
-                                           const std::vector<std::string>& variables) {
+Bound MergeBindingsToCompleteTable(const std::vector<Bound>& bindings, const std::vector<std::string>& variables) {
   size_t table_arity = variables.size();
   // Get the table source from the first binding
   const Projection& first_projection = *bindings[0].domain.begin();
