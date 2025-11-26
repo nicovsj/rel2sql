@@ -52,10 +52,26 @@ std::any RecursionVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx
   auto binding_ctx = ctx->bindingInner();
   auto formula_ctx = ctx->formula();
 
+  RecursionPatternMatch pattern_match;
+
   // Check if formula matches the recursable pattern
-  if (CheckRecursionPattern(formula_ctx, binding_ctx)) {
+  if (CheckRecursionPattern(formula_ctx, binding_ctx, pattern_match)) {
     GetNode(ctx)->is_recursive = true;
     GetNode(ctx)->recursive_definition_name = current_q_;
+
+    if (!current_q_.empty()) {
+      for (auto* base_ctx : pattern_match.base_disjuncts) {
+        ast_->RegisterRecursiveBaseDisjunct(current_q_, base_ctx);
+      }
+
+      for (const auto& branch : pattern_match.recursive_disjuncts) {
+        RecursiveBranchInfo info;
+        info.exists_clause = GetNode(branch.exists_ctx);
+        info.recursive_call = GetNode(branch.recursive_call);
+        info.residual_formula = GetNode(branch.residual_formula);
+        ast_->RegisterRecursiveBranch(current_q_, info);
+      }
+    }
   }
 
   return {};
@@ -221,7 +237,11 @@ bool RecursionVisitor::VariablesFromBindingOrQuantification(const std::set<std::
   return true;
 }
 
-bool RecursionVisitor::CheckRecursionPattern(psr::FormulaContext* formula_ctx, psr::BindingInnerContext* binding_ctx) {
+bool RecursionVisitor::CheckRecursionPattern(psr::FormulaContext* formula_ctx, psr::BindingInnerContext* binding_ctx,
+                                             RecursionPatternMatch& match) {
+  match.base_disjuncts.clear();
+  match.recursive_disjuncts.clear();
+
   if (!formula_ctx) {
     return false;
   }
@@ -237,7 +257,11 @@ bool RecursionVisitor::CheckRecursionPattern(psr::FormulaContext* formula_ctx, p
     // If it's not a BinOp with 'or', check if it's a single exists
     auto quant = dynamic_cast<psr::QuantificationContext*>(formula_ctx);
     if (quant && quant->K_exists()) {
-      return CheckExistsPattern(quant->formula(), current_q_, quant->bindingInner(), binding_ctx);
+      RecursiveBranchMatch branch;
+      if (CheckExistsPattern(quant, current_q_, binding_ctx, branch)) {
+        match.recursive_disjuncts.push_back(branch);
+        return true;
+      }
     }
     return false;
   }
@@ -273,24 +297,32 @@ bool RecursionVisitor::CheckRecursionPattern(psr::FormulaContext* formula_ctx, p
     if (!OnlyEDBsOrNonRecursiveIDBs(g_ids, current_q_)) {
       return false;  // G refers to something other than EDBs or non-recursive IDBs
     }
+    match.base_disjuncts.push_back(g);
   }
 
   // Check each exists part
   for (auto* exists : exists_parts) {
-    if (!CheckExistsPattern(exists->formula(), current_q_, exists->bindingInner(), binding_ctx)) {
+    RecursiveBranchMatch branch;
+    if (!CheckExistsPattern(exists, current_q_, binding_ctx, branch)) {
       return false;
     }
+    match.recursive_disjuncts.push_back(branch);
+  }
+
+  if (match.base_disjuncts.empty() || match.recursive_disjuncts.empty()) {
+    return false;
   }
 
   return true;
 }
 
-bool RecursionVisitor::CheckExistsPattern(psr::FormulaContext* formula_ctx, const std::string& q,
-                                          psr::BindingInnerContext* quant_binding_ctx,
-                                          psr::BindingInnerContext* outer_binding_ctx) {
-  if (!formula_ctx) {
+bool RecursionVisitor::CheckExistsPattern(psr::QuantificationContext* quant_ctx, const std::string& q,
+                                          psr::BindingInnerContext* outer_binding_ctx, RecursiveBranchMatch& match) {
+  if (!quant_ctx || !quant_ctx->formula()) {
     return false;
   }
+
+  auto formula_ctx = quant_ctx->formula();
 
   // Formula should be: Q(w) and F(v)
   // Check if it's a BinOp with 'and'
@@ -322,6 +354,8 @@ bool RecursionVisitor::CheckExistsPattern(psr::FormulaContext* formula_ctx, cons
     return false;
   }
 
+  auto quant_binding_ctx = quant_ctx->bindingInner();
+
   // Check variables in w (parameters of Q(w))
   if (q_call->applParams()) {
     std::set<std::string> w_vars;
@@ -347,6 +381,10 @@ bool RecursionVisitor::CheckExistsPattern(psr::FormulaContext* formula_ctx, cons
   if (!VariablesFromBindingOrQuantification(v_vars, outer_binding_ctx, quant_binding_ctx)) {
     return false;
   }
+
+  match.exists_ctx = quant_ctx;
+  match.recursive_call = q_call;
+  match.residual_formula = f_part;
 
   return true;
 }

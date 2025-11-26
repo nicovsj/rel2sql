@@ -2,6 +2,7 @@
 #define RECURSION_VISITOR_H
 
 #include <antlr4-runtime.h>
+#include <vector>
 
 #include "preprocessing/base_visitor.h"
 #include "rel_ast/extended_ast.h"
@@ -32,6 +33,17 @@ class RecursionVisitor : public BaseVisitor {
   std::any visitFullAppl(psr::FullApplContext* ctx) override;
 
  private:
+  struct RecursiveBranchMatch {
+    psr::QuantificationContext* exists_ctx = nullptr;
+    psr::FullApplContext* recursive_call = nullptr;
+    psr::FormulaContext* residual_formula = nullptr;
+  };
+
+  struct RecursionPatternMatch {
+    std::vector<psr::FormulaContext*> base_disjuncts;
+    std::vector<RecursiveBranchMatch> recursive_disjuncts;
+  };
+
   // Current ID being defined (Q in the pattern)
   std::string current_q_;
 
@@ -52,14 +64,13 @@ class RecursionVisitor : public BaseVisitor {
 
   // Check if a formula matches the pattern: G or exists(...) or exists(...)
   // Returns true if matches, and sets recursion flag on the node
-  bool CheckRecursionPattern(psr::FormulaContext* formula_ctx,
-                              psr::BindingInnerContext* binding_ctx);
+  bool CheckRecursionPattern(psr::FormulaContext* formula_ctx, psr::BindingInnerContext* binding_ctx,
+                              RecursionPatternMatch& match);
 
   // Check if a formula is of the form: Q(w) and F(v)
   // Returns true if matches and F doesn't refer to Q
-  bool CheckExistsPattern(psr::FormulaContext* formula_ctx, const std::string& q,
-                          psr::BindingInnerContext* quant_binding_ctx,
-                          psr::BindingInnerContext* outer_binding_ctx);
+  bool CheckExistsPattern(psr::QuantificationContext* quant_ctx, const std::string& q,
+                          psr::BindingInnerContext* outer_binding_ctx, RecursiveBranchMatch& match);
 
   // Check if a FullAppl is a call to Q
   bool IsCallToQ(psr::FullApplContext* ctx, const std::string& q) const;

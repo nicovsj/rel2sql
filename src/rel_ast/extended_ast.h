@@ -18,7 +18,7 @@ struct RelASTNode {
   std::set<std::string> variables;
   std::set<std::string> free_variables;
 
-  // SQL expression is the SQL expression that corresponds to the current context
+  // SQL expression that corresponds to the current context
   std::shared_ptr<sql::ast::Expression> sql_expression;
 
   // Flag to disable translation of the current context
@@ -113,6 +113,12 @@ class RelAST {
 
   // Add a dependency between two relations
   void AddDependency(const std::string& id, const std::string& dep);
+
+  void RegisterRecursiveBaseDisjunct(const std::string& id, antlr4::ParserRuleContext* ctx);
+
+  void RegisterRecursiveBranch(const std::string& id, const RecursiveBranchInfo& info);
+
+  std::optional<RecursionInfo> GetRecursionMetadata(const std::string& id) const;
 
   // Get RelationInfo for a relation (if it exists)
   std::optional<RelationInfo> GetRelationInfo(const std::string& edb) const;

@@ -450,6 +450,61 @@ TEST(RecursionVisitorTest, RejectsNonRecursionPattern) {
   EXPECT_FALSE(ast.GetNode(bindings_formula)->is_recursive);
 }
 
+TEST(RecursionVisitorTest, StoresRecursionMetadataInRelationInfo) {
+  std::string input = "def Q {(x, y in R) : R(x, y) or exists ((z) | R(x, z) and Q(z, y))}";
+  auto edb_map = rel2sql::relation_map::FromArityMap({{"R", 2}});
+
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(edb_map).Process(tree);
+
+  ASSERT_EQ(tree->relDef().size(), 1);
+  auto rel_def = tree->relDef()[0];
+  auto rel_abs = rel_def->relAbs();
+  ASSERT_EQ(rel_abs->expr().size(), 1);
+  auto bindings_formula = dynamic_cast<psr::BindingsFormulaContext*>(rel_abs->expr()[0]);
+  ASSERT_NE(bindings_formula, nullptr);
+
+  auto or_ctx = dynamic_cast<psr::BinOpContext*>(bindings_formula->formula());
+  ASSERT_NE(or_ctx, nullptr);
+  auto base_formula = or_ctx->lhs;
+  auto exists_ctx = dynamic_cast<psr::QuantificationContext*>(or_ctx->rhs);
+  ASSERT_NE(exists_ctx, nullptr);
+
+  auto and_ctx = dynamic_cast<psr::BinOpContext*>(exists_ctx->formula());
+  ASSERT_NE(and_ctx, nullptr);
+
+  psr::FullApplContext* recursive_call = nullptr;
+  psr::FormulaContext* residual_formula = nullptr;
+
+  for (auto* candidate : {and_ctx->lhs, and_ctx->rhs}) {
+    auto full = dynamic_cast<psr::FullApplContext*>(candidate);
+    if (full && full->applBase() && full->applBase()->T_ID() && full->applBase()->T_ID()->getText() == "Q") {
+      recursive_call = full;
+    } else if (!residual_formula) {
+      residual_formula = candidate;
+    }
+  }
+
+  ASSERT_NE(recursive_call, nullptr);
+  ASSERT_NE(residual_formula, nullptr);
+
+  auto rel_info = ast.GetRelationInfo("Q");
+  ASSERT_TRUE(rel_info.has_value());
+  ASSERT_TRUE(rel_info->HasRecursionMetadata());
+
+  const auto& metadata = rel_info->RecursionMetadata();
+  ASSERT_EQ(metadata.non_recursive_disjuncts.size(), 1);
+  auto base_node = ast.GetNode(base_formula);
+  EXPECT_EQ(metadata.non_recursive_disjuncts[0], base_node);
+
+  ASSERT_EQ(metadata.recursive_disjuncts.size(), 1);
+  const auto& branch = metadata.recursive_disjuncts[0];
+  EXPECT_EQ(branch.exists_clause, ast.GetNode(exists_ctx));
+  EXPECT_EQ(branch.recursive_call, ast.GetNode(recursive_call));
+  EXPECT_EQ(branch.residual_formula, ast.GetNode(residual_formula));
+}
+
 TEST(SafetyVisitorTest, RelationApplicationCreatesBindingsBound) {
   auto edb = rel2sql::relation_map::FromArityMap({{"F", 2}});
   auto [ast, tree] = ProcessFormula("F(x, y)", edb);
@@ -648,8 +703,6 @@ TEST(SafetyVisitorTest, Composition) {
   // - Without merging: {{x} in π_0(R), {y} in π_1(R)} - two separate bindings
   // - With merging: {{x,y} in R} - one merged binding (complete covering)
 
-  // This test will FAIL until merging is implemented because we'll have 2 bindings
-  // After merging is implemented, it should have 1 binding with {x,y}
   EXPECT_EQ(quant_node->safety.Size(), 1)
       << "After removing z, {x} in π_0(R) and {y} in π_1(R) should merge into {x,y} in R";
 

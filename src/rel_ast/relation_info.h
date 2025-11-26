@@ -1,24 +1,33 @@
 #ifndef REL2SQL_EDB_INFO_H
 #define REL2SQL_EDB_INFO_H
 
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
 namespace rel2sql {
 
-/**
- * Represents information about an ID relation.
- *
- * This structure can handle both named and unnamed ID attributes:
- * - If attribute_names is provided, it contains the ordered list of attribute names
- * - If attribute_names is empty, the EDB uses default A1, A2, A3... naming
- * - The arity is always inferred from the attribute_names size when provided
- */
+struct RelASTNode;
+
+struct RecursiveBranchInfo {
+  std::shared_ptr<RelASTNode> exists_clause;
+  std::shared_ptr<RelASTNode> recursive_call;
+  std::shared_ptr<RelASTNode> residual_formula;
+};
+
+struct RecursionInfo {
+  std::vector<std::shared_ptr<RelASTNode>> non_recursive_disjuncts;
+  std::vector<RecursiveBranchInfo> recursive_disjuncts;
+
+  bool empty() const { return non_recursive_disjuncts.empty() && recursive_disjuncts.empty(); }
+};
+
 struct RelationInfo {
   std::vector<std::string> attribute_names;
   int arity;
   std::vector<std::string> dependencies;
+  RecursionInfo recursion_metadata;
 
   // Default constructor for unnamed relations (uses A1, A2, A3...)
   RelationInfo() = default;
@@ -61,6 +70,16 @@ struct RelationInfo {
   }
 
   void AddDependency(const std::string& id) { dependencies.push_back(id); }
+
+  void AddNonRecursiveDisjunct(const std::shared_ptr<RelASTNode>& node) {
+    recursion_metadata.non_recursive_disjuncts.push_back(node);
+  }
+
+  void AddRecursiveDisjunct(const RecursiveBranchInfo& info) { recursion_metadata.recursive_disjuncts.push_back(info); }
+
+  bool HasRecursionMetadata() const { return !recursion_metadata.empty(); }
+
+  const RecursionInfo& RecursionMetadata() const { return recursion_metadata; }
 };
 
 struct RelationMap {

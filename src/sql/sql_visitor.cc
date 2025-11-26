@@ -51,11 +51,11 @@ std::any SQLVisitor::visitProgram(psr::ProgramContext* ctx) {
 
   std::vector<std::shared_ptr<sql::ast::Expression>> exprs;
 
-  for (auto& child_ctx : ctx->relDef()) {
-    if (GetNode(child_ctx)->disabled) {
+  for (auto& def_ctx : ctx->relDef()) {
+    if (GetNode(def_ctx)->disabled) {
       continue;
     }
-    auto expr = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(child_ctx));
+    auto expr = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(def_ctx));
     exprs.push_back(expr);
   }
 

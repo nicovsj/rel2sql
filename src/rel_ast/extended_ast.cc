@@ -133,6 +133,22 @@ void RelAST::AddVar(const std::string& var) {
 
 void RelAST::AddDependency(const std::string& id, const std::string& dep) { relation_info_[id].AddDependency(dep); }
 
+void RelAST::RegisterRecursiveBaseDisjunct(const std::string& id, antlr4::ParserRuleContext* ctx) {
+  relation_info_[id].AddNonRecursiveDisjunct(GetNode(ctx));
+}
+
+void RelAST::RegisterRecursiveBranch(const std::string& id, const RecursiveBranchInfo& info) {
+  relation_info_[id].AddRecursiveDisjunct(info);
+}
+
+std::optional<RecursionInfo> RelAST::GetRecursionMetadata(const std::string& id) const {
+  auto rel_info = GetRelationInfo(id);
+  if (!rel_info || !rel_info->HasRecursionMetadata()) {
+    return std::nullopt;
+  }
+  return rel_info->RecursionMetadata();
+}
+
 std::optional<RelationInfo> RelAST::GetRelationInfo(const std::string& edb) const {
   auto it = relation_info_.find(edb);
   if (it != relation_info_.end()) {
