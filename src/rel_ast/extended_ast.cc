@@ -39,7 +39,7 @@ std::shared_ptr<RelASTNode> RelAST::Root() const {
 std::shared_ptr<RelASTNode> RelAST::GetNode(antlr4::ParserRuleContext* ctx) {
   auto it = index_.find(ctx);
   if (it == index_.end()) {
-    index_[ctx] = std::make_shared<RelASTNode>();
+    index_[ctx] = std::make_shared<RelASTNode>(ctx);
   }
   return index_[ctx];
 }

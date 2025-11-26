@@ -5,6 +5,7 @@
 
 #include "api/translate.h"
 #include "rel_ast/bound_set.h"
+#include "rel_ast/projection.h"
 
 namespace rel2sql {
 
@@ -503,6 +504,57 @@ TEST(RecursionVisitorTest, StoresRecursionMetadataInRelationInfo) {
   EXPECT_EQ(branch.exists_clause, ast.GetNode(exists_ctx));
   EXPECT_EQ(branch.recursive_call, ast.GetNode(recursive_call));
   EXPECT_EQ(branch.residual_formula, ast.GetNode(residual_formula));
+}
+
+TEST(SafetyVisitorTest, RecursiveRelationUsesBaseBounds) {
+  std::string input = "def Q {(x, y in R) : R(x, y) or exists ((z) | R(x, z) and Q(z, y))}";
+  auto edb_map = rel2sql::relation_map::FromArityMap({{"R", 2}});
+
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(edb_map).Process(tree);
+
+  ASSERT_EQ(tree->relDef().size(), 1);
+  auto rel_def = tree->relDef()[0];
+  auto rel_abs = rel_def->relAbs();
+  ASSERT_EQ(rel_abs->expr().size(), 1);
+  auto bindings_formula = dynamic_cast<psr::BindingsFormulaContext*>(rel_abs->expr()[0]);
+  ASSERT_NE(bindings_formula, nullptr);
+
+  auto or_ctx = dynamic_cast<psr::BinOpContext*>(bindings_formula->formula());
+  ASSERT_NE(or_ctx, nullptr);
+  auto exists_ctx = dynamic_cast<psr::QuantificationContext*>(or_ctx->rhs);
+  ASSERT_NE(exists_ctx, nullptr);
+  auto and_ctx = dynamic_cast<psr::BinOpContext*>(exists_ctx->formula());
+  ASSERT_NE(and_ctx, nullptr);
+
+  psr::FullApplContext* recursive_call = nullptr;
+  for (auto* candidate : {and_ctx->lhs, and_ctx->rhs}) {
+    auto full = dynamic_cast<psr::FullApplContext*>(candidate);
+    if (full && full->applBase() && full->applBase()->T_ID() && full->applBase()->T_ID()->getText() == "Q") {
+      recursive_call = full;
+      break;
+    }
+  }
+  ASSERT_NE(recursive_call, nullptr);
+
+  auto node = ast.GetNode(recursive_call);
+  ASSERT_FALSE(node->safety.Empty());
+
+  bool found_r_bound = false;
+  for (const auto& bound : node->safety.bounds) {
+    if (bound.variables.size() != 2) continue;
+    if (bound.variables[0] != "z" || bound.variables[1] != "y") continue;
+
+    for (const auto& projection : bound.domain) {
+      auto table_source = std::dynamic_pointer_cast<TableSource>(projection.source);
+      if (table_source && table_source->table_name == "R") {
+        found_r_bound = true;
+      }
+    }
+  }
+
+  EXPECT_TRUE(found_r_bound);
 }
 
 TEST(SafetyVisitorTest, RelationApplicationCreatesBindingsBound) {

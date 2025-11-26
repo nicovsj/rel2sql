@@ -476,7 +476,12 @@ TEST_F(TranslationTest, RecursiveDefinition) {
 TEST_F(TranslationTest, TransitiveClosure) {
   default_edb_map["R"] = RelationInfo(2);
 
-  EXPECT_EQ(TranslateDefinition("def Q {(x,y) : R(x,y) or exists((z) | R(x,z) and Q(z,y))}"), "");
+  EXPECT_EQ(TranslateDefinition("def Q {(x,y) : R(x,y) or exists((z) | R(x,z) and Q(z,y))}"),
+            "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE S0(x, y) AS (SELECT * FROM R AS T9), R0(A1, A2) AS (SELECT "
+            "S0.x AS A1, S0.y AS A2 FROM (SELECT T6.x, T6.y FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM R AS T0) AS T6 "
+            "UNION SELECT T7.x, T7.y FROM (SELECT T5.x, T5.y FROM (SELECT T2.x, T2.z, T4.y FROM (SELECT T1.A1 AS x, "
+            "T1.A2 AS z FROM R AS T1) AS T2, (SELECT T3.A1 AS z, T3.A2 AS y FROM R0 AS T3) AS T4 WHERE T2.z = T4.z) AS "
+            "T5) AS T7) AS T8, S0 WHERE S0.x = T8.x AND S0.y = T8.y) SELECT DISTINCT * FROM R0)");
 }
 
 TEST_F(TranslationTest, WeirdEdgeCase1) {

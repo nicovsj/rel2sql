@@ -134,6 +134,15 @@ BoundSet BoundSet::IntersectWith(const BoundSet& other) const {
   return BoundSet(result);
 }
 
+BoundSet BoundSet::Renamed(const std::unordered_map<std::string, std::string>& rename_map) const {
+  std::unordered_set<Bound> renamed;
+  renamed.reserve(bounds.size());
+  for (const auto& bound : bounds) {
+    renamed.insert(bound.Renamed(rename_map));
+  }
+  return BoundSet(renamed);
+}
+
 void BoundSet::MergeCompatibleSingleSourceProjections() {
   std::unordered_set<Bound> result;
 

@@ -40,6 +40,19 @@ Bound Bound::MergeWith(const Bound& other) const {
   return Bound{variables, std::move(merged)};
 }
 
+Bound Bound::Renamed(const std::unordered_map<std::string, std::string>& rename_map) const {
+  std::vector<std::string> new_variables;
+  new_variables.reserve(variables.size());
+  for (const auto& variable : variables) {
+    if (auto it = rename_map.find(variable); it != rename_map.end()) {
+      new_variables.push_back(it->second);
+    } else {
+      new_variables.push_back(variable);
+    }
+  }
+  return Bound(new_variables, domain);
+}
+
 bool Bound::operator==(const Bound& other) const { return variables == other.variables && domain == other.domain; }
 
 }  // namespace rel2sql

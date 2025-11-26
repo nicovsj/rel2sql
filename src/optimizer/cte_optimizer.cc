@@ -6,6 +6,13 @@ namespace rel2sql {
 namespace sql::ast {
 
 void CTEOptimizer::Visit(SelectStatement& select_statement) {
+  // Do not attempt to inline / move recursive CTEs into the FROM clause.
+  // Recursive CTEs rely on the SQL engine's recursive WITH support, and
+  // rewriting them as plain subqueries would break semantics.
+  if (select_statement.ctes_are_recursive) {
+    return;
+  }
+
   std::vector<std::shared_ptr<Source>> new_ctes;
   for (auto& cte : select_statement.ctes) {
     if (!TryReplaceRedundantCTE(cte, select_statement)) {

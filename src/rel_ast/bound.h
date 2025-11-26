@@ -1,6 +1,7 @@
 #ifndef BINDING_BOUND_H
 #define BINDING_BOUND_H
 
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -41,6 +42,9 @@ struct Bound {
 
   // Returns a new binding that unites this domain with another binding's domain.
   Bound MergeWith(const Bound& other) const;
+
+  // Returns a copy with variables renamed according to the provided map.
+  Bound Renamed(const std::unordered_map<std::string, std::string>& rename_map) const;
 
   // Checks if this binding equals another (by variables and domain).
   bool operator==(const Bound& other) const;

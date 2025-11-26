@@ -14,6 +14,9 @@
 namespace rel2sql {
 
 struct RelASTNode {
+  explicit RelASTNode(antlr4::ParserRuleContext* context = nullptr) : ctx(context) {}
+
+  antlr4::ParserRuleContext* ctx = nullptr;
   // Variables are the variables that are bound in the current context
   std::set<std::string> variables;
   std::set<std::string> free_variables;

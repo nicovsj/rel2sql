@@ -36,6 +36,9 @@ struct BoundSet {
   // Returns the intersection of this set and another set, including merged compatible domains.
   BoundSet IntersectWith(const BoundSet& other) const;
 
+  // Returns a copy of this set with variables renamed according to the provided map.
+  BoundSet Renamed(const std::unordered_map<std::string, std::string>& rename_map) const;
+
  private:
   // Merges compatible Bound objects that can form a full table in-place.
   // Two or more Bound objects are mergeable if:

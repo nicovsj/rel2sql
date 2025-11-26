@@ -1,5 +1,10 @@
 #include "safe_visitor.h"
 
+#include <algorithm>
+#include <memory>
+#include <unordered_map>
+#include <unordered_set>
+
 #include "support/exceptions.h"
 
 namespace rel2sql {
@@ -7,12 +12,54 @@ namespace rel2sql {
 SafeVisitor::SafeVisitor(std::shared_ptr<RelAST> ast) : BaseVisitor(ast) {}
 
 std::any SafeVisitor::visitProgram(psr::ProgramContext* ctx) {
-  visitChildren(ctx);
+  std::unordered_map<std::string, std::vector<psr::RelDefContext*>> defs_by_id;
+  for (auto* rel_def : ctx->relDef()) {
+    defs_by_id[rel_def->name->getText()].push_back(rel_def);
+  }
+
+  std::unordered_set<std::string> visited;
+  for (const auto& id : ast_->SortedIDs()) {
+    if (!defs_by_id.contains(id)) continue;
+    for (auto* rel_def : defs_by_id[id]) {
+      visit(rel_def);
+    }
+    visited.insert(id);
+  }
+
+  for (auto* rel_def : ctx->relDef()) {
+    if (visited.contains(rel_def->name->getText())) continue;
+    visit(rel_def);
+  }
+
   return {};
 }
 
 std::any SafeVisitor::visitRelDef(psr::RelDefContext* ctx) {
+  current_relation_ = ctx->name->getText();
+
+  auto relation_info = ast_->GetRelationInfo(current_relation_);
+  if (relation_info && relation_info->HasRecursionMetadata()) {
+    current_recursion_info_ = relation_info->RecursionMetadata();
+  } else {
+    current_recursion_info_.reset();
+  }
+
+  has_current_relation_base_safety_ = false;
+  current_recursive_call_nodes_.clear();
+
+  auto head_vars = ExtractHeadVariables(ctx->relAbs());
+  if (!head_vars.empty()) {
+    relation_head_variables_[current_relation_] = head_vars;
+  } else {
+    HeadVariablesFor(current_relation_);
+  }
+
   visit(ctx->relAbs());
+
+  current_relation_.clear();
+  current_recursion_info_.reset();
+  has_current_relation_base_safety_ = false;
+  current_recursive_call_nodes_.clear();
 
   return {};
 }
@@ -98,11 +145,45 @@ std::any SafeVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
 }
 
 std::any SafeVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
+  if (IsRecursiveContext(ctx)) {
+    PrepareRecursiveBaseSafety(ctx);
+  } else {
+    has_current_relation_base_safety_ = false;
+    current_recursive_call_nodes_.clear();
+  }
+
   visit(ctx->formula());
 
-  auto formula_node = GetNode(ctx->formula());
+  auto current_node = GetNode(ctx);
 
-  GetNode(ctx)->safety = {};
+  // If this is a recursive context, verify that each recursive exists-branch preserves the
+  // base safety. If any branch changes the safety, the whole bindings formula is unsafe.
+  if (IsRecursiveContext(ctx) && has_current_relation_base_safety_ && current_recursion_info_) {
+    bool preserves_safety = true;
+
+    for (const auto& branch : current_recursion_info_->recursive_disjuncts) {
+      if (!branch.exists_clause) continue;
+
+      auto* exists_ctx = dynamic_cast<psr::QuantificationContext*>(branch.exists_clause->ctx);
+      if (!exists_ctx) continue;
+
+      auto exists_safety = GetNode(exists_ctx)->safety;
+
+      if (exists_safety.bounds != current_relation_base_safety_.bounds) {
+        preserves_safety = false;
+        break;
+      }
+    }
+
+    if (!preserves_safety) {
+      current_node->safety = {};
+      return {};
+    }
+  }
+
+  // Default behavior: bindings formula itself does not add new safety; we only
+  // care about the safety of the inner formula (already computed).
+  current_node->safety = {};
 
   for (auto& binding : ctx->bindingInner()->binding()) {
     visit(binding);
@@ -170,8 +251,10 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
 
 std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
   visit(ctx->applBase());
-  for (auto& param : ctx->applParams()->applParam()) {
-    visit(param);
+  if (ctx->applParams()) {
+    for (auto& param : ctx->applParams()->applParam()) {
+      visit(param);
+    }
   }
 
   // If the base is not an ID, the safeness is empty
@@ -179,9 +262,29 @@ std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
     return {};
   }
 
+  std::string id = ctx->applBase()->T_ID()->getText();
+
+  bool all_id_expr = true;
+  std::vector<std::string> actual_variables;
+  if (ctx->applParams()) {
+    for (auto& param : ctx->applParams()->applParam()) {
+      auto id_expr = dynamic_cast<psr::IDExprContext*>(param->expr());
+      if (!id_expr) {
+        all_id_expr = false;
+        break;
+      }
+      actual_variables.push_back(id_expr->T_ID()->getText());
+    }
+  }
+
+  if (all_id_expr && !current_relation_.empty() && id == current_relation_ && IsRecursiveCall(ctx) &&
+      has_current_relation_base_safety_) {
+    GetNode(ctx)->safety = RenameSafety(current_relation_base_safety_, id, actual_variables);
+    return {};
+  }
+
   Bound binding_bound;
 
-  std::string id = ctx->applBase()->T_ID()->getText();
   auto arity = ast_->GetArity(id);
 
   auto table_source = TableSource(id, arity);
@@ -330,6 +433,103 @@ std::any SafeVisitor::visitApplParam(psr::ApplParamContext* ctx) {
   }
 
   return {};
+}
+
+std::vector<std::string> SafeVisitor::ExtractHeadVariables(psr::RelAbsContext* ctx) const {
+  if (!ctx) return {};
+  for (auto* expr_ctx : ctx->expr()) {
+    if (auto bindings_formula = dynamic_cast<psr::BindingsFormulaContext*>(expr_ctx)) {
+      std::vector<std::string> variables;
+      if (bindings_formula->bindingInner()) {
+        for (auto* binding_ctx : bindings_formula->bindingInner()->binding()) {
+          if (binding_ctx->id) {
+            variables.push_back(binding_ctx->id->getText());
+          }
+        }
+      }
+      if (!variables.empty()) {
+        return variables;
+      }
+    }
+  }
+  return {};
+}
+
+std::vector<std::string> SafeVisitor::FallbackHeadVariables(const std::string& relation) const {
+  std::vector<std::string> vars;
+  int arity = ast_->GetArity(relation);
+  vars.reserve(arity);
+  for (int i = 0; i < arity; ++i) {
+    vars.push_back("A" + std::to_string(i + 1));
+  }
+  return vars;
+}
+
+std::unordered_map<std::string, std::string> SafeVisitor::BuildRenameMap(const std::vector<std::string>& from,
+                                                                         const std::vector<std::string>& to) const {
+  std::unordered_map<std::string, std::string> rename_map;
+  auto limit = std::min(from.size(), to.size());
+  for (size_t i = 0; i < limit; ++i) {
+    rename_map[from[i]] = to[i];
+  }
+  return rename_map;
+}
+
+void SafeVisitor::PrepareRecursiveBaseSafety(psr::BindingsFormulaContext* ctx) {
+  if (!current_recursion_info_) return;
+
+  current_recursive_call_nodes_.clear();
+  for (const auto& branch : current_recursion_info_->recursive_disjuncts) {
+    if (branch.recursive_call) {
+      current_recursive_call_nodes_.insert(branch.recursive_call);
+    }
+  }
+
+  BoundSet base_safety;
+  bool initialized = false;
+  for (const auto& base_node : current_recursion_info_->non_recursive_disjuncts) {
+    auto* base_ctx = dynamic_cast<psr::FormulaContext*>(base_node->ctx);
+    if (!base_ctx) continue;
+    visit(base_ctx);
+    auto& safety = GetNode(base_ctx)->safety;
+    if (!initialized) {
+      base_safety = safety;
+      initialized = true;
+    } else {
+      // TODO: Is this correct? A better approach would be to have the base case as a whole ctx
+      base_safety = base_safety.UnionWith(safety);
+    }
+  }
+
+  current_relation_base_safety_ = base_safety;
+  has_current_relation_base_safety_ = initialized;
+}
+
+bool SafeVisitor::IsRecursiveContext(psr::BindingsFormulaContext* ctx) const {
+  return current_recursion_info_.has_value() && GetNode(ctx)->is_recursive;
+}
+
+bool SafeVisitor::IsRecursiveCall(psr::FullApplContext* ctx) const {
+  auto node = GetNode(ctx);
+  return current_recursive_call_nodes_.find(node) != current_recursive_call_nodes_.end();
+}
+
+BoundSet SafeVisitor::RenameSafety(const BoundSet& safety, const std::string& relation,
+                                   const std::vector<std::string>& actual_variables) {
+  const auto& head_vars = HeadVariablesFor(relation);
+  if (head_vars.size() != actual_variables.size()) {
+    return safety;
+  }
+  auto rename_map = BuildRenameMap(head_vars, actual_variables);
+  return safety.Renamed(rename_map);
+}
+
+const std::vector<std::string>& SafeVisitor::HeadVariablesFor(const std::string& relation) {
+  auto it = relation_head_variables_.find(relation);
+  if (it == relation_head_variables_.end()) {
+    it = relation_head_variables_.emplace(relation, FallbackHeadVariables(relation)).first;
+  }
+  return it->second;
 }
 
 }  // namespace rel2sql
