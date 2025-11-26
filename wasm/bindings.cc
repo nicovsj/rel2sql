@@ -9,7 +9,7 @@
 
 // Include the actual rel2sql headers
 #include "rel2sql/rel2sql.h"
-#include "rel_ast/edb_info.h"
+#include "rel_ast/relation_info.h"
 
 // WebAssembly wrapper functions
 std::string translate_rel2sql(const std::string& input) { return rel2sql::Translate(input); }
