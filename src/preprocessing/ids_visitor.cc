@@ -76,7 +76,7 @@ std::any IDsVisitor::visitIDTerm(psr::IDTermContext* ctx) {
   return StringSet{id};
 }
 
-std::any IDsVisitor::visitNumTerm(psr::NumTermContext* ctx) { return StringSet{}; }
+std::any IDsVisitor::visitNumTerm(psr::NumTermContext* _) { return StringSet{}; }
 
 std::any IDsVisitor::visitOpTerm(psr::OpTermContext* ctx) {
   StringSet deps;
@@ -90,7 +90,7 @@ std::any IDsVisitor::visitOpTerm(psr::OpTermContext* ctx) {
   return deps;
 }
 
-std::any IDsVisitor::visitLitExpr(psr::LitExprContext* ctx) { return StringSet{}; }
+std::any IDsVisitor::visitLitExpr(psr::LitExprContext* _) { return StringSet{}; }
 
 std::any IDsVisitor::visitIDExpr(psr::IDExprContext* ctx) {
   std::string id = ctx->T_ID()->getText();

@@ -71,7 +71,7 @@ std::any SafeVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
 
   current_node->safety = GetNode(ctx->expr()[0])->safety;
 
-  for (int i = 1; i < ctx->expr().size(); i++) {
+  for (size_t i = 1; i < ctx->expr().size(); i++) {
     auto& sub_safety = GetNode(ctx->expr()[i])->safety;
     current_node->safety = current_node->safety.IntersectWith(sub_safety);
   }
@@ -146,7 +146,7 @@ std::any SafeVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
 
 std::any SafeVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
   if (IsRecursiveContext(ctx)) {
-    PrepareRecursiveBaseSafety(ctx);
+    PrepareRecursiveBaseSafety();
   } else {
     has_current_relation_base_safety_ = false;
     current_recursive_call_nodes_.clear();
@@ -216,9 +216,9 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
     }
 
     if (all_vars) {
-      std::vector<int> indices;
+      std::vector<size_t> indices;
 
-      for (int i = 0; i < ctx->applParams()->applParam().size(); i++) {
+      for (size_t i = 0; i < ctx->applParams()->applParam().size(); i++) {
         indices.push_back(i);
       }
 
@@ -475,7 +475,7 @@ std::unordered_map<std::string, std::string> SafeVisitor::BuildRenameMap(const s
   return rename_map;
 }
 
-void SafeVisitor::PrepareRecursiveBaseSafety(psr::BindingsFormulaContext* ctx) {
+void SafeVisitor::PrepareRecursiveBaseSafety() {
   if (!current_recursion_info_) return;
 
   current_recursive_call_nodes_.clear();

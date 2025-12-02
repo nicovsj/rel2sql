@@ -2,6 +2,7 @@
 #define SAFE_VISITOR_H
 
 #include <antlr4-runtime.h>
+
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -81,7 +82,7 @@ class SafeVisitor : public BaseVisitor {
   std::unordered_map<std::string, std::string> BuildRenameMap(const std::vector<std::string>& from,
                                                               const std::vector<std::string>& to) const;
 
-  void PrepareRecursiveBaseSafety(psr::BindingsFormulaContext* ctx);
+  void PrepareRecursiveBaseSafety();
 
   bool IsRecursiveContext(psr::BindingsFormulaContext* ctx) const;
 

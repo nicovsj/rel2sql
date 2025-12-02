@@ -16,7 +16,7 @@ struct BoundSource {
   virtual ~BoundSource() = default;
 
   // Returns the arity (number of attributes) of this source.
-  virtual int Arity() const = 0;
+  virtual size_t Arity() const = 0;
 
   // Checks if this source is equal to another source.
   virtual bool operator==(const BoundSource& other) const = 0;
@@ -29,7 +29,7 @@ struct ConstantSource : public BoundSource {
   ConstantSource(sql::ast::constant_t value) : value(value) {}
 
   // Always returns 1 for constant sources.
-  int Arity() const override { return 1; }
+  size_t Arity() const override { return 1; }
 
   // Checks if this constant source equals another (by value).
   bool operator==(const BoundSource& other) const override;
@@ -38,12 +38,12 @@ struct ConstantSource : public BoundSource {
 // Represents a table source with a given name and arity.
 struct TableSource : public BoundSource {
   std::string table_name;
-  int table_arity;
+  size_t table_arity;
 
-  TableSource(std::string table_name, int table_arity) : table_name(table_name), table_arity(table_arity) {}
+  TableSource(std::string table_name, size_t table_arity) : table_name(table_name), table_arity(table_arity) {}
 
   // Returns the arity (number of columns) of this table.
-  int Arity() const override { return table_arity; }
+  size_t Arity() const override { return table_arity; }
 
   // Checks if this table source equals another (by table name).
   bool operator==(const BoundSource& other) const override;
@@ -65,7 +65,7 @@ struct Projection {
   Projection(ConstantSource source);
 
   // Returns the number of projected attributes (size of projected_indices).
-  int Arity() const { return projected_indices.size(); }
+  size_t Arity() const { return projected_indices.size(); }
 
   // Returns true if no attributes are projected.
   bool IsEmpty() const { return projected_indices.empty(); }

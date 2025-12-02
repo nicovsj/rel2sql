@@ -14,11 +14,11 @@ class CTEOptimizer : public BaseOptimizer {
 
  private:
   bool TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, SelectStatement& select_statement);
+
   bool TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& cte,
-                                    const std::shared_ptr<SelectStatement>& cte_select,
-                                    SelectStatement& select_stmt);
-  bool TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte,
-                            const std::shared_ptr<SelectStatement>& cte_select,
+                                   const std::shared_ptr<SelectStatement>& cte_select);
+
+  bool TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte, const std::shared_ptr<SelectStatement>& cte_select,
                             SelectStatement& select_stmt);
   std::string GetColumnNameFromSelectable(const std::shared_ptr<Selectable>& selectable, size_t index);
 };  // class CTEOptimizer

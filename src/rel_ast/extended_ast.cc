@@ -54,7 +54,13 @@ int RelAST::GetArity(const std::string& id) const {
 
 antlr4::ParserRuleContext* RelAST::ParseTree() const { return root_; }
 
-void RelAST::SetParseTree(antlr4::ParserRuleContext* root) { root_ = root; }
+void RelAST::SetParseTree(antlr4::ParserRuleContext* root) {
+  root_ = root;
+  // Clear the index map to prevent stale entries from previous parse trees
+  // This is especially important in WASM where memory addresses might be reused
+  // and could cause uninitialized values to be accessed
+  index_.clear();
+}
 
 void RelAST::MarkAsIDB(const std::string& id) {
   ids_.insert(id);

@@ -14,7 +14,9 @@
 namespace rel2sql {
 
 struct RelASTNode {
-  explicit RelASTNode(antlr4::ParserRuleContext* context = nullptr) : ctx(context) {}
+  RelASTNode() = default;
+
+  explicit RelASTNode(antlr4::ParserRuleContext* context) : ctx(context) {}
 
   antlr4::ParserRuleContext* ctx = nullptr;
   // Variables are the variables that are bound in the current context
@@ -41,7 +43,7 @@ struct RelASTNode {
   std::string recursive_definition_name;
 
   // Arity of the current context
-  int arity;
+  int arity = 0;
 
   // Output of the safety analysis
   BoundSet safety;

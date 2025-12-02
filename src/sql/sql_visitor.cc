@@ -157,7 +157,7 @@ std::shared_ptr<sql::ast::Sourceable> SQLVisitor::VisitRelAbsLogic(psr::RelAbsCo
   // This is checked in the arity visitor
   int arity = GetNode(first_ctx)->arity;
 
-  for (int i = 1; i < expr_ctxs.size(); i++) {
+  for (size_t i = 1; i < expr_ctxs.size(); i++) {
     auto child_ctx = expr_ctxs[i];
 
     auto child_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
@@ -165,7 +165,7 @@ std::shared_ptr<sql::ast::Sourceable> SQLVisitor::VisitRelAbsLogic(psr::RelAbsCo
     GetNode(child_ctx)->sql_expression = child_sql;
 
     from_sources.push_back(std::make_shared<sql::ast::Source>(child_sql, GenerateTableAlias()));
-    values.push_back({i + 1});
+    values.push_back({static_cast<int>(i + 1)});
   }
 
   std::vector<antlr4::ParserRuleContext*> source_ctxs{expr_ctxs.begin(), expr_ctxs.end()};
@@ -185,9 +185,10 @@ std::shared_ptr<sql::ast::Sourceable> SQLVisitor::VisitRelAbsLogic(psr::RelAbsCo
   // Define every CASE WHEN in the SELECT clause
   for (int i = 0; i < arity; i++) {
     std::vector<std::pair<std::shared_ptr<sql::ast::Condition>, std::shared_ptr<sql::ast::Term>>> cases;
-    for (int j = 0; j < ctx->expr().size(); j++) {
+    for (size_t j = 0; j < ctx->expr().size(); j++) {
       auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", i + 1), from_sources[j]);
-      auto comparison = std::make_shared<sql::ast::ComparisonCondition>(values_col, sql::ast::CompOp::EQ, j + 1);
+      auto comparison =
+          std::make_shared<sql::ast::ComparisonCondition>(values_col, sql::ast::CompOp::EQ, static_cast<int>(j + 1));
       cases.push_back({comparison, column});
     }
     auto case_when = std::make_shared<sql::ast::CaseWhen>(cases);
@@ -257,7 +258,7 @@ std::any SQLVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
 
   auto select_columns = VarListShorthand(source_ctxs);
 
-  for (int i = 0; i < expr_ctxs.size(); i++) {
+  for (size_t i = 0; i < expr_ctxs.size(); i++) {
     auto child_ctx = expr_ctxs[i];
     auto child_source = std::static_pointer_cast<sql::ast::Source>(GetNode(child_ctx)->sql_expression);
     int child_arity = GetNode(child_ctx)->arity;
@@ -539,7 +540,7 @@ std::any SQLVisitor::visitBinOp(psr::BinOpContext* ctx) {
   }
 }
 
-std::any SQLVisitor::visitUnOp(psr::UnOpContext* ctx) {
+std::any SQLVisitor::visitUnOp(psr::UnOpContext* _) {
   /*
    * Generates an SQL query from the unary operation.
    */
@@ -1202,7 +1203,7 @@ std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::ApplicationVariabl
     }
   }
 
-  for (int i = 1; i < non_variable_param_ctxs.size(); i++) {
+  for (size_t i = 1; i < non_variable_param_ctxs.size(); i++) {
     auto ctx = non_variable_param_ctxs[i].ctx;
     auto index = non_variable_param_ctxs[i].index;
     auto sq = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(ctx)->sql_expression);
@@ -1421,7 +1422,7 @@ SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext* base,
    */
   std::vector<IndexedContext> var_params, non_var_params = {{base, 0}};
 
-  for (int i = 0; i < params.size(); i++) {
+  for (size_t i = 0; i < params.size(); i++) {
     auto appl = params[i];
     if (!appl->T_UNDERSCORE()) {
       auto param_sql = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(appl));

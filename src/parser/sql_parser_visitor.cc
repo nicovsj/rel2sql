@@ -153,7 +153,7 @@ std::any SqlParserVisitor::visitSelectWildcard(psr::SelectWildcardContext* ctx) 
   return std::static_pointer_cast<sql::ast::Selectable>(wildcard);
 }
 
-std::any SqlParserVisitor::visitSimpleWildcard(psr::SimpleWildcardContext* ctx) {
+std::any SqlParserVisitor::visitSimpleWildcard(psr::SimpleWildcardContext* _) {
   return std::make_shared<sql::ast::Wildcard>();
 }
 
@@ -641,11 +641,11 @@ std::any SqlParserVisitor::visitStringConstant(psr::StringConstantContext* ctx) 
   return std::make_shared<sql::ast::Constant>(unquoted);
 }
 
-std::any SqlParserVisitor::visitTrueConstant(psr::TrueConstantContext* ctx) {
+std::any SqlParserVisitor::visitTrueConstant(psr::TrueConstantContext* _) {
   return std::make_shared<sql::ast::Constant>(true);
 }
 
-std::any SqlParserVisitor::visitFalseConstant(psr::FalseConstantContext* ctx) {
+std::any SqlParserVisitor::visitFalseConstant(psr::FalseConstantContext* _) {
   return std::make_shared<sql::ast::Constant>(false);
 }
 

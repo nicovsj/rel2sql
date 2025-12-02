@@ -31,7 +31,7 @@ bool CTEOptimizer::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, Se
   if (!cte_select) return false;
 
   // Try the simple case first: wildcard CTE with single table source
-  if (TryReplaceSimpleWildcardCTE(cte, cte_select, select_stmt)) {
+  if (TryReplaceSimpleWildcardCTE(cte, cte_select)) {
     return true;
   }
 
@@ -40,8 +40,7 @@ bool CTEOptimizer::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, Se
 }
 
 bool CTEOptimizer::TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& cte,
-                                                const std::shared_ptr<SelectStatement>& cte_select,
-                                                SelectStatement& select_stmt) {
+                                               const std::shared_ptr<SelectStatement>& cte_select) {
   // CTE must have a single wildcard column
   if (cte_select->columns.size() != 1 || !std::dynamic_pointer_cast<Wildcard>(cte_select->columns[0])) return false;
 
@@ -71,8 +70,8 @@ bool CTEOptimizer::TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& ct
 }
 
 bool CTEOptimizer::TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte,
-                                         const std::shared_ptr<SelectStatement>& cte_select,
-                                         SelectStatement& select_stmt) {
+                                        const std::shared_ptr<SelectStatement>& cte_select,
+                                        SelectStatement& select_stmt) {
   // Create a subquery source from the CTE's SELECT statement
   auto subquery_sourceable = std::static_pointer_cast<Sourceable>(cte_select);
   auto new_source = std::make_shared<Source>(subquery_sourceable, cte->Alias(), false);

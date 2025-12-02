@@ -21,7 +21,7 @@ class SQLVisitor : public BaseVisitor {
 
   struct IndexedContext {
     antlr4::ParserRuleContext* ctx;
-    int index;
+    size_t index;
 
     bool operator<(const IndexedContext& other) const { return index < other.index; }
   };

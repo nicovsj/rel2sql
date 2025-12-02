@@ -18,7 +18,7 @@ void ExpressionVisitor::Visit(Term& term) { term.Accept(*this); }
 
 //
 
-void ExpressionVisitor::Visit(AliasStatement& alias_statement) {}
+void ExpressionVisitor::Visit(AliasStatement& _) {}
 
 void ExpressionVisitor::Visit(Source& source) {
   Visit(*source.sourceable);
@@ -27,7 +27,7 @@ void ExpressionVisitor::Visit(Source& source) {
   }
 }
 
-void ExpressionVisitor::Visit(Table& table) {}
+void ExpressionVisitor::Visit(Table& _) {}
 
 void ExpressionVisitor::Visit(Values& values) {
   for (auto& row : values.values) {
@@ -37,11 +37,11 @@ void ExpressionVisitor::Visit(Values& values) {
   }
 }
 
-void ExpressionVisitor::Visit(Wildcard& wildcard) {}
+void ExpressionVisitor::Visit(Wildcard& _) {}
 
-void ExpressionVisitor::Visit(Column& column) {}
+void ExpressionVisitor::Visit(Column& _) {}
 
-void ExpressionVisitor::Visit(Constant& constant) {}
+void ExpressionVisitor::Visit(Constant& _) {}
 
 void ExpressionVisitor::Visit(Operation& operation) {
   Visit(*operation.lhs);

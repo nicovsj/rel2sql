@@ -69,7 +69,7 @@ std::any ArityVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
 
   int common_arity = GetNode(ctx->expr(0))->arity;
 
-  for (int i = 1; i < ctx->expr().size(); i++) {
+  for (size_t i = 1; i < ctx->expr().size(); i++) {
     visit(ctx->expr(i));
 
     if (GetNode(ctx->expr(i))->arity != common_arity) {

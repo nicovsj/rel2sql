@@ -9,7 +9,7 @@
 
 namespace rel2sql {
 
-std::string TranslateWithOptimization(const std::string& input, antlr4::ParserRuleContext* tree,
+std::string TranslateWithOptimization(antlr4::ParserRuleContext* tree,
                                       const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   Preprocessor preprocessor(edb_map);
   auto ast = preprocessor.Process(tree);
@@ -29,25 +29,25 @@ class OptimizationTest : public ::testing::Test {
   std::string TranslateFormula(const std::string& input) {
     auto parser = GetParser(input);
     auto tree = parser->formula();
-    return TranslateWithOptimization(input, tree, default_edb_map);
+    return TranslateWithOptimization(tree, default_edb_map);
   }
 
   std::string TranslateExpression(const std::string& input) {
     auto parser = GetParser(input);
     auto tree = parser->expr();
-    return TranslateWithOptimization(input, tree, default_edb_map);
+    return TranslateWithOptimization(tree, default_edb_map);
   }
 
   std::string TranslateProgram(const std::string& input) {
     auto parser = GetParser(input);
     auto tree = parser->program();
-    return TranslateWithOptimization(input, tree, default_edb_map);
+    return TranslateWithOptimization(tree, default_edb_map);
   }
 
   std::string TranslateDefinition(const std::string& input) {
     auto parser = GetParser(input);
     auto tree = parser->relDef();
-    return TranslateWithOptimization(input, tree, default_edb_map);
+    return TranslateWithOptimization(tree, default_edb_map);
   }
 
   rel2sql::RelationMap default_edb_map;
