@@ -6,6 +6,24 @@ build --cxxopt='-std=c++20'
 # Disable deprecated builtins warning
 build --cxxopt='-Wno-deprecated-builtins'
 
+#--- Warning configuration ---
+# Base warnings for all builds (moderate strictness)
+build --cxxopt='-Wall'
+build --cxxopt='-Wextra'
+build --cxxopt='-Wpedantic'
+
+# Warnings to catch common bugs (would have caught the uninitialized arity bug!)
+build --cxxopt='-Wuninitialized'
+build --cxxopt='-Winit-self'  # Warn about self-initialization
+build --cxxopt='-Wunused-parameter'
+build --cxxopt='-Wunused-variable'
+build --cxxopt='-Wunused-but-set-variable'
+
+# Suppress warnings from external dependencies
+# Match external dependency paths and disable all warnings for them
+# The pattern matches files in external/ directories (Bazel's external dependency location)
+build --per_file_copt='external/.*@-w'
+
 #--- Global platform-specific configuration ---
 
 # Enable platform-specific configs for regular builds (but not WASM)
@@ -28,6 +46,10 @@ build:debug --spawn_strategy=local
 # Enable local spawn strategy
 build:debug --spawn_strategy=local
 
+# Extra strict warnings for debug builds
+build:debug --cxxopt='-Werror=uninitialized'  # Treat uninitialized as errors
+build:debug --cxxopt='-Werror=maybe-uninitialized'
+
 #--- Global Emscripten configuration ---
 
 # Enable CC toolchain resolution
@@ -38,3 +60,6 @@ build:emcc --features=exceptions
 
 # Enable exceptions
 build:emcc --cxxopt='-fexceptions'
+
+# Emscripten-specific warnings (some warnings don't work well with WASM)
+# Note: Emscripten uses Clang, so most warnings still apply
