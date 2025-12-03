@@ -11,7 +11,8 @@
 namespace rel2sql {
 
 // Represents a binding of variables to a domain of source projections.
-// The domain is a union of sources, and each projection must match the variable arity.
+// The domain is a union of projections, and each projection must match the variable arity.
+// Example: (x,y) in {π_0(R); π_1(S)} means that x is in π_0(R) and y is in π_1(S).
 struct Bound {
   std::vector<std::string> variables;
   std::unordered_set<Projection> domain;  // The domain of the binding bound will be a union of sources

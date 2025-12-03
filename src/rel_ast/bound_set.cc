@@ -57,6 +57,65 @@ Bound MergeBindingsToCompleteTable(const std::vector<Bound>& bindings, const std
   return Bound(variables, merged_domain);
 }
 
+// Finds the common variables between two variable vectors and returns:
+// 1. The common variables in order (maximal shared tuple)
+// 2. The indices in the first vector where common variables appear
+// 3. The indices in the second vector where common variables appear
+std::tuple<std::vector<std::string>, std::vector<size_t>, std::vector<size_t>> FindCommonVariables(
+    const std::vector<std::string>& vars1, const std::vector<std::string>& vars2) {
+  std::vector<std::string> common_vars;
+  std::vector<size_t> indices1;
+  std::vector<size_t> indices2;
+
+  // Create a map from variable to index in vars2 for quick lookup
+  std::unordered_map<std::string, size_t> var_to_index2;
+  for (size_t i = 0; i < vars2.size(); i++) {
+    var_to_index2[vars2[i]] = i;
+  }
+
+  // Find common variables in order of appearance in vars1
+  for (size_t i = 0; i < vars1.size(); i++) {
+    const auto& var = vars1[i];
+    if (var_to_index2.find(var) != var_to_index2.end()) {
+      common_vars.push_back(var);
+      indices1.push_back(i);
+      indices2.push_back(var_to_index2[var]);
+    }
+  }
+
+  return std::make_tuple(common_vars, indices1, indices2);
+}
+
+// Projects a bound to only the specified variable indices
+Bound ProjectBoundToIndices(const Bound& bound, const std::vector<size_t>& indices) {
+  if (indices.empty()) {
+    return Bound({}, {});
+  }
+
+  std::vector<std::string> projected_vars;
+  projected_vars.reserve(indices.size());
+  for (size_t idx : indices) {
+    if (idx < bound.variables.size()) {
+      projected_vars.push_back(bound.variables[idx]);
+    }
+  }
+
+  std::unordered_set<Projection> projected_domain;
+  for (const auto& projection : bound.domain) {
+    // Project the projection to only the specified indices
+    std::vector<size_t> new_projected_indices;
+    new_projected_indices.reserve(indices.size());
+    for (size_t var_idx : indices) {
+      if (var_idx < projection.projected_indices.size()) {
+        new_projected_indices.push_back(projection.projected_indices[var_idx]);
+      }
+    }
+    projected_domain.insert(Projection(new_projected_indices, projection.source));
+  }
+
+  return Bound(projected_vars, projected_domain);
+}
+
 }  // namespace
 
 // BindingBoundSet methods
@@ -68,8 +127,18 @@ BoundSet BoundSet::MergeWith(const BoundSet& other) const {
   std::unordered_set<Bound> merged;
   for (const auto& bound : bounds) {
     for (const auto& other_bound : other.bounds) {
-      if (bound.variables != other_bound.variables) continue;
-      merged.insert(bound.MergeWith(other_bound));
+      // Find common variables (maximal shared tuple)
+      auto [common_vars, indices1, indices2] = FindCommonVariables(bound.variables, other_bound.variables);
+
+      // If there are no common variables, skip this pair
+      if (common_vars.empty()) continue;
+
+      // Project both bounds to the common variables
+      Bound projected_bound = ProjectBoundToIndices(bound, indices1);
+      Bound projected_other = ProjectBoundToIndices(other_bound, indices2);
+
+      // Merge the projected bounds
+      merged.insert(projected_bound.MergeWith(projected_other));
     }
   }
   return BoundSet(merged);

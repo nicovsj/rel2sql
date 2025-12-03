@@ -11,14 +11,16 @@ namespace rel2sql {
 
 using psr = rel_parser::PrunedCoreRelParser;
 
-std::vector<std::string> GetSortedIDs(const std::string& input, const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
+std::vector<std::string> GetSortedIDs(const std::string& input,
+                                      const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   auto parser = GetParser(input);
   auto tree = parser->program();
   auto ast = Preprocessor(edb_map).Process(tree);
   return ast.SortedIDs();
 }
 
-std::set<std::string> GetFreeVariables(const std::string& input, const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
+std::set<std::string> GetFreeVariables(const std::string& input,
+                                       const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   auto parser = GetParser(input);
   auto tree = parser->program();
   auto ast = Preprocessor(edb_map).Process(tree);
@@ -27,8 +29,7 @@ std::set<std::string> GetFreeVariables(const std::string& input, const rel2sql::
 
 // Helper function to parse and preprocess a formula
 std::pair<RelAST, std::shared_ptr<antlr4::ParserRuleContext>> ProcessFormula(
-    const std::string& input,
-    const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
+    const std::string& input, const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   auto parser_unique = GetParser(input);
   auto parser = std::shared_ptr<rel_parser::PrunedCoreRelParser>(std::move(parser_unique));
   auto tree = parser->formula();
@@ -38,8 +39,7 @@ std::pair<RelAST, std::shared_ptr<antlr4::ParserRuleContext>> ProcessFormula(
 
 // Helper function to parse and preprocess an expression
 std::pair<RelAST, std::shared_ptr<antlr4::ParserRuleContext>> ProcessExpr(
-    const std::string& input,
-    const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
+    const std::string& input, const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   auto parser_unique = GetParser(input);
   auto parser = std::shared_ptr<rel_parser::PrunedCoreRelParser>(std::move(parser_unique));
   auto tree = parser->expr();
@@ -701,7 +701,6 @@ TEST(SafetyVisitorTest, RelationalAbstraction2) {
   }
 }
 
-
 TEST(SafetyVisitorTest, MultipleVariableRelationApplication) {
   auto edb = rel2sql::relation_map::FromArityMap({{"F", 3}});
   auto [ast, tree] = ProcessFormula("F(x, y, z)", edb);
@@ -761,8 +760,7 @@ TEST(SafetyVisitorTest, Composition) {
   // Check that the merged binding has both x and y
   ASSERT_EQ(quant_node->safety.Size(), 1);
   auto bindings_bound = *quant_node->safety.bounds.begin();
-  EXPECT_EQ(bindings_bound.variables.size(), 2)
-      << "The merged binding should contain both x and y";
+  EXPECT_EQ(bindings_bound.variables.size(), 2) << "The merged binding should contain both x and y";
 
   std::set<std::string> vars(bindings_bound.variables.begin(), bindings_bound.variables.end());
   EXPECT_TRUE(vars.count("x")) << "The merged binding should contain x";
@@ -782,8 +780,45 @@ TEST(SafetyVisitorTest, Composition) {
       }
     }
   }
-  EXPECT_TRUE(has_full_table_projection)
-      << "The merged binding should have a full table projection of R (indices 0,1)";
+  EXPECT_TRUE(has_full_table_projection) << "The merged binding should have a full table projection of R (indices 0,1)";
+}
+
+TEST(SafetyVisitorTest, Composition2) {
+  auto edb = rel2sql::relation_map::FromArityMap({{"R", 2}, {"S", 1}, {"T", 1}});
+  auto [ast, tree] = ProcessFormula("R(x,y) or (S(x) and T(y))", edb);
+
+  auto bin_op = dynamic_cast<psr::BinOpContext*>(tree.get());
+  ASSERT_NE(bin_op, nullptr);
+
+  auto safety = ast.GetNode(bin_op)->safety;
+
+  // Safety bounds should be:
+  // {(x) in {π_0(R); π_0(S); (y) in {π_1(R); π_0(T)}}
+
+  // The following tests checks this.
+
+  EXPECT_EQ(safety.Size(), 2);
+
+  for (const auto& bb : safety.bounds) {
+    EXPECT_EQ(bb.variables.size(), 1);
+    EXPECT_EQ(bb.domain.size(), 2);
+    EXPECT_TRUE(bb.variables[0] == "x" || bb.variables[0] == "y");
+
+    for (const auto& proj : bb.domain) {
+      EXPECT_EQ(proj.projected_indices.size(), 1);
+      auto table_source = std::dynamic_pointer_cast<TableSource>(proj.source);
+      ASSERT_NE(table_source, nullptr);
+      if (bb.variables[0] == "x") {
+        auto bool1 = table_source->table_name == "R" && proj.projected_indices[0] == 0;
+        auto bool2 = table_source->table_name == "S" && proj.projected_indices[0] == 0;
+        EXPECT_TRUE(bool1 || bool2);
+      } else {
+        auto bool1 = table_source->table_name == "R" && proj.projected_indices[0] == 1;
+        auto bool2 = table_source->table_name == "T" && proj.projected_indices[0] == 0;
+        EXPECT_TRUE(bool1 || bool2);
+      }
+    }
+  }
 }
 
 }  // namespace rel2sql
