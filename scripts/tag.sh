@@ -39,6 +39,22 @@ esac
 NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
 echo "Creating new tag: $NEW_TAG"
 
+# Ask for confirmation
+read -r -p "Create and push tag $NEW_TAG? [Y/n] " CONFIRM
+case "$CONFIRM" in
+  [nN]|[nN][oO])
+    echo "Aborting."
+    exit 1
+    ;;
+  ""|[yY]|[yY][eE][sS])
+    # continue
+    ;;
+  *)
+    echo "Aborting."
+    exit 1
+    ;;
+esac
+
 # Create the tag on the last commit
 git tag "$NEW_TAG"
 
