@@ -1,4 +1,4 @@
-lexer grammar CoreRelLexer;
+lexer grammar RelLexer;
 
 options {
     language = Cpp;

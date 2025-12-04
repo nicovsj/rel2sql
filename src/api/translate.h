@@ -1,8 +1,8 @@
 #ifndef TRANSLATE_H
 #define TRANSLATE_H
 
-#include "CoreRelLexer.h"
-#include "PrunedCoreRelParser.h"
+#include "RelLexer.h"
+#include "RelParser.h"
 #include "optimizer/optimizer.h"
 #include "parser/error_listener.h"
 #include "preprocessing/preprocessor.h"
@@ -11,12 +11,12 @@
 
 namespace rel2sql {
 
-inline std::unique_ptr<rel_parser::PrunedCoreRelParser> GetParser(std::string_view input) {
+inline std::unique_ptr<rel_parser::RelParser> GetParser(std::string_view input) {
   auto input_stream = new antlr4::ANTLRInputStream(input.data());
-  auto lexer = new rel_parser::CoreRelLexer(input_stream);
+  auto lexer = new rel_parser::RelLexer(input_stream);
   auto tokens = new antlr4::CommonTokenStream(lexer);
 
-  auto parser = std::make_unique<rel_parser::PrunedCoreRelParser>(tokens);
+  auto parser = std::make_unique<rel_parser::RelParser>(tokens);
 
   // Remove default error listeners and add our custom one
   parser->removeErrorListeners();

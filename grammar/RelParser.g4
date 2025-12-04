@@ -1,8 +1,8 @@
-parser grammar PrunedCoreRelParser;
+parser grammar RelParser;
 
 options {
 	language = Cpp;
-	tokenVocab = CoreRelLexer;
+	tokenVocab = RelLexer;
 }
 
 program: relDef* EOF;

@@ -17,9 +17,9 @@ java_binary(
 
 antlr_cc_library(
     name = "rel_parser",
-    lexer_src = "grammar/CoreRelLexer.g4",
+    lexer_src = "grammar/RelLexer.g4",
     package = "rel_parser",
-    parser_src = "grammar/PrunedCoreRelParser.g4",
+    parser_src = "grammar/RelParser.g4",
 )
 
 antlr_cc_library(

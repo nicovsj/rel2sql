@@ -3,18 +3,18 @@
 
 #include <antlr4-runtime.h>
 
-#include "PrunedCoreRelParserBaseVisitor.h"
+#include "RelParserBaseVisitor.h"
 #include "rel_ast/extended_ast.h"
 #include "support/exceptions.h"
 
 namespace rel2sql {
 
-class BaseVisitor : public rel_parser::PrunedCoreRelParserBaseVisitor {
+class BaseVisitor : public rel_parser::RelParserBaseVisitor {
   /*
    * Provides a base visitor for constructing an extended AST.
    */
  public:
-  using psr = rel_parser::PrunedCoreRelParser;
+  using psr = rel_parser::RelParser;
 
   BaseVisitor() : ast_(std::make_shared<RelAST>()) {}
 

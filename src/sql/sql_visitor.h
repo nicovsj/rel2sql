@@ -17,7 +17,7 @@ class SQLVisitor : public BaseVisitor {
    * Visitor that constructs the SQL AST from the Rel program.
    */
  public:
-  using psr = rel_parser::PrunedCoreRelParser;
+  using psr = rel_parser::RelParser;
 
   struct IndexedContext {
     antlr4::ParserRuleContext* ctx;

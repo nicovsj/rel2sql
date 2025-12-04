@@ -9,7 +9,7 @@
 
 namespace rel2sql {
 
-using psr = rel_parser::PrunedCoreRelParser;
+using psr = rel_parser::RelParser;
 
 std::vector<std::string> GetSortedIDs(const std::string& input,
                                       const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
@@ -31,7 +31,7 @@ std::set<std::string> GetFreeVariables(const std::string& input,
 std::pair<RelAST, std::shared_ptr<antlr4::ParserRuleContext>> ProcessFormula(
     const std::string& input, const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   auto parser_unique = GetParser(input);
-  auto parser = std::shared_ptr<rel_parser::PrunedCoreRelParser>(std::move(parser_unique));
+  auto parser = std::shared_ptr<psr>(std::move(parser_unique));
   auto tree = parser->formula();
   auto ast = Preprocessor(edb_map).Process(tree);
   return {ast, std::shared_ptr<antlr4::ParserRuleContext>(parser, tree)};
@@ -41,7 +41,7 @@ std::pair<RelAST, std::shared_ptr<antlr4::ParserRuleContext>> ProcessFormula(
 std::pair<RelAST, std::shared_ptr<antlr4::ParserRuleContext>> ProcessExpr(
     const std::string& input, const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   auto parser_unique = GetParser(input);
-  auto parser = std::shared_ptr<rel_parser::PrunedCoreRelParser>(std::move(parser_unique));
+  auto parser = std::shared_ptr<psr>(std::move(parser_unique));
   auto tree = parser->expr();
   auto ast = Preprocessor(edb_map).Process(tree);
   return {ast, std::shared_ptr<antlr4::ParserRuleContext>(parser, tree)};

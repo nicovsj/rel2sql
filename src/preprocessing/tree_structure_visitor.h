@@ -12,7 +12,7 @@ class TreeStructureVisitor : public BaseVisitor {
    * visitors, to establish the parent-child relationships.
    */
  public:
-  using psr = rel_parser::PrunedCoreRelParser;
+  using psr = rel_parser::RelParser;
 
   TreeStructureVisitor() : BaseVisitor() {}
 

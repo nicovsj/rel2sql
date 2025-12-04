@@ -3,13 +3,15 @@
 
 #include <regex>
 
-#include "PrunedCoreRelParser.h"
+#include "RelParser.h"
 #include "api/translate.h"
 #include "preprocessing/preprocessor.h"
 #include "rel_ast/extended_ast.h"
 #include "rel_ast/relation_info.h"
 #include "sql_ast/sql_ast.h"
 #include "test_common.h"
+
+using psr = rel_parser::RelParser;
 
 namespace rel2sql {
 
@@ -59,7 +61,7 @@ TEST_F(TranslationTest, EqualitySpecialCondition) {
 
   auto parser = GetParser(input);
 
-  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::BinOpContext*>(parser->formula());
+  auto tree = dynamic_cast<psr::BinOpContext*>(parser->formula());
 
   Preprocessor preprocessor(default_edb_map);
   auto ast = preprocessor.Process(tree);
@@ -87,7 +89,7 @@ TEST_F(TranslationTest, SpecialVarList) {
 
   auto parser = GetParser(input);
 
-  auto tree = dynamic_cast<rel_parser::PrunedCoreRelParser::BinOpContext*>(parser->formula());
+  auto tree = dynamic_cast<psr::BinOpContext*>(parser->formula());
 
   Preprocessor preprocessor(default_edb_map);
   auto ast = preprocessor.Process(tree);
@@ -509,9 +511,6 @@ TEST_F(TranslationTest, WeirdEdgeCase1) {
   ASSERT_TRUE(found2) << "Pattern not found in output2";
 
   EXPECT_EQ(match1.str(), match2.str());
-
-  // Compare ExtendedAST for the jrs definition
-  using psr = rel_parser::PrunedCoreRelParser;
 
   auto parser1 = GetParser(input1);
   auto tree1 = parser1->program();
