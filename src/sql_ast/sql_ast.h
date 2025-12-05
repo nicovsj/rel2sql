@@ -372,6 +372,27 @@ class Operation : public Term {
   }
 };
 
+class ParenthesisTerm : public Term {
+ public:
+  std::shared_ptr<Term> term;
+
+  ParenthesisTerm(std::shared_ptr<Term> term) : term(term) {}
+
+  std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* other_parenthesis_term = dynamic_cast<const ParenthesisTerm*>(&other);
+    if (!other_parenthesis_term) return false;
+    return *term == *other_parenthesis_term->term;
+  }
+
+  std::string ToString() const override {
+    return "(" + term->ToString() + ")";
+  }
+};
+
 class Function : public Term {
  public:
   AggregateFunction name;

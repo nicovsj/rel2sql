@@ -66,7 +66,8 @@ numericalConstant:
 term:
 	T_ID								# IDTerm
 	| numericalConstant					# numTerm
-	| lhs = term operator rhs = term	# opTerm;
+	| lhs = term operator rhs = term	# opTerm
+	| '(' term ')'						# parenthesisTerm;
 
 // The order of the rules below matters for precedence.
 expr:

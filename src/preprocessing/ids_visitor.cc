@@ -90,6 +90,10 @@ std::any IDsVisitor::visitOpTerm(psr::OpTermContext* ctx) {
   return deps;
 }
 
+std::any IDsVisitor::visitParenthesisTerm(psr::ParenthesisTermContext* ctx) {
+  return visit(ctx->term());
+}
+
 std::any IDsVisitor::visitLitExpr(psr::LitExprContext* _) { return StringSet{}; }
 
 std::any IDsVisitor::visitIDExpr(psr::IDExprContext* ctx) {

@@ -28,6 +28,8 @@ class IDsVisitor : public BaseVisitor {
 
   std::any visitOpTerm(psr::OpTermContext* ctx) override;
 
+  std::any visitParenthesisTerm(psr::ParenthesisTermContext* ctx) override;
+
   // Expression branches
 
   std::any visitLitExpr(psr::LitExprContext* ctx) override;

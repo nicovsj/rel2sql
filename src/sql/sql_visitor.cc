@@ -649,6 +649,14 @@ std::any SQLVisitor::visitOpTerm(psr::OpTermContext* ctx) {
       std::make_shared<sql::ast::Operation>(lhs_term, rhs_term, ctx->operator_()->getText()));
 }
 
+std::any SQLVisitor::visitParenthesisTerm(psr::ParenthesisTermContext* ctx) {
+  /*
+   * Generates an SQL query from the parenthesized term.
+   */
+  auto term = std::any_cast<std::shared_ptr<sql::ast::Term>>(visit(ctx->term()));
+  return std::static_pointer_cast<sql::ast::Term>(std::make_shared<sql::ast::ParenthesisTerm>(term));
+}
+
 std::any SQLVisitor::VisitConjunction(psr::BinOpContext* ctx) {
   /*
    * Generates an SQL query from the conjunction of the two formulas.
