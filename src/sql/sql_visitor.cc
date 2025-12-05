@@ -540,11 +540,18 @@ std::any SQLVisitor::visitBinOp(psr::BinOpContext* ctx) {
   }
 }
 
-std::any SQLVisitor::visitUnOp(psr::UnOpContext* _) {
+std::any SQLVisitor::visitUnOp(psr::UnOpContext* ctx) {
   /*
    * Generates an SQL query from the unary operation.
    */
-  throw NotImplementedException("Unary operation translation not implemented yet");
+
+  // Negation should be handled by the conjunction case only. So here we just pass the formula to the next visitor and
+  // let the caller handle the correct construction.
+  if (ctx->K_not()) {
+    return visit(ctx->formula());
+  }
+
+  throw SemanticException("Unknown unary operation", ErrorCode::UNKNOWN_UNARY_OPERATOR);
 }
 
 std::any SQLVisitor::visitQuantification(psr::QuantificationContext* ctx) {
@@ -663,10 +670,16 @@ std::any SQLVisitor::VisitConjunction(psr::BinOpContext* ctx) {
    * Generates an SQL query from the conjunction of the two formulas.
    */
 
+  auto node = GetNode(ctx);
+
   // There is a special case for conjunctions with terms, which are already partitioned
   // by the balancing visitor.
-  if (GetNode(ctx)->IsConjunctionWithTerms()) {
+  if (node->IsConjunctionWithTerms()) {
     return VisitConjunctionWithTerms(ctx);
+  }
+
+  if (node->IsConjunctionWithNegations()) {
+    return VisitConjunctionWithNegations(ctx);
   }
 
   // Call the generalized conjunction function with the left and right subformulas
@@ -711,8 +724,8 @@ std::any SQLVisitor::VisitConjunctionWithTerms(psr::BinOpContext* ctx) {
   // Conveniently, we already separated the children into comparator and non-comparator formulas
   // with the BalancingVisitor.
 
-  std::vector<antlr4::ParserRuleContext*> other_formulas = GetNode(ctx)->other_formulas;
-  std::vector<antlr4::ParserRuleContext*> comparator_formulas = GetNode(ctx)->comparator_formulas;
+  std::vector<antlr4::ParserRuleContext*> other_formulas = GetNode(ctx)->non_comparator_conjuncts;
+  std::vector<antlr4::ParserRuleContext*> comparator_formulas = GetNode(ctx)->comparator_conjuncts;
 
   auto select_expression = std::static_pointer_cast<sql::ast::SelectStatement>(
       std::any_cast<std::shared_ptr<sql::ast::Expression>>(VisitGeneralizedConjunction(other_formulas)));
@@ -768,6 +781,73 @@ void SQLVisitor::SpecialAddSourceToFreeVariablesInTerm(
     SpecialAddSourceToFreeVariablesInTerm(free_var_sources, operation->rhs);
   }
 }
+
+std::any SQLVisitor::VisitConjunctionWithNegations(psr::BinOpContext* ctx) {
+  // We know that this subtree is a conjunction of formulas of the form:
+  //
+  // C1 and C2 and ... and Cn and not F1 and not F2 and ... and not Fm,
+  //
+  // where each Ci is a formula that has to be translated, and each Fi is a formula that has to be negated.
+
+  std::vector<antlr4::ParserRuleContext*> other_formulas = GetNode(ctx)->non_negated_conjuncts;
+  std::vector<antlr4::ParserRuleContext*> negated_formulas = GetNode(ctx)->negated_conjuncts;
+
+  auto select_expression = std::static_pointer_cast<sql::ast::SelectStatement>(
+      std::any_cast<std::shared_ptr<sql::ast::Expression>>(VisitGeneralizedConjunction(other_formulas)));
+
+  auto from_statement = select_expression->from.value();
+
+  std::vector<std::shared_ptr<sql::ast::Condition>> new_conditions;
+
+  if (from_statement->where.has_value()) {
+    new_conditions.push_back(from_statement->where.value());
+  }
+
+  std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> free_var_sources;
+
+  for (auto source_ctx : other_formulas) {
+    for (auto free_var : GetNode(source_ctx)->free_variables) {
+      if (free_var_sources.find(free_var) == free_var_sources.end()) {
+        free_var_sources[free_var] = std::static_pointer_cast<sql::ast::Source>(GetNode(source_ctx)->sql_expression);
+      }
+    }
+  }
+
+  for (auto negated_formula : negated_formulas) {
+    auto negated_formula_sql = std::static_pointer_cast<sql::ast::SelectStatement>(
+        std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(negated_formula)));
+
+    auto negated_formula_node = GetNode(negated_formula);
+
+    std::vector<std::shared_ptr<sql::ast::Column>> columns;
+
+    for (auto free_var : negated_formula_node->free_variables) {
+      auto it = free_var_sources.find(free_var);
+      if (it != free_var_sources.end()) {
+        columns.push_back(std::make_shared<sql::ast::Column>(free_var, it->second));
+      } else {
+        throw std::runtime_error("Free variable not found in free variable sources");
+      }
+    }
+
+    auto inclusion = std::make_shared<sql::ast::Inclusion>(columns, negated_formula_sql, true);
+
+    new_conditions.push_back(inclusion);
+  }
+
+  std::shared_ptr<sql::ast::Condition> new_where;
+
+  if (new_conditions.size() == 1) {
+    new_where = new_conditions[0];
+  } else {
+    new_where = std::make_shared<sql::ast::LogicalCondition>(new_conditions, sql::ast::LogicalOp::AND);
+  }
+
+  from_statement->where = new_where;
+
+  return std::static_pointer_cast<sql::ast::Expression>(select_expression);
+}
+
 
 std::any SQLVisitor::VisitDisjunction(psr::BinOpContext* ctx) {
   /*

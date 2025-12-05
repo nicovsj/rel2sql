@@ -49,8 +49,11 @@ struct RelASTNode {
   BoundSet safety;
 
   // AND term partitioning variables
-  std::vector<antlr4::ParserRuleContext*> comparator_formulas;
-  std::vector<antlr4::ParserRuleContext*> other_formulas;
+  std::vector<antlr4::ParserRuleContext*> comparator_conjuncts;
+  std::vector<antlr4::ParserRuleContext*> non_comparator_conjuncts;
+
+  std::vector<antlr4::ParserRuleContext*> negated_conjuncts;
+  std::vector<antlr4::ParserRuleContext*> non_negated_conjuncts;
 
   // Children nodes in the ExtendedAST tree structure
   std::vector<std::shared_ptr<RelASTNode>> children;
@@ -70,7 +73,9 @@ struct RelASTNode {
     }
   }
 
-  bool IsConjunctionWithTerms() const { return !comparator_formulas.empty(); }
+  bool IsConjunctionWithTerms() const { return !comparator_conjuncts.empty(); }
+
+  bool IsConjunctionWithNegations() const { return !negated_conjuncts.empty(); }
 };
 
 // Forward declaration for operator==

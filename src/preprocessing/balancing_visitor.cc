@@ -70,34 +70,23 @@ std::any BalancingVisitor::visitBinOp(psr::BinOpContext* ctx) {
   if (ctx->K_and()) {
     auto node = GetNode(ctx);
 
-    // Collect and store comparator formulas and other formulas
-    CollectComparatorFormulas(ctx, node->comparator_formulas, node->other_formulas);
+    // Collect and store comparator conjuncts and non-comparator conjuncts
+    CollectComparatorConjuncts(ctx, node->comparator_conjuncts, node->non_comparator_conjuncts);
 
-    // Check that all free variables in comparator formulas are also in other formulas
-    if (!node->comparator_formulas.empty()) {
-      std::set<std::string> other_free_variables;
+    // Validate that all free variables in comparator conjuncts are also present in non-comparator conjuncts
+    ValidateComparatorFreeVariables(node->comparator_conjuncts, node->non_comparator_conjuncts);
 
-      for (auto other_formula : node->other_formulas) {
-        other_free_variables.insert(GetNode(other_formula)->free_variables.begin(),
-                                    GetNode(other_formula)->free_variables.end());
-      }
+    // Collect and store negated conjuncts and non-negated conjuncts
+    CollectNegatedConjuncts(ctx, node->negated_conjuncts, node->non_negated_conjuncts);
 
-      for (auto comparator_formula : node->comparator_formulas) {
-        for (auto free_variable : GetNode(comparator_formula)->free_variables) {
-          if (other_free_variables.find(free_variable) == other_free_variables.end()) {
-            SourceLocation location = GetSourceLocation(comparator_formula);
-            throw VariableException(
-                "Free variable '" + free_variable + "' is not part of a non-comparator formula in the same conjunction",
-                location);
-          }
-        }
-      }
+    // Validate that all free variables in negated conjuncts are also present in non-negated conjuncts
+    ValidateNegatedFreeVariables(node->negated_conjuncts, node->non_negated_conjuncts);
+
+    for (auto non_comparator_conjunct : node->non_comparator_conjuncts) {
+      visit(non_comparator_conjunct);
     }
 
-    // Recursively visit other formulas
-    for (auto other_formula : node->other_formulas) {
-      visit(other_formula);
-    }
+    return {};
   }
 
   visitChildren(ctx);
@@ -135,40 +124,91 @@ std::any BalancingVisitor::visitApplParam(psr::ApplParamContext* ctx) {
   return {};
 }
 
-void BalancingVisitor::CollectComparatorFormulas(psr::FormulaContext* formula_ctx,
-                                                 std::vector<antlr4::ParserRuleContext*>& comparator_formulas,
-                                                 std::vector<antlr4::ParserRuleContext*>& other_formulas) {
-  /**
-   * @brief Recursively collects comparator formulas and other formulas from a given formula context.
-   *
-   * This function traverses the formula tree and categorizes each subformula into either
-   * comparator formulas or other formulas. It handles three cases:
-   * 1. Comparison contexts are added to comparator_formulas.
-   * 2. Binary operations with 'and' operator are recursively processed.
-   * 3. All other formula types are added to other_formulas.
-   * This process guarantees that all subformulas of a single conjunction are categorized
-   * correctly. The categorization is needed for the SQL special construct for translation of terms.
-   *
-   * @param formula_ctx The root formula context to process.
-   * @param comparator_formulas Vector to store collected comparator formula contexts.
-   * @param other_formulas Vector to store all other formula contexts.
-   *
-   * @note This function modifies the input vectors comparator_formulas and other_formulas.
-   * @note The function assumes that ComparisonContext represents a comparator formula.
-   */
-
+void BalancingVisitor::CollectComparatorConjuncts(psr::FormulaContext* formula_ctx,
+                                                  std::vector<antlr4::ParserRuleContext*>& comparator_conjuncts,
+                                                  std::vector<antlr4::ParserRuleContext*>& non_comparator_conjuncts) {
   if (dynamic_cast<psr::ComparisonContext*>(formula_ctx)) {
-    comparator_formulas.push_back(formula_ctx);
+    comparator_conjuncts.push_back(formula_ctx);
+    return;
   } else if (auto bin_op_ctx = dynamic_cast<psr::BinOpContext*>(formula_ctx)) {
     if (bin_op_ctx->K_and()) {
-      CollectComparatorFormulas(bin_op_ctx->lhs, comparator_formulas, other_formulas);
-      CollectComparatorFormulas(bin_op_ctx->rhs, comparator_formulas, other_formulas);
-    } else {
-      other_formulas.push_back(formula_ctx);
+      CollectComparatorConjuncts(bin_op_ctx->lhs, comparator_conjuncts, non_comparator_conjuncts);
+      CollectComparatorConjuncts(bin_op_ctx->rhs, comparator_conjuncts, non_comparator_conjuncts);
+      return;
     }
-  } else {
-    other_formulas.push_back(formula_ctx);
   }
+
+  non_comparator_conjuncts.push_back(formula_ctx);
+}
+
+std::expected<void, std::pair<std::string, SourceLocation>> BalancingVisitor::ValidateFreeVariables(
+    const std::vector<antlr4::ParserRuleContext*>& checked_conjuncts,
+    const std::vector<antlr4::ParserRuleContext*>& reference_conjuncts) {
+  if (checked_conjuncts.empty()) {
+    return {};
+  }
+
+  std::set<std::string> reference_free_variables;
+
+  for (auto reference_conjunct : reference_conjuncts) {
+    reference_free_variables.insert(GetNode(reference_conjunct)->free_variables.begin(),
+                                    GetNode(reference_conjunct)->free_variables.end());
+  }
+
+  for (auto checked_conjunct : checked_conjuncts) {
+    for (auto free_variable : GetNode(checked_conjunct)->free_variables) {
+      if (reference_free_variables.find(free_variable) == reference_free_variables.end()) {
+        SourceLocation location = GetSourceLocation(checked_conjunct);
+        return std::unexpected(std::make_pair(free_variable, location));
+      }
+    }
+  }
+
+  return {};
+}
+
+void BalancingVisitor::ValidateComparatorFreeVariables(
+    const std::vector<antlr4::ParserRuleContext*>& comparator_conjuncts,
+    const std::vector<antlr4::ParserRuleContext*>& non_comparator_conjuncts) {
+  auto result = ValidateFreeVariables(comparator_conjuncts, non_comparator_conjuncts);
+  if (!result) {
+    throw VariableException(
+        "Free variable '" + result.error().first +
+            "' in a comparator formula is not part of a non-comparator formula in the same conjunction",
+        result.error().second);
+  }
+}
+
+void BalancingVisitor::ValidateNegatedFreeVariables(
+    const std::vector<antlr4::ParserRuleContext*>& negated_conjuncts,
+    const std::vector<antlr4::ParserRuleContext*>& non_negated_conjuncts) {
+  auto result = ValidateFreeVariables(negated_conjuncts, non_negated_conjuncts);
+  if (!result) {
+    throw VariableException("Free variable '" + result.error().first +
+                                "' in a negated formula is not part of a non-negated formula in the same conjunction",
+                            result.error().second);
+  }
+}
+
+void BalancingVisitor::CollectNegatedConjuncts(psr::FormulaContext* formula_ctx,
+                                               std::vector<antlr4::ParserRuleContext*>& negated_conjuncts,
+                                               std::vector<antlr4::ParserRuleContext*>& non_negated_conjuncts) {
+  if (auto un_op_ctx = dynamic_cast<psr::UnOpContext*>(formula_ctx)) {
+    if (un_op_ctx->K_not()) {
+      negated_conjuncts.push_back(formula_ctx);
+      return;
+    }
+  }
+
+  if (auto bin_op_ctx = dynamic_cast<psr::BinOpContext*>(formula_ctx)) {
+    if (bin_op_ctx->K_and()) {
+      CollectNegatedConjuncts(bin_op_ctx->lhs, negated_conjuncts, non_negated_conjuncts);
+      CollectNegatedConjuncts(bin_op_ctx->rhs, negated_conjuncts, non_negated_conjuncts);
+      return;
+    }
+  }
+
+  non_negated_conjuncts.push_back(formula_ctx);
 }
 
 }  // namespace rel2sql

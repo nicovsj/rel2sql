@@ -303,27 +303,27 @@ bool operator==(const RelASTNode& lhs, const RelASTNode& rhs) {
   }
 
   // Compare comparator_formulas
-  if (lhs.comparator_formulas.size() != rhs.comparator_formulas.size()) {
+  if (lhs.comparator_conjuncts.size() != rhs.comparator_conjuncts.size()) {
     throw ExtendedNodeDifferenceException(
         nullptr, "comparator_formulas",
-        "comparator_formulas size differs: " + std::to_string(lhs.comparator_formulas.size()) + " vs " +
-            std::to_string(rhs.comparator_formulas.size()));
+        "comparator_formulas size differs: " + std::to_string(lhs.comparator_conjuncts.size()) + " vs " +
+            std::to_string(rhs.comparator_conjuncts.size()));
   }
-  for (size_t i = 0; i < lhs.comparator_formulas.size(); i++) {
-    if (lhs.comparator_formulas[i] != rhs.comparator_formulas[i]) {
+  for (size_t i = 0; i < lhs.comparator_conjuncts.size(); i++) {
+    if (lhs.comparator_conjuncts[i] != rhs.comparator_conjuncts[i]) {
       throw ExtendedNodeDifferenceException(nullptr, "comparator_formulas",
                                             "comparator_formulas[" + std::to_string(i) + "] differs");
     }
   }
 
-  // Compare other_formulas
-  if (lhs.other_formulas.size() != rhs.other_formulas.size()) {
+  // Compare non_comparator_conjuncts
+  if (lhs.non_comparator_conjuncts.size() != rhs.non_comparator_conjuncts.size()) {
     throw ExtendedNodeDifferenceException(nullptr, "other_formulas",
-                                          "other_formulas size differs: " + std::to_string(lhs.other_formulas.size()) +
-                                              " vs " + std::to_string(rhs.other_formulas.size()));
+                                          "non_comparator_conjuncts size differs: " + std::to_string(lhs.non_comparator_conjuncts.size()) +
+                                              " vs " + std::to_string(rhs.non_comparator_conjuncts.size()));
   }
-  for (size_t i = 0; i < lhs.other_formulas.size(); i++) {
-    if (lhs.other_formulas[i] != rhs.other_formulas[i]) {
+  for (size_t i = 0; i < lhs.non_comparator_conjuncts.size(); i++) {
+    if (lhs.non_comparator_conjuncts[i] != rhs.non_comparator_conjuncts[i]) {
       throw ExtendedNodeDifferenceException(nullptr, "other_formulas",
                                             "other_formulas[" + std::to_string(i) + "] differs");
     }

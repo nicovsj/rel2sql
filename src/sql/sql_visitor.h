@@ -111,6 +111,8 @@ class SQLVisitor : public BaseVisitor {
 
   std::any VisitConjunctionWithTerms(psr::BinOpContext* ctx);
 
+  std::any VisitConjunctionWithNegations(psr::BinOpContext* ctx);
+
   // Utility functions
 
   std::string GenerateTableAlias(std::string prefix = "T");
