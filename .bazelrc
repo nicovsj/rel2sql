@@ -24,6 +24,11 @@ build --cxxopt='-Wunused-but-set-variable'
 # The pattern matches files in external/ directories (Bazel's external dependency location)
 build --per_file_copt='external/.*@-w'
 
+# Suppress warnings from generated files (e.g., ANTLR-generated code in bazel-out/)
+# Match bazel-out paths and disable all warnings for them
+# The pattern matches files in bazel-out/ directories (Bazel's generated file location)
+build --per_file_copt='bazel-out/.*@-w'
+
 #--- Global platform-specific configuration ---
 
 # Enable platform-specific configs for regular builds (but not WASM)
