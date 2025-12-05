@@ -81,13 +81,15 @@ expr:
 	| '(' bindingInner ')' ':' formula	# bindingsFormula
 	| applBase '[' applParams ']'		# partialAppl;
 
+// Formula with operator precedence: not > and > or
+// Order matters: atomic formulas first, then not, then and, then or
 formula:
 	'{' ('(' ')')? '}'											# formulaBool
 	| applBase '(' applParams? ')'								# FullAppl
-	| lhs = formula op = 'and' rhs = formula					# binOp
-	| lhs = formula op = 'or' rhs = formula						# binOp
-	| op = 'not' formula										# unOp
 	| op = 'exists' '(' '(' bindingInner ')' '|' formula ')'	# quantification
 	| op = 'forall' '(' '(' bindingInner ')' '|' formula ')'	# quantification
 	| '(' formula ')'											# paren
-	| lhs = term comparator rhs = term							# comparison;
+	| lhs = term comparator rhs = term							# comparison
+	| op = 'not' formula										# unOp
+	| lhs = formula op = 'and' rhs = formula					# binOp
+	| lhs = formula op = 'or' rhs = formula						# binOp;
