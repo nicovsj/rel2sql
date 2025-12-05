@@ -586,7 +586,7 @@ std::any SQLVisitor::visitComparison(psr::ComparisonContext* ctx) {
     op = sql::ast::CompOp::GTE;
   } else if (comparator == "=") {
     op = sql::ast::CompOp::EQ;
-  } else if (comparator == "<>") {
+  } else if (comparator == "!=") {
     op = sql::ast::CompOp::NEQ;
   } else {
     throw std::runtime_error("Unknown comparator");
