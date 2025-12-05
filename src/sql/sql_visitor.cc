@@ -603,7 +603,8 @@ std::any SQLVisitor::visitApplBase(psr::ApplBaseContext* ctx) {
   if (ctx->T_ID()) {
     return std::dynamic_pointer_cast<sql::ast::Sourceable>(GetExpressionFromID(ctx, ctx->T_ID()->getText()));
   } else if (ctx->relAbs()) {
-    return visit(ctx->relAbs());
+    auto rel_abs_sql = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->relAbs()));
+    return std::dynamic_pointer_cast<sql::ast::Sourceable>(rel_abs_sql);
   }
 
   throw std::runtime_error("Unknown application base");
