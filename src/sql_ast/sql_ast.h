@@ -340,7 +340,7 @@ class Constant : public Term {
 
   std::string ToString() const override {
     return std::visit(
-        utl::overloaded{[](int arg) { return std::to_string(arg); }, [](double arg) { return std::to_string(arg); },
+        utl::overloaded{[](int arg) { return std::to_string(arg); }, [](double arg) { return fmt::format("{:g}", arg); },
                         [](std::string arg) { return fmt::format("'{}'", arg); },
                         [](bool arg) { return arg ? std::string("TRUE") : std::string("FALSE"); }},
         value);
