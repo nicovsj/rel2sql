@@ -58,6 +58,9 @@ struct Projection {
   Projection(std::vector<size_t> projection_indices, std::shared_ptr<BoundSource> source)
       : projected_indices(projection_indices), source(source) {}
 
+  Projection(std::vector<size_t> projection_indices, TableSource source)
+    : projected_indices(projection_indices), source(std::make_shared<TableSource>(source)) {}
+
   // Creates a projection that projects all attributes of the given table.
   Projection(TableSource source);
 

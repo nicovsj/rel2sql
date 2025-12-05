@@ -207,41 +207,36 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
   }
 
   if (ctx->applBase()->T_ID()) {
-    bool all_vars = true;
-    for (auto& param : ctx->applParams()->applParam()) {
+    std::vector<size_t> variable_indices;
+    std::vector<std::string> variable_names;
+
+    for (size_t i = 0; i < ctx->applParams()->applParam().size(); i++) {
+      auto param = ctx->applParams()->applParam()[i];
       visit(param);
-      if (*GetNode(param)->variables.begin() != param->getText()) {
-        all_vars = false;
-      }
+
+      auto node = GetNode(param);
+      if (!dynamic_cast<psr::IDExprContext*>(param->expr())) continue;
+      if (node->variables.size() != 1) continue;
+
+      auto variable = *node->variables.begin();
+
+      variable_indices.push_back(i);
+      variable_names.push_back(variable);
     }
 
-    if (all_vars) {
-      std::vector<size_t> indices;
+    Bound bound{variable_names};
 
-      for (size_t i = 0; i < ctx->applParams()->applParam().size(); i++) {
-        indices.push_back(i);
-      }
+    std::string id = ctx->applBase()->T_ID()->getText();
+    auto arity = ast_->GetArity(id);
 
-      Bound binding_bound;
+    auto table_source = TableSource(id, arity);
+    auto projection = Projection(variable_indices, table_source);
 
-      std::string id = ctx->applBase()->T_ID()->getText();
-      auto arity = ast_->GetArity(id);
+    bound.Add(projection);
 
-      auto table_source = TableSource(id, arity);
-      auto projection = Projection(table_source);
+    GetNode(ctx)->safety = BoundSet({bound});
 
-      binding_bound.Add(projection);
-
-      for (auto& param : ctx->applParams()->applParam()) {
-        auto variable = param->getText();
-
-        binding_bound.variables.push_back(variable);
-      }
-
-      GetNode(ctx)->safety = BoundSet({binding_bound});
-
-      return {};
-    }
+    return {};
   }
 
   visit(ctx->applBase());
@@ -251,57 +246,43 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
 
 std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
   visit(ctx->applBase());
-  if (ctx->applParams()) {
-    for (auto& param : ctx->applParams()->applParam()) {
-      visit(param);
-    }
-  }
 
-  // If the base is not an ID, the safeness is empty
-  if (!ctx->applBase()->T_ID()) {
-    return {};
+  std::vector<std::string> variable_names;
+  std::vector<size_t> variable_indices;
+
+  for (size_t i = 0; i < ctx->applParams()->applParam().size(); i++) {
+    auto param = ctx->applParams()->applParam()[i];
+    visit(param);
+    auto node = GetNode(param);
+
+    if (!dynamic_cast<psr::IDExprContext*>(param->expr())) continue;
+    if (node->variables.size() != 1) continue;
+
+    auto variable = *node->variables.begin();
+
+    variable_indices.push_back(i);
+    variable_names.push_back(variable);
   }
 
   std::string id = ctx->applBase()->T_ID()->getText();
 
-  bool all_id_expr = true;
-  std::vector<std::string> actual_variables;
-  if (ctx->applParams()) {
-    for (auto& param : ctx->applParams()->applParam()) {
-      auto id_expr = dynamic_cast<psr::IDExprContext*>(param->expr());
-      if (!id_expr) {
-        all_id_expr = false;
-        break;
-      }
-      actual_variables.push_back(id_expr->T_ID()->getText());
-    }
-  }
+  // Check if every parameter is a variable
+  bool all_variable_params = ctx->applParams()->applParam().size() == variable_names.size();
 
-  if (all_id_expr && !current_relation_.empty() && id == current_relation_ && IsRecursiveCall(ctx) &&
+  if (all_variable_params && !current_relation_.empty() && id == current_relation_ && IsRecursiveCall(ctx) &&
       has_current_relation_base_safety_) {
-    GetNode(ctx)->safety = RenameSafety(current_relation_base_safety_, id, actual_variables);
+    GetNode(ctx)->safety = RenameSafety(current_relation_base_safety_, id, variable_names);
     return {};
   }
 
-  Bound binding_bound;
+  Bound binding_bound{variable_names};
 
   auto arity = ast_->GetArity(id);
 
   auto table_source = TableSource(id, arity);
-  auto projection = Projection(table_source);
+  auto projection = Projection(variable_indices, table_source);
 
   binding_bound.Add(projection);
-
-  for (auto& param : ctx->applParams()->applParam()) {
-    auto id_expr = dynamic_cast<psr::IDExprContext*>(param->expr());
-    if (!id_expr) {
-      return {};
-    }
-
-    auto variable = id_expr->T_ID()->getText();
-
-    binding_bound.variables.push_back(variable);
-  }
 
   GetNode(ctx)->safety = BoundSet({binding_bound});
 

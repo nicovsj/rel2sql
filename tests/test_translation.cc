@@ -491,27 +491,33 @@ TEST_F(TranslationTest, RelationalAbstraction6) {
             "(SELECT 2) AS T1, (VALUES (1), (2)) AS Ind0(I)");
 }
 
-TEST_F(TranslationTest, Binding) {
+TEST_F(TranslationTest, FormulaBindings1) {
   EXPECT_EQ(TranslateExpression("(x): A(x)"),
             "WITH S0(x) AS (SELECT * FROM A AS T2) SELECT S0.x AS A1 FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1, S0 "
             "WHERE S0.x = T1.x");
 }
 
-TEST_F(TranslationTest, BindingRepeatedVariable) {
+TEST_F(TranslationTest, FormulaBindings2) {
   EXPECT_EQ(TranslateExpression("(x, x): A(x)"),
             "WITH S0(x) AS (SELECT * FROM A AS T2) SELECT S0.x AS A1, S0.x AS A2 FROM (SELECT T0.A1 AS x FROM A AS T0) "
             "AS T1, S0 "
             "WHERE S0.x = T1.x");
 }
 
-TEST_F(TranslationTest, BindingExpression) {
+TEST_F(TranslationTest, FormulaBindings3) {
+  EXPECT_EQ(TranslateExpression("(x): B(x,1)"),
+            "WITH S0(x) AS (SELECT T3.A1 AS A1 FROM B AS T3) SELECT S0.x AS A1 FROM (SELECT T0.A1 AS x FROM B AS T0, "
+            "(SELECT 1 AS A1) AS T1 WHERE T0.A2 = T1.A1) AS T2, S0 WHERE S0.x = T2.x");
+}
+
+TEST_F(TranslationTest, ExpressionBindings1) {
   EXPECT_EQ(TranslateExpression("[x in T, y in R]: F[x, y]"),
             "WITH S1(x) AS (SELECT * FROM T AS T3), S0(y) AS (SELECT * FROM R AS T2) SELECT S1.x AS A1, S0.y AS A2, "
             "T1.A1 AS A3 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T1, S1, S0 WHERE S1.x = "
             "T1.x AND S0.y = T1.y");
 }
 
-TEST_F(TranslationTest, BindingExpressionBounded) {
+TEST_F(TranslationTest, ExpressionBindings2) {
   EXPECT_EQ(
       TranslateExpression("[x in A, y]: C[x, y] where D(y)"),
       "WITH S1(x) AS (SELECT * FROM A AS T6), S0(y) AS (SELECT * FROM D AS T5) SELECT S1.x AS A1, S0.y AS A2, T4.A1 AS "
@@ -519,8 +525,8 @@ TEST_F(TranslationTest, BindingExpressionBounded) {
       "T1.A1 AS y FROM D AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S1, S0 WHERE S1.x = T4.x AND S0.y = T4.y");
 }
 
-TEST_F(TranslationTest, BindingFormula) {
-  EXPECT_EQ(TranslateExpression("[x in A, y in D]: B(x, y)"),
+TEST_F(TranslationTest, ExpressionBindings3) {
+  EXPECT_EQ(TranslateExpression("[x in A, y in D]: C[x, y]"),
             "WITH S1(x) AS (SELECT * FROM A AS T3), S0(y) AS (SELECT * FROM D AS T2) SELECT S1.x AS A1, S0.y AS A2 "
             "FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
 }
