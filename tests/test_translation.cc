@@ -527,8 +527,9 @@ TEST_F(TranslationTest, ExpressionBindings2) {
 
 TEST_F(TranslationTest, ExpressionBindings3) {
   EXPECT_EQ(TranslateExpression("[x in A, y in D]: C[x, y]"),
-            "WITH S1(x) AS (SELECT * FROM A AS T3), S0(y) AS (SELECT * FROM D AS T2) SELECT S1.x AS A1, S0.y AS A2 "
-            "FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0) AS T1, S1, S0 WHERE S1.x = T1.x AND S0.y = T1.y");
+            "WITH S1(x) AS (SELECT * FROM A AS T3), S0(y) AS (SELECT * FROM D AS T2) SELECT S1.x AS A1, S0.y AS A2, "
+            "T1.A1 AS A3 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM C AS T0) AS T1, S1, S0 WHERE S1.x = "
+            "T1.x AND S0.y = T1.y");
 }
 
 TEST_F(TranslationTest, Program) {
