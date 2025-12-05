@@ -1,7 +1,7 @@
 #--- Global C++ configuration ---
 
-# Use C++20 standard
-build --cxxopt='-std=c++20'
+# Use C++23 standard
+build --cxxopt='-std=c++23'
 
 # Disable deprecated builtins warning
 build --cxxopt='-Wno-deprecated-builtins'
@@ -48,7 +48,6 @@ build:debug --spawn_strategy=local
 
 # Extra strict warnings for debug builds
 build:debug --cxxopt='-Werror=uninitialized'  # Treat uninitialized as errors
-build:debug --cxxopt='-Werror=maybe-uninitialized'
 
 #--- Global Emscripten configuration ---
 
