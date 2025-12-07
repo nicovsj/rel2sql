@@ -247,6 +247,17 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
 std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
   visit(ctx->applBase());
 
+  // Base is an ID
+  if (ctx->applBase()->T_ID()) {
+    std::string id = ctx->applBase()->T_ID()->getText();
+    ComputeFullApplicationOnIDSafety(ctx, id);
+    return {};
+  }
+
+  return {};
+}
+
+void SafeVisitor::ComputeFullApplicationOnIDSafety(psr::FullApplContext* ctx, const std::string& id) {
   std::vector<std::string> variable_names;
   std::vector<size_t> variable_indices;
 
@@ -264,15 +275,13 @@ std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
     variable_names.push_back(variable);
   }
 
-  std::string id = ctx->applBase()->T_ID()->getText();
-
   // Check if every parameter is a variable
   bool all_variable_params = ctx->applParams()->applParam().size() == variable_names.size();
 
   if (all_variable_params && !current_relation_.empty() && id == current_relation_ && IsRecursiveCall(ctx) &&
       has_current_relation_base_safety_) {
     GetNode(ctx)->safety = RenameSafety(current_relation_base_safety_, id, variable_names);
-    return {};
+    return;
   }
 
   Bound binding_bound{variable_names};
@@ -285,8 +294,6 @@ std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
   binding_bound.Add(projection);
 
   GetNode(ctx)->safety = BoundSet({binding_bound});
-
-  return {};
 }
 
 std::any SafeVisitor::visitBinOp(psr::BinOpContext* ctx) {

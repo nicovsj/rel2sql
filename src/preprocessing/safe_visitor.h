@@ -93,6 +93,8 @@ class SafeVisitor : public BaseVisitor {
 
   const std::vector<std::string>& HeadVariablesFor(const std::string& relation);
 
+  void ComputeFullApplicationOnIDSafety(psr::FullApplContext* ctx, const std::string& id);
+
   std::unordered_map<std::string, std::vector<std::string>> relation_head_variables_;
   std::string current_relation_;
   std::optional<RecursionInfo> current_recursion_info_;

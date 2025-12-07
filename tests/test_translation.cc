@@ -114,27 +114,25 @@ TEST_F(TranslationTest, SpecialVarList) {
   EXPECT_EQ(os.str(), "F.x G.y ");
 }
 
-TEST_F(TranslationTest, FullApplicationFormula) {
-  EXPECT_EQ(TranslateFormula("A(x)"), "SELECT T0.A1 AS x FROM A AS T0");
-}
+TEST_F(TranslationTest, FullApplication1) { EXPECT_EQ(TranslateFormula("A(x)"), "SELECT T0.A1 AS x FROM A AS T0"); }
 
-TEST_F(TranslationTest, FullApplicationFormulaMultipleParams1) {
+TEST_F(TranslationTest, FullApplication2) {
   EXPECT_EQ(TranslateFormula("B(x, y)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0");
 }
 
-TEST_F(TranslationTest, FullApplicationFormulaMultipleParams2) {
+TEST_F(TranslationTest, FullApplication3) {
   EXPECT_EQ(TranslateFormula("C(x, y, z)"), "SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM C AS T0");
 }
 
-TEST_F(TranslationTest, RepeatedVariableFormula1) {
+TEST_F(TranslationTest, FullApplication4) {
   EXPECT_EQ(TranslateFormula("B(x, x)"), "SELECT T0.A1 AS x FROM B AS T0 WHERE T0.A1 = T0.A2");
 }
 
-TEST_F(TranslationTest, RepeatedVariableFormula2) {
+TEST_F(TranslationTest, FullApplication5) {
   EXPECT_EQ(TranslateFormula("C(x, x, x)"), "SELECT T0.A1 AS x FROM C AS T0 WHERE T0.A1 = T0.A2 AND T0.A2 = T0.A3");
 }
 
-TEST_F(TranslationTest, RepeatedVariableFormula3) {
+TEST_F(TranslationTest, FullApplication6) {
   EXPECT_EQ(TranslateFormula("C(x, y, x)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM C AS T0 WHERE T0.A1 = T0.A3");
 }
 
@@ -431,6 +429,12 @@ TEST_F(TranslationTest, PartialApplicationOnExpression2) {
             "4) AS T1, (VALUES (1), (2)) AS Ind0(I)) AS T2, (SELECT 1 AS A1) AS T3 WHERE T2.A1 = T3.A1");
 }
 
+TEST_F(TranslationTest, FullApplicationOnExpression1) {
+  EXPECT_EQ(
+      TranslateExpression("{B[1]}(x)"),
+      "SELECT T2.A1 AS x FROM (SELECT T0.A2 AS A1 FROM B AS T0, (SELECT 1 AS A1) AS T1 WHERE T0.A1 = T1.A1) AS T2");
+}
+
 TEST_F(TranslationTest, AggregateExpression1) {
   EXPECT_EQ(TranslateExpression("sum[A]"), "SELECT SUM(T0.A1) AS A1 FROM A AS T0");
 }
@@ -510,6 +514,12 @@ TEST_F(TranslationTest, FormulaBindings3) {
             "(SELECT 1 AS A1) AS T1 WHERE T0.A2 = T1.A1) AS T2, S0 WHERE S0.x = T2.x");
 }
 
+TEST_F(TranslationTest, FormulaBindings4) {
+  EXPECT_EQ(TranslateExpression("(x): {B[1]}(x)"),
+            "WITH S0(x) AS (SELECT T3.A1 AS A1 FROM B AS T3) SELECT S0.x AS A1 FROM (SELECT T0.A1 AS x FROM B AS T0, "
+            "(SELECT 1 AS A1) AS T1 WHERE T0.A2 = T1.A1) AS T2, S0 WHERE S0.x = T2.x");
+}
+
 TEST_F(TranslationTest, ExpressionBindings1) {
   EXPECT_EQ(TranslateExpression("[x in T, y in R]: F[x, y]"),
             "WITH S1(x) AS (SELECT * FROM T AS T3), S0(y) AS (SELECT * FROM R AS T2) SELECT S1.x AS A1, S0.y AS A2, "
@@ -554,7 +564,7 @@ TEST_F(TranslationTest, MultipleDefs2) {
 }
 
 TEST_F(TranslationTest, TableDefinition) {
-  EXPECT_EQ(TranslateDefinition("def R {(1, 2); (3, 4)}"),
+  EXPECT_EQ(TranslateDefinition("def R {(1,2);(3,4)}"),
             "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2))");
 }
 
