@@ -114,15 +114,13 @@ TEST_F(OptimizationTest, ExistentialFormula5) {
 
 TEST_F(OptimizationTest, UniversalFormula1) {
   EXPECT_EQ(TranslateFormula("forall ((y in A) | B(x, y))"),
-            "SELECT T1.A1 AS x FROM B AS T1 WHERE NOT EXISTS (SELECT * FROM A AS T0 WHERE (T1.A1, T0.A1) NOT IN "
-            "(SELECT * FROM (SELECT T1.A1 AS x, T1.A2 AS y FROM B AS T1) AS T2))");
+            "SELECT T1.A1 AS x FROM B AS T1 WHERE NOT EXISTS (SELECT * FROM A AS T0 WHERE (T1.A1, T0.A1) NOT IN (SELECT * FROM B AS T1))");
 }
 
 TEST_F(OptimizationTest, UniversalFormula2) {
   EXPECT_EQ(
       TranslateFormula("forall ((y in A, z in D) | C(x, y, z))"),
-      "SELECT T2.A1 AS x FROM C AS T2 WHERE NOT EXISTS (SELECT * FROM A AS T0, D AS T1 WHERE (T2.A1, T0.A1, T1.A1) "
-      "NOT IN (SELECT * FROM (SELECT T2.A1 AS x, T2.A2 AS y, T2.A3 AS z FROM C AS T2) AS T3))");
+      "SELECT T2.A1 AS x FROM C AS T2 WHERE NOT EXISTS (SELECT * FROM A AS T0, D AS T1 WHERE (T2.A1, T0.A1, T1.A1) NOT IN (SELECT * FROM C AS T2))");
 }
 
 TEST_F(OptimizationTest, ProductExpression) { EXPECT_EQ(TranslateExpression("(1, 2)"), "SELECT 1, 2"); }
@@ -283,6 +281,16 @@ TEST_F(OptimizationTest, TransitiveClosure) {
       "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE S0(x, y) AS (SELECT * FROM R AS T9), R0(A1, A2) AS (SELECT S0.x AS "
       "A1, S0.y AS A2 FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM R AS T0 UNION SELECT T1.A1 AS x, T3.A2 AS y FROM R AS "
       "T1, R0 AS T3 WHERE T1.A2 = T3.A1) AS T8, S0 WHERE S0.x = T8.x AND S0.y = T8.y) SELECT DISTINCT * FROM R0)");
+}
+
+TEST_F(OptimizationTest, FullApplicationOnExpression2) {
+  EXPECT_EQ(TranslateExpression("{ (x,y) : B(x,y) } where B(1,2) "),
+            "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, B AS T3 WHERE T3.A1 = 1 AND T3.A2 = 2");
+}
+
+TEST_F(OptimizationTest, FullApplicationOnExpression3) {
+  EXPECT_EQ(TranslateExpression("{(x,y) : B(x,y)}[1]"),
+            "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1");
 }
 
 }  // namespace rel2sql

@@ -1412,7 +1412,7 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVar
   auto ra_subquery = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(base_ctx)->sql_expression);
 
   for (auto const& [ctx, index] : final_ctxs) {
-    for (auto const& var : GetNode(ctx)->variables) {
+    for (auto const& var : GetNode(ctx)->free_variables) {
       if (seen_vars.find(var) != seen_vars.end()) continue;
 
       std::shared_ptr<sql::ast::Selectable> selectable;

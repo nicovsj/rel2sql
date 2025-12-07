@@ -7,14 +7,10 @@ namespace rel2sql {
 namespace sql::ast {
 
 void FlattenerOptimizer::Visit(SelectStatement& select_statement) {
-  if (select_statement.from.has_value()) {
-    for (auto& source : select_statement.from.value()->sources) {
-      Visit(*source);
-    }
-  }
+  // Visit children first
+  ExpressionVisitor::Visit(select_statement);
 
   TryFlattenSubquery(select_statement);
-  return;
 }
 
 bool FlattenerOptimizer::CanFlattenSubquery(const std::shared_ptr<Source>& source) {
