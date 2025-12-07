@@ -118,6 +118,12 @@ tasks:
     cmds:
       - scripts/tag.sh patch
 
+  vercel:redeploy:
+    desc: Trigger a Vercel production redeploy (prompts for confirmation)
+    cmds:
+      - ./ci/prompt-confirm.sh "Do you want to trigger a Vercel production redeploy?"
+      - ./ci/trigger-vercel-redeploy.sh
+
   default:
     desc: Display available tasks
     cmds:

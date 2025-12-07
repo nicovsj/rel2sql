@@ -47,8 +47,6 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          # VERCEL_ORG_ID is optional - only needed for team projects, leave empty for personal projects
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_REF: ${{ github.ref }}
-          GITHUB_SHA: ${{ github.sha }}
         run: ./ci/trigger-vercel-redeploy.sh
