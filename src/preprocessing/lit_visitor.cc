@@ -116,14 +116,16 @@ std::any LiteralVisitor::visitProgram(psr::ProgramContext* ctx) {
 
 std::any LiteralVisitor::visitRelDef(psr::RelDefContext* ctx) {
   GetNode(ctx)->has_only_literal_values = true;
+
   GetNode(ctx->relAbs())->has_only_literal_values = true;
-  for (auto& child : ctx->relAbs()->expr()) {
-    visit(child);
-    auto child_node = GetNode(child);
+
+
+  for (auto& child_ctx : ctx->relAbs()->expr()) {
+    visit(child_ctx);
+    auto child_node = GetNode(child_ctx);
     if (!child_node->has_only_literal_values) {
       GetNode(ctx)->has_only_literal_values = false;
       GetNode(ctx->relAbs())->has_only_literal_values = false;
-      break;
     }
   }
 

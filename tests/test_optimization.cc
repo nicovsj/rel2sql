@@ -293,6 +293,11 @@ TEST_F(OptimizationTest, FullApplicationOnExpression3) {
             "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1");
 }
 
+TEST_F(OptimizationTest, FullApplicationOnExpression4) {
+  EXPECT_EQ(TranslateDefinition("def Q { B[1] ; B[2] }"),
+            "CREATE OR REPLACE VIEW Q AS (SELECT DISTINCT CASE WHEN Ind0.I = 1 THEN T0.A2 WHEN Ind0.I = 2 THEN T3.A2 END AS A1 FROM B AS T0, B AS T3, (VALUES (1), (2)) AS Ind0(I) WHERE T0.A1 = 1 AND T3.A1 = 2)");
+}
+
 }  // namespace rel2sql
 
 // Helper functions for testing individual optimizers
