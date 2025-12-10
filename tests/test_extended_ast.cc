@@ -539,7 +539,7 @@ TEST(SafetyVisitorTest, RecursiveRelationUsesBaseBounds) {
   ASSERT_NE(recursive_call, nullptr);
 
   auto node = ast.GetNode(recursive_call);
-  ASSERT_FALSE(node->safety.Empty());
+  ASSERT_FALSE(node->safety.IsEmpty());
 
   bool found_r_bound = false;
   for (const auto& bound : node->safety.bounds) {
@@ -650,7 +650,7 @@ TEST(SafetyVisitorTest, QuantificationRemovesBoundVariables) {
   auto node = ast.GetNode(quantification);
   // After removing x, the safety set should be empty (no free variables)
   // Since F(x) binds x, and x is quantified away, there are no bound variables left
-  EXPECT_TRUE(node->safety.Empty());
+  EXPECT_TRUE(node->safety.IsEmpty());
 }
 
 TEST(SafetyVisitorTest, BindingsExpressionRemovesBoundVariables) {

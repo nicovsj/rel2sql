@@ -41,7 +41,8 @@ Bound MergeBindingsToCompleteTable(const std::vector<Bound>& bindings, const std
   size_t table_arity = variables.size();
   // Get the table source from the first binding
   const Projection& first_projection = *bindings[0].domain.begin();
-  std::shared_ptr<TableSource> table_source = std::dynamic_pointer_cast<TableSource>(first_projection.source);
+  auto resolved_source = ResolvePromisedSource(first_projection.source);
+  std::shared_ptr<TableSource> table_source = std::dynamic_pointer_cast<TableSource>(resolved_source);
 
   // Create full projection [0, 1, ..., arity-1]
   std::vector<size_t> all_indices;
@@ -121,7 +122,7 @@ Bound ProjectBoundToIndices(const Bound& bound, const std::vector<size_t>& indic
 // BindingBoundSet methods
 size_t BoundSet::Size() const { return bounds.size(); }
 
-bool BoundSet::Empty() const { return bounds.empty(); }
+bool BoundSet::IsEmpty() const { return bounds.empty(); }
 
 BoundSet BoundSet::MergeWith(const BoundSet& other) const {
   std::unordered_set<Bound> merged;
@@ -227,7 +228,7 @@ void BoundSet::MergeCompatibleSingleSourceProjections() {
     }
 
     const Projection& projection = *bound.domain.begin();
-    auto table_source = std::dynamic_pointer_cast<TableSource>(projection.source);
+    auto table_source = std::dynamic_pointer_cast<TableSource>(ResolvePromisedSource(projection.source));
 
     if (!table_source) {
       // Non-TableSource (e.g., ConstantSource) are not mergeable, add as-is

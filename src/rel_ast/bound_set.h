@@ -21,7 +21,7 @@ struct BoundSet {
   size_t Size() const;
 
   // Returns true if this set is empty.
-  bool Empty() const;
+  bool IsEmpty() const;
 
   // Performs a merge: bindings bounds with matching variables get merged by uniting their domains.
   BoundSet MergeWith(const BoundSet& other) const;

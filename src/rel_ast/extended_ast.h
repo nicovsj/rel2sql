@@ -43,7 +43,7 @@ struct RelASTNode {
   std::string recursive_definition_name;
 
   // Arity of the current context
-  int arity = 0;
+  size_t arity = 0;
 
   // Output of the safety analysis
   BoundSet safety;

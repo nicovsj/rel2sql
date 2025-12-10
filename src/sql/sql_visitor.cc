@@ -489,9 +489,24 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext* ctx) {
    */
   auto ra_sql = std::any_cast<std::shared_ptr<sql::ast::Sourceable>>(visit(ctx->applBase()));
 
+  if (ctx->applBase()->relAbs()) {
+    auto node = GetNode(ctx);
+
+    if (node->safety.Size() != 1) {
+      throw InternalException("Full application on a relational abstraction with wrong number of bounds");
+    }
+
+    auto bound = *node->safety.bounds.begin();
+    auto projection = *bound.domain.begin();
+    auto promised_source = std::dynamic_pointer_cast<PromisedSource>(projection.source);
+    promised_source->Fulfill(ra_sql);
+  }
+
   auto ra_source = std::make_shared<sql::ast::Source>(ra_sql, GenerateTableAlias());
 
-  GetNode(ctx->applBase())->sql_expression = ra_source;
+  auto base_node = GetNode(ctx->applBase());
+
+  base_node->sql_expression = ra_source;
 
   auto [var_params, non_var_params] = GetVariableAndNonVariableParams(ctx->applBase(), ctx->applParams()->applParam());
 
@@ -1597,14 +1612,36 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
     for (auto projection : elem.domain) {
       // Create table with attribute names from EDBInfo (whether custom or standard A1, A2, etc.)
 
-      auto bound_source = projection.source;
+      auto bound_source = ResolvePromisedSource(projection.source);
       auto table_bound = std::dynamic_pointer_cast<TableSource>(bound_source);
       auto constant_bound = std::dynamic_pointer_cast<ConstantSource>(bound_source);
+      auto generic_bound = std::dynamic_pointer_cast<GenericSource>(bound_source);
 
       std::shared_ptr<sql::ast::SelectStatement> select;
 
-      if (!constant_bound && !table_bound) {
+      if (!constant_bound && !table_bound && !generic_bound) {
         throw std::runtime_error("Unknown domain source type");
+      } else if (generic_bound) {
+        auto sourceable = generic_bound->source;
+        auto alias = std::make_shared<sql::ast::AliasStatement>(GenerateTableAlias());
+        auto source = std::make_shared<sql::ast::Source>(sourceable, alias);
+        auto from = std::make_shared<sql::ast::FromStatement>(source);
+
+        std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
+        if (static_cast<int>(projection.projected_indices.size()) == static_cast<int>(generic_bound->arity)) {
+          auto wildcard = std::make_shared<sql::ast::Wildcard>();
+          columns.push_back(wildcard);
+        } else {
+          for (int index : projection.projected_indices) {
+            std::string column_name = GetColumnNameFromSource(source, index);
+            auto column = std::make_shared<sql::ast::Column>(column_name, source);
+            auto term_selectable = std::make_shared<sql::ast::TermSelectable>(column, fmt::format("A{}", index + 1));
+            columns.push_back(term_selectable);
+          }
+        }
+
+        auto select = std::make_shared<sql::ast::SelectStatement>(columns, from);
+        selects.push_back(select);
       } else if (constant_bound) {
         auto sql_constant = std::make_shared<sql::ast::Constant>(constant_bound->value);
         auto selectable = std::make_shared<sql::ast::TermSelectable>(sql_constant, "A1");
@@ -1792,7 +1829,7 @@ std::shared_ptr<sql::ast::Expression> SQLVisitor::SpecialVisitRecursiveRelAbs(ps
   select_stmt->Accept(updater);
 
   std::vector<std::string> def_columns;
-  for (int i = 1; i <= GetNode(ctx)->arity; i++) {
+  for (size_t i = 1; i <= GetNode(ctx)->arity; i++) {
     def_columns.push_back(fmt::format("A{}", i));
   }
 

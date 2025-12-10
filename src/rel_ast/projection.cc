@@ -4,6 +4,67 @@
 
 namespace rel2sql {
 
+// GenericSource methods
+bool GenericSource::operator==(const BoundSource& other) const {
+  auto other_generic = dynamic_cast<const GenericSource*>(&other);
+  if (!other_generic) return false;
+  if (arity != other_generic->arity) return false;
+  if (!source && !other_generic->source) return true;
+  if (!source || !other_generic->source) return false;
+  return *source == *other_generic->source;
+}
+
+bool PromisedSource::operator==(const BoundSource& other) const {
+  if (this == &other) return true;
+
+  const auto* other_promise = dynamic_cast<const PromisedSource*>(&other);
+  if (!IsFulfilled() || (other_promise && !other_promise->IsFulfilled())) {
+    // When unresolved, equality falls back to identity
+    return other_promise && this == other_promise;
+  }
+
+  if (other_promise) {
+    return *resolved_ == *other_promise->resolved_;
+  }
+
+  // For non-promised, attempt to resolve to a temporary BoundSource and compare
+  if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(resolved_)) {
+    TableSource as_table(table->name, static_cast<size_t>(table->arity));
+    return as_table == other;
+  }
+
+  if (auto generic_other = dynamic_cast<const GenericSource*>(&other)) {
+    GenericSource as_generic(resolved_, Arity());
+    return as_generic == other;
+  }
+
+  return false;
+}
+
+std::shared_ptr<sql::ast::Sourceable> PromisedSource::Resolve() const {
+  if (!resolved_) throw std::runtime_error("PromisedSource has not been fulfilled");
+  return resolved_;
+}
+
+void PromisedSource::Fulfill(std::shared_ptr<sql::ast::Sourceable> source) {
+  if (!source) throw std::invalid_argument("Cannot fulfill PromisedSource with null source");
+  resolved_ = std::move(source);
+}
+
+std::shared_ptr<BoundSource> ResolvePromisedSource(const std::shared_ptr<BoundSource>& source) {
+  if (auto promise = std::dynamic_pointer_cast<PromisedSource>(source)) {
+    if (promise->IsFulfilled()) {
+      auto resolved_sql = promise->Resolve();
+      if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(resolved_sql)) {
+        return std::make_shared<TableSource>(table->name, static_cast<size_t>(table->arity));
+      }
+      return std::make_shared<GenericSource>(resolved_sql, promise->Arity());
+    }
+    return promise;
+  }
+  return source;
+}
+
 // ConstantSource methods
 bool ConstantSource::operator==(const BoundSource& other) const {
   auto other_constant = dynamic_cast<const ConstantSource*>(&other);
@@ -27,6 +88,18 @@ Projection::Projection(TableSource source) : source(std::make_shared<TableSource
 
 Projection::Projection(ConstantSource source) : source(std::make_shared<ConstantSource>(source)) {
   projected_indices.push_back(0);
+}
+
+Projection::Projection(PromisedSource source) : source(std::make_shared<PromisedSource>(source)) {
+  for (size_t i = 0; i < source.Arity(); i++) {
+    projected_indices.push_back(i);
+  }
+}
+
+Projection::Projection(GenericSource source) : source(std::make_shared<GenericSource>(source)) {
+  for (size_t i = 0; i < source.Arity(); i++) {
+    projected_indices.push_back(i);
+  }
 }
 
 Projection Projection::WithRemovedProjectionIndices(const std::vector<size_t>& indices) const {

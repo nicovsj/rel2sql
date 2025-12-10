@@ -1,6 +1,7 @@
 #ifndef BINDING_SOURCE_H
 #define BINDING_SOURCE_H
 
+#include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -21,6 +22,46 @@ struct BoundSource {
   // Checks if this source is equal to another source.
   virtual bool operator==(const BoundSource& other) const = 0;
 };
+
+// Represents a source that will be provided later (e.g., during SQL translation).
+// Acts as a placeholder that must be fulfilled with an actual sql::ast::Sourceable
+// before usage that requires concrete details (e.g., arity).
+struct GenericSource : public BoundSource {
+  std::shared_ptr<sql::ast::Sourceable> source;
+  size_t arity;
+
+  GenericSource(std::shared_ptr<sql::ast::Sourceable> source, size_t arity) : source(std::move(source)), arity(arity) {}
+
+  size_t Arity() const override { return arity; }
+
+  bool operator==(const BoundSource& other) const override;
+};
+
+struct PromisedSource : public BoundSource {
+  explicit PromisedSource(size_t arity) : arity_(arity) {}
+
+  size_t Arity() const override { return arity_; }
+
+  bool operator==(const BoundSource& other) const override;
+
+  // Returns true if the promise has been fulfilled/resolved.
+  bool IsFulfilled() const { return static_cast<bool>(resolved_); }
+
+  // Returns the resolved SQL sourceable; throws if not fulfilled.
+  std::shared_ptr<sql::ast::Sourceable> Resolve() const;
+
+  // Manually fulfill the promise with a concrete SQL source.
+  void Fulfill(std::shared_ptr<sql::ast::Sourceable> source);
+
+ private:
+  std::shared_ptr<sql::ast::Sourceable> resolved_;
+  size_t arity_;
+};
+
+// Resolves a promised source to a BoundSource-compatible representation when possible.
+// If the promise resolves to a table, a temporary TableSource is materialized.
+// Otherwise the original pointer is returned.
+std::shared_ptr<BoundSource> ResolvePromisedSource(const std::shared_ptr<BoundSource>& source);
 
 // Represents a constant value source (always has arity 1).
 struct ConstantSource : public BoundSource {
@@ -61,11 +102,23 @@ struct Projection {
   Projection(std::vector<size_t> projection_indices, TableSource source)
     : projected_indices(projection_indices), source(std::make_shared<TableSource>(source)) {}
 
+  Projection(std::vector<size_t> projection_indices, GenericSource source)
+    : projected_indices(projection_indices), source(std::make_shared<GenericSource>(source)) {}
+
+  Projection(std::vector<size_t> projection_indices, PromisedSource source)
+    : projected_indices(projection_indices), source(std::make_shared<PromisedSource>(source)) {}
+
   // Creates a projection that projects all attributes of the given table.
   Projection(TableSource source);
 
   // Creates a projection for a constant source (projects index 0).
   Projection(ConstantSource source);
+
+  // Creates a projection for a promised source.
+  Projection(PromisedSource source);
+
+  // Creates a projection for a generic source.
+  Projection(GenericSource source);
 
   // Returns the number of projected attributes (size of projected_indices).
   size_t Arity() const { return projected_indices.size(); }
@@ -101,10 +154,24 @@ struct hash<rel2sql::Projection> {
   std::size_t operator()(const rel2sql::Projection& pt) const {
     std::size_t seed = 0;
     utl::hash_range(seed, pt.projected_indices.begin(), pt.projected_indices.end());
-    if (auto table_source = dynamic_cast<const rel2sql::TableSource*>(pt.source.get())) {
+    if (auto promised_source = std::dynamic_pointer_cast<const rel2sql::PromisedSource>(pt.source)) {
+      if (!promised_source->IsFulfilled()) {
+        // Use the promise identity to keep hashes stable before resolution
+        utl::hash_combine(seed, reinterpret_cast<std::uintptr_t>(promised_source.get()));
+        return seed;
+      }
+    }
+
+    auto resolved_source = rel2sql::ResolvePromisedSource(pt.source);
+    if (auto table_source = std::dynamic_pointer_cast<const rel2sql::TableSource>(resolved_source)) {
       utl::hash_combine(seed, *table_source);
-    } else if (auto constant_source = dynamic_cast<const rel2sql::ConstantSource*>(pt.source.get())) {
+    } else if (auto constant_source = std::dynamic_pointer_cast<const rel2sql::ConstantSource>(resolved_source)) {
       utl::hash_combine(seed, *constant_source);
+    } else if (auto generic_source = std::dynamic_pointer_cast<const rel2sql::GenericSource>(resolved_source)) {
+      utl::hash_combine(seed, generic_source->arity);
+      utl::hash_combine(seed, generic_source->source->ToString());
+    } else if (auto promised_source = std::dynamic_pointer_cast<const rel2sql::PromisedSource>(resolved_source)) {
+      utl::hash_combine(seed, reinterpret_cast<std::uintptr_t>(promised_source.get()));
     } else {
       throw std::runtime_error("Unknown projection source type");
     }
