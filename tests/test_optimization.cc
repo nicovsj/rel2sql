@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 
 #include "api/translate.h"
+#include "optimizer/cte_inliner.h"
 #include "parser/sql_parse.h"
 #include "preprocessing/preprocessor.h"
 #include "rel_ast/relation_info.h"
@@ -114,13 +115,14 @@ TEST_F(OptimizationTest, ExistentialFormula5) {
 
 TEST_F(OptimizationTest, UniversalFormula1) {
   EXPECT_EQ(TranslateFormula("forall ((y in A) | B(x, y))"),
-            "SELECT T1.A1 AS x FROM B AS T1 WHERE NOT EXISTS (SELECT * FROM A AS T0 WHERE (T1.A1, T0.A1) NOT IN (SELECT * FROM B AS T1))");
+            "SELECT T1.A1 AS x FROM B AS T1 WHERE NOT EXISTS (SELECT * FROM A AS T0 WHERE (T1.A1, T0.A1) NOT IN "
+            "(SELECT * FROM B AS T1))");
 }
 
 TEST_F(OptimizationTest, UniversalFormula2) {
-  EXPECT_EQ(
-      TranslateFormula("forall ((y in A, z in D) | C(x, y, z))"),
-      "SELECT T2.A1 AS x FROM C AS T2 WHERE NOT EXISTS (SELECT * FROM A AS T0, D AS T1 WHERE (T2.A1, T0.A1, T1.A1) NOT IN (SELECT * FROM C AS T2))");
+  EXPECT_EQ(TranslateFormula("forall ((y in A, z in D) | C(x, y, z))"),
+            "SELECT T2.A1 AS x FROM C AS T2 WHERE NOT EXISTS (SELECT * FROM A AS T0, D AS T1 WHERE (T2.A1, T0.A1, "
+            "T1.A1) NOT IN (SELECT * FROM C AS T2))");
 }
 
 TEST_F(OptimizationTest, ProductExpression) { EXPECT_EQ(TranslateExpression("(1, 2)"), "SELECT 1, 2"); }
@@ -205,10 +207,10 @@ TEST_F(OptimizationTest, AggregateExpression5) {
 }
 
 TEST_F(OptimizationTest, RelationalAbstraction) {
-  EXPECT_EQ(TranslateExpression("{(1,2); (3,4)}"),
-            "SELECT CASE WHEN Ind0.I = 1 THEN T0.A1 WHEN Ind0.I = 2 THEN T1.A1 END AS A1, CASE WHEN Ind0.I = 1 THEN "
-            "T0.A2 WHEN Ind0.I = 2 THEN T1.A2 END AS A2 FROM (SELECT 1, 2) AS T0, (SELECT 3, 4) AS T1, (VALUES (1), "
-            "(2)) AS Ind0(I)");
+  EXPECT_EQ(
+      TranslateExpression("{(1,2); (3,4)}"),
+      "SELECT CASE WHEN I0.i = 1 THEN T0.A1 WHEN I0.i = 2 THEN T1.A1 END AS A1, CASE WHEN I0.i = 1 THEN T0.A2 WHEN "
+      "I0.i = 2 THEN T1.A2 END AS A2 FROM (SELECT 1, 2) AS T0, (SELECT 3, 4) AS T1, (VALUES (1), (2)) AS I0(i)");
 }
 
 TEST_F(OptimizationTest, BindingExpression) {
@@ -226,6 +228,18 @@ TEST_F(OptimizationTest, BindingExpressionBounded) {
 TEST_F(OptimizationTest, BindingFormula) {
   EXPECT_EQ(TranslateExpression("[x in T, y in R]: F(x, y)"),
             "SELECT S1.A1 AS A1, S0.A1 AS A2 FROM F AS T0, T AS S1, R AS S0 WHERE S1.A1 = T0.A1 AND S0.A1 = T0.A2");
+}
+
+TEST_F(OptimizationTest, BindingFormula2) {
+  EXPECT_EQ(TranslateExpression("(x): {B[1]}(x) and B(x,1)"),
+            "WITH S0(x) AS (SELECT T3.A1 AS A1 FROM B AS T3) SELECT S0.x AS A1 FROM (SELECT T0.A1 AS x FROM B AS T0, "
+            "(SELECT 1 AS A1) AS T1 WHERE T0.A2 = T1.A1) AS T2, S0 WHERE S0.x = T2.x");
+}
+
+TEST_F(OptimizationTest, BindingFormula3) {
+  EXPECT_EQ(TranslateExpression("(x) : {B[1]; B[3]}(x)"),
+            "WITH S0(x) AS (SELECT T3.A1 AS A1 FROM B AS T3) SELECT S0.x AS A1 FROM (SELECT T0.A1 AS x FROM B AS T0, "
+            "(SELECT 1 AS A1) AS T1 WHERE T0.A2 = T1.A1) AS T2, S0 WHERE S0.x = T2.x");
 }
 
 TEST_F(OptimizationTest, Program) {
@@ -289,13 +303,13 @@ TEST_F(OptimizationTest, FullApplicationOnExpression2) {
 }
 
 TEST_F(OptimizationTest, FullApplicationOnExpression3) {
-  EXPECT_EQ(TranslateExpression("{(x,y) : B(x,y)}[1]"),
-            "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1");
+  EXPECT_EQ(TranslateExpression("{(x,y) : B(x,y)}[1]"), "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1");
 }
 
 TEST_F(OptimizationTest, FullApplicationOnExpression4) {
   EXPECT_EQ(TranslateDefinition("def Q { B[1] ; B[2] }"),
-            "CREATE OR REPLACE VIEW Q AS (SELECT DISTINCT CASE WHEN Ind0.I = 1 THEN T0.A2 WHEN Ind0.I = 2 THEN T3.A2 END AS A1 FROM B AS T0, B AS T3, (VALUES (1), (2)) AS Ind0(I) WHERE T0.A1 = 1 AND T3.A1 = 2)");
+            "CREATE OR REPLACE VIEW Q AS (SELECT DISTINCT CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T3.A2 END "
+            "AS A1 FROM B AS T0, B AS T3, (VALUES (1), (2)) AS I0(i) WHERE T0.A1 = 1 AND T3.A1 = 2)");
 }
 
 }  // namespace rel2sql
@@ -303,8 +317,8 @@ TEST_F(OptimizationTest, FullApplicationOnExpression4) {
 // Helper functions for testing individual optimizers
 std::string OptimizeSQLWithCTEOptimizer(const std::string& sql) {
   auto expr = rel2sql::ParseSQL(sql);
-  rel2sql::sql::ast::CTEOptimizer cte_optimizer;
-  cte_optimizer.Visit(*expr);
+  rel2sql::sql::ast::CTEInliner cte_inliner;
+  cte_inliner.Visit(*expr);
   return expr->ToString();
 }
 

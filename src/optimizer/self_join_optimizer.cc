@@ -1,5 +1,7 @@
 #include "self_join_optimizer.h"
 
+#include <sstream>
+
 #include "replacers.h"
 
 namespace rel2sql {
@@ -24,7 +26,7 @@ bool SelfJoinOptimizer::EliminateRedundantSelfJoins(SelectStatement& select_stat
   auto& from_statement = *select_statement.from.value();
   bool simplified = false;
 
-  auto grouped_sources = GroupSourcesByTableName(from_statement.sources);
+  auto grouped_sources = GroupSourcesByIdentifier(from_statement.sources, select_statement);
 
   // Check for complete self-join in WHERE clause
   if (!from_statement.where.has_value()) return false;
@@ -73,14 +75,41 @@ bool SelfJoinOptimizer::EliminateRedundantSelfJoins(SelectStatement& select_stat
   return simplified;
 }
 
-SelfJoinOptimizer::SourcesByTable SelfJoinOptimizer::GroupSourcesByTableName(
-    const std::vector<std::shared_ptr<Source>>& sources) {
-  SourcesByTable grouped_sources;
+SelfJoinOptimizer::SourcesByIdentifier SelfJoinOptimizer::GroupSourcesByIdentifier(
+    const std::vector<std::shared_ptr<Source>>& sources, const SelectStatement& select_stmt) {
+  SourcesByIdentifier grouped_sources;
 
   for (const auto& source : sources) {
+    std::string identifier;
+
     if (auto table = std::dynamic_pointer_cast<Table>(source->sourceable)) {
-      grouped_sources[table->name].push_back(source);
+      // For tables, use table name as identifier
+      identifier = table->name;
+    } else {
+      // Check if this source references a CTE by looking up the alias in the CTE list
+      std::string source_alias = source->Alias();
+      std::shared_ptr<Source> matching_cte = nullptr;
+
+      for (const auto& cte : select_stmt.ctes) {
+        if (cte->Alias() == source_alias && cte->IsCTE()) {
+          matching_cte = cte;
+          break;
+        }
+      }
+
+      if (matching_cte) {
+        // This source references a CTE - use the CTE's sourceable pointer as identifier
+        // Convert pointer to string for use as map key
+        std::ostringstream oss;
+        oss << matching_cte->sourceable.get();
+        identifier = "CTE:" + oss.str();
+      } else {
+        // Skip other source types (subqueries, etc.) for now
+        continue;
+      }
     }
+
+    grouped_sources[identifier].push_back(source);
   }
 
   return grouped_sources;
@@ -268,14 +297,48 @@ void SelfJoinOptimizer::CollectColumnsFromConditionRecursive(const std::shared_p
 
 bool SelfJoinOptimizer::IsSelfJoin(const SourcePair& source_pair, const EquivalenceClassesMap& eq_class_map,
                                     const SelectStatement& select_stmt) {
-  // Get table information
+  // Check if both sources are tables
   auto table1 = std::dynamic_pointer_cast<Table>(source_pair.first->sourceable);
   auto table2 = std::dynamic_pointer_cast<Table>(source_pair.second->sourceable);
 
-  if (!table1 || !table2) return false;
+  bool both_tables = (table1 != nullptr && table2 != nullptr);
 
-  // Both tables should have the same arity for a valid self-join
-  if (table1->arity != table2->arity) return false;
+  // Check if both sources reference the same CTE
+  std::shared_ptr<Source> cte1 = nullptr;
+  std::shared_ptr<Source> cte2 = nullptr;
+  if (!both_tables) {
+    std::string alias1 = source_pair.first->Alias();
+    std::string alias2 = source_pair.second->Alias();
+
+    for (const auto& cte : select_stmt.ctes) {
+      if (cte->Alias() == alias1 && cte->IsCTE()) {
+        cte1 = cte;
+      }
+      if (cte->Alias() == alias2 && cte->IsCTE()) {
+        cte2 = cte;
+      }
+    }
+  }
+
+  bool both_ctes = (cte1 != nullptr && cte2 != nullptr && cte1 == cte2);
+
+  if (!both_tables && !both_ctes) return false;
+
+  // For tables: check arity
+  if (both_tables) {
+    if (table1->arity != table2->arity) return false;
+  }
+
+  // For CTEs: check if they reference the same CTE definition and have same arity
+  if (both_ctes) {
+    // Check arity - get number of columns from the CTE definition
+    auto cte_select = std::dynamic_pointer_cast<SelectStatement>(cte1->sourceable);
+    if (!cte_select) return false;
+
+    // For CTE references, arity is determined by the CTE definition's columns
+    // Both sources reference the same CTE, so they have the same arity
+    // No need to check arity separately since they're the same CTE
+  }
 
   std::string source1_alias = source_pair.first->Alias();
   std::string source2_alias = source_pair.second->Alias();

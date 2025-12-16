@@ -1,12 +1,12 @@
-#ifndef CTE_OPTIMIZER_H
-#define CTE_OPTIMIZER_H
+#ifndef CTE_INLINER_H
+#define CTE_INLINER_H
 
 #include "base_optimizer.h"
 
 namespace rel2sql {
 namespace sql::ast {
 
-class CTEOptimizer : public BaseOptimizer {
+class CTEInliner : public BaseOptimizer {
  public:
   using BaseOptimizer::Visit;
 
@@ -21,9 +21,9 @@ class CTEOptimizer : public BaseOptimizer {
   bool TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte, const std::shared_ptr<SelectStatement>& cte_select);
 
   std::string GetColumnNameFromSelectable(const std::shared_ptr<Selectable>& selectable, size_t index);
-};  // class CTEOptimizer
+};  // class CTEInliner
 
 }  // namespace sql::ast
 }  // namespace rel2sql
 
-#endif  // CTE_OPTIMIZER_H
+#endif  // CTE_INLINER_H

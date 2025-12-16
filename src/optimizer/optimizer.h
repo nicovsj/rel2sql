@@ -3,7 +3,8 @@
 
 #include "base_optimizer.h"
 #include "constant_optimizer.h"
-#include "cte_optimizer.h"
+#include "cte_inliner.h"
+#include "cte_redundancy_optimizer.h"
 #include "flattener_optimizer.h"
 #include "self_join_optimizer.h"
 #include "sql_ast/expr_visitor.h"
@@ -20,18 +21,24 @@ class Optimizer : public BaseOptimizer {
     // Cast SelectStatement to Expression
     auto& expression = static_cast<Expression&>(select_statement);
 
-    cte_optimizer_.Visit(expression);
-
-    if (select_statement.from.has_value()) {
-      constant_optimizer_.Visit(*select_statement.from.value());
-    }
+    constant_optimizer_.Visit(expression);
 
     flattener_optimizer_.Visit(expression);
+
+    cte_redundancy_optimizer_.Visit(expression);
+
+    self_join_optimizer_.Visit(expression);
+
+    cte_inliner_.Visit(expression);
+
+    flattener_optimizer_.Visit(expression);
+
     self_join_optimizer_.Visit(expression);
   }
 
  private:
-  CTEOptimizer cte_optimizer_;
+  CTERedundancyOptimizer cte_redundancy_optimizer_;
+  CTEInliner cte_inliner_;
   ConstantOptimizer constant_optimizer_;
   FlattenerOptimizer flattener_optimizer_;
   SelfJoinOptimizer self_join_optimizer_;

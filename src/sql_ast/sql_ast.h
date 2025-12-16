@@ -207,6 +207,16 @@ class Source : public Expression {
       return Definition();
     }
   }
+
+  bool IsCTE() const { return is_cte; }
+
+  bool IsSubquery() const { return is_subquery; }
+
+  bool IsSourceable() const { return !IsCTE() && !IsSubquery(); }
+
+  bool IsSelectStatement() const { return std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr; }
+
+  bool IsValues() const { return std::dynamic_pointer_cast<Values>(sourceable) != nullptr; }
 };
 
 class Table : public Sourceable {

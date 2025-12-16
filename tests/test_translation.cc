@@ -424,9 +424,9 @@ TEST_F(TranslationTest, PartialApplicationOnExpression1) {
 
 TEST_F(TranslationTest, PartialApplicationOnExpression2) {
   EXPECT_EQ(TranslateExpression("{(1,2);(3,4)}[1]"),
-            "SELECT T2.A2 AS A1 FROM (SELECT CASE WHEN Ind0.I = 1 THEN T0.A1 WHEN Ind0.I = 2 THEN T1.A1 END AS A1, "
-            "CASE WHEN Ind0.I = 1 THEN T0.A2 WHEN Ind0.I = 2 THEN T1.A2 END AS A2 FROM (SELECT 1, 2) AS T0, (SELECT 3, "
-            "4) AS T1, (VALUES (1), (2)) AS Ind0(I)) AS T2, (SELECT 1 AS A1) AS T3 WHERE T2.A1 = T3.A1");
+            "SELECT T2.A2 AS A1 FROM (SELECT CASE WHEN I0.i = 1 THEN T0.A1 WHEN I0.i = 2 THEN T1.A1 END AS A1, CASE "
+            "WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T1.A2 END AS A2 FROM (SELECT 1, 2) AS T0, (SELECT 3, 4) AS "
+            "T1, (VALUES (1), (2)) AS I0(i)) AS T2, (SELECT 1 AS A1) AS T3 WHERE T2.A1 = T3.A1");
 }
 
 TEST_F(TranslationTest, FullApplicationOnExpression1) {
@@ -458,23 +458,23 @@ TEST_F(TranslationTest, AggregateExpression5) {
 
 TEST_F(TranslationTest, AggregateExpression6) {
   EXPECT_EQ(TranslateExpression("sum[{(1,2);(3,4)}]"),
-            "SELECT SUM(T2.A2) AS A1 FROM (SELECT CASE WHEN Ind0.I = 1 THEN T0.A1 WHEN Ind0.I = 2 THEN T1.A1 END AS "
-            "A1, CASE WHEN Ind0.I = 1 THEN T0.A2 WHEN Ind0.I = 2 THEN T1.A2 END AS A2 FROM (SELECT 1, 2) AS T0, "
-            "(SELECT 3, 4) AS T1, (VALUES (1), (2)) AS Ind0(I)) AS T2");
+            "SELECT SUM(T2.A2) AS A1 FROM (SELECT CASE WHEN I0.i = 1 THEN T0.A1 WHEN I0.i = 2 THEN T1.A1 END AS A1, "
+            "CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T1.A2 END AS A2 FROM (SELECT 1, 2) AS T0, (SELECT 3, 4) "
+            "AS T1, (VALUES (1), (2)) AS I0(i)) AS T2");
 }
 
 TEST_F(TranslationTest, AggregateExpression7) {
   EXPECT_EQ(TranslateExpression("max[{(1);(2);(3)}]"),
-            "SELECT MAX(T3.A1) AS A1 FROM (SELECT CASE WHEN Ind0.I = 1 THEN T0.A1 WHEN Ind0.I = 2 THEN T1.A1 WHEN "
-            "Ind0.I = 3 THEN T2.A1 END AS A1 FROM (SELECT 1) AS T0, (SELECT 2) AS T1, (SELECT 3) AS T2, (VALUES (1), "
-            "(2), (3)) AS Ind0(I)) AS T3");
+            "SELECT MAX(T3.A1) AS A1 FROM (SELECT CASE WHEN I0.i = 1 THEN T0.A1 WHEN I0.i = 2 THEN T1.A1 WHEN I0.i = 3 "
+            "THEN T2.A1 END AS A1 FROM (SELECT 1) AS T0, (SELECT 2) AS T1, (SELECT 3) AS T2, (VALUES (1), (2), (3)) AS "
+            "I0(i)) AS T3");
 }
 
 TEST_F(TranslationTest, RelationalAbstraction1) {
-  EXPECT_EQ(TranslateExpression("{(1,2);(3,4)}"),
-            "SELECT CASE WHEN Ind0.I = 1 THEN T0.A1 WHEN Ind0.I = 2 THEN T1.A1 END AS A1, CASE WHEN Ind0.I = 1 THEN "
-            "T0.A2 WHEN Ind0.I = 2 THEN T1.A2 END AS A2 FROM (SELECT 1, 2) AS T0, (SELECT 3, 4) AS T1, (VALUES (1), "
-            "(2)) AS Ind0(I)");
+  EXPECT_EQ(
+      TranslateExpression("{(1,2);(3,4)}"),
+      "SELECT CASE WHEN I0.i = 1 THEN T0.A1 WHEN I0.i = 2 THEN T1.A1 END AS A1, CASE WHEN I0.i = 1 THEN T0.A2 WHEN "
+      "I0.i = 2 THEN T1.A2 END AS A2 FROM (SELECT 1, 2) AS T0, (SELECT 3, 4) AS T1, (VALUES (1), (2)) AS I0(i)");
 }
 
 TEST_F(TranslationTest, RelationalAbstraction2) { EXPECT_EQ(TranslateExpression("{1}"), "SELECT 1 AS A1"); }
@@ -485,14 +485,14 @@ TEST_F(TranslationTest, RelationalAbstraction4) { EXPECT_EQ(TranslateExpression(
 
 TEST_F(TranslationTest, RelationalAbstraction5) {
   EXPECT_EQ(TranslateExpression("{1;2}"),
-            "SELECT CASE WHEN Ind0.I = 1 THEN T0.A1 WHEN Ind0.I = 2 THEN T1.A1 END AS A1 FROM (SELECT 1 AS A1) AS T0, "
-            "(SELECT 2 AS A1) AS T1, (VALUES (1), (2)) AS Ind0(I)");
+            "SELECT CASE WHEN I0.i = 1 THEN T0.A1 WHEN I0.i = 2 THEN T1.A1 END AS A1 FROM (SELECT 1 AS A1) AS T0, "
+            "(SELECT 2 AS A1) AS T1, (VALUES (1), (2)) AS I0(i)");
 }
 
 TEST_F(TranslationTest, RelationalAbstraction6) {
   EXPECT_EQ(TranslateExpression("{(1);(2)}"),
-            "SELECT CASE WHEN Ind0.I = 1 THEN T0.A1 WHEN Ind0.I = 2 THEN T1.A1 END AS A1 FROM (SELECT 1) AS T0, "
-            "(SELECT 2) AS T1, (VALUES (1), (2)) AS Ind0(I)");
+            "SELECT CASE WHEN I0.i = 1 THEN T0.A1 WHEN I0.i = 2 THEN T1.A1 END AS A1 FROM (SELECT 1) AS T0, (SELECT 2) "
+            "AS T1, (VALUES (1), (2)) AS I0(i)");
 }
 
 TEST_F(TranslationTest, FormulaBindings1) {

@@ -1,11 +1,11 @@
-#include "cte_optimizer.h"
+#include "cte_inliner.h"
 
 #include "replacers.h"
 
 namespace rel2sql {
 namespace sql::ast {
 
-void CTEOptimizer::Visit(SelectStatement& select_statement) {
+void CTEInliner::Visit(SelectStatement& select_statement) {
   // Visit children first
   ExpressionVisitor::Visit(select_statement);
 
@@ -18,6 +18,7 @@ void CTEOptimizer::Visit(SelectStatement& select_statement) {
 
   std::vector<std::shared_ptr<Source>> new_ctes;
 
+  // Try to inline remaining CTEs into FROM clause
   for (auto& cte : select_statement.ctes) {
     if (!TryReplaceRedundantCTE(cte)) {
       new_ctes.push_back(cte);
@@ -31,7 +32,7 @@ void CTEOptimizer::Visit(SelectStatement& select_statement) {
   }
 }
 
-bool CTEOptimizer::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte) {
+bool CTEInliner::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte) {
   auto cte_select = std::dynamic_pointer_cast<SelectStatement>(cte->sourceable);
   // CTE must be a SELECT statement
   if (!cte_select) return false;
@@ -45,7 +46,7 @@ bool CTEOptimizer::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte) {
   return TryReplaceGeneralCTE(cte, cte_select);
 }
 
-bool CTEOptimizer::TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& cte,
+bool CTEInliner::TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& cte,
                                                const std::shared_ptr<SelectStatement>& cte_select) {
   // CTE must have a single wildcard column
   if (cte_select->columns.size() != 1 || !std::dynamic_pointer_cast<Wildcard>(cte_select->columns[0])) return false;
@@ -77,7 +78,7 @@ bool CTEOptimizer::TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& ct
   return true;
 }
 
-bool CTEOptimizer::TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte,
+bool CTEInliner::TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte,
                                         const std::shared_ptr<SelectStatement>& cte_select) {
   // Create a subquery source from the CTE's SELECT statement
   auto subquery_sourceable = std::static_pointer_cast<Sourceable>(cte_select);
@@ -114,7 +115,7 @@ bool CTEOptimizer::TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte,
   return true;
 }
 
-std::string CTEOptimizer::GetColumnNameFromSelectable(const std::shared_ptr<Selectable>& selectable, size_t index) {
+std::string CTEInliner::GetColumnNameFromSelectable(const std::shared_ptr<Selectable>& selectable, size_t index) {
   // If the selectable has an alias, use it
   if (selectable->HasAlias()) {
     return selectable->Alias();

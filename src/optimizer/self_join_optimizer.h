@@ -16,8 +16,8 @@ class SelfJoinOptimizer : public BaseOptimizer {
   void Visit(SelectStatement& select_statement) override;
 
  private:
-  // Type alias for sources grouped by table name
-  using SourcesByTable = std::unordered_map<std::string, std::vector<std::shared_ptr<Source>>>;
+  // Type alias for sources grouped by identifier (table name for tables, sourceable pointer for CTEs)
+  using SourcesByIdentifier = std::unordered_map<std::string, std::vector<std::shared_ptr<Source>>>;
 
   // Type alias for source pairs
   using SourcePair = std::pair<std::shared_ptr<Source>, std::shared_ptr<Source>>;
@@ -43,7 +43,8 @@ class SelfJoinOptimizer : public BaseOptimizer {
 
   bool EliminateRedundantSelfJoins(SelectStatement& select_statement);
 
-  SourcesByTable GroupSourcesByTableName(const std::vector<std::shared_ptr<Source>>& sources);
+  SourcesByIdentifier GroupSourcesByIdentifier(const std::vector<std::shared_ptr<Source>>& sources,
+                                                const SelectStatement& select_stmt);
 
   /**
    * Generates all possible pairs from a vector of candidate sources.
