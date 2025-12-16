@@ -470,7 +470,7 @@ std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
 
   int m = ctx->applParams()->applParam().size();
 
-  for (int i = 1; i <= GetNode(ctx->applBase())->arity - m; i++) {
+  for (size_t i = 1; i <= GetNode(ctx->applBase())->arity - m; i++) {
     std::string column_name = GetColumnNameFromSource(ra_source, m + i - 1);
     auto column = std::make_shared<sql::ast::Column>(column_name, ra_source);
     select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, fmt::format("A{}", i)));
