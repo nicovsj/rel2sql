@@ -19,7 +19,7 @@ void CTEOptimizer::Visit(SelectStatement& select_statement) {
   std::vector<std::shared_ptr<Source>> new_ctes;
 
   for (auto& cte : select_statement.ctes) {
-    if (!TryReplaceRedundantCTE(cte, select_statement)) {
+    if (!TryReplaceRedundantCTE(cte)) {
       new_ctes.push_back(cte);
     }
   }
@@ -31,7 +31,7 @@ void CTEOptimizer::Visit(SelectStatement& select_statement) {
   }
 }
 
-bool CTEOptimizer::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, SelectStatement& select_stmt) {
+bool CTEOptimizer::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte) {
   auto cte_select = std::dynamic_pointer_cast<SelectStatement>(cte->sourceable);
   // CTE must be a SELECT statement
   if (!cte_select) return false;
@@ -42,7 +42,7 @@ bool CTEOptimizer::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, Se
   }
 
   // General case: move CTE as subquery into FROM clause
-  return TryReplaceGeneralCTE(cte, cte_select, select_stmt);
+  return TryReplaceGeneralCTE(cte, cte_select);
 }
 
 bool CTEOptimizer::TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& cte,
@@ -78,8 +78,7 @@ bool CTEOptimizer::TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& ct
 }
 
 bool CTEOptimizer::TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte,
-                                        const std::shared_ptr<SelectStatement>& cte_select,
-                                        SelectStatement& select_stmt) {
+                                        const std::shared_ptr<SelectStatement>& cte_select) {
   // Create a subquery source from the CTE's SELECT statement
   auto subquery_sourceable = std::static_pointer_cast<Sourceable>(cte_select);
   auto new_source = std::make_shared<Source>(subquery_sourceable, cte->Alias(), false);
@@ -105,27 +104,6 @@ bool CTEOptimizer::TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte,
     for (size_t i = 0; i < cte_select->columns.size(); ++i) {
       std::string column_name = GetColumnNameFromSelectable(cte_select->columns[i], i);
       column_map[column_name] = std::make_shared<Column>(column_name, new_source);
-    }
-  }
-
-  // Check if the CTE is referenced in FROM clause
-  bool cte_in_from = false;
-  if (select_stmt.from.has_value()) {
-    for (auto& source : select_stmt.from.value()->sources) {
-      if (source->Alias() == cte->Alias() && source->is_cte) {
-        cte_in_from = true;
-        break;
-      }
-    }
-  }
-
-  // If CTE is not in FROM, we need to add the new source to FROM
-  // (The replacer will replace it if it is in FROM)
-  if (!cte_in_from) {
-    if (!select_stmt.from.has_value()) {
-      select_stmt.from = std::make_shared<FromStatement>(new_source);
-    } else {
-      select_stmt.from.value()->sources.push_back(new_source);
     }
   }
 
