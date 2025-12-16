@@ -7,7 +7,7 @@
 namespace rel2sql {
 
 void Rel2SqlErrorListener::syntaxError(antlr4::Recognizer* recognizer, antlr4::Token* offendingSymbol, size_t line,
-                                       size_t charPositionInLine, const std::string& msg, std::exception_ptr e) {
+                                       size_t charPositionInLine, const std::string& msg, std::exception_ptr _) {
   // Extract code snippet for better error reporting
   std::string code_snippet;
   if (auto* tokenStream = dynamic_cast<antlr4::TokenStream*>(recognizer->getInputStream())) {

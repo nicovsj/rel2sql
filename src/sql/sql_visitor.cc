@@ -294,7 +294,7 @@ std::any SQLVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
 
   auto select_columns = VarListShorthand({ctx->lhs, ctx->rhs});
 
-  for (int i = 1; i <= GetNode(ctx->lhs)->arity; i++) {
+  for (size_t i = 1; i <= GetNode(ctx->lhs)->arity; i++) {
     auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", i), lhs_subquery);
     select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(column));
   }
@@ -1109,7 +1109,7 @@ std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext* ctx) {
     throw std::runtime_error("Relation abstraction with no member");
   }
 
-  int arity = GetNode(expr_ctxs[0])->arity;
+  size_t arity = GetNode(expr_ctxs[0])->arity;
 
   for (auto expr_ctx : expr_ctxs) {
     auto expr_node = GetNode(expr_ctx);
@@ -1143,7 +1143,7 @@ std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext* ctx) {
   auto values_expr = std::make_shared<sql::ast::Values>(values);
 
   std::vector<std::string> column_names;
-  for (int i = 1; i <= arity; ++i) {
+  for (size_t i = 1; i <= arity; ++i) {
     column_names.push_back(fmt::format("A{}", i));
   }
 

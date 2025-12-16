@@ -67,7 +67,7 @@ std::any ArityVisitor::visitRelDef(psr::RelDefContext* ctx) {
 std::any ArityVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
   visit(ctx->expr(0));
 
-  int common_arity = GetNode(ctx->expr(0))->arity;
+  size_t common_arity = GetNode(ctx->expr(0))->arity;
 
   for (size_t i = 1; i < ctx->expr().size(); i++) {
     visit(ctx->expr(i));

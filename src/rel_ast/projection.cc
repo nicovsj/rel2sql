@@ -33,7 +33,7 @@ bool PromisedSource::operator==(const BoundSource& other) const {
     return as_table == other;
   }
 
-  if (auto generic_other = dynamic_cast<const GenericSource*>(&other)) {
+  if (dynamic_cast<const GenericSource*>(&other)) {
     GenericSource as_generic(resolved_, Arity());
     return as_generic == other;
   }
