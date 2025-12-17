@@ -16,11 +16,19 @@ class FlattenerOptimizer : public BaseOptimizer {
   bool TryFlattenSubquery(SelectStatement& select_statement);
 
   // Helper functions for subquery flattening
+
+  // Check if a source can be flattened into a subquery.
   static bool CanFlattenSubquery(const std::shared_ptr<Source>& source);
-  static std::unordered_map<std::string, std::shared_ptr<Column>> BuildColumnMap(
+
+  // Build a map of term names to terms in the subquery.
+  static std::unordered_map<std::string, std::shared_ptr<Term>> BuildTermMap(
       const std::shared_ptr<SelectStatement>& subquery);
-  static void MergeWhereConditions(FromStatement& outer_from,
-                                   const std::shared_ptr<Condition>& subquery_where);
+
+  // Merge WHERE conditions of the outer and subquery.
+  static void MergeWhereConditions(FromStatement& outer_from, const std::shared_ptr<Condition>& subquery_where);
+
+  // Merge subquery CTEs into the outer SELECT scope.
+  static void MergeCTEs(SelectStatement& outer_select, const std::shared_ptr<SelectStatement>& subquery);
 };  // class FlattenerOptimizer
 
 }  // namespace sql::ast

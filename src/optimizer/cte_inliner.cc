@@ -5,6 +5,35 @@
 namespace rel2sql {
 namespace sql::ast {
 
+namespace {
+
+class CTEFromRefCounter final : public ExpressionVisitor {
+ public:
+  explicit CTEFromRefCounter(std::string cte_name) : cte_name_(std::move(cte_name)) {}
+
+  void Visit(FromStatement& from_statement) override {
+    // Count references in this FROM's sources
+    for (auto& source : from_statement.sources) {
+      if (source && source->Alias() == cte_name_) {
+        ++count_;
+      }
+      ExpressionVisitor::Visit(*source);
+    }
+
+    if (from_statement.where) {
+      ExpressionVisitor::Visit(*from_statement.where.value());
+    }
+  }
+
+  std::size_t count() const { return count_; }
+
+ private:
+  std::string cte_name_;
+  std::size_t count_ = 0;
+};
+
+}  // namespace
+
 void CTEInliner::Visit(SelectStatement& select_statement) {
   // Visit children first
   ExpressionVisitor::Visit(select_statement);
@@ -20,7 +49,7 @@ void CTEInliner::Visit(SelectStatement& select_statement) {
 
   // Try to inline remaining CTEs into FROM clause
   for (auto& cte : select_statement.ctes) {
-    if (!TryReplaceRedundantCTE(cte)) {
+    if (!TryReplaceRedundantCTE(cte, select_statement)) {
       new_ctes.push_back(cte);
     }
   }
@@ -32,10 +61,29 @@ void CTEInliner::Visit(SelectStatement& select_statement) {
   }
 }
 
-bool CTEInliner::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte) {
+std::size_t CTEInliner::CountCTEReferencesInFromClauses(const SelectStatement& root, const std::string& cte_name) {
+  // ExpressionVisitor API is non-const; we only read, so const_cast is safe here.
+  auto& mutable_root = const_cast<SelectStatement&>(root);
+  CTEFromRefCounter counter(cte_name);
+  mutable_root.Accept(counter);
+  return counter.count();
+}
+
+bool CTEInliner::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, const SelectStatement& owning_select) {
   auto cte_select = std::dynamic_pointer_cast<SelectStatement>(cte->sourceable);
   // CTE must be a SELECT statement
   if (!cte_select) return false;
+
+  // Only inline if the CTE is referenced exactly once across all FROM clauses
+  // within the owning SELECT statement.
+  //
+  // Reason: the inlining is implemented via a global replacer keyed by source alias,
+  // so multiple FROM references would all be rewritten to the same inlined source,
+  // potentially collapsing self-joins or otherwise changing semantics.
+  auto ref_count = CountCTEReferencesInFromClauses(owning_select, cte->Alias());
+  if (ref_count != 1) {
+    return false;
+  }
 
   // Try the simple case first: wildcard CTE with single table source
   if (TryReplaceSimpleWildcardCTE(cte, cte_select)) {
@@ -60,19 +108,19 @@ bool CTEInliner::TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& cte,
   auto new_source = std::make_shared<Source>(original_source->sourceable, cte->Alias());
   // Create a map of CTE column aliases to their new names
   // Use the table's actual attribute names if available, otherwise fall back to A1, A2, etc.
-  std::unordered_map<std::string, std::shared_ptr<Column>> column_map;
+  std::unordered_map<std::string, std::shared_ptr<Term>> term_map;
   for (size_t i = 0; i < cte->def_columns.size(); ++i) {
     if (table) {
       std::string column_name = table->GetAttributeName(i);
-      column_map[cte->def_columns[i]] = std::make_shared<Column>(column_name, new_source);
+      term_map[cte->def_columns[i]] = std::make_shared<Column>(column_name, new_source);
     } else {
       std::string column_name = fmt::format("A{}", i + 1);
-      column_map[cte->def_columns[i]] = std::make_shared<Column>(column_name, new_source);
+      term_map[cte->def_columns[i]] = std::make_shared<Column>(column_name, new_source);
     }
   }
 
   // Create a replacer that handles both source name and column name replacements
-  SourceAndColumnReplacer replacer(cte->Alias(), new_source, column_map, false);
+  SourceAndColumnReplacer replacer(cte->Alias(), new_source, term_map, false);
   base_expr_->Accept(replacer);
 
   return true;
@@ -87,7 +135,7 @@ bool CTEInliner::TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte,
   // Build column mapping
   // If def_columns is provided, use those as the column names
   // Otherwise, derive column names from the SELECT columns
-  std::unordered_map<std::string, std::shared_ptr<Column>> column_map;
+  std::unordered_map<std::string, std::shared_ptr<Term>> column_map;
 
   if (!cte->def_columns.empty()) {
     // def_columns override the SELECT column names

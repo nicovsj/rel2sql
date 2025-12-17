@@ -231,15 +231,16 @@ TEST_F(OptimizationTest, BindingFormula) {
 }
 
 TEST_F(OptimizationTest, BindingFormula2) {
-  EXPECT_EQ(TranslateExpression("(x): {B[1]}(x) and B(x,1)"),
-            "WITH S0(x) AS (SELECT T3.A1 AS A1 FROM B AS T3) SELECT S0.x AS A1 FROM (SELECT T0.A1 AS x FROM B AS T0, "
-            "(SELECT 1 AS A1) AS T1 WHERE T0.A2 = T1.A1) AS T2, S0 WHERE S0.x = T2.x");
+  EXPECT_EQ(TranslateExpression("(x): {B[1]}(x) or B(x,1)"),
+            "WITH RA0 AS (SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1), S0(x) AS (SELECT * FROM RA0 UNION SELECT "
+            "T7.A1 AS A1 FROM B AS T7) SELECT S0.x AS A1 FROM (SELECT RA0.A1 AS x FROM RA0 UNION SELECT T2.A1 AS x "
+            "FROM B AS T2 WHERE T2.A2 = 1) AS T6, S0 WHERE S0.x = T6.x");
 }
 
 TEST_F(OptimizationTest, BindingFormula3) {
   EXPECT_EQ(TranslateExpression("(x) : {B[1]; B[3]}(x)"),
-            "WITH S0(x) AS (SELECT T3.A1 AS A1 FROM B AS T3) SELECT S0.x AS A1 FROM (SELECT T0.A1 AS x FROM B AS T0, "
-            "(SELECT 1 AS A1) AS T1 WHERE T0.A2 = T1.A1) AS T2, S0 WHERE S0.x = T2.x");
+            "SELECT CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T3.A2 END AS A1 FROM B AS T0, B AS T3, (VALUES "
+            "(1), (2)) AS I0(i) WHERE T0.A1 = 1 AND T3.A1 = 3");
 }
 
 TEST_F(OptimizationTest, Program) {

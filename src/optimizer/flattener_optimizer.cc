@@ -17,26 +17,34 @@ bool FlattenerOptimizer::CanFlattenSubquery(const std::shared_ptr<Source>& sourc
   if (source->is_cte) return false;
   auto select_subquery = std::dynamic_pointer_cast<SelectStatement>(source->sourceable);
   if (!select_subquery) return false;
+  if (select_subquery->ctes_are_recursive) return false;
   if (!select_subquery->from.has_value()) return false;
   if (select_subquery->group_by.has_value()) return false;
   return true;
 }
 
-std::unordered_map<std::string, std::shared_ptr<Column>> FlattenerOptimizer::BuildColumnMap(
+std::unordered_map<std::string, std::shared_ptr<Term>> FlattenerOptimizer::BuildTermMap(
     const std::shared_ptr<SelectStatement>& subquery) {
-  std::unordered_map<std::string, std::shared_ptr<Column>> column_map;
+  std::unordered_map<std::string, std::shared_ptr<Term>> column_map;
 
   for (auto& column : subquery->columns) {
     auto term_selectable = std::dynamic_pointer_cast<TermSelectable>(column);
     if (!term_selectable) {
       continue;
     }
-    auto term = std::dynamic_pointer_cast<Column>(term_selectable->term);
-    if (!term) {
+    auto column_cast = std::dynamic_pointer_cast<Column>(term_selectable->term);
+    auto case_when_cast = std::dynamic_pointer_cast<CaseWhen>(term_selectable->term);
+    if (!column_cast and !case_when_cast) {
       continue;
     }
-    std::string aliased_column_name = term_selectable->HasAlias() ? term_selectable->Alias() : term->name;
-    column_map[aliased_column_name] = term;
+
+    std::string aliased_column_name;
+    if (column_cast) {
+      aliased_column_name = term_selectable->HasAlias() ? term_selectable->Alias() : column_cast->name;
+    } else if (case_when_cast) {
+      aliased_column_name = term_selectable->Alias();
+    }
+    column_map[aliased_column_name] = term_selectable->term;
   }
 
   return column_map;
@@ -58,6 +66,14 @@ void FlattenerOptimizer::MergeWhereConditions(FromStatement& outer_from,
   outer_from.where = std::make_shared<LogicalCondition>(conditions, LogicalOp::AND);
 }
 
+void FlattenerOptimizer::MergeCTEs(SelectStatement& outer_select, const std::shared_ptr<SelectStatement>& subquery) {
+  if (!subquery) return;
+  if (subquery->ctes.empty()) return;
+
+  // Assumption: merged CTEs always have unique names (no conflicts).
+  outer_select.ctes.insert(outer_select.ctes.end(), subquery->ctes.begin(), subquery->ctes.end());
+}
+
 bool FlattenerOptimizer::TryFlattenSubquery(SelectStatement& select_statement) {
   if (!select_statement.from.has_value()) return false;
 
@@ -73,7 +89,11 @@ bool FlattenerOptimizer::TryFlattenSubquery(SelectStatement& select_statement) {
 
     auto select_subquery = std::dynamic_pointer_cast<SelectStatement>(source->sourceable);
     const std::string old_alias = source->Alias();
-    auto column_map = BuildColumnMap(select_subquery);
+    auto term_map = BuildTermMap(select_subquery);
+
+    // If the subquery defines CTEs, lift them into the outer SELECT scope so that
+    // any references remain valid after flattening.
+    MergeCTEs(select_statement, select_subquery);
 
     // Replace the subquery with its inner sources
     for (auto& inner_source : select_subquery->from.value()->sources) {
@@ -81,7 +101,7 @@ bool FlattenerOptimizer::TryFlattenSubquery(SelectStatement& select_statement) {
     }
 
     // Update references in the outer query
-    SourceAndColumnReplacer replacer(old_alias, column_map);
+    SourceAndColumnReplacer replacer(old_alias, term_map);
     base_expr_->Accept(replacer);
 
     // Merge WHERE conditions if subquery has one

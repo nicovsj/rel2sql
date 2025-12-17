@@ -78,7 +78,7 @@ bool CTERedundancyOptimizer::TryReplaceRedundantCTEInTermsOfOtherCTE(
   }
 
   // Build column mapping from redundant CTE's def_columns to referenced CTE's columns
-  std::unordered_map<std::string, std::shared_ptr<Column>> column_map;
+  std::unordered_map<std::string, std::shared_ptr<Term>> term_map;
 
   // Determine the number of columns
   size_t num_columns;
@@ -112,11 +112,11 @@ bool CTERedundancyOptimizer::TryReplaceRedundantCTEInTermsOfOtherCTE(
     std::string referenced_column_name = referenced_column_names[i];
 
     // Create a column reference to the referenced CTE
-    column_map[redundant_column_name] = std::make_shared<Column>(referenced_column_name, referenced_cte);
+    term_map[redundant_column_name] = std::make_shared<Column>(referenced_column_name, referenced_cte);
   }
 
   // Replace all references to the redundant CTE with references to the referenced CTE
-  SourceAndColumnReplacer replacer(cte->Alias(), referenced_cte, column_map, false);
+  SourceAndColumnReplacer replacer(cte->Alias(), referenced_cte, term_map, false);
   base_expr_->Accept(replacer);
 
   return true;
