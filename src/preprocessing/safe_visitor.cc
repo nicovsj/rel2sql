@@ -104,9 +104,11 @@ std::any SafeVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
 
   auto current_node = GetNode(ctx);
 
+  auto expr_node = GetNode(ctx->expr());
+
   auto formula_node = GetNode(ctx->formula());
 
-  current_node->safety = formula_node->safety;
+  current_node->safety = formula_node->safety.UnionWith(expr_node->safety);
 
   return {};
 }

@@ -522,21 +522,28 @@ TEST_F(TranslationTest, FormulaBindings4) {
 }
 
 TEST_F(TranslationTest, ExpressionBindings1) {
+  EXPECT_EQ(TranslateExpression("[x]: A[x] where x > 1"),
+            "WITH S0(x) AS (SELECT * FROM A AS T4) SELECT S0.x AS A1 FROM (SELECT T1.x FROM (SELECT T0.A1 AS x FROM A "
+            "AS T0) AS T1, x > 1 AS T2 WHERE T1.x = T2.x) AS T3, S0 WHERE S0.x = T3.x");
+}
+
+TEST_F(TranslationTest, ExpressionBindings2) {
   EXPECT_EQ(TranslateExpression("[x in T, y in R]: F[x, y]"),
             "WITH S1(x) AS (SELECT * FROM T AS T3), S0(y) AS (SELECT * FROM R AS T2) SELECT S1.x AS A1, S0.y AS A2, "
             "T1.A1 AS A3 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T1, S1, S0 WHERE S1.x = "
             "T1.x AND S0.y = T1.y");
 }
 
-TEST_F(TranslationTest, ExpressionBindings2) {
-  EXPECT_EQ(
-      TranslateExpression("[x in A, y]: C[x, y] where D(y)"),
-      "WITH S1(x) AS (SELECT * FROM A AS T6), S0(y) AS (SELECT * FROM D AS T5) SELECT S1.x AS A1, S0.y AS A2, T4.A1 AS "
-      "A3 FROM (SELECT T2.x, T2.y, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM C AS T0) AS T2, (SELECT "
-      "T1.A1 AS y FROM D AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S1, S0 WHERE S1.x = T4.x AND S0.y = T4.y");
+TEST_F(TranslationTest, ExpressionBindings3) {
+  EXPECT_EQ(TranslateExpression("[x in A, y]: C[x, y] where D(y)"),
+            "WITH S2(x) AS (SELECT * FROM A AS T7), S1(x, y) AS (SELECT T6.A1 AS A1, T6.A2 AS A2 FROM C AS T6), S0(y) "
+            "AS (SELECT * FROM D AS T5) SELECT S2.x AS A1, S1.y AS A2, T4.A1 AS A3 FROM (SELECT T2.x, T2.y, T2.A1 FROM "
+            "(SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM C AS T0) AS T2, (SELECT T1.A1 AS y FROM D AS T1) AS T3 "
+            "WHERE T2.y = T3.y) AS T4, S2, S1, S0 WHERE S2.x = T4.x AND S1.x = T4.x AND S1.y = T4.y AND S0.y = T4.y "
+            "AND S1.y = S0.y AND S2.x = S1.x");
 }
 
-TEST_F(TranslationTest, ExpressionBindings3) {
+TEST_F(TranslationTest, ExpressionBindings4) {
   EXPECT_EQ(TranslateExpression("[x in A, y in D]: C[x, y]"),
             "WITH S1(x) AS (SELECT * FROM A AS T3), S0(y) AS (SELECT * FROM D AS T2) SELECT S1.x AS A1, S0.y AS A2, "
             "T1.A1 AS A3 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM C AS T0) AS T1, S1, S0 WHERE S1.x = "

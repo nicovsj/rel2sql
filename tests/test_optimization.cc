@@ -221,7 +221,7 @@ TEST_F(OptimizationTest, BindingExpression) {
 
 TEST_F(OptimizationTest, BindingExpressionBounded) {
   EXPECT_EQ(TranslateExpression("[x in A, y]: C[x, y] where D(y)"),
-            "SELECT S1.A1 AS A1, T1.A1 AS A2, T0.A3 AS A3 FROM C AS T0, D AS T1, A AS S1 WHERE S1.A1 = T0.A1 AND T1.A1 "
+            "SELECT S2.A1 AS A1, T0.A2 AS A2, T0.A3 AS A3 FROM C AS T0, D AS T1, A AS S2 WHERE S2.A1 = T0.A1 AND T1.A1 "
             "= T0.A2");
 }
 
