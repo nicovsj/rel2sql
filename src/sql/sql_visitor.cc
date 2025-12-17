@@ -275,14 +275,108 @@ std::any SQLVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
+bool SQLVisitor::CollectComparatorOnlyConjuncts(psr::FormulaContext* formula_ctx,
+                                                std::vector<psr::ComparisonContext*>& out) const {
+  if (!formula_ctx) {
+    return false;
+  }
+
+  if (auto* comparison_ctx = dynamic_cast<psr::ComparisonContext*>(formula_ctx)) {
+    out.push_back(comparison_ctx);
+    return true;
+  }
+
+  if (auto* paren_ctx = dynamic_cast<psr::ParenContext*>(formula_ctx)) {
+    return CollectComparatorOnlyConjuncts(paren_ctx->formula(), out);
+  }
+
+  if (auto* bin_op_ctx = dynamic_cast<psr::BinOpContext*>(formula_ctx)) {
+    if (!bin_op_ctx->K_and()) {
+      return false;
+    }
+    return CollectComparatorOnlyConjuncts(bin_op_ctx->lhs, out) && CollectComparatorOnlyConjuncts(bin_op_ctx->rhs, out);
+  }
+
+  return false;
+}
+
+std::shared_ptr<sql::ast::Expression> SQLVisitor::TranslateConditionExprComparatorOnlyRHS(
+    psr::ConditionExprContext* ctx, const std::shared_ptr<sql::ast::Sourceable>& lhs_sql,
+    const std::vector<psr::ComparisonContext*>& comparator_conjuncts) {
+  auto lhs_subquery = std::make_shared<sql::ast::Source>(lhs_sql, GenerateTableAlias());
+  GetNode(ctx->lhs)->sql_expression = lhs_subquery;
+
+  auto select_columns = VarListShorthand({ctx->lhs});
+
+  for (size_t i = 1; i <= GetNode(ctx->lhs)->arity; i++) {
+    auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", i), lhs_subquery);
+    select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(column));
+  }
+
+  auto from_statement =
+      std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery});
+
+  std::vector<std::shared_ptr<sql::ast::Condition>> new_conditions;
+  if (from_statement->where.has_value()) {
+    new_conditions.push_back(from_statement->where.value());
+  }
+
+  std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> free_var_sources;
+  for (const auto& free_var : GetNode(ctx->lhs)->free_variables) {
+    free_var_sources.emplace(free_var, lhs_subquery);
+  }
+
+  for (auto* comparator_ctx : comparator_conjuncts) {
+    auto comparator_expr = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(comparator_ctx));
+    auto comparator_sql = std::dynamic_pointer_cast<sql::ast::ComparisonCondition>(comparator_expr);
+    if (!comparator_sql) {
+      throw std::runtime_error("Expected comparison to translate to ComparisonCondition");
+    }
+
+    SpecialAddSourceToFreeVariablesInTerm(free_var_sources, comparator_sql->lhs);
+    SpecialAddSourceToFreeVariablesInTerm(free_var_sources, comparator_sql->rhs);
+
+    new_conditions.push_back(std::static_pointer_cast<sql::ast::Condition>(comparator_sql));
+  }
+
+  std::shared_ptr<sql::ast::Condition> new_where;
+  if (new_conditions.size() == 1) {
+    new_where = new_conditions[0];
+  } else {
+    new_where = std::make_shared<sql::ast::LogicalCondition>(new_conditions, sql::ast::LogicalOp::AND);
+  }
+
+  from_statement->where = new_where;
+
+  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from_statement);
+  return std::static_pointer_cast<sql::ast::Expression>(query);
+}
+
 std::any SQLVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
   /*
    * Generates an SQL query from the condition expression.
    */
-  auto lhs_sql = std::static_pointer_cast<sql::ast::Sourceable>(
-      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->lhs)));
-  auto rhs_sql = std::static_pointer_cast<sql::ast::Sourceable>(
-      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->rhs)));
+
+  std::vector<psr::ComparisonContext*> comparator_conjuncts;
+  bool rhs_is_comparator_only = CollectComparatorOnlyConjuncts(ctx->rhs, comparator_conjuncts);
+
+  auto lhs_expr = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->lhs));
+  auto lhs_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(lhs_expr);
+  if (!lhs_sql) {
+    throw std::runtime_error("Condition expression lhs is not a sourceable SQL expression");
+  }
+
+  // Special case: RHS is a (possibly parenthesized) conjunction of comparisons only.
+  // Translate lhs first, then push comparator conditions into the WHERE clause.
+  if (rhs_is_comparator_only) {
+    return TranslateConditionExprComparatorOnlyRHS(ctx, lhs_sql, comparator_conjuncts);
+  }
+
+  auto rhs_expr = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->rhs));
+  auto rhs_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(rhs_expr);
+  if (!rhs_sql) {
+    throw std::runtime_error("Condition expression rhs is not a sourceable SQL expression");
+  }
 
   auto lhs_subquery = std::make_shared<sql::ast::Source>(lhs_sql, GenerateTableAlias());
   auto rhs_subquery = std::make_shared<sql::ast::Source>(rhs_sql, GenerateTableAlias());

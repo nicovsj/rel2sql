@@ -9,6 +9,7 @@
 #include "rel_ast/extended_ast.h"
 #include "rel_ast/relation_info.h"
 #include "sql_ast/sql_ast.h"
+#include "support/exceptions.h"
 #include "test_common.h"
 
 using psr = rel_parser::RelParser;
@@ -334,10 +335,24 @@ TEST_F(TranslationTest, UniversalFormula2) {
 
 TEST_F(TranslationTest, ProductExpression) { EXPECT_EQ(TranslateExpression("(1, 2)"), "SELECT 1, 2"); }
 
-TEST_F(TranslationTest, Conditional) {
+TEST_F(TranslationTest, Conditional1) {
   EXPECT_EQ(TranslateExpression("B[x] where A(x)"),
             "SELECT T2.x, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T2, (SELECT T1.A1 AS x FROM A AS "
             "T1) AS T3 WHERE T2.x = T3.x");
+}
+
+TEST_F(TranslationTest, Conditional2) {
+  EXPECT_EQ(TranslateExpression("B[x] where x > 1"),
+            "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1");
+}
+
+TEST_F(TranslationTest, ConditionalComparatorConjunction) {
+  EXPECT_EQ(TranslateExpression("B[x] where (x > 1 and x < 5)"),
+            "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1 AND T1.x < 5");
+}
+
+TEST_F(TranslationTest, ConditionalComparatorConjunctionInvalidVar) {
+  EXPECT_THROW(TranslateExpression("B[x] where (y > 1 and x > 0)"), VariableException);
 }
 
 TEST_F(TranslationTest, NestedConditional1) {
@@ -523,8 +538,7 @@ TEST_F(TranslationTest, FormulaBindings4) {
 
 TEST_F(TranslationTest, ExpressionBindings1) {
   EXPECT_EQ(TranslateExpression("[x]: A[x] where x > 1"),
-            "WITH S0(x) AS (SELECT * FROM A AS T4) SELECT S0.x AS A1 FROM (SELECT T1.x FROM (SELECT T0.A1 AS x FROM A "
-            "AS T0) AS T1, x > 1 AS T2 WHERE T1.x = T2.x) AS T3, S0 WHERE S0.x = T3.x");
+            "WITH S0(x) AS (SELECT * FROM A AS T3) SELECT S0.x AS A1 FROM (SELECT T1.x FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1 WHERE T1.x > 1) AS T2, S0 WHERE S0.x = T2.x");
 }
 
 TEST_F(TranslationTest, ExpressionBindings2) {

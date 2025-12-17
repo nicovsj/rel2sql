@@ -27,7 +27,12 @@ std::any BalancingVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
 }
 
 std::any BalancingVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
-  visitChildren(ctx);
+  // Allow special balancing rules for comparator-only conjunctions under the RHS of `where`.
+  // Free variables are already computed by VariablesVisitor (runs before BalancingVisitor).
+  visit(ctx->lhs);
+  condition_lhs_free_vars_stack_.push_back(GetNode(ctx->lhs)->free_variables);
+  visit(ctx->rhs);
+  condition_lhs_free_vars_stack_.pop_back();
   return {};
 }
 
@@ -73,8 +78,26 @@ std::any BalancingVisitor::visitBinOp(psr::BinOpContext* ctx) {
     // Collect and store comparator conjuncts and non-comparator conjuncts
     CollectComparatorConjuncts(ctx, node->comparator_conjuncts, node->non_comparator_conjuncts);
 
-    // Validate that all free variables in comparator conjuncts are also present in non-comparator conjuncts
-    ValidateComparatorFreeVariables(node->comparator_conjuncts, node->non_comparator_conjuncts);
+    // Validate that all free variables in comparator conjuncts are also present in:
+    // - non-comparator conjuncts (general case), OR
+    // - the LHS of the surrounding condition expression (special case: RHS is comparator-only)
+    if (!node->comparator_conjuncts.empty() && node->non_comparator_conjuncts.empty() &&
+        !condition_lhs_free_vars_stack_.empty()) {
+      const auto& allowed = condition_lhs_free_vars_stack_.back();
+      for (auto* comparator_ctx : node->comparator_conjuncts) {
+        for (const auto& free_var : GetNode(comparator_ctx)->free_variables) {
+          if (allowed.find(free_var) == allowed.end()) {
+            SourceLocation location = GetSourceLocation(comparator_ctx);
+            throw VariableException(
+                "Free variable '" + free_var +
+                    "' in a comparator formula is not part of the left-hand side of the same condition expression",
+                location);
+          }
+        }
+      }
+    } else {
+      ValidateComparatorFreeVariables(node->comparator_conjuncts, node->non_comparator_conjuncts);
+    }
 
     // Collect and store negated conjuncts and non-negated conjuncts
     CollectNegatedConjuncts(ctx, node->negated_conjuncts, node->non_negated_conjuncts);

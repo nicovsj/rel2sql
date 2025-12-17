@@ -4,6 +4,8 @@
 #include <antlr4-runtime.h>
 
 #include <expected>
+#include <set>
+#include <vector>
 
 #include "preprocessing/base_visitor.h"
 #include "rel_ast/extended_ast.h"
@@ -140,6 +142,10 @@ class BalancingVisitor : public BaseVisitor {
   void CollectNegatedConjuncts(psr::FormulaContext* formula_ctx,
                                std::vector<antlr4::ParserRuleContext*>& negated_conjuncts,
                                std::vector<antlr4::ParserRuleContext*>& non_negated_conjuncts);
+
+  // Stack of LHS free-variable sets for nested condition expressions.
+  // When non-empty, we're currently visiting the RHS of a `where`.
+  std::vector<std::set<std::string>> condition_lhs_free_vars_stack_;
 };
 
 }  // namespace rel2sql

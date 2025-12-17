@@ -113,6 +113,13 @@ class SQLVisitor : public BaseVisitor {
 
   std::any VisitConjunctionWithNegations(psr::BinOpContext* ctx);
 
+  bool CollectComparatorOnlyConjuncts(psr::FormulaContext* formula_ctx,
+                                      std::vector<psr::ComparisonContext*>& out) const;
+
+  std::shared_ptr<sql::ast::Expression> TranslateConditionExprComparatorOnlyRHS(
+      psr::ConditionExprContext* ctx, const std::shared_ptr<sql::ast::Sourceable>& lhs_sql,
+      const std::vector<psr::ComparisonContext*>& comparator_conjuncts);
+
   // Utility functions
 
   std::string GenerateTableAlias(std::string prefix = "T");
