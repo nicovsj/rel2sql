@@ -144,27 +144,33 @@ std::shared_ptr<sql::ast::Sourceable> SQLVisitor::VisitRelAbsLogic(psr::RelAbsCo
 
   auto first_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
       std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(first_ctx)));
-  GetNode(first_ctx)->sql_expression = first_sql;
+
+  auto first_node = GetNode(first_ctx);
+
+  auto first_source = std::make_shared<sql::ast::Source>(first_sql, GenerateTableAlias());
+  first_node->sql_expression = first_source;
 
   if (expr_ctxs.size() == 1) {  // Single member relation abstraction
     return first_sql;
   }
 
-  from_sources.push_back(std::make_shared<sql::ast::Source>(first_sql, GenerateTableAlias()));
+  from_sources.push_back(first_source);
   values.push_back({1});
 
   // We assume that all the expressions have the same arity
   // This is checked in the arity visitor
-  int arity = GetNode(first_ctx)->arity;
+  int arity = first_node->arity;
 
   for (size_t i = 1; i < expr_ctxs.size(); i++) {
     auto child_ctx = expr_ctxs[i];
 
     auto child_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
         std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(child_ctx)));
-    GetNode(child_ctx)->sql_expression = child_sql;
 
-    from_sources.push_back(std::make_shared<sql::ast::Source>(child_sql, GenerateTableAlias()));
+    auto child_source = std::make_shared<sql::ast::Source>(child_sql, GenerateTableAlias());
+
+    GetNode(child_ctx)->sql_expression = child_source;
+    from_sources.push_back(child_source);
     values.push_back({static_cast<int>(i + 1)});
   }
 
@@ -198,7 +204,9 @@ std::shared_ptr<sql::ast::Sourceable> SQLVisitor::VisitRelAbsLogic(psr::RelAbsCo
 
   auto from_statement = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
 
-  return std::make_shared<sql::ast::SelectStatement>(selects, from_statement);
+  auto query = std::make_shared<sql::ast::SelectStatement>(selects, from_statement);
+
+  return query;
 }
 
 std::any SQLVisitor::visitLitExpr(psr::LitExprContext* ctx) {
@@ -602,8 +610,8 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext* ctx) {
   if (ctx->applBase()->relAbs()) {
     // We should check if the base of the full application is a relation abstraction with free variables.
     // If it is, then it will happen that both the safety bound will use the relational abstraction SQL as the source,
-    // alongside this very same full application. We solve this SQL duplication by storing the CTE in the full_appl_ctes_ map.
-    // This way, we can reuse the same CTE for both the safety bound and the full application.
+    // alongside this very same full application. We solve this SQL duplication by storing the CTE in the
+    // full_appl_ctes_ map. This way, we can reuse the same CTE for both the safety bound and the full application.
     auto node = GetNode(ctx);
 
     if (node->safety.Size() != 1) {
@@ -1515,7 +1523,13 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::VarListShorthand(
     for (auto const& var : GetNode(ctx)->free_variables) {
       if (seen_vars.find(var) != seen_vars.end()) continue;
 
-      auto source = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(ctx)->sql_expression);
+      auto node = GetNode(ctx);
+
+      auto source = std::dynamic_pointer_cast<sql::ast::Source>(node->sql_expression);
+
+      if (!source) {
+        throw InternalException("Context not translated to sql::ast::Source");
+      }
 
       auto column = std::make_shared<sql::ast::Column>(var, source);
       auto selectable = std::make_shared<sql::ast::TermSelectable>(column);

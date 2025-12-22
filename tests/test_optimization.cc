@@ -233,8 +233,8 @@ TEST_F(OptimizationTest, BindingFormula) {
 TEST_F(OptimizationTest, BindingFormula2) {
   EXPECT_EQ(TranslateExpression("(x): {B[1]}(x) or B(x,1)"),
             "WITH RA0 AS (SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1), S0(x) AS (SELECT * FROM RA0 UNION SELECT "
-            "T7.A1 AS A1 FROM B AS T7) SELECT S0.x AS A1 FROM (SELECT RA0.A1 AS x FROM RA0 UNION SELECT T2.A1 AS x "
-            "FROM B AS T2 WHERE T2.A2 = 1) AS T6, S0 WHERE S0.x = T6.x");
+            "T8.A1 AS A1 FROM B AS T8) SELECT S0.x AS A1 FROM (SELECT RA0.A1 AS x FROM RA0 UNION SELECT T3.A1 AS x "
+            "FROM B AS T3 WHERE T3.A2 = 1) AS T7, S0 WHERE S0.x = T7.x");
 }
 
 TEST_F(OptimizationTest, BindingFormula3) {
@@ -256,11 +256,10 @@ TEST_F(OptimizationTest, MultipleDefs1) {
 }
 
 TEST_F(OptimizationTest, MultipleDefs2) {
-  EXPECT_EQ(
-      TranslateProgram("def R {(1, 2); (3, 4)} \n def S {B[1]} \n def T {B[3]}"),
-      "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE OR "
-      "REPLACE VIEW S AS (SELECT DISTINCT T1.A2 AS A1 FROM B AS T1 WHERE T1.A1 = 1);\n\nCREATE OR REPLACE VIEW T AS "
-      "(SELECT DISTINCT T3.A2 AS A1 FROM B AS T3 WHERE T3.A1 = 3);");
+  EXPECT_EQ(TranslateProgram("def R {(1, 2); (3, 4)} \n def S {B[1]} \n def T {B[3]}"),
+            "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE OR "
+            "REPLACE VIEW S AS (SELECT DISTINCT T1.A2 AS A1 FROM B AS T1 WHERE T1.A1 = 1);\n\nCREATE OR REPLACE VIEW T "
+            "AS (SELECT DISTINCT T4.A2 AS A1 FROM B AS T4 WHERE T4.A1 = 3);");
 }
 
 TEST_F(OptimizationTest, TableDefinition) {
@@ -300,7 +299,7 @@ TEST_F(OptimizationTest, TransitiveClosure) {
 
 TEST_F(OptimizationTest, FullApplicationOnExpression2) {
   EXPECT_EQ(TranslateExpression("{ (x,y) : B(x,y) } where B(1,2) "),
-            "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, B AS T3 WHERE T3.A1 = 1 AND T3.A2 = 2");
+            "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, B AS T4 WHERE T4.A1 = 1 AND T4.A2 = 2");
 }
 
 TEST_F(OptimizationTest, FullApplicationOnExpression3) {
@@ -311,6 +310,12 @@ TEST_F(OptimizationTest, FullApplicationOnExpression4) {
   EXPECT_EQ(TranslateDefinition("def Q { B[1] ; B[2] }"),
             "CREATE OR REPLACE VIEW Q AS (SELECT DISTINCT CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T3.A2 END "
             "AS A1 FROM B AS T0, B AS T3, (VALUES (1), (2)) AS I0(i) WHERE T0.A1 = 1 AND T3.A1 = 2)");
+}
+
+TEST_F(OptimizationTest, FullApplicationOnExpression5) {
+  EXPECT_EQ(TranslateExpression("{B[y];E[y]} where y > 1}"),
+            "SELECT T0.A1 AS y, CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T2.A2 END AS A1 FROM B AS T0, E AS "
+            "T2, (VALUES (1), (2)) AS I0(i) WHERE T0.A1 > 1 AND T0.A1 = T2.A1");
 }
 
 }  // namespace rel2sql

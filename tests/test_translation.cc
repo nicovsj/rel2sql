@@ -433,8 +433,8 @@ TEST_F(TranslationTest, PartialApplicationSharingVariables4) {
 
 TEST_F(TranslationTest, PartialApplicationOnExpression1) {
   EXPECT_EQ(TranslateExpression("{C[x]}[x]"),
-            "SELECT T1.x, T1.A2 AS A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1, T0.A3 AS A2 FROM C AS T0) AS T1 WHERE T1.x "
-            "= T1.A1");
+            "SELECT T2.x, T2.A2 AS A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1, T0.A3 AS A2 FROM C AS T0) AS T2 WHERE T2.x "
+            "= T2.A1");
 }
 
 TEST_F(TranslationTest, PartialApplicationOnExpression2) {
@@ -533,12 +533,13 @@ TEST_F(TranslationTest, FormulaBindings3) {
 TEST_F(TranslationTest, FormulaBindings4) {
   EXPECT_EQ(TranslateExpression("(x): {B[1]}(x)"),
             "WITH RA0 AS (SELECT T0.A2 AS A1 FROM B AS T0, (SELECT 1 AS A1) AS T1 WHERE T0.A1 = T1.A1), S0(x) AS "
-            "(SELECT * FROM RA0) SELECT S0.x AS A1 FROM (SELECT RA0.A1 AS x FROM RA0) AS T2, S0 WHERE S0.x = T2.x");
+            "(SELECT * FROM RA0) SELECT S0.x AS A1 FROM (SELECT RA0.A1 AS x FROM RA0) AS T3, S0 WHERE S0.x = T3.x");
 }
 
 TEST_F(TranslationTest, ExpressionBindings1) {
   EXPECT_EQ(TranslateExpression("[x]: A[x] where x > 1"),
-            "WITH S0(x) AS (SELECT * FROM A AS T3) SELECT S0.x AS A1 FROM (SELECT T1.x FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1 WHERE T1.x > 1) AS T2, S0 WHERE S0.x = T2.x");
+            "WITH S0(x) AS (SELECT * FROM A AS T3) SELECT S0.x AS A1 FROM (SELECT T1.x FROM (SELECT T0.A1 AS x FROM A "
+            "AS T0) AS T1 WHERE T1.x > 1) AS T2, S0 WHERE S0.x = T2.x");
 }
 
 TEST_F(TranslationTest, ExpressionBindings2) {
@@ -577,12 +578,11 @@ TEST_F(TranslationTest, MultipleDefs1) {
 }
 
 TEST_F(TranslationTest, MultipleDefs2) {
-  EXPECT_EQ(
-      TranslateProgram("def R {(1, 2); (3, 4)} \n def S {B[1]} \n def T {B[3]}"),
-      "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE OR "
-      "REPLACE VIEW S AS (SELECT DISTINCT T1.A2 AS A1 FROM B AS T1, (SELECT 1 AS A1) AS T2 WHERE T1.A1 = "
-      "T2.A1);\n\nCREATE "
-      "OR REPLACE VIEW T AS (SELECT DISTINCT T3.A2 AS A1 FROM B AS T3, (SELECT 3 AS A1) AS T4 WHERE T3.A1 = T4.A1);");
+  EXPECT_EQ(TranslateProgram("def R {(1, 2); (3, 4)} \n def S {B[1]} \n def T {B[3]}"),
+            "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE OR "
+            "REPLACE VIEW S AS (SELECT DISTINCT T1.A2 AS A1 FROM B AS T1, (SELECT 1 AS A1) AS T2 WHERE T1.A1 = "
+            "T2.A1);\n\nCREATE OR REPLACE VIEW T AS (SELECT DISTINCT T4.A2 AS A1 FROM B AS T4, (SELECT 3 AS A1) AS T5 "
+            "WHERE T4.A1 = T5.A1);");
 }
 
 TEST_F(TranslationTest, TableDefinition) {
