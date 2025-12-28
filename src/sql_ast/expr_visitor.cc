@@ -48,6 +48,8 @@ void ExpressionVisitor::Visit(Operation& operation) {
   Visit(*operation.rhs);
 }
 
+void ExpressionVisitor::Visit(ParenthesisTerm& parenthesis_term) { Visit(*parenthesis_term.term); }
+
 void ExpressionVisitor::Visit(Function& function) { Visit(*function.arg); }
 
 void ExpressionVisitor::Visit(TermSelectable& term_selectable) { Visit(*term_selectable.term); }
