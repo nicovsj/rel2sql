@@ -445,7 +445,7 @@ std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
 
   auto cte_map = ComputeBindingsCTEs(safe_result);
 
-  auto select_columns = VarListShorthand({ctx});
+  auto select_columns = VarListShorthand({{ctx, expr_source}});
 
   auto binding_output = ComputeBindingsOutput(cte_map, ctx->bindingInner());
 
@@ -500,7 +500,7 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
 
   auto cte_map = ComputeBindingsCTEs(safe_result);
 
-  auto select_columns = VarListShorthand({ctx});
+  auto select_columns = VarListShorthand({{ctx, formula_source}});
 
   auto binding_output = ComputeBindingsOutput(cte_map, ctx->bindingInner());
 
@@ -1516,20 +1516,38 @@ std::shared_ptr<sql::ast::Condition> SQLVisitor::EqualityShorthand(std::vector<a
 std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::VarListShorthand(
     std::vector<antlr4::ParserRuleContext*> input_ctxs) {
   std::unordered_set<std::string> seen_vars;
-
   std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
 
   for (auto const& ctx : input_ctxs) {
-    for (auto const& var : GetNode(ctx)->free_variables) {
+    auto node = GetNode(ctx);
+    auto source = std::dynamic_pointer_cast<sql::ast::Source>(node->sql_expression);
+
+    for (auto const& var : node->free_variables) {
       if (seen_vars.find(var) != seen_vars.end()) continue;
-
-      auto node = GetNode(ctx);
-
-      auto source = std::dynamic_pointer_cast<sql::ast::Source>(node->sql_expression);
 
       if (!source) {
         throw InternalException("Context not translated to sql::ast::Source");
       }
+
+      auto column = std::make_shared<sql::ast::Column>(var, source);
+      auto selectable = std::make_shared<sql::ast::TermSelectable>(column);
+
+      columns.push_back(selectable);
+      seen_vars.insert(var);
+    }
+  }
+
+  return columns;
+}
+
+std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::VarListShorthand(
+    std::vector<ContextSourcePair> ctx_source_pairs) {
+  std::unordered_set<std::string> seen_vars;
+  std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
+
+  for (auto const& [ctx, source] : ctx_source_pairs) {
+    for (auto const& var : GetNode(ctx)->free_variables) {
+      if (seen_vars.find(var) != seen_vars.end()) continue;
 
       auto column = std::make_shared<sql::ast::Column>(var, source);
       auto selectable = std::make_shared<sql::ast::TermSelectable>(column);

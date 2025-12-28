@@ -21,7 +21,7 @@ std::string TranslateWithOptimization(antlr4::ParserRuleContext* tree,
   // Use ValidatingOptimizer in tests to catch which optimization step breaks validation
   sql::ast::ValidatingOptimizer optimizer;
   try {
-  optimizer.Visit(*sql);
+    optimizer.Visit(*sql);
   } catch (const std::runtime_error& e) {
     // ValidatingOptimizer throws with details about which step failed
     EXPECT_TRUE(false) << e.what();
@@ -323,6 +323,16 @@ TEST_F(OptimizationTest, FullApplicationOnExpression5) {
   EXPECT_EQ(TranslateExpression("{B[y];E[y]} where y > 1}"),
             "SELECT T0.A1 AS y, CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T2.A2 END AS A1 FROM B AS T0, E AS "
             "T2, (VALUES (1), (2)) AS I0(i) WHERE T0.A1 > 1 AND T0.A1 = T2.A1");
+}
+
+TEST_F(OptimizationTest, FullApplicationOnExpression6) {
+  EXPECT_EQ(TranslateExpression("(x,y): B(x,y) where {[z] : E(1,z)}(3)"),
+            "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, E AS T3 WHERE T3.A2 = 3 AND T3.A1 = 1");
+}
+
+TEST_F(OptimizationTest, FullApplicationOnExpression7) {
+  EXPECT_EQ(TranslateExpression("(x) : B(x,y) and B(y,x)"),
+            "SELECT T0.A2 AS y, T2.A2 AS A1 FROM B AS T0, B AS T2 WHERE T2.A1 = T0.A2 AND T2.A2 = T0.A1");
 }
 
 }  // namespace rel2sql

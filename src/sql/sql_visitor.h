@@ -19,6 +19,8 @@ class SQLVisitor : public BaseVisitor {
  public:
   using psr = rel_parser::RelParser;
 
+  using ContextSourcePair = std::pair<antlr4::ParserRuleContext*, std::shared_ptr<sql::ast::Source>>;
+
   struct IndexedContext {
     antlr4::ParserRuleContext* ctx;
     size_t index;
@@ -134,6 +136,8 @@ class SQLVisitor : public BaseVisitor {
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> VarListShorthand(std::vector<antlr4::ParserRuleContext*> ctxs);
 
+  std::vector<std::shared_ptr<sql::ast::Selectable>> VarListShorthand(std::vector<ContextSourcePair> ctx_source_pairs);
+
   std::vector<std::shared_ptr<sql::ast::Condition>> ApplicationVariableConditions(
       psr::ApplBaseContext* base_appl_ctx, const std::vector<IndexedContext>& var_param_ctxs,
       const std::vector<IndexedContext>& non_var_param_ctxs,
@@ -153,8 +157,7 @@ class SQLVisitor : public BaseVisitor {
   std::pair<std::vector<IndexedContext>, std::vector<IndexedContext>> GetVariableAndNonVariableParams(
       psr::ApplBaseContext* base, const std::vector<psr::ApplParamContext*>& params);
 
-  std::unordered_set<Bound> SafeFunction(psr::BindingInnerContext* binding_ctx,
-                                                 antlr4::ParserRuleContext* expr_ctx);
+  std::unordered_set<Bound> SafeFunction(psr::BindingInnerContext* binding_ctx, antlr4::ParserRuleContext* expr_ctx);
 
   std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> ComputeBindingsCTEs(
       std::unordered_set<Bound>& safe_result);
@@ -167,8 +170,7 @@ class SQLVisitor : public BaseVisitor {
       const std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>>& safe_result) const;
 
   std::shared_ptr<sql::ast::Condition> BindingsEqualityShorthand(
-      antlr4::ParserRuleContext* expr,
-      const std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>>& safe_result);
+      antlr4::ParserRuleContext* expr, const std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>>& safe_result);
 
   // Collects stored CTEs from full_appl_ctes_ that are referenced in safe_result.
   // These CTEs are needed first (before binding CTEs that may reference them).
