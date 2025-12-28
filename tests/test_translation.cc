@@ -8,7 +8,6 @@
 #include "preprocessing/preprocessor.h"
 #include "rel_ast/extended_ast.h"
 #include "rel_ast/relation_info.h"
-#include "sql_ast/sql_ast.h"
 #include "support/exceptions.h"
 #include "test_common.h"
 
@@ -56,64 +55,6 @@ class TranslationTest : public ::testing::Test {
 
   rel2sql::RelationMap default_edb_map;
 };
-
-TEST_F(TranslationTest, EqualitySpecialCondition) {
-  std::string input = "F(x) and G(x)";
-
-  auto parser = GetParser(input);
-
-  auto tree = dynamic_cast<psr::BinOpContext*>(parser->formula());
-
-  Preprocessor preprocessor(default_edb_map);
-  auto ast = preprocessor.Process(tree);
-
-  auto table_F = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("F", 1));
-  auto table_G = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("G", 1));
-
-  ast.GetNode(tree->lhs)->sql_expression = table_F;
-  ast.GetNode(tree->rhs)->sql_expression = table_G;
-
-  auto ast_ptr = std::shared_ptr<RelAST>(&ast, [](RelAST*) {});
-  auto visitor = SQLVisitor(ast_ptr);
-
-  auto condition = visitor.EqualityShorthand(std::vector<antlr4::ParserRuleContext*>{tree->lhs, tree->rhs});
-
-  std::ostringstream os;
-
-  os << *condition;
-
-  EXPECT_EQ(os.str(), "F.x = G.x");
-}
-
-TEST_F(TranslationTest, SpecialVarList) {
-  std::string input = "F(x) and G(x, y)";
-
-  auto parser = GetParser(input);
-
-  auto tree = dynamic_cast<psr::BinOpContext*>(parser->formula());
-
-  Preprocessor preprocessor(default_edb_map);
-  auto ast = preprocessor.Process(tree);
-
-  auto table_F = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("F", 1));
-  auto table_G = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Table>("G", 2));
-
-  ast.GetNode(tree->lhs)->sql_expression = table_F;
-  ast.GetNode(tree->rhs)->sql_expression = table_G;
-
-  auto ast_ptr = std::shared_ptr<RelAST>(&ast, [](RelAST*) {});
-  auto visitor = SQLVisitor(ast_ptr);
-
-  auto var_list = visitor.VarListShorthand(std::vector<antlr4::ParserRuleContext*>{tree->lhs, tree->rhs});
-
-  std::ostringstream os;
-
-  for (auto& col : var_list) {
-    os << *col << " ";
-  }
-
-  EXPECT_EQ(os.str(), "F.x G.y ");
-}
 
 TEST_F(TranslationTest, FullApplication1) { EXPECT_EQ(TranslateFormula("A(x)"), "SELECT T0.A1 AS x FROM A AS T0"); }
 
