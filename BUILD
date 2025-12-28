@@ -49,6 +49,8 @@ cc_library(
         "src/support/*.h",
         "src/optimizer/*.cc",
         "src/optimizer/*.h",
+        "src/validator/*.cc",
+        "src/validator/*.h",
     ]),
     includes = ["include", "src"],
     visibility = ["//visibility:public"],

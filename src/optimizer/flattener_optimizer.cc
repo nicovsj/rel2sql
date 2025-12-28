@@ -1,6 +1,7 @@
 #include "flattener_optimizer.h"
 
 #include "replacers.h"
+#include "validator/validator.h"
 
 namespace rel2sql {
 

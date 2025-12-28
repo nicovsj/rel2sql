@@ -3,6 +3,7 @@
 
 #include "api/translate.h"
 #include "optimizer/cte_inliner.h"
+#include "optimizer/validating_optimizer.h"
 #include "parser/sql_parse.h"
 #include "preprocessing/preprocessor.h"
 #include "rel_ast/relation_info.h"
@@ -17,8 +18,14 @@ std::string TranslateWithOptimization(antlr4::ParserRuleContext* tree,
 
   auto sql = GetSQLFromAST(ast);
 
-  sql::ast::Optimizer optimizer;
+  // Use ValidatingOptimizer in tests to catch which optimization step breaks validation
+  sql::ast::ValidatingOptimizer optimizer;
+  try {
   optimizer.Visit(*sql);
+  } catch (const std::runtime_error& e) {
+    // ValidatingOptimizer throws with details about which step failed
+    EXPECT_TRUE(false) << e.what();
+  }
 
   return sql->ToString();
 }
