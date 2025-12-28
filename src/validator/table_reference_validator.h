@@ -24,6 +24,13 @@ class TableReferenceValidator : public BaseValidator {
  public:
   using BaseValidator::Visit;
 
+  // Default constructor - starts with empty scope
+  TableReferenceValidator() = default;
+
+  // Constructor that accepts parent scope aliases (for nested subqueries)
+  explicit TableReferenceValidator(const std::unordered_set<std::string>& parent_aliases)
+      : available_aliases_(parent_aliases) {}
+
   bool IsValid() const override { return missing_table_aliases_.empty(); }
 
   std::vector<ValidationError> GetErrors() const override {

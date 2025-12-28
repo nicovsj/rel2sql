@@ -69,9 +69,11 @@ void TableReferenceValidator::Visit(Wildcard& wildcard) {
 
 void TableReferenceValidator::Visit(Source& source) {
   // If this is a subquery, we need to validate it separately with its own scope
+  // However, subqueries in FROM clauses can reference outer scope aliases (correlated subqueries)
   if (source.is_subquery && source.sourceable) {
-    // Create a new validator for the subquery (it has its own alias scope)
-    TableReferenceValidator subquery_validator;
+    // Create a new validator for the subquery with parent scope aliases
+    // This allows the subquery to reference aliases from outer queries
+    TableReferenceValidator subquery_validator(available_aliases_);
     source.sourceable->Accept(subquery_validator);
     // Merge errors from subquery (though they're in a different scope, we still report them)
     for (const auto& alias : subquery_validator.GetMissingTableAliases()) {
@@ -82,12 +84,12 @@ void TableReferenceValidator::Visit(Source& source) {
 }
 
 void TableReferenceValidator::Visit(Inclusion& inclusion) {
-  // Visit columns
+  // Visit columns (these may reference outer scope aliases)
   for (auto& column : inclusion.columns) {
     column->Accept(*this);
   }
-  // Visit subquery (it has its own scope)
-  TableReferenceValidator subquery_validator;
+  // Visit subquery - pass parent scope aliases to allow correlated subqueries
+  TableReferenceValidator subquery_validator(available_aliases_);
   inclusion.select->Accept(subquery_validator);
   // Merge errors from subquery
   for (const auto& alias : subquery_validator.GetMissingTableAliases()) {
@@ -96,8 +98,8 @@ void TableReferenceValidator::Visit(Inclusion& inclusion) {
 }
 
 void TableReferenceValidator::Visit(Exists& exists) {
-  // Visit subquery (it has its own scope)
-  TableReferenceValidator subquery_validator;
+  // Visit subquery - pass parent scope aliases to allow correlated subqueries
+  TableReferenceValidator subquery_validator(available_aliases_);
   exists.select->Accept(subquery_validator);
   // Merge errors from subquery
   for (const auto& alias : subquery_validator.GetMissingTableAliases()) {
