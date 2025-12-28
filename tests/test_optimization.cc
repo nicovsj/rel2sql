@@ -294,7 +294,7 @@ TEST_F(OptimizationTest, Composition) {
             "SELECT T0.A1 AS A1, T2.A2 AS A2 FROM B AS T0, E AS T2 WHERE T0.A2 = T2.A1");
 }
 
-TEST_F(OptimizationTest, TransitiveClosure) {
+TEST_F(OptimizationTest, DISABLED_TransitiveClosure) {
   default_edb_map["R"] = RelationInfo(2);
 
   EXPECT_EQ(

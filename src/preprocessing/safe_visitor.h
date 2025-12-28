@@ -3,11 +3,6 @@
 
 #include <antlr4-runtime.h>
 
-#include <optional>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
-
 #include "preprocessing/base_visitor.h"
 #include "rel_ast/extended_ast.h"
 
@@ -75,32 +70,9 @@ class SafeVisitor : public BaseVisitor {
 
   std::any VisitDisjunction(psr::BinOpContext* ctx);
 
-  std::vector<std::string> ExtractHeadVariables(psr::RelAbsContext* ctx) const;
-
-  std::vector<std::string> FallbackHeadVariables(const std::string& relation) const;
-
-  std::unordered_map<std::string, std::string> BuildRenameMap(const std::vector<std::string>& from,
-                                                              const std::vector<std::string>& to) const;
-
-  void PrepareRecursiveBaseSafety();
-
-  bool IsRecursiveContext(psr::BindingsFormulaContext* ctx) const;
-
-  bool IsRecursiveCall(psr::FullApplContext* ctx) const;
-
-  BoundSet RenameSafety(const BoundSet& safety, const std::string& relation,
-                        const std::vector<std::string>& actual_variables);
-
-  const std::vector<std::string>& HeadVariablesFor(const std::string& relation);
-
   void ComputeFullApplicationOnIDSafety(psr::FullApplContext* ctx, const std::string& id);
 
-  std::unordered_map<std::string, std::vector<std::string>> relation_head_variables_;
   std::string current_relation_;
-  std::optional<RecursionInfo> current_recursion_info_;
-  BoundSet current_relation_base_safety_;
-  bool has_current_relation_base_safety_ = false;
-  std::unordered_set<std::shared_ptr<RelASTNode>> current_recursive_call_nodes_;
 };
 
 }  // namespace rel2sql
