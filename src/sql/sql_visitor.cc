@@ -431,6 +431,27 @@ std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
   auto expr_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
       std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->expr())));
 
+  // Extract CTEs from nested SelectStatements and lift them to the outer level
+  std::vector<std::shared_ptr<sql::ast::Source>> nested_ctes;
+  auto nested_select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr_sql);
+  if (nested_select && !nested_select->ctes.empty() && !nested_select->ctes_are_recursive) {
+    // Extract CTEs from the nested SelectStatement
+    nested_ctes = nested_select->ctes;
+
+    // Create a new SelectStatement without CTEs to use as the subquery
+    // Handle different constructor cases based on what fields are present
+    if (nested_select->group_by.has_value() && nested_select->from.has_value()) {
+      expr_sql =
+          std::make_shared<sql::ast::SelectStatement>(nested_select->columns, nested_select->from.value(),
+                                                      nested_select->group_by.value(), nested_select->is_distinct);
+    } else if (nested_select->from.has_value()) {
+      expr_sql = std::make_shared<sql::ast::SelectStatement>(nested_select->columns, nested_select->from.value(),
+                                                             nested_select->is_distinct);
+    } else {
+      expr_sql = std::make_shared<sql::ast::SelectStatement>(nested_select->columns, nested_select->is_distinct);
+    }
+  }
+
   auto expr_source = std::make_shared<sql::ast::Source>(expr_sql, GenerateTableAlias());
 
   GetNode(ctx->expr())->sql_expression = expr_source;
@@ -459,7 +480,18 @@ std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
 
   // Collect stored CTEs from full_appl_ctes_ that are referenced in safe_result FIRST
   // (so they're defined before binding CTEs that reference them)
-  auto ctes = CollectReferencedStoredCTEs(safe_result);
+  auto [extracted_stored_ctes, stored_ctes] = CollectReferencedStoredCTEs(safe_result);
+
+  std::vector<std::shared_ptr<sql::ast::Source>> ctes;
+  // Add extracted nested CTEs from stored CTEs first
+  ctes.insert(ctes.end(), extracted_stored_ctes.begin(), extracted_stored_ctes.end());
+
+  // Add nested CTEs from the expression (if any) - these come after extracted stored CTEs
+  // but before stored CTEs and binding CTEs that may reference them
+  ctes.insert(ctes.end(), nested_ctes.begin(), nested_ctes.end());
+
+  // Add the stored CTEs (with cleaned sourceables)
+  ctes.insert(ctes.end(), stored_ctes.begin(), stored_ctes.end());
 
   // Then add binding CTEs (which may reference the stored CTEs above)
   for (auto& [_, cte] : cte_map) {
@@ -493,6 +525,27 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
   auto formula_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
       std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->formula())));
 
+  // Extract CTEs from nested SelectStatements and lift them to the outer level
+  std::vector<std::shared_ptr<sql::ast::Source>> nested_ctes;
+  auto nested_select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(formula_sql);
+  if (nested_select && !nested_select->ctes.empty() && !nested_select->ctes_are_recursive) {
+    // Extract CTEs from the nested SelectStatement
+    nested_ctes = nested_select->ctes;
+
+    // Create a new SelectStatement without CTEs to use as the subquery
+    // Handle different constructor cases based on what fields are present
+    if (nested_select->group_by.has_value() && nested_select->from.has_value()) {
+      formula_sql =
+          std::make_shared<sql::ast::SelectStatement>(nested_select->columns, nested_select->from.value(),
+                                                      nested_select->group_by.value(), nested_select->is_distinct);
+    } else if (nested_select->from.has_value()) {
+      formula_sql = std::make_shared<sql::ast::SelectStatement>(nested_select->columns, nested_select->from.value(),
+                                                                nested_select->is_distinct);
+    } else {
+      formula_sql = std::make_shared<sql::ast::SelectStatement>(nested_select->columns, nested_select->is_distinct);
+    }
+  }
+
   // Check if this bindings formula is recursive
   std::shared_ptr<sql::ast::Source> recursive_cte_source;
   if (bindings_formula_node->is_recursive && !bindings_formula_node->recursive_definition_name.empty()) {
@@ -516,12 +569,11 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
     for (size_t i = 0; i < binding_vars.size(); i++) {
       auto col_name = fmt::format("A{}", i + 1);
       auto column = std::make_shared<sql::ast::Column>(col_name, recursive_cte_source);
-      subquery_select_columns.push_back(
-          std::make_shared<sql::ast::TermSelectable>(column, binding_vars[i]));
+      subquery_select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(column, binding_vars[i]));
     }
 
-    auto subquery_from = std::make_shared<sql::ast::FromStatement>(
-        std::vector<std::shared_ptr<sql::ast::Source>>{recursive_cte_source});
+    auto subquery_from =
+        std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{recursive_cte_source});
     auto subquery = std::make_shared<sql::ast::SelectStatement>(subquery_select_columns, subquery_from);
     formula_source = std::make_shared<sql::ast::Source>(subquery, GenerateTableAlias());
   } else {
@@ -545,7 +597,18 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
 
   // Collect stored CTEs from full_appl_ctes_ that are referenced in safe_result FIRST
   // (so they're defined before binding CTEs that reference them)
-  auto ctes = CollectReferencedStoredCTEs(safe_result);
+  auto [extracted_stored_ctes, stored_ctes] = CollectReferencedStoredCTEs(safe_result);
+
+  std::vector<std::shared_ptr<sql::ast::Source>> ctes;
+  // Add extracted nested CTEs from stored CTEs first
+  ctes.insert(ctes.end(), extracted_stored_ctes.begin(), extracted_stored_ctes.end());
+
+  // Add nested CTEs from the formula (if any) - these come after extracted stored CTEs
+  // but before stored CTEs, formula CTEs and binding CTEs that may reference them
+  ctes.insert(ctes.end(), nested_ctes.begin(), nested_ctes.end());
+
+  // Add the stored CTEs (with cleaned sourceables)
+  ctes.insert(ctes.end(), stored_ctes.begin(), stored_ctes.end());
 
   // Add formula CTEs (for recursive case, these are CTEs from the recursive definition)
   ctes.insert(ctes.end(), formula_ctes.begin(), formula_ctes.end());
@@ -595,7 +658,54 @@ std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
 
   auto ra_sql = std::any_cast<std::shared_ptr<sql::ast::Sourceable>>(visit(ctx->applBase()));
 
-  auto ra_source = std::make_shared<sql::ast::Source>(ra_sql, GenerateTableAlias());
+  std::shared_ptr<sql::ast::Source> stored_cte = nullptr;
+
+  if (ctx->applBase()->relAbs()) {
+    // We should check if the base of the full application is a relation abstraction with free variables.
+    // If it is, then it will happen that both the safety bound will use the relational abstraction SQL as the source,
+    // alongside this very same full application. We solve this SQL duplication by storing the CTE in the
+    // full_appl_ctes_ map. This way, we can reuse the same CTE for both the safety bound and the full application.
+    auto node = GetNode(ctx);
+
+    if (node->safety.Size() != 1) {
+      throw InternalException("Full application on a relational abstraction with wrong number of bounds");
+    }
+
+    auto bound = *node->safety.bounds.begin();
+    auto projection = *bound.domain.begin();
+    auto promised_source = std::dynamic_pointer_cast<PromisedSource>(projection.source);
+
+    if (!promised_source) {
+      throw InternalException("Source of relational abstraction is not promised");
+    }
+
+    // Check if this Full Application has free variables (only store CTE for relAbs with free vars)
+    if (!node->free_variables.empty()) {
+      // Create a CTE from the relational abstraction SQL
+      auto cte_alias = GenerateTableAlias("RA");
+      auto cte = std::make_shared<sql::ast::Source>(ra_sql, cte_alias, true);
+
+      // Store the CTE keyed by projection (with PromisedSource) for later reuse in ComputeBindingsCTEs
+      // Note: We store with the original projection containing PromisedSource
+      full_appl_ctes_[projection] = cte;
+      stored_cte = cte;
+
+      // Fulfill the PromisedSource with the sourceable
+      // When resolved later, it will become a GenericSource that we can match to the stored CTE
+      promised_source->Fulfill(ra_sql);
+    } else {
+      // No free variables, just fulfill with the sourceable directly
+      promised_source->Fulfill(ra_sql);
+    }
+  }
+
+  std::shared_ptr<sql::ast::Source> ra_source;
+
+  if (stored_cte) {
+    ra_source = stored_cte;
+  } else {
+    ra_source = std::make_shared<sql::ast::Source>(ra_sql, GenerateTableAlias());
+  }
 
   GetNode(ctx->applBase())->sql_expression = ra_source;
 
@@ -1815,14 +1925,17 @@ std::unordered_set<Bound> SQLVisitor::SafeFunction(psr::BindingInnerContext* bin
   throw SemanticException("Not all variables are bound", ErrorCode::UNBALANCED_VARIABLE);
 }
 
-std::vector<std::shared_ptr<sql::ast::Source>> SQLVisitor::CollectReferencedStoredCTEs(
-    const std::unordered_set<Bound>& safe_result) {
+std::pair<std::vector<std::shared_ptr<sql::ast::Source>>, std::vector<std::shared_ptr<sql::ast::Source>>>
+SQLVisitor::CollectReferencedStoredCTEs(const std::unordered_set<Bound>& safe_result) {
   /*
    * Collects stored CTEs from full_appl_ctes_ that are referenced in safe_result.
    * These CTEs are needed first (before binding CTEs that may reference them).
    * Matching is done by checking if GenericSource's sourceable matches stored CTE's sourceable.
+   * Also extracts nested CTEs from stored CTEs and returns them separately.
+   * Returns a pair: (extracted nested CTEs, stored CTEs with cleaned sourceables)
    */
-  std::vector<std::shared_ptr<sql::ast::Source>> ctes;
+  std::vector<std::shared_ptr<sql::ast::Source>> stored_ctes;
+  std::vector<std::shared_ptr<sql::ast::Source>> extracted_ctes;
   std::unordered_set<std::shared_ptr<sql::ast::Source>> seen_ctes;
 
   for (const auto& bound : safe_result) {
@@ -1839,15 +1952,49 @@ std::vector<std::shared_ptr<sql::ast::Source>> SQLVisitor::CollectReferencedStor
             stored_cte->sourceable == generic_bound->source) {
           // Add CTE if not already seen
           if (seen_ctes.insert(stored_cte).second) {
-            ctes.push_back(stored_cte);
+            // Check if the stored CTE's sourceable has nested CTEs
+            auto nested_select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(stored_cte->sourceable);
+            if (nested_select && !nested_select->ctes.empty() && !nested_select->ctes_are_recursive) {
+              // Extract nested CTEs
+              extracted_ctes.insert(extracted_ctes.end(), nested_select->ctes.begin(), nested_select->ctes.end());
+
+              // Create a new SelectStatement without CTEs
+              std::shared_ptr<sql::ast::Sourceable> cleaned_sourceable;
+              if (nested_select->group_by.has_value() && nested_select->from.has_value()) {
+                cleaned_sourceable = std::make_shared<sql::ast::SelectStatement>(
+                    nested_select->columns, nested_select->from.value(), nested_select->group_by.value(),
+                    nested_select->is_distinct);
+              } else if (nested_select->from.has_value()) {
+                cleaned_sourceable = std::make_shared<sql::ast::SelectStatement>(
+                    nested_select->columns, nested_select->from.value(), nested_select->is_distinct);
+              } else {
+                cleaned_sourceable =
+                    std::make_shared<sql::ast::SelectStatement>(nested_select->columns, nested_select->is_distinct);
+              }
+
+              // Create a new Source with the cleaned sourceable
+              std::shared_ptr<sql::ast::Source> cleaned_cte;
+              if (stored_cte->alias.has_value()) {
+                cleaned_cte = std::make_shared<sql::ast::Source>(cleaned_sourceable, stored_cte->alias.value(), true,
+                                                                 stored_cte->def_columns);
+              } else {
+                cleaned_cte = std::make_shared<sql::ast::Source>(cleaned_sourceable, GenerateTableAlias(), true,
+                                                                 stored_cte->def_columns);
+              }
+              stored_ctes.push_back(cleaned_cte);
+            } else {
+              // No nested CTEs, use the stored CTE as-is
+              stored_ctes.push_back(stored_cte);
+            }
           }
+          // If already seen, skip (already added to stored_ctes)
           break;  // Found matching CTE for this projection
         }
       }
     }
   }
 
-  return ctes;
+  return std::make_pair(extracted_ctes, stored_ctes);
 }
 
 std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::ComputeBindingsCTEs(

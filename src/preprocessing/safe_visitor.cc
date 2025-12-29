@@ -174,6 +174,9 @@ std::any SafeVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
 }
 
 std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
+
+  visit(ctx->applBase());
+
   if (ctx->applBase()->T_ID() && AGGREGATE_MAP.find(ctx->applBase()->T_ID()->getText()) != AGGREGATE_MAP.end()) {
     auto param_ctx = *ctx->applParams()->applParam().begin();
     visit(param_ctx);
@@ -219,8 +222,33 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
 
     return {};
   }
+  if (ctx->applBase()->relAbs()) {
+    std::vector<std::string> variable_names;
+    std::vector<size_t> variable_indices;
 
-  visit(ctx->applBase());
+    for (size_t i = 0; i < ctx->applParams()->applParam().size(); i++) {
+      auto param = ctx->applParams()->applParam()[i];
+      visit(param);
+      auto node = GetNode(param);
+      if (!dynamic_cast<psr::IDExprContext*>(param->expr())) continue;
+      if (node->variables.size() != 1) continue;
+      auto variable = *node->variables.begin();
+
+      variable_names.push_back(variable);
+      variable_indices.push_back(i);
+    }
+
+    auto node = GetNode(ctx);
+    auto base_node = GetNode(ctx->applBase());
+
+    auto promised_source = PromisedSource{base_node->arity};
+
+    auto projection = Projection(variable_indices, promised_source);
+
+    auto bound = Bound(variable_names, {projection});
+
+    node->safety = BoundSet({bound});
+  }
 
   return {};
 }

@@ -174,8 +174,10 @@ class SQLVisitor : public BaseVisitor {
 
   // Collects stored CTEs from full_appl_ctes_ that are referenced in safe_result.
   // These CTEs are needed first (before binding CTEs that may reference them).
-  std::vector<std::shared_ptr<sql::ast::Source>> CollectReferencedStoredCTEs(
-      const std::unordered_set<Bound>& safe_result);
+  // Also extracts nested CTEs from stored CTEs and returns them separately.
+  // Returns a pair: (extracted nested CTEs, stored CTEs)
+  std::pair<std::vector<std::shared_ptr<sql::ast::Source>>, std::vector<std::shared_ptr<sql::ast::Source>>>
+  CollectReferencedStoredCTEs(const std::unordered_set<Bound>& safe_result);
 
   void SpecialAddSourceToFreeVariablesInTerm(
       const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources,
