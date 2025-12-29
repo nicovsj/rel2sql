@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "rel_ast/bound.h"
+#include "rel_ast/projection.h"
 
 namespace rel2sql {
 
@@ -38,6 +39,35 @@ struct BoundSet {
 
   // Returns a copy of this set with variables renamed according to the provided map.
   BoundSet Renamed(const std::unordered_map<std::string, std::string>& rename_map) const;
+
+  // Removes projections from all bounds that match the predicate, removes bounds with empty domains,
+  // and merges compatible bounds that can form a complete table.
+  // The predicate should return true for projections that should be removed.
+  template <typename Predicate>
+  BoundSet WithRemovedProjections(Predicate&& should_remove) const {
+    std::unordered_set<Bound> cleaned_bounds;
+
+    for (const auto& bound : bounds) {
+      // Filter out projections that match the predicate
+      std::unordered_set<Projection> cleaned_domain;
+      for (const auto& projection : bound.domain) {
+        if (!should_remove(projection)) {
+          cleaned_domain.insert(projection);
+        }
+      }
+
+      // Only keep bounds that have at least one projection remaining
+      if (!cleaned_domain.empty()) {
+        cleaned_bounds.insert(Bound(bound.variables, cleaned_domain));
+      }
+    }
+
+    // Create a BoundSet with cleaned bounds and merge compatible bounds
+    BoundSet result(cleaned_bounds);
+    result.MergeCompatibleSingleSourceProjections();
+
+    return result;
+  }
 
  private:
   // Merges compatible Bound objects that can form a full table in-place.

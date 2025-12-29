@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "preprocessing/fixpoint_safety_visitor.h"
 #include "support/exceptions.h"
 
 namespace rel2sql {
@@ -36,6 +37,37 @@ std::any SafeVisitor::visitProgram(psr::ProgramContext* ctx) {
 std::any SafeVisitor::visitRelDef(psr::RelDefContext* ctx) {
   current_relation_ = ctx->name->getText();
 
+  // Check if this relation has recursion metadata (is recursive)
+  auto relation_info = ast_->GetRelationInfo(current_relation_);
+  if (relation_info && relation_info->HasRecursionMetadata()) {
+    // Find the BindingsFormulaContext in the relAbs
+    auto rel_abs = ctx->relAbs();
+    if (rel_abs && rel_abs->expr().size() == 1) {
+      auto expr = rel_abs->expr()[0];
+      auto bindings_formula = dynamic_cast<psr::BindingsFormulaContext*>(expr);
+      if (bindings_formula) {
+        // Use fixpoint algorithm for recursive definitions
+        FixpointSafetyVisitor fixpoint_visitor(ast_, current_relation_);
+        auto fixpoint_safety = fixpoint_visitor.ComputeFixpoint(bindings_formula);
+
+        // The fixpoint visitor has already visited the formula, so we just need to:
+        // 1. Set the safety on the bindings formula node
+        GetNode(bindings_formula)->safety = fixpoint_safety;
+        // 2. Visit the relAbs to set up parent node safety (but formula already visited)
+        auto rel_abs_node = GetNode(rel_abs);
+        rel_abs_node->safety = GetNode(expr)->safety;
+        // 3. Visit bindings to ensure they're processed
+        for (auto& binding : bindings_formula->bindingInner()->binding()) {
+          visit(binding);
+        }
+
+        current_relation_.clear();
+        return {};
+      }
+    }
+  }
+
+  // Non-recursive: use normal safety computation
   visit(ctx->relAbs());
 
   current_relation_.clear();
@@ -296,7 +328,9 @@ std::any SafeVisitor::VisitDisjunction(psr::BinOpContext* ctx) {
   auto lhs_safeness = GetNode(ctx->lhs)->safety;
   auto rhs_safeness = GetNode(ctx->rhs)->safety;
 
-  GetNode(ctx)->safety = lhs_safeness.MergeWith(rhs_safeness);
+  auto current_node = GetNode(ctx);
+
+  current_node->safety = lhs_safeness.MergeWith(rhs_safeness);
 
   return {};
 }

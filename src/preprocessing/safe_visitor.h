@@ -65,12 +65,14 @@ class SafeVisitor : public BaseVisitor {
 
   std::any visitApplParam(psr::ApplParamContext* ctx) override;
 
+ protected:
+  // Made protected so FixpointSafetyVisitor can access it
+  void ComputeFullApplicationOnIDSafety(psr::FullApplContext* ctx, const std::string& id);
+
  private:
   std::any VisitConjunction(psr::BinOpContext* ctx);
 
   std::any VisitDisjunction(psr::BinOpContext* ctx);
-
-  void ComputeFullApplicationOnIDSafety(psr::FullApplContext* ctx, const std::string& id);
 
   std::string current_relation_;
 };
