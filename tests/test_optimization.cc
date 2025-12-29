@@ -302,10 +302,10 @@ TEST_F(OptimizationTest, TransitiveClosure) {
   default_edb_map["R"] = RelationInfo(2);
 
   EXPECT_EQ(TranslateDefinition("def Q {(x,y) : R(x,y) or exists((z) | R(x,z) and Q(z,y))}"),
-            "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE S1(y) AS (SELECT T10.A2 AS A2 FROM R AS T10), S0(x) AS "
-            "(SELECT T9.A1 AS A1 FROM R AS T9), R0(A1, A2) AS (SELECT S0.x AS A1, S1.y AS A2 FROM (SELECT T0.A1 AS x, "
-            "T0.A2 AS y FROM R AS T0 UNION SELECT T1.A1 AS x, T3.A2 AS y FROM R AS T1, R0 AS T3 WHERE T1.A2 = T3.A1) "
-            "AS T8, S1, S0 WHERE S1.y = T8.y AND S0.x = T8.x) SELECT DISTINCT * FROM R0)");
+            "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE S1(y) AS (SELECT T9.A2 AS A2 FROM R AS T9), S0(x) AS (SELECT "
+            "T8.A1 AS A1 FROM R AS T8), R0(x, y) AS (SELECT T0.A1 AS x, T0.A2 AS y FROM R AS T0 UNION SELECT T1.A1 AS "
+            "x, T3.A2 AS y FROM R AS T1, R0 AS T3 WHERE T1.A2 = T3.A1) SELECT DISTINCT S0.x AS A1, S1.y AS A2 FROM R0, "
+            "S1, S0 WHERE S1.y = R0.y AND S0.x = R0.x)");
 }
 
 TEST_F(OptimizationTest, FullApplicationOnExpression2) {

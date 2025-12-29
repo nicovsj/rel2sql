@@ -101,10 +101,6 @@ std::any SQLVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
     return SpecialVisitRelAbs(ctx);
   }
 
-  if (GetNode(ctx)->is_recursive) {
-    return SpecialVisitRecursiveRelAbs(ctx);
-  }
-
   auto query = VisitRelAbsLogic(ctx);
 
   // If there is only one definition, we can return the query directly
@@ -489,13 +485,34 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
   /*
    * Generates an SQL query from the bindings formula.
    */
+
+  auto bindings_formula_node = GetNode(ctx);
+  std::shared_ptr<sql::ast::Source> formula_source;
+  std::vector<std::shared_ptr<sql::ast::Source>> formula_ctes;
+
   auto formula_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
       std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->formula())));
 
-  auto formula_source = std::make_shared<sql::ast::Source>(formula_sql, GenerateTableAlias());
+  // Check if this bindings formula is recursive
+  if (bindings_formula_node->is_recursive && !bindings_formula_node->recursive_definition_name.empty()) {
+    // Get binding variables from bindingInner (these are the free variables)
+    std::vector<std::string> binding_vars;
+    for (auto binding : ctx->bindingInner()->binding()) {
+      if (binding->id) {
+        binding_vars.push_back(binding->id->getText());
+      }
+    }
+
+    // Create recursive CTE from formula (instead of visiting formula normally)
+    std::tie(formula_source, formula_ctes) =
+        CreateRecursiveCTEFromFormula(formula_sql, bindings_formula_node->recursive_definition_name, binding_vars);
+  } else {
+    formula_source = std::make_shared<sql::ast::Source>(formula_sql, GenerateTableAlias());
+  }
 
   GetNode(ctx->formula())->sql_expression = formula_source;
 
+  // Continue with normal bindings formula flow
   auto safe_result = SafeFunction(ctx->bindingInner(), ctx->formula());
 
   auto cte_map = ComputeBindingsCTEs(safe_result);
@@ -512,9 +529,17 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
   // (so they're defined before binding CTEs that reference them)
   auto ctes = CollectReferencedStoredCTEs(safe_result);
 
+  // Add formula CTEs (for recursive case, these are CTEs from the recursive definition)
+  ctes.insert(ctes.end(), formula_ctes.begin(), formula_ctes.end());
+
   // Then add binding CTEs (which may reference the stored CTEs above)
   for (auto& [_, cte] : cte_map) {
     ctes.push_back(cte);
+  }
+
+  // If recursive, add the recursive CTE after binding CTEs
+  if (bindings_formula_node->is_recursive && !bindings_formula_node->recursive_definition_name.empty()) {
+    ctes.push_back(formula_source);
   }
 
   // Only add binding CTEs to from_sources, NOT stored RA CTEs
@@ -527,7 +552,10 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
 
   auto from = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
 
-  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from, ctes);
+  // For recursive case, mark the query as recursive
+  bool is_recursive = bindings_formula_node->is_recursive && !bindings_formula_node->recursive_definition_name.empty();
+
+  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from, ctes, false, is_recursive);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
@@ -2054,54 +2082,31 @@ std::shared_ptr<sql::ast::Condition> SQLVisitor::BindingsEqualityShorthand(
   return condition;
 }
 
-std::shared_ptr<sql::ast::Expression> SQLVisitor::SpecialVisitRecursiveRelAbs(psr::RelAbsContext* ctx) {
+std::pair<std::shared_ptr<sql::ast::Source>, std::vector<std::shared_ptr<sql::ast::Source>>>
+SQLVisitor::CreateRecursiveCTEFromFormula(std::shared_ptr<sql::ast::Sourceable> formula_sql,
+                                          const std::string& recursive_definition_name,
+                                          const std::vector<std::string>& binding_vars) {
   /*
-   * Generates an SQL query from the recursive relation abstraction.
+   * Creates a recursive CTE from a formula. Returns the recursive CTE source and any CTEs from the formula.
    */
-
-  auto expr_ctxs = ctx->expr();
-
-  if (expr_ctxs.size() != 1) {
-    throw InternalException("Recursive relation abstraction with multiple members or no members");
-  }
-
-  auto expr_ctx = expr_ctxs[0];
-
-  auto expr_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
-      std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(expr_ctx)));
-
-  // We actually expect the expression to be a select statement
-  auto select_stmt = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr_sql);
-  if (!select_stmt) {
-    throw InternalException("Recursive relation abstraction member is not a select statement");
-  }
-
   std::string recursive_alias = GenerateTableAlias("R");
 
-  sql::ast::TableNameUpdater updater(GetNode(ctx)->recursive_definition_name, recursive_alias);
-  select_stmt->Accept(updater);
+  // Update table names in the recursive definition
+  sql::ast::TableNameUpdater updater(recursive_definition_name, recursive_alias);
+  formula_sql->Accept(updater);
 
-  std::vector<std::string> def_columns;
-  for (size_t i = 1; i <= GetNode(ctx)->arity; i++) {
-    def_columns.push_back(fmt::format("A{}", i));
+  // Extract CTEs from the formula (if it's a SelectStatement)
+  std::vector<std::shared_ptr<sql::ast::Source>> formula_ctes;
+  auto select_stmt = std::dynamic_pointer_cast<sql::ast::SelectStatement>(formula_sql);
+  if (select_stmt) {
+    formula_ctes.insert(formula_ctes.end(), select_stmt->ctes.begin(), select_stmt->ctes.end());
+    select_stmt->ctes.clear();
   }
 
-  auto recursive_source = std::make_shared<sql::ast::Source>(select_stmt, recursive_alias, true, def_columns);
+  // Create recursive CTE R0 with columns named after free variables (x, y) instead of A1, A2
+  auto recursive_source = std::make_shared<sql::ast::Source>(formula_sql, recursive_alias, true, binding_vars);
 
-  auto select_columns = std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::Wildcard>()};
-  auto from =
-      std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{recursive_source});
-
-  std::vector<std::shared_ptr<sql::ast::Source>> new_ctes;
-
-  new_ctes.insert(new_ctes.end(), select_stmt->ctes.begin(), select_stmt->ctes.end());
-  new_ctes.push_back(recursive_source);
-
-  select_stmt->ctes.clear();
-
-  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from, new_ctes, false, true);
-
-  return std::static_pointer_cast<sql::ast::Expression>(query);
+  return std::make_pair(recursive_source, formula_ctes);
 }
 
 }  // namespace rel2sql

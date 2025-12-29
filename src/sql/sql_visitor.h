@@ -194,7 +194,11 @@ class SQLVisitor : public BaseVisitor {
 
   std::shared_ptr<sql::ast::Sourceable> TryGetTopLevelIDSelect(psr::RelAbsContext* ctx);
 
-  std::shared_ptr<sql::ast::Expression> SpecialVisitRecursiveRelAbs(psr::RelAbsContext* ctx);
+  // Creates a recursive CTE from a formula for use in recursive bindings formulas
+  std::pair<std::shared_ptr<sql::ast::Source>, std::vector<std::shared_ptr<sql::ast::Source>>>
+  CreateRecursiveCTEFromFormula(std::shared_ptr<sql::ast::Sourceable> formula_sql,
+                                const std::string& recursive_definition_name,
+                                const std::vector<std::string>& binding_vars);
 
   // Testing bindings
 

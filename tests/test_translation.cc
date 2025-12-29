@@ -642,22 +642,22 @@ TEST_F(TranslationTest, RecursiveDefinition) {
   default_edb_map["C"] = RelationInfo(1);
 
   EXPECT_EQ(TranslateDefinition("def Q {(x in A) : B(x) or exists ((y) | Q(y) and C(y))}"),
-            "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE S0(x) AS (SELECT * FROM A AS T9), R0(A1) AS (SELECT S0.x AS "
-            "A1 FROM (SELECT T6.x FROM (SELECT T0.A1 AS x FROM B AS T0) AS T6 UNION SELECT  FROM (SELECT  FROM (SELECT "
-            "T2.y FROM (SELECT T1.A1 AS y FROM R0 AS T1) AS T2, (SELECT T3.A1 AS y FROM C AS T3) AS T4 WHERE T2.y = "
-            "T4.y) AS T5) AS T7) AS T8, S0 WHERE S0.x = T8.x) SELECT DISTINCT * FROM R0)");
+            "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE S0(x) AS (SELECT * FROM A AS T8), R0(x) AS (SELECT T6.x FROM "
+            "(SELECT T0.A1 AS x FROM B AS T0) AS T6 UNION SELECT  FROM (SELECT  FROM (SELECT T2.y FROM (SELECT T1.A1 "
+            "AS y FROM R0 AS T1) AS T2, (SELECT T3.A1 AS y FROM C AS T3) AS T4 WHERE T2.y = T4.y) AS T5) AS T7) SELECT "
+            "DISTINCT S0.x AS A1 FROM R0, S0 WHERE S0.x = R0.x)");
 }
 
 TEST_F(TranslationTest, TransitiveClosure) {
   default_edb_map["R"] = RelationInfo(2);
 
-  EXPECT_EQ(TranslateDefinition("def Q {(x,y) : R(x,y) or exists((z) | R(x,z) and Q(z,y))}"),
-            "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE S1(y) AS (SELECT T10.A2 AS A2 FROM R AS T10), S0(x) AS "
-            "(SELECT T9.A1 AS A1 FROM R AS T9), R0(A1, A2) AS (SELECT S0.x AS A1, S1.y AS A2 FROM (SELECT T6.x, T6.y "
-            "FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM R AS T0) AS T6 UNION SELECT T7.x, T7.y FROM (SELECT T5.x, T5.y "
-            "FROM (SELECT T2.x, T2.z, T4.y FROM (SELECT T1.A1 AS x, T1.A2 AS z FROM R AS T1) AS T2, (SELECT T3.A1 AS "
-            "z, T3.A2 AS y FROM R0 AS T3) AS T4 WHERE T2.z = T4.z) AS T5) AS T7) AS T8, S1, S0 WHERE S1.y = T8.y AND "
-            "S0.x = T8.x) SELECT DISTINCT * FROM R0)");
+  EXPECT_EQ(
+      TranslateDefinition("def Q {(x,y) : R(x,y) or exists((z) | R(x,z) and Q(z,y))}"),
+      "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE S1(y) AS (SELECT T9.A2 AS A2 FROM R AS T9), S0(x) AS (SELECT T8.A1 "
+      "AS A1 FROM R AS T8), R0(x, y) AS (SELECT T6.x, T6.y FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM R AS T0) AS T6 "
+      "UNION SELECT T7.x, T7.y FROM (SELECT T5.x, T5.y FROM (SELECT T2.x, T2.z, T4.y FROM (SELECT T1.A1 AS x, T1.A2 AS "
+      "z FROM R AS T1) AS T2, (SELECT T3.A1 AS z, T3.A2 AS y FROM R0 AS T3) AS T4 WHERE T2.z = T4.z) AS T5) AS T7) "
+      "SELECT DISTINCT S0.x AS A1, S1.y AS A2 FROM R0, S1, S0 WHERE S1.y = R0.y AND S0.x = R0.x)");
 }
 
 TEST_F(TranslationTest, WeirdEdgeCase1) {
