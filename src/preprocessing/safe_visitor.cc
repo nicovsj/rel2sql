@@ -52,10 +52,8 @@ std::any SafeVisitor::visitRelDef(psr::RelDefContext* ctx) {
 
         // The fixpoint visitor has already visited the formula, so we just need to:
         // 1. Set the safety on the bindings formula node
-        GetNode(bindings_formula)->safety = fixpoint_safety;
-        // 2. Visit the relAbs to set up parent node safety (but formula already visited)
-        auto rel_abs_node = GetNode(rel_abs);
-        rel_abs_node->safety = GetNode(expr)->safety;
+        auto formula_node = GetNode(bindings_formula->formula());
+        formula_node->safety = fixpoint_safety;
         // 3. Visit bindings to ensure they're processed
         for (auto& binding : bindings_formula->bindingInner()->binding()) {
           visit(binding);

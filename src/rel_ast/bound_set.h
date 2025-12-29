@@ -64,7 +64,7 @@ struct BoundSet {
 
     // Create a BoundSet with cleaned bounds and merge compatible bounds
     BoundSet result(cleaned_bounds);
-    result.MergeCompatibleSingleSourceProjections();
+    // result.MergeCompatibleSingleSourceProjections();
 
     return result;
   }

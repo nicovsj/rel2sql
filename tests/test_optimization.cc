@@ -294,14 +294,14 @@ TEST_F(OptimizationTest, Composition) {
             "SELECT T0.A1 AS A1, T2.A2 AS A2 FROM B AS T0, E AS T2 WHERE T0.A2 = T2.A1");
 }
 
-TEST_F(OptimizationTest, DISABLED_TransitiveClosure) {
+TEST_F(OptimizationTest, TransitiveClosure) {
   default_edb_map["R"] = RelationInfo(2);
 
-  EXPECT_EQ(
-      TranslateDefinition("def Q {(x,y) : R(x,y) or exists((z) | R(x,z) and Q(z,y))}"),
-      "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE S0(x, y) AS (SELECT * FROM R AS T9), R0(A1, A2) AS (SELECT S0.x AS "
-      "A1, S0.y AS A2 FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM R AS T0 UNION SELECT T1.A1 AS x, T3.A2 AS y FROM R AS "
-      "T1, R0 AS T3 WHERE T1.A2 = T3.A1) AS T8, S0 WHERE S0.x = T8.x AND S0.y = T8.y) SELECT DISTINCT * FROM R0)");
+  EXPECT_EQ(TranslateDefinition("def Q {(x,y) : R(x,y) or exists((z) | R(x,z) and Q(z,y))}"),
+            "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE S1(y) AS (SELECT T10.A2 AS A2 FROM R AS T10), S0(x) AS "
+            "(SELECT T9.A1 AS A1 FROM R AS T9), R0(A1, A2) AS (SELECT S0.x AS A1, S1.y AS A2 FROM (SELECT T0.A1 AS x, "
+            "T0.A2 AS y FROM R AS T0 UNION SELECT T1.A1 AS x, T3.A2 AS y FROM R AS T1, R0 AS T3 WHERE T1.A2 = T3.A1) "
+            "AS T8, S1, S0 WHERE S1.y = T8.y AND S0.x = T8.x) SELECT DISTINCT * FROM R0)");
 }
 
 TEST_F(OptimizationTest, FullApplicationOnExpression2) {
