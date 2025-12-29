@@ -156,17 +156,19 @@ std::any SafeVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
 }
 
 std::any SafeVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
-  visit(ctx->formula());
-
   auto current_node = GetNode(ctx);
 
-  // Default behavior: bindings formula itself does not add new safety; we only
-  // care about the safety of the inner formula (already computed).
-  current_node->safety = {};
+  visit(ctx->formula());
+
+  auto formula_node = GetNode(ctx->formula());
+
+  std::vector<std::string> variables;
 
   for (auto& binding : ctx->bindingInner()->binding()) {
-    visit(binding);
+    variables.push_back(binding->id->getText());
   }
+
+  current_node->safety = formula_node->safety.WithRemovedVariables(variables);
 
   return {};
 }

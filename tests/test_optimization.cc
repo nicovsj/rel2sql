@@ -250,6 +250,10 @@ TEST_F(OptimizationTest, BindingFormula3) {
             "(1), (2)) AS I0(i) WHERE T0.A1 = 1 AND T3.A1 = 3");
 }
 
+TEST_F(OptimizationTest, NestedBindingFormula) {
+  EXPECT_EQ(TranslateExpression("[x]: {(y) : B(x,y)}"), "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0");
+}
+
 TEST_F(OptimizationTest, Program) {
   EXPECT_EQ(TranslateDefinition("def R {[x in A]: B[x]}"),
             "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT S0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, A AS S0 WHERE S0.A1 = "
