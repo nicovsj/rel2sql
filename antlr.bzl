@@ -2,6 +2,10 @@
 A custom made antlr rule to generate C++ runtime files directly from the grammar file
 """
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
+load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
+
 def antlr_cc_library(name, lexer_src, parser_src, package):
     """Creates a C++ lexer and parser from a source grammar.
 
@@ -28,7 +32,7 @@ def antlr_cc_library(name, lexer_src, parser_src, package):
         package = package,
     )
 
-    native.cc_library(
+    cc_library(
         name = name,
         srcs = [generated_lexer, generated_parser],
         deps = [
