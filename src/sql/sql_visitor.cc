@@ -1798,7 +1798,7 @@ std::shared_ptr<sql::ast::Expression> SQLVisitor::GetExpressionFromID(antlr4::Pa
 
   // Check if it is a variable
   if (node->variables.find(id) != node->variables.end()) {
-    return std::make_shared<sql::ast::Column>(id);
+    throw InternalException("Non-parameter variable expressions not yet implemented.");
   }
 
   // Always create table with attribute names from EDBInfo (whether custom or standard A1, A2, etc.)
@@ -1858,21 +1858,32 @@ SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext* base,
   std::vector<IndexedContext> var_params, non_var_params = {{base, 0}};
 
   for (size_t i = 0; i < params.size(); i++) {
-    auto appl = params[i];
-    if (!appl->T_UNDERSCORE()) {
-      auto param_sql = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(appl));
+    auto param = params[i];
+    auto param_node = GetNode(param);
 
-      if (auto variable_sql = std::dynamic_pointer_cast<sql::ast::Column>(param_sql)) {
-        // Then the parameter is a variable
-        GetNode(appl)->sql_expression = variable_sql;
-        var_params.push_back({appl, i + 1});
-      } else if (auto subquery_sql = std::dynamic_pointer_cast<sql::ast::SelectStatement>(param_sql)) {
-        // Then the parameter is not a variable
-        auto param_subquery = std::make_shared<sql::ast::Source>(subquery_sql, GenerateTableAlias());
-        GetNode(appl)->sql_expression = param_subquery;
+    if (param->T_UNDERSCORE()) continue;
 
-        non_var_params.push_back({appl, i + 1});
+    // Check if the parameter is a variable before visiting it
+    if (dynamic_cast<psr::IDExprContext*>(param->expr())) {
+      if (param_node->variables.size() == 1) {
+        // This is a variable parameter - create Column directly
+        auto variable = *param_node->variables.begin();
+        auto variable_sql = std::make_shared<sql::ast::Column>(variable);
+        param_node->sql_expression = variable_sql;
+        var_params.push_back({param, i + 1});
+        continue;
       }
+    }
+
+    // Not a variable, let the visitor handle it
+    auto param_sql = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(param));
+
+    if (auto subquery_sql = std::dynamic_pointer_cast<sql::ast::SelectStatement>(param_sql)) {
+      // Then the parameter is not a variable
+      auto param_subquery = std::make_shared<sql::ast::Source>(subquery_sql, GenerateTableAlias());
+      GetNode(param)->sql_expression = param_subquery;
+
+      non_var_params.push_back({param, i + 1});
     }
   }
 
