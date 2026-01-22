@@ -240,6 +240,20 @@ void RelAST::ComputeTopologicalSort() {
   sorted_ids_ = std::move(order);
 }
 
+std::unordered_set<Projection> RelAST::GetVariableDomain(const std::string& var) const {
+  auto it = variable_domains_.find(var);
+  if (it != variable_domains_.end()) {
+    return it->second;
+  }
+  return std::unordered_set<Projection>();
+}
+
+void RelAST::AddVariableDomain(const std::string& var, const std::unordered_set<Projection>& domain) {
+  // Union the new domain with any existing domain for the variable
+  auto& existing_domain = variable_domains_[var];
+  existing_domain.insert(domain.begin(), domain.end());
+}
+
 bool operator==(const RelASTNode& lhs, const RelASTNode& rhs) {
   // Compare variables
   if (lhs.variables != rhs.variables) {

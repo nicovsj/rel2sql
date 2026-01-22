@@ -516,7 +516,7 @@ TEST_F(TranslationTest, ExpressionConstantTerms2) {
             "SELECT T0.A2 AS A1 FROM B AS T0, (SELECT 2 * (3 + 4) AS A1) AS T1 WHERE T0.A1 = T1.A1");
 }
 
-TEST_F(TranslationTest, DISABLED_ExpressionVariableTerms1) {
+TEST_F(TranslationTest, ExpressionVariableTerms1) {
   EXPECT_EQ(TranslateExpression("[x] : x where A(x)"),
             "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1 AND T1.x < 5");
 }

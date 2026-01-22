@@ -770,4 +770,332 @@ TEST(SafetyVisitorTest, Composition2) {
   }
 }
 
+// Helper function to get variable domain
+std::unordered_set<Projection> GetVariableDomain(const RelAST& ast, const std::string& var) {
+  return ast.GetVariableDomain(var);
+}
+
+// Helper function to check if a domain contains a specific table projection
+bool HasTableProjection(const std::unordered_set<Projection>& domain, const std::string& table_name, size_t index) {
+  for (const auto& proj : domain) {
+    auto table_source = std::dynamic_pointer_cast<TableSource>(ResolvePromisedSource(proj.source));
+    if (table_source && table_source->table_name == table_name &&
+        proj.projected_indices.size() == 1 &&
+        proj.projected_indices[0] == index) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Helper function to check if a domain contains a constant projection
+bool HasConstantProjection(const std::unordered_set<Projection>& domain, const sql::ast::constant_t& constant) {
+  for (const auto& proj : domain) {
+    auto constant_source = std::dynamic_pointer_cast<ConstantSource>(ResolvePromisedSource(proj.source));
+    if (constant_source && constant_source->value == constant) {
+      return true;
+    }
+  }
+  return false;
+}
+
+TEST(VariableDomainTest, SingleVariableFromRelationApplication) {
+  // Relation applications in formulas don't directly store domains.
+  // Domains are only stored when variables are bound in quantifiers, bindingsExpr, or bindingsFormula.
+  // This test verifies that a relation application in a quantification context stores the domain.
+  auto edb = rel2sql::relation_map::FromArityMap({{"F", 1}});
+  auto [ast, tree] = ProcessFormula("exists ((x) | F(x))", edb);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+
+  EXPECT_FALSE(x_domain.empty()) << "Variable x should have a domain from relation application in quantification";
+  EXPECT_TRUE(HasTableProjection(x_domain, "F", 0)) << "x should have projection from F at index 0";
+}
+
+TEST(VariableDomainTest, SingleVariableFromBindingsExpr) {
+  auto edb = rel2sql::relation_map::FromArityMap({{"F", 1}});
+  auto [ast, tree] = ProcessExpr("[x]: F(x)", edb);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+
+  EXPECT_FALSE(x_domain.empty()) << "Variable x should have a domain from bindingsExpr";
+
+  // Verify domain contains projection from F (index 0)
+  EXPECT_TRUE(HasTableProjection(x_domain, "F", 0)) << "x should have projection from F at index 0";
+
+  // Verify y is not in domain map (not bound in bindingsExpr)
+  auto y_domain = GetVariableDomain(ast, "y");
+  EXPECT_TRUE(y_domain.empty()) << "Variable y should not be in domain map";
+}
+
+TEST(VariableDomainTest, SingleVariableFromBindingsFormula) {
+  auto edb = rel2sql::relation_map::FromArityMap({{"F", 1}});
+  auto [ast, tree] = ProcessExpr("(x): F(x)", edb);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+
+  EXPECT_FALSE(x_domain.empty()) << "Variable x should have a domain from bindingsFormula";
+
+  // Verify domain contains projection from F (index 0)
+  EXPECT_TRUE(HasTableProjection(x_domain, "F", 0)) << "x should have projection from F at index 0";
+}
+
+TEST(VariableDomainTest, SingleVariableFromQuantification) {
+  auto edb = rel2sql::relation_map::FromArityMap({{"F", 1}});
+  auto [ast, tree] = ProcessFormula("exists ((x) | F(x))", edb);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+
+  EXPECT_FALSE(x_domain.empty()) << "Variable x should have a domain from quantification";
+
+  // Verify domain contains projection from F (index 0)
+  EXPECT_TRUE(HasTableProjection(x_domain, "F", 0)) << "x should have projection from F at index 0";
+}
+
+TEST(VariableDomainTest, MultiVariableFromRelationApplication) {
+  // Test multi-variable relation application in a quantification context
+  auto edb = rel2sql::relation_map::FromArityMap({{"F", 2}});
+  auto [ast, tree] = ProcessFormula("exists ((x, y) | F(x, y))", edb);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+  auto y_domain = GetVariableDomain(ast, "y");
+
+  EXPECT_FALSE(x_domain.empty()) << "Variable x should have a domain";
+  EXPECT_FALSE(y_domain.empty()) << "Variable y should have a domain";
+
+  // Verify x has projection from F (index 0)
+  EXPECT_TRUE(HasTableProjection(x_domain, "F", 0)) << "x should have projection from F at index 0";
+
+  // Verify y has projection from F (index 1)
+  EXPECT_TRUE(HasTableProjection(y_domain, "F", 1)) << "y should have projection from F at index 1";
+}
+
+TEST(VariableDomainTest, MultiVariableFromBindingsExpr) {
+  auto edb = rel2sql::relation_map::FromArityMap({{"F", 2}});
+  auto [ast, tree] = ProcessExpr("[x, y]: F(x, y)", edb);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+  auto y_domain = GetVariableDomain(ast, "y");
+
+  EXPECT_FALSE(x_domain.empty()) << "Variable x should have a domain";
+  EXPECT_FALSE(y_domain.empty()) << "Variable y should have a domain";
+
+  // Verify x has projection from F (index 0)
+  EXPECT_TRUE(HasTableProjection(x_domain, "F", 0)) << "x should have projection from F at index 0";
+
+  // Verify y has projection from F (index 1)
+  EXPECT_TRUE(HasTableProjection(y_domain, "F", 1)) << "y should have projection from F at index 1";
+
+}
+
+TEST(VariableDomainTest, ExplicitDomainBinding) {
+  auto edb = rel2sql::relation_map::FromArityMap({{"R", 1}, {"F", 1}});
+  auto [ast, tree] = ProcessExpr("[x in R]: F(x)", edb);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+
+  EXPECT_FALSE(x_domain.empty()) << "Variable x should have a domain";
+
+  // Verify domain contains projection from R (explicit domain)
+  EXPECT_TRUE(HasTableProjection(x_domain, "R", 0)) << "x should have projection from R (explicit domain)";
+
+  // Verify domain contains projection from F (from expression)
+  EXPECT_TRUE(HasTableProjection(x_domain, "F", 0)) << "x should have projection from F (from expression)";
+}
+
+TEST(VariableDomainTest, MultipleExplicitDomainBindings) {
+  auto edb = rel2sql::relation_map::FromArityMap({{"R", 1}, {"S", 1}, {"F", 1}});
+  auto [ast, tree] = ProcessExpr("[x in R, y in S]: F(x, y)", edb);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+  auto y_domain = GetVariableDomain(ast, "y");
+
+  EXPECT_FALSE(x_domain.empty()) << "Variable x should have a domain";
+  EXPECT_FALSE(y_domain.empty()) << "Variable y should have a domain";
+
+  // Verify x has projection from R (explicit) and F
+  EXPECT_TRUE(HasTableProjection(x_domain, "R", 0)) << "x should have projection from R";
+  EXPECT_TRUE(HasTableProjection(x_domain, "F", 0)) << "x should have projection from F";
+
+  // Verify y has projection from S (explicit) and F
+  EXPECT_TRUE(HasTableProjection(y_domain, "S", 0)) << "y should have projection from S";
+  EXPECT_TRUE(HasTableProjection(y_domain, "F", 1)) << "y should have projection from F";
+}
+
+TEST(VariableDomainTest, DomainUnionFromDisjunction) {
+  // Test disjunction in a quantification context
+  auto edb = rel2sql::relation_map::FromArityMap({{"F", 1}, {"G", 1}});
+  auto [ast, tree] = ProcessFormula("exists ((x) | F(x) or G(x))", edb);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+
+  EXPECT_FALSE(x_domain.empty()) << "Variable x should have a domain";
+
+  // Verify domain contains projections from both F and G
+  EXPECT_TRUE(HasTableProjection(x_domain, "F", 0)) << "x should have projection from F";
+  EXPECT_TRUE(HasTableProjection(x_domain, "G", 0)) << "x should have projection from G";
+}
+
+TEST(VariableDomainTest, DomainUnionFromConjunction) {
+  // Test conjunction in a quantification context
+  auto edb = rel2sql::relation_map::FromArityMap({{"F", 1}, {"G", 1}});
+  auto [ast, tree] = ProcessFormula("exists ((x) | F(x) and G(x))", edb);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+
+  EXPECT_FALSE(x_domain.empty()) << "Variable x should have a domain";
+
+  // Verify domain contains projections from both F and G
+  EXPECT_TRUE(HasTableProjection(x_domain, "F", 0)) << "x should have projection from F";
+  EXPECT_TRUE(HasTableProjection(x_domain, "G", 0)) << "x should have projection from G";
+}
+
+TEST(VariableDomainTest, ConstantDomainFromEquality) {
+  auto [ast, tree] = ProcessFormula("x = 5");
+
+  // Note: Equality comparisons don't directly create bindings in quantifiers/bindingsExpr,
+  // so x might not have a domain stored unless it's in a binding context.
+  // Let's test it in a quantification context
+  auto [ast2, tree2] = ProcessFormula("exists ((x) | x = 5)");
+
+  auto x_domain = GetVariableDomain(ast2, "x");
+
+  EXPECT_FALSE(x_domain.empty()) << "Variable x should have a domain from equality in quantification";
+
+  // Verify domain contains constant projection with value 5
+  EXPECT_TRUE(HasConstantProjection(x_domain, 5)) << "x should have constant projection with value 5";
+}
+
+TEST(VariableDomainTest, NestedQuantification) {
+  auto edb = rel2sql::relation_map::FromArityMap({{"F", 2}});
+  auto [ast, tree] = ProcessFormula("exists ((x) | exists ((y) | F(x, y)))", edb);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+  auto y_domain = GetVariableDomain(ast, "y");
+
+  EXPECT_FALSE(x_domain.empty()) << "Variable x should have a domain";
+  EXPECT_FALSE(y_domain.empty()) << "Variable y should have a domain";
+
+  // Verify x has projection from F (index 0)
+  EXPECT_TRUE(HasTableProjection(x_domain, "F", 0)) << "x should have projection from F at index 0";
+
+  // Verify y has projection from F (index 1)
+  EXPECT_TRUE(HasTableProjection(y_domain, "F", 1)) << "y should have projection from F at index 1";
+}
+
+TEST(VariableDomainTest, CompositionWithDomainExtraction) {
+  // Test composition where x and y are free variables in the outer context
+  // They should have domains from the inner quantification
+  auto edb = rel2sql::relation_map::FromArityMap({{"R", 2}});
+  auto [ast, tree] = ProcessFormula("exists((z) | R(x,z) and R(z,y))", edb);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+  auto y_domain = GetVariableDomain(ast, "y");
+  auto z_domain = GetVariableDomain(ast, "z");
+
+  // x and y are free variables in the formula, so they might not have domains stored
+  // unless they're in a binding context. z is quantified away, so it should have a domain
+  // from the quantification, but it's removed from the outer safety set.
+
+  // z should have a domain from the quantification (before removal)
+  // Actually, z is quantified away, so it won't be in the final domain map
+  // But it should have been stored during the quantification visit
+  // The current implementation stores domains from the formula's safety before removing variables
+  // So z should have a domain
+  EXPECT_FALSE(z_domain.empty()) << "Variable z should have a domain from the quantification";
+}
+
+TEST(VariableDomainTest, MultipleBindingsForSameVariable) {
+  auto edb = rel2sql::relation_map::FromArityMap({{"F", 1}, {"G", 1}});
+  std::string input = "def R { [x in F]: G[x] }";
+
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(edb).Process(tree);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+
+  EXPECT_FALSE(x_domain.empty()) << "Variable x should have a domain";
+
+  // Verify domain contains projection from F (explicit)
+  EXPECT_TRUE(HasTableProjection(x_domain, "F", 0)) << "x should have projection from F (explicit domain)";
+
+  // Verify domain contains projection from G (from expression)
+  EXPECT_TRUE(HasTableProjection(x_domain, "G", 0)) << "x should have projection from G (from expression)";
+}
+
+TEST(VariableDomainTest, EmptyDomainForUnboundVariable) {
+  std::string input = "def R { x }";
+
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+
+  // x should not be in domain map (no binding context)
+  EXPECT_TRUE(x_domain.empty()) << "Variable x should not be in domain map (unbound)";
+}
+
+TEST(VariableDomainTest, NoDomainForQuantifiedVariable) {
+  auto [ast, tree] = ProcessFormula("exists ((x) | x > 5)");
+
+  auto x_domain = GetVariableDomain(ast, "x");
+
+  // x should not be in domain map since it's not bound by a relation
+  EXPECT_TRUE(x_domain.empty()) << "Variable x should not be in domain map (not bound by relation)";
+}
+
+TEST(VariableDomainTest, DomainMatchesSafetyAnalysis) {
+  auto edb = rel2sql::relation_map::FromArityMap({{"F", 1}, {"G", 1}});
+  auto [ast, tree] = ProcessFormula("exists ((x, y) | F(x) and G(y))", edb);
+
+  auto x_domain = GetVariableDomain(ast, "x");
+  auto y_domain = GetVariableDomain(ast, "y");
+
+  EXPECT_FALSE(x_domain.empty()) << "Variable x should have a domain";
+  EXPECT_FALSE(y_domain.empty()) << "Variable y should have a domain";
+
+  // Verify domains match what's in safety analysis
+  auto quant_ctx = dynamic_cast<psr::QuantificationContext*>(tree.get());
+  ASSERT_NE(quant_ctx, nullptr);
+
+  auto quant_node = ast.GetNode(quant_ctx);
+  auto formula_node = ast.GetNode(quant_ctx->formula());
+
+  // Extract domains from safety bounds
+  std::unordered_set<Projection> x_domain_from_safety;
+  std::unordered_set<Projection> y_domain_from_safety;
+
+  for (const auto& bound : formula_node->safety.bounds) {
+    for (size_t i = 0; i < bound.variables.size(); ++i) {
+      if (bound.variables[i] == "x") {
+        for (const auto& proj : bound.domain) {
+          if (i < proj.projected_indices.size()) {
+            std::vector<size_t> single_index = {proj.projected_indices[i]};
+            x_domain_from_safety.insert(Projection(single_index, proj.source));
+          }
+        }
+      } else if (bound.variables[i] == "y") {
+        for (const auto& proj : bound.domain) {
+          if (i < proj.projected_indices.size()) {
+            std::vector<size_t> single_index = {proj.projected_indices[i]};
+            y_domain_from_safety.insert(Projection(single_index, proj.source));
+          }
+        }
+      }
+    }
+  }
+
+  // Compare stored domains with safety analysis domains
+  EXPECT_EQ(x_domain.size(), x_domain_from_safety.size()) << "x domain size should match safety analysis";
+  EXPECT_EQ(y_domain.size(), y_domain_from_safety.size()) << "y domain size should match safety analysis";
+
+  // Verify x has projection from F
+  EXPECT_TRUE(HasTableProjection(x_domain, "F", 0)) << "x should have projection from F";
+
+  // Verify y has projection from G
+  EXPECT_TRUE(HasTableProjection(y_domain, "G", 0)) << "y should have projection from G";
+}
+
 }  // namespace rel2sql

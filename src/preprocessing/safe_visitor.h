@@ -74,6 +74,12 @@ class SafeVisitor : public BaseVisitor {
 
   std::any VisitDisjunction(psr::BinOpContext* ctx);
 
+  // Extract individual variable domains from a BoundSet and store them in RelAST
+  void ExtractAndStoreVariableDomains(const BoundSet& safety);
+
+  // Extract a single-variable projection from a multi-variable projection
+  Projection ExtractSingleVariableProjection(const Projection& proj, size_t variable_index) const;
+
   std::string current_relation_;
 };
 

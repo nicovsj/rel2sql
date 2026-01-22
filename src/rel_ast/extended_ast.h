@@ -5,6 +5,8 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "rel_ast/bound_set.h"
@@ -154,6 +156,12 @@ class RelAST {
   // Compute and store the topological sort of the dependency graph
   void ComputeTopologicalSort();
 
+  // Get the domain (set of projections) for a variable
+  std::unordered_set<Projection> GetVariableDomain(const std::string& var) const;
+
+  // Add or update the domain for a variable (union with existing domain)
+  void AddVariableDomain(const std::string& var, const std::unordered_set<Projection>& domain);
+
  private:
   // The root context of the parse tree
   antlr4::ParserRuleContext* root_;
@@ -178,6 +186,9 @@ class RelAST {
 
   // Topological sort of the dependency graph of IDs
   std::vector<std::string> sorted_ids_;
+
+  // Map from variable names to their valid domains (set of projections)
+  std::unordered_map<std::string, std::unordered_set<Projection>> variable_domains_;
 };
 
 const std::map<std::string, sql::ast::AggregateFunction> AGGREGATE_MAP = {

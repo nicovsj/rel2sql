@@ -146,11 +146,28 @@ std::any SafeVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
   auto expr_node = GetNode(ctx->expr());
 
   std::vector<std::string> variables;
+  // Also handle explicit domain bindings (e.g., x in R)
   for (auto& binding : ctx->bindingInner()->binding()) {
     variables.push_back(binding->id->getText());
+
+    // If binding has an explicit domain, store it
+    if (binding->id_domain) {
+      std::string var_name = binding->id->getText();
+      std::string domain_name = binding->id_domain->getText();
+      int domain_arity = ast_->GetArity(domain_name);
+
+      auto table_source = TableSource(domain_name, domain_arity);
+      auto projection = Projection(table_source);
+
+      std::unordered_set<Projection> explicit_domain = {projection};
+      ast_->AddVariableDomain(var_name, explicit_domain);
+    }
   }
 
   current_node->safety = expr_node->safety.WithRemovedVariables(variables);
+
+  // Extract and store variable domains from the expression's safety
+  ExtractAndStoreVariableDomains(expr_node->safety);
 
   return {};
 }
@@ -164,11 +181,28 @@ std::any SafeVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
 
   std::vector<std::string> variables;
 
+  // Also handle explicit domain bindings (e.g., x in R)
   for (auto& binding : ctx->bindingInner()->binding()) {
     variables.push_back(binding->id->getText());
+
+    // If binding has an explicit domain, store it
+    if (binding->id_domain) {
+      std::string var_name = binding->id->getText();
+      std::string domain_name = binding->id_domain->getText();
+      int domain_arity = ast_->GetArity(domain_name);
+
+      auto table_source = TableSource(domain_name, domain_arity);
+      auto projection = Projection(table_source);
+
+      std::unordered_set<Projection> explicit_domain = {projection};
+      ast_->AddVariableDomain(var_name, explicit_domain);
+    }
   }
 
   current_node->safety = formula_node->safety.WithRemovedVariables(variables);
+
+  // Extract and store variable domains from the formula's safety
+  ExtractAndStoreVariableDomains(formula_node->safety);
 
   return {};
 }
@@ -391,11 +425,28 @@ std::any SafeVisitor::visitQuantification(psr::QuantificationContext* ctx) {
   auto formula_node = GetNode(ctx->formula());
 
   std::vector<std::string> variables;
+  // Also handle explicit domain bindings (e.g., x in R)
   for (auto& binding : ctx->bindingInner()->binding()) {
     variables.push_back(binding->id->getText());
+
+    // If binding has an explicit domain, store it
+    if (binding->id_domain) {
+      std::string var_name = binding->id->getText();
+      std::string domain_name = binding->id_domain->getText();
+      int domain_arity = ast_->GetArity(domain_name);
+
+      auto table_source = TableSource(domain_name, domain_arity);
+      auto projection = Projection(table_source);
+
+      std::unordered_set<Projection> explicit_domain = {projection};
+      ast_->AddVariableDomain(var_name, explicit_domain);
+    }
   }
 
   current_node->safety = formula_node->safety.WithRemovedVariables(variables);
+
+  // Extract and store variable domains from the formula's safety
+  ExtractAndStoreVariableDomains(formula_node->safety);
 
   return {};
 }
@@ -465,5 +516,33 @@ std::any SafeVisitor::visitApplParam(psr::ApplParamContext* ctx) {
   return {};
 }
 
+Projection SafeVisitor::ExtractSingleVariableProjection(const Projection& proj, size_t variable_index) const {
+  if (variable_index >= proj.projected_indices.size()) {
+    throw std::runtime_error("Variable index out of bounds");
+  }
+  std::vector<size_t> single_index = {proj.projected_indices[variable_index]};
+  return Projection(single_index, proj.source);
+}
+
+void SafeVisitor::ExtractAndStoreVariableDomains(const BoundSet& safety) {
+  // For each Bound in the safety set
+  for (const auto& bound : safety.bounds) {
+    // For each variable in the Bound's variable list
+    for (size_t var_index = 0; var_index < bound.variables.size(); ++var_index) {
+      const std::string& var = bound.variables[var_index];
+      std::unordered_set<Projection> var_domain;
+
+      // For each projection in the Bound's domain
+      for (const auto& proj : bound.domain) {
+        // Extract a single-variable projection for this variable's position
+        Projection single_var_proj = ExtractSingleVariableProjection(proj, var_index);
+        var_domain.insert(single_var_proj);
+      }
+
+      // Add the domain to the global map (union with existing)
+      ast_->AddVariableDomain(var, var_domain);
+    }
+  }
+}
 
 }  // namespace rel2sql
