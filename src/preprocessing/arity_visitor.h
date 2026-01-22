@@ -25,7 +25,7 @@ class ArityVisitor : public BaseVisitor {
 
   std::any visitLitExpr(psr::LitExprContext* ctx) override;
 
-  std::any visitIDExpr(psr::IDExprContext* ctx) override;
+  std::any visitTermExpr(psr::TermExprContext* ctx) override;
 
   std::any visitProductExpr(psr::ProductExprContext* ctx) override;
 
@@ -60,6 +60,16 @@ class ArityVisitor : public BaseVisitor {
   std::any visitApplBase(psr::ApplBaseContext* ctx) override;
 
   std::any visitApplParams(psr::ApplParamsContext* ctx) override;
+
+  // Term branches
+
+  std::any visitNumTerm(psr::NumTermContext* ctx) override;
+
+  std::any visitOpTerm(psr::OpTermContext* ctx) override;
+
+  std::any visitIDTerm(psr::IDTermContext* ctx) override;
+
+  std::any visitParenthesisTerm(psr::ParenthesisTermContext* ctx) override;
 };
 
 }  // namespace rel2sql

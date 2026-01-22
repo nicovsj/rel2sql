@@ -31,7 +31,7 @@ class TreeStructureVisitor : public BaseVisitor {
 
   // Override all expression, formula, and term types
   std::any visitLitExpr(psr::LitExprContext* ctx) override;
-  std::any visitIDExpr(psr::IDExprContext* ctx) override;
+  std::any visitTermExpr(psr::TermExprContext* ctx) override;
   std::any visitProductExpr(psr::ProductExprContext* ctx) override;
   std::any visitConditionExpr(psr::ConditionExprContext* ctx) override;
   std::any visitRelAbsExpr(psr::RelAbsExprContext* ctx) override;
@@ -48,6 +48,7 @@ class TreeStructureVisitor : public BaseVisitor {
   std::any visitIDTerm(psr::IDTermContext* ctx) override;
   std::any visitNumTerm(psr::NumTermContext* ctx) override;
   std::any visitOpTerm(psr::OpTermContext* ctx) override;
+  std::any visitParenthesisTerm(psr::ParenthesisTermContext* ctx) override;
 
  private:
   // Helper method to populate children for a context

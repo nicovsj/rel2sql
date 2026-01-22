@@ -26,7 +26,11 @@ BoundSet FixpointSafetyVisitor::ExtractPlaceholderSafety(psr::FullApplContext* c
     visit(param);
     auto node = GetNode(param);
 
-    if (!dynamic_cast<psr::IDExprContext*>(param->expr())) continue;
+    // Check if the parameter is a variable
+    auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
+    if (!term_expr_ctx) continue;
+    auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
+    if (!id_term_ctx) continue;
     if (node->variables.size() != 1) continue;
 
     auto variable = *node->variables.begin();

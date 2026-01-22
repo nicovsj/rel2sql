@@ -142,7 +142,10 @@ std::any LiteralVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
   return {};
 }
 
-std::any LiteralVisitor::visitIDExpr(psr::IDExprContext* _) { return {}; }
+std::any LiteralVisitor::visitTermExpr(psr::TermExprContext* ctx) {
+  visit(ctx->term());
+  return {};
+}
 
 std::any LiteralVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
   visit(ctx->productInner());

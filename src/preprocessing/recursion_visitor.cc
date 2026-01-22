@@ -361,11 +361,14 @@ bool RecursionVisitor::CheckExistsPattern(psr::QuantificationContext* quant_ctx,
     std::set<std::string> w_vars;
     for (auto& param : q_call->applParams()->applParam()) {
       if (param->expr()) {
-        auto id_expr = dynamic_cast<psr::IDExprContext*>(param->expr());
-        if (id_expr) {
-          std::string var = id_expr->T_ID()->getText();
-          if (ast_->IsVar(var)) {
-            w_vars.insert(var);
+        auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
+        if (term_expr_ctx) {
+          auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
+          if (id_term_ctx) {
+            std::string var = id_term_ctx->T_ID()->getText();
+            if (ast_->IsVar(var)) {
+              w_vars.insert(var);
+            }
           }
         }
       }

@@ -42,7 +42,7 @@ class SQLVisitor : public BaseVisitor {
 
   std::any visitLitExpr(psr::LitExprContext* ctx) override;
 
-  std::any visitIDExpr(psr::IDExprContext* ctx) override;
+  std::any visitTermExpr(psr::TermExprContext* ctx) override;
 
   std::any visitProductExpr(psr::ProductExprContext* ctx) override;
 

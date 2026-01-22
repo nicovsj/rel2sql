@@ -65,15 +65,13 @@ std::any VariablesVisitor::visitOpTerm(psr::OpTermContext* ctx) {
   return {};
 }
 
-std::any VariablesVisitor::visitIDExpr(psr::IDExprContext* ctx) {
+std::any VariablesVisitor::visitTermExpr(psr::TermExprContext* ctx) {
+  visit(ctx->term());
   auto node = GetNode(ctx);
+  auto term_node = GetNode(ctx->term());
 
-  std::string id = ctx->T_ID()->getText();
-
-  if (ast_->IsVar(id)) {
-    node->free_variables.insert(id);
-    node->variables.insert(id);
-  }
+  node->variables = term_node->variables;
+  node->free_variables = term_node->free_variables;
 
   return {};
 }

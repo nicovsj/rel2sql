@@ -88,9 +88,9 @@ std::any SafeVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
   return {};
 }
 
-std::any SafeVisitor::visitIDExpr(psr::IDExprContext* ctx) {
-  GetNode(ctx)->safety = {};
-
+std::any SafeVisitor::visitTermExpr(psr::TermExprContext* ctx) {
+  visit(ctx->term());
+  GetNode(ctx)->safety = GetNode(ctx->term())->safety;
   return {};
 }
 
@@ -199,7 +199,10 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
       visit(param);
 
       auto node = GetNode(param);
-      if (!dynamic_cast<psr::IDExprContext*>(param->expr())) continue;
+      auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
+      if (!term_expr_ctx) continue;
+      auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
+      if (!id_term_ctx) continue;
       if (node->variables.size() != 1) continue;
 
       auto variable = *node->variables.begin();
@@ -230,7 +233,10 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
       auto param = ctx->applParams()->applParam()[i];
       visit(param);
       auto node = GetNode(param);
-      if (!dynamic_cast<psr::IDExprContext*>(param->expr())) continue;
+      auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
+      if (!term_expr_ctx) continue;
+      auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
+      if (!id_term_ctx) continue;
       if (node->variables.size() != 1) continue;
       auto variable = *node->variables.begin();
 
@@ -271,7 +277,10 @@ std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
       auto param = ctx->applParams()->applParam()[i];
       visit(param);
       auto node = GetNode(param);
-      if (!dynamic_cast<psr::IDExprContext*>(param->expr())) continue;
+      auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
+      if (!term_expr_ctx) continue;
+      auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
+      if (!id_term_ctx) continue;
       if (node->variables.size() != 1) continue;
       auto variable = *node->variables.begin();
 
@@ -303,7 +312,10 @@ void SafeVisitor::ComputeFullApplicationOnIDSafety(psr::FullApplContext* ctx, co
     visit(param);
     auto node = GetNode(param);
 
-    if (!dynamic_cast<psr::IDExprContext*>(param->expr())) continue;
+    auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
+    if (!term_expr_ctx) continue;
+    auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
+    if (!id_term_ctx) continue;
     if (node->variables.size() != 1) continue;
 
     auto variable = *node->variables.begin();

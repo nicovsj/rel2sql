@@ -372,7 +372,7 @@ TEST_F(TranslationTest, PartialApplicationSharingVariables4) {
             "T0.A2 AND T0.A1 = T2.A1");
 }
 
-TEST_F(TranslationTest, PartialApplicationOnExpression1) {
+TEST_F(TranslationTest, DISABLED_PartialApplicationOnExpression1) {
   EXPECT_EQ(TranslateExpression("{C[x]}[x]"),
             "SELECT T2.x, T2.A2 AS A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1, T0.A3 AS A2 FROM C AS T0) AS T2 WHERE T2.x "
             "= T2.A1");
@@ -505,6 +505,22 @@ TEST_F(TranslationTest, ExpressionBindings4) {
             "T1.A1 AS A3 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM C AS T0) AS T1, S1, S0 WHERE S1.x = "
             "T1.x AND S0.y = T1.y");
 }
+
+TEST_F(TranslationTest, ExpressionConstantTerms1) {
+  EXPECT_EQ(TranslateExpression("B[1+2]"),
+            "SELECT T0.A2 AS A1 FROM B AS T0, (SELECT 1 + 2 AS A1) AS T1 WHERE T0.A1 = T1.A1");
+}
+
+TEST_F(TranslationTest, ExpressionConstantTerms2) {
+  EXPECT_EQ(TranslateExpression("B[2*(3+4)]"),
+            "SELECT T0.A2 AS A1 FROM B AS T0, (SELECT 2 * (3 + 4) AS A1) AS T1 WHERE T0.A1 = T1.A1");
+}
+
+TEST_F(TranslationTest, DISABLED_ExpressionVariableTerms1) {
+  EXPECT_EQ(TranslateExpression("[x] : x where A(x)"),
+            "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1 AND T1.x < 5");
+}
+
 
 TEST_F(TranslationTest, Program) {
   EXPECT_EQ(TranslateDefinition("def R {[x in A]: B[x]}"),

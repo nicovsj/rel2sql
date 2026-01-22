@@ -28,7 +28,7 @@ class VariablesVisitor : public BaseVisitor {
 
   // Expression branches
 
-  std::any visitIDExpr(psr::IDExprContext* ctx) override;
+  std::any visitTermExpr(psr::TermExprContext* ctx) override;
 
   std::any visitProductExpr(psr::ProductExprContext* ctx) override;
 

@@ -80,7 +80,7 @@ std::any TreeStructureVisitor::visitLitExpr(psr::LitExprContext* ctx) {
   return {};
 }
 
-std::any TreeStructureVisitor::visitIDExpr(psr::IDExprContext* ctx) {
+std::any TreeStructureVisitor::visitTermExpr(psr::TermExprContext* ctx) {
   visitChildren(ctx);
   PopulateChildren(ctx);
   return {};
@@ -179,6 +179,12 @@ std::any TreeStructureVisitor::visitNumTerm(psr::NumTermContext* ctx) {
 }
 
 std::any TreeStructureVisitor::visitOpTerm(psr::OpTermContext* ctx) {
+  visitChildren(ctx);
+  PopulateChildren(ctx);
+  return {};
+}
+
+std::any TreeStructureVisitor::visitParenthesisTerm(psr::ParenthesisTermContext* ctx) {
   visitChildren(ctx);
   PopulateChildren(ctx);
   return {};

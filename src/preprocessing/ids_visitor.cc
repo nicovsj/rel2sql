@@ -96,12 +96,9 @@ std::any IDsVisitor::visitParenthesisTerm(psr::ParenthesisTermContext* ctx) {
 
 std::any IDsVisitor::visitLitExpr(psr::LitExprContext* _) { return StringSet{}; }
 
-std::any IDsVisitor::visitIDExpr(psr::IDExprContext* ctx) {
-  std::string id = ctx->T_ID()->getText();
-
-  ast_->AddVar(id);
-
-  return StringSet{id};
+std::any IDsVisitor::visitTermExpr(psr::TermExprContext* ctx) {
+  // If the term contains an identifier, it will be handled by visitIDTerm
+  return visit(ctx->term());
 }
 
 std::any IDsVisitor::visitProductExpr(psr::ProductExprContext* ctx) {

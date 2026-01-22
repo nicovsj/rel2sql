@@ -15,10 +15,14 @@ std::shared_ptr<sql::ast::Sourceable> SQLVisitor::TryGetTopLevelIDSelect(psr::Re
   if (ctx->expr().size() != 1) return nullptr;
 
   auto single_expr_ctx = ctx->expr()[0];
-  auto id_expr_ctx = dynamic_cast<psr::IDExprContext*>(single_expr_ctx);
-  if (!id_expr_ctx) return nullptr;
+  auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(single_expr_ctx);
+  if (!term_expr_ctx) return nullptr;
 
-  auto expr = GetExpressionFromID(id_expr_ctx, id_expr_ctx->T_ID()->getText(), true);
+  auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
+  if (!id_term_ctx) return nullptr;
+
+  std::string id = id_term_ctx->T_ID()->getText();
+  auto expr = GetExpressionFromID(term_expr_ctx, id, true);
   return std::dynamic_pointer_cast<sql::ast::Sourceable>(expr);
 }
 
@@ -226,13 +230,51 @@ std::any SQLVisitor::visitLitExpr(psr::LitExprContext* ctx) {
   return std::static_pointer_cast<sql::ast::Expression>(select_statement);
 }
 
-std::any SQLVisitor::visitIDExpr(psr::IDExprContext* ctx) {
+std::any SQLVisitor::visitTermExpr(psr::TermExprContext* ctx) {
   /*
-   * Generates an SQL query from the identifier expression.
+   * Generates an SQL query from the term expression.
+   * Handles both constant terms and identifier terms (which may be relation names).
    */
-  std::string id = ctx->T_ID()->getText();
 
-  return GetExpressionFromID(ctx, id);
+  // Check if the term is an identifier term
+  auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(ctx->term());
+  if (id_term_ctx) {
+    std::string id = id_term_ctx->T_ID()->getText();
+    auto node = GetNode(ctx);
+
+    // Check if it's a variable (should reject for now)
+    if (node->variables.find(id) != node->variables.end()) {
+      throw VariableException("Terms with variables are not yet supported in expressions");
+    }
+
+    // Check if it's a relation name
+    if (ast_->GetRelationInfo(id) != std::nullopt) {
+      // Treat as relation lookup (like old IDExpr behavior)
+      return GetExpressionFromID(ctx, id);
+    }
+
+    // If it's neither a variable nor a relation, it shouldn't happen in expression context
+    throw InternalException("Identifier term in expression context is neither a variable nor a relation");
+  }
+
+  // For non-identifier terms (numeric constants, operations, etc.)
+  // Check if term has free variables (only constant terms allowed for now)
+  auto node = GetNode(ctx);
+  if (!node->free_variables.empty()) {
+    throw VariableException("Terms with variables are not yet supported in expressions");
+  }
+
+  // Visit the term to get a SQL Term
+  auto term = std::any_cast<std::shared_ptr<sql::ast::Term>>(visit(ctx->term()));
+
+  // Wrap the term in TermSelectable with alias "A1"
+  auto selectable = std::make_shared<sql::ast::TermSelectable>(term, "A1");
+
+  // Create SelectStatement with the term selectable
+  auto select_statement =
+      std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable});
+
+  return std::static_pointer_cast<sql::ast::Expression>(select_statement);
 }
 
 std::any SQLVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
@@ -1864,8 +1906,10 @@ SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext* base,
     if (param->T_UNDERSCORE()) continue;
 
     // Check if the parameter is a variable before visiting it
-    if (dynamic_cast<psr::IDExprContext*>(param->expr())) {
-      if (param_node->variables.size() == 1) {
+    auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
+    if (term_expr_ctx) {
+      auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
+      if (id_term_ctx && param_node->variables.size() == 1) {
         // This is a variable parameter - create Column directly
         auto variable = *param_node->variables.begin();
         auto variable_sql = std::make_shared<sql::ast::Column>(variable);

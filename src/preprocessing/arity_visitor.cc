@@ -90,16 +90,9 @@ std::any ArityVisitor::visitLitExpr(psr::LitExprContext* ctx) {
   return {};
 }
 
-std::any ArityVisitor::visitIDExpr(psr::IDExprContext* ctx) {
-  std::string id = ctx->T_ID()->getText();
-
-  if (auto found = ast_->GetRelationInfo(id); found != std::nullopt) {
-    GetNode(ctx)->arity = found->arity;
-  } else {
-    // If a relation is not found, it might be a variable
-    GetNode(ctx)->arity = 1;
-  }
-
+std::any ArityVisitor::visitTermExpr(psr::TermExprContext* ctx) {
+  visit(ctx->term());
+  GetNode(ctx)->arity = GetNode(ctx->term())->arity;
   return {};
 }
 
@@ -268,6 +261,35 @@ std::any ArityVisitor::visitApplParams(psr::ApplParamsContext* ctx) {
     node->arity += GetNode(child)->arity;
   }
 
+  return {};
+}
+
+std::any ArityVisitor::visitNumTerm(psr::NumTermContext* ctx) {
+  GetNode(ctx)->arity = 1;
+  return {};
+}
+
+std::any ArityVisitor::visitOpTerm(psr::OpTermContext* ctx) {
+  GetNode(ctx)->arity = 1;
+  return {};
+}
+
+std::any ArityVisitor::visitIDTerm(psr::IDTermContext* ctx) {
+  std::string id = ctx->T_ID()->getText();
+
+  if (auto found = ast_->GetRelationInfo(id); found != std::nullopt) {
+    GetNode(ctx)->arity = found->arity;
+  } else {
+    // If a relation is not found, it might be a variable
+    GetNode(ctx)->arity = 1;
+  }
+
+  return {};
+}
+
+std::any ArityVisitor::visitParenthesisTerm(psr::ParenthesisTermContext* ctx) {
+  visit(ctx->term());
+  GetNode(ctx)->arity = GetNode(ctx->term())->arity;
   return {};
 }
 

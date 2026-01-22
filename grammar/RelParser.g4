@@ -72,8 +72,8 @@ term:
 // The order of the rules below matters for precedence.
 expr:
 	literal								# litExpr
-	| T_ID								# IDExpr
 	| '(' productInner ')'				# productExpr
+	| term								# termExpr
 	| lhs = expr 'where' rhs = formula	# conditionExpr
 	| relAbs							# relAbsExpr
 	| formula							# formulaExpr
@@ -81,8 +81,8 @@ expr:
 	| '(' bindingInner ')' ':' formula	# bindingsFormula
 	| applBase '[' applParams ']'		# partialAppl;
 
-// Formula with operator precedence: not > and > or
-// Order matters: atomic formulas first, then not, then and, then or
+// Formula with operator precedence: not > and > or Order matters: atomic formulas first, then not,
+// then and, then or
 formula:
 	'{' ('(' ')')? '}'											# formulaBool
 	| applBase '(' applParams? ')'								# FullAppl
