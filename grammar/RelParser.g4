@@ -53,7 +53,7 @@ productInner: (exprs = expr (',' exprs = expr)*)?;
 
 relAbs: '{' (exprs = expr (';' exprs = expr)*)? '}';
 
-operator: T_OP_PLUS | T_OP_MINUS | T_OP_MULT | T_OP_DIV;
+arithmeticOperator: T_OP_PLUS | T_OP_MINUS | T_OP_MULT | T_OP_DIV;
 
 comparator: T_OP_COMP | T_OP_NEQ | T_OP_EQ;
 
@@ -66,7 +66,7 @@ numericalConstant:
 term:
 	T_ID								# IDTerm
 	| numericalConstant					# numTerm
-	| lhs = term operator rhs = term	# opTerm
+	| lhs = term arithmeticOperator rhs = term	# opTerm
 	| '(' term ')'						# parenthesisTerm;
 
 // The order of the rules below matters for precedence.

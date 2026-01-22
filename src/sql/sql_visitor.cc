@@ -1019,7 +1019,7 @@ std::any SQLVisitor::visitOpTerm(psr::OpTermContext* ctx) {
   auto rhs_term = std::any_cast<std::shared_ptr<sql::ast::Term>>(visit(ctx->rhs));
 
   return std::static_pointer_cast<sql::ast::Term>(
-      std::make_shared<sql::ast::Operation>(lhs_term, rhs_term, ctx->operator_()->getText()));
+      std::make_shared<sql::ast::Operation>(lhs_term, rhs_term, ctx->arithmeticOperator()->getText()));
 }
 
 std::any SQLVisitor::visitParenthesisTerm(psr::ParenthesisTermContext* ctx) {
