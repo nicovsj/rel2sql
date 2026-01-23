@@ -17,7 +17,7 @@ TEST_F(SqlParserTest, ParseSimpleSelect) {
 
   ASSERT_NE(expr, nullptr);
 
-  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(expr);
   ASSERT_NE(select, nullptr);
   EXPECT_FALSE(select->is_distinct);
   EXPECT_EQ(select->columns.size(), 1);
@@ -29,7 +29,7 @@ TEST_F(SqlParserTest, ParseSelectWithColumns) {
 
   ASSERT_NE(expr, nullptr);
 
-  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(expr);
   ASSERT_NE(select, nullptr);
   EXPECT_EQ(select->columns.size(), 2);
 }
@@ -40,7 +40,7 @@ TEST_F(SqlParserTest, ParseSelectWithWhere) {
 
   ASSERT_NE(expr, nullptr);
 
-  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(expr);
   ASSERT_NE(select, nullptr);
   ASSERT_TRUE(select->from.has_value());
   ASSERT_TRUE(select->from.value()->where.has_value());
@@ -52,7 +52,7 @@ TEST_F(SqlParserTest, ParseSelectWithAlias) {
 
   ASSERT_NE(expr, nullptr);
 
-  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(expr);
   ASSERT_NE(select, nullptr);
   EXPECT_EQ(select->columns.size(), 2);
 }
@@ -63,7 +63,7 @@ TEST_F(SqlParserTest, ParseSelectDistinct) {
 
   ASSERT_NE(expr, nullptr);
 
-  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(expr);
   ASSERT_NE(select, nullptr);
   EXPECT_TRUE(select->is_distinct);
 }
@@ -74,7 +74,7 @@ TEST_F(SqlParserTest, ParseSelectWithConstants) {
 
   ASSERT_NE(expr, nullptr);
 
-  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(expr);
   ASSERT_NE(select, nullptr);
   EXPECT_EQ(select->columns.size(), 3);
 }
@@ -85,7 +85,7 @@ TEST_F(SqlParserTest, ParseSelectWithGroupBy) {
 
   ASSERT_NE(expr, nullptr);
 
-  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(expr);
   ASSERT_NE(select, nullptr);
   ASSERT_TRUE(select->group_by.has_value());
 }
@@ -108,7 +108,7 @@ TEST_F(SqlParserTest, ParseWithCTE) {
 
   ASSERT_NE(expr, nullptr);
 
-  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(expr);
   ASSERT_NE(select, nullptr);
   EXPECT_FALSE(select->ctes.empty());
 }
@@ -119,7 +119,7 @@ TEST_F(SqlParserTest, ParseWithRecursiveCTE) {
 
   ASSERT_NE(expr, nullptr);
 
-  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(expr);
   ASSERT_NE(select, nullptr);
   ASSERT_FALSE(select->ctes.empty());
   EXPECT_TRUE(select->ctes_are_recursive);
@@ -137,7 +137,7 @@ TEST_F(SqlParserTest, ParseWithRecursiveMultipleCTEs) {
 
   ASSERT_NE(expr, nullptr);
 
-  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(expr);
   ASSERT_NE(select, nullptr);
   ASSERT_FALSE(select->ctes.empty());
   ASSERT_EQ(select->ctes.size(), 2);
@@ -262,7 +262,7 @@ TEST_F(SqlParserTest, ParseValuesSourceWithColumnList) {
 
   ASSERT_NE(expr, nullptr);
 
-  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(expr);
   ASSERT_NE(select, nullptr);
   ASSERT_TRUE(select->from.has_value());
   EXPECT_EQ(select->from.value()->sources.size(), 1);
@@ -281,7 +281,7 @@ TEST_F(SqlParserTest, ParseSubquerySourceWithColumnList) {
 
   ASSERT_NE(expr, nullptr);
 
-  auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr);
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(expr);
   ASSERT_NE(select, nullptr);
   ASSERT_TRUE(select->from.has_value());
   EXPECT_EQ(select->from.value()->sources.size(), 1);

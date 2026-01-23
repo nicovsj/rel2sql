@@ -7,26 +7,26 @@
 namespace rel2sql {
 namespace sql::ast {
 
-void SelfJoinOptimizer::Visit(SelectStatement& select_statement) {
+void SelfJoinOptimizer::Visit(Select& select) {
   // First navigate depth-first through possible subqueries in FROM statements
-  if (select_statement.from.has_value()) {
-    for (auto& source : select_statement.from.value()->sources) {
+  if (select.from.has_value()) {
+    for (auto& source : select.from.value()->sources) {
       Visit(*source);
     }
   }
   // Then try to eliminate redundant self-joins
-  EliminateRedundantSelfJoins(select_statement);
+  EliminateRedundantSelfJoins(select);
 }
 
-bool SelfJoinOptimizer::EliminateRedundantSelfJoins(SelectStatement& select_statement) {
-  if (!select_statement.from.has_value()) {
+bool SelfJoinOptimizer::EliminateRedundantSelfJoins(Select& select) {
+  if (!select.from.has_value()) {
     return false;
   }
 
-  auto& from_statement = *select_statement.from.value();
+  auto& from_statement = *select.from.value();
   bool simplified = false;
 
-  auto grouped_sources = GroupSourcesByIdentifier(from_statement.sources, select_statement);
+  auto grouped_sources = GroupSourcesByIdentifier(from_statement.sources, select);
 
   // Check for complete self-join in WHERE clause
   if (!from_statement.where.has_value()) return false;
@@ -52,14 +52,14 @@ bool SelfJoinOptimizer::EliminateRedundantSelfJoins(SelectStatement& select_stat
     for (auto source_pair : source_pairs) {
       // Check if this source pair forms a self join in the query
       // IsSelfJoin checks if source2 can be eliminated, so we try both directions
-      if (IsSelfJoin(source_pair, equivalence_classes, select_statement)) {
+      if (IsSelfJoin(source_pair, equivalence_classes, select)) {
         SourceReplacer replacer(source_pair.second->Alias(), source_pair.first);
         base_expr_->Accept(replacer);
         simplified = true;
       } else {
         // Try the reverse: swap sources and check if source1 can be eliminated
         std::swap(source_pair.first, source_pair.second);
-        if (IsSelfJoin(source_pair, equivalence_classes, select_statement)) {
+        if (IsSelfJoin(source_pair, equivalence_classes, select)) {
           // Now source_pair.second is the original source_pair.first, which can be eliminated
           SourceReplacer replacer(source_pair.second->Alias(), source_pair.first);
           base_expr_->Accept(replacer);
@@ -76,7 +76,7 @@ bool SelfJoinOptimizer::EliminateRedundantSelfJoins(SelectStatement& select_stat
 }
 
 SelfJoinOptimizer::SourcesByIdentifier SelfJoinOptimizer::GroupSourcesByIdentifier(
-    const std::vector<std::shared_ptr<Source>>& sources, const SelectStatement& select_stmt) {
+    const std::vector<std::shared_ptr<Source>>& sources, const Select& select) {
   SourcesByIdentifier grouped_sources;
 
   for (const auto& source : sources) {
@@ -90,7 +90,7 @@ SelfJoinOptimizer::SourcesByIdentifier SelfJoinOptimizer::GroupSourcesByIdentifi
       std::string source_alias = source->Alias();
       std::shared_ptr<Source> matching_cte = nullptr;
 
-      for (const auto& cte : select_stmt.ctes) {
+      for (const auto& cte : select.ctes) {
         if (cte->Alias() == source_alias && cte->IsCTE()) {
           matching_cte = cte;
           break;
@@ -189,12 +189,12 @@ SelfJoinOptimizer::EquivalenceClassesMap SelfJoinOptimizer::ComputeColumnEquival
   return result;
 }
 
-std::unordered_set<std::string> SelfJoinOptimizer::CollectReferencedColumns(const SelectStatement& select_stmt,
+std::unordered_set<std::string> SelfJoinOptimizer::CollectReferencedColumns(const Select& select,
                                                                              const std::string& source_alias) {
   std::unordered_set<std::string> referenced;
 
   // Collect from SELECT clause
-  for (const auto& selectable : select_stmt.columns) {
+  for (const auto& selectable : select.columns) {
     if (auto term_selectable = std::dynamic_pointer_cast<TermSelectable>(selectable)) {
       CollectColumnsFromTerm(term_selectable->term, source_alias, referenced);
     }
@@ -203,13 +203,13 @@ std::unordered_set<std::string> SelfJoinOptimizer::CollectReferencedColumns(cons
   }
 
   // Collect from WHERE clause
-  if (select_stmt.from.has_value() && select_stmt.from.value()->where.has_value()) {
-    CollectColumnsFromConditionRecursive(select_stmt.from.value()->where.value(), source_alias, referenced);
+  if (select.from.has_value() && select.from.value()->where.has_value()) {
+    CollectColumnsFromConditionRecursive(select.from.value()->where.value(), source_alias, referenced);
   }
 
   // Collect from GROUP BY clause if present
-  if (select_stmt.group_by.has_value()) {
-    for (const auto& group_item : select_stmt.group_by.value()->columns) {
+  if (select.group_by.has_value()) {
+    for (const auto& group_item : select.group_by.value()->columns) {
       if (auto term_selectable = std::dynamic_pointer_cast<TermSelectable>(group_item)) {
         CollectColumnsFromTerm(term_selectable->term, source_alias, referenced);
       }
@@ -296,7 +296,7 @@ void SelfJoinOptimizer::CollectColumnsFromConditionRecursive(const std::shared_p
 }
 
 bool SelfJoinOptimizer::IsSelfJoin(const SourcePair& source_pair, const EquivalenceClassesMap& eq_class_map,
-                                    const SelectStatement& select_stmt) {
+                                    const Select& select) {
   // Check if both sources are tables
   auto table1 = std::dynamic_pointer_cast<Table>(source_pair.first->sourceable);
   auto table2 = std::dynamic_pointer_cast<Table>(source_pair.second->sourceable);
@@ -310,7 +310,7 @@ bool SelfJoinOptimizer::IsSelfJoin(const SourcePair& source_pair, const Equivale
     std::string alias1 = source_pair.first->Alias();
     std::string alias2 = source_pair.second->Alias();
 
-    for (const auto& cte : select_stmt.ctes) {
+    for (const auto& cte : select.ctes) {
       if (cte->Alias() == alias1 && cte->IsCTE()) {
         cte1 = cte;
       }
@@ -332,7 +332,7 @@ bool SelfJoinOptimizer::IsSelfJoin(const SourcePair& source_pair, const Equivale
   // For CTEs: check if they reference the same CTE definition and have same arity
   if (both_ctes) {
     // Check arity - get number of columns from the CTE definition
-    auto cte_select = std::dynamic_pointer_cast<SelectStatement>(cte1->sourceable);
+    auto cte_select = std::dynamic_pointer_cast<Select>(cte1->sourceable);
     if (!cte_select) return false;
 
     // For CTE references, arity is determined by the CTE definition's columns
@@ -344,8 +344,8 @@ bool SelfJoinOptimizer::IsSelfJoin(const SourcePair& source_pair, const Equivale
   std::string source2_alias = source_pair.second->Alias();
 
   // Collect columns referenced from each source
-  auto source1_refs = CollectReferencedColumns(select_stmt, source1_alias);
-  auto source2_refs = CollectReferencedColumns(select_stmt, source2_alias);
+  auto source1_refs = CollectReferencedColumns(select, source1_alias);
+  auto source2_refs = CollectReferencedColumns(select, source2_alias);
 
   // The caller always eliminates source2 (source_pair.second), so we need to check
   // if source2 can be safely eliminated by checking if all its referenced columns

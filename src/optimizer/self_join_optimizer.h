@@ -13,7 +13,7 @@ class SelfJoinOptimizer : public BaseOptimizer {
  public:
   using BaseOptimizer::Visit;
 
-  void Visit(SelectStatement& select_statement) override;
+  void Visit(Select& select) override;
 
  private:
   // Type alias for sources grouped by identifier (table name for tables, sourceable pointer for CTEs)
@@ -41,10 +41,10 @@ class SelfJoinOptimizer : public BaseOptimizer {
     std::unordered_map<size_t, std::unordered_set<ColumnId, ColumnIdHash>> class_to_columns;
   };
 
-  bool EliminateRedundantSelfJoins(SelectStatement& select_statement);
+  bool EliminateRedundantSelfJoins(Select& select);
 
   SourcesByIdentifier GroupSourcesByIdentifier(const std::vector<std::shared_ptr<Source>>& sources,
-                                                const SelectStatement& select_stmt);
+                                                const Select& select);
 
   /**
    * Generates all possible pairs from a vector of candidate sources.
@@ -68,21 +68,21 @@ class SelfJoinOptimizer : public BaseOptimizer {
    *
    * @param source_pair The source pair to check
    * @param eq_class_map The computed equivalence classes map
-   * @param select_stmt The SELECT statement to analyze for column references
+   * @param select The SELECT statement to analyze for column references
    * @return true if the source pair forms a self join in the query, false otherwise
    */
   bool IsSelfJoin(const SourcePair& source_pair, const EquivalenceClassesMap& eq_class_map,
-                  const SelectStatement& select_stmt);
+                  const Select& select);
 
   /**
    * Collects all columns from a specific source that are referenced in the SELECT statement.
    * This includes columns from SELECT clause, WHERE clause, and GROUP BY clause.
    *
-   * @param select_stmt The SELECT statement to analyze
+   * @param select The SELECT statement to analyze
    * @param source_alias The alias of the source to collect columns for
    * @return Set of column names referenced from the source
    */
-  std::unordered_set<std::string> CollectReferencedColumns(const SelectStatement& select_stmt,
+  std::unordered_set<std::string> CollectReferencedColumns(const Select& select,
                                                             const std::string& source_alias);
 
   /**

@@ -24,8 +24,8 @@ std::any SqlParserVisitor::visitStatements(psr::StatementsContext* ctx) {
 
 std::any SqlParserVisitor::visitStatement(psr::StatementContext* ctx) {
   if (ctx->select()) {
-    auto select_statement = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->select()));
-    return std::static_pointer_cast<sql::ast::Expression>(select_statement);
+    auto select = std::any_cast<std::shared_ptr<sql::ast::Select>>(visit(ctx->select()));
+    return std::static_pointer_cast<sql::ast::Expression>(select);
   } else if (ctx->values()) {
     auto values_expr = std::any_cast<std::shared_ptr<sql::ast::Values>>(visit(ctx->values()));
     return std::static_pointer_cast<sql::ast::Expression>(values_expr);
@@ -65,17 +65,17 @@ std::any SqlParserVisitor::visitSelect(psr::SelectContext* ctx) {
   }
 
   // Handle FROM clause and WHERE clause together
-  std::optional<std::shared_ptr<sql::ast::FromStatement>> from_stmt;
+  std::optional<std::shared_ptr<sql::ast::From>> from;
   if (ctx->from()) {
     auto from_result = visit(ctx->from());
-    from_stmt = std::any_cast<std::shared_ptr<sql::ast::FromStatement>>(from_result);
+    from = std::any_cast<std::shared_ptr<sql::ast::From>>(from_result);
 
     // WHERE clause is part of the FROM clause in the grammar
     if (ctx->where()) {
       auto where_result = visit(ctx->where());
       auto where_cond = std::any_cast<std::shared_ptr<sql::ast::Condition>>(where_result);
       // Rebuild FROM with WHERE
-      from_stmt = std::make_shared<sql::ast::FromStatement>(from_stmt.value()->sources, where_cond);
+      from = std::make_shared<sql::ast::From>(from.value()->sources, where_cond);
     }
   } else if (ctx->where()) {
     throw ParseException("WHERE clause requires FROM clause");
@@ -94,26 +94,26 @@ std::any SqlParserVisitor::visitSelect(psr::SelectContext* ctx) {
     ResolvePendingReferences();
   }
 
-  // Create SelectStatement
+  // Create Select
   // Handle CTEs without FROM clause (SQL allows this, but we need an empty FROM)
-  std::shared_ptr<sql::ast::FromStatement> effective_from = nullptr;
-  if (!ctes.empty() && !from_stmt.has_value()) {
-    effective_from = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{});
-  } else if (from_stmt.has_value()) {
-    effective_from = from_stmt.value();
+  std::shared_ptr<sql::ast::From> effective_from = nullptr;
+  if (!ctes.empty() && !from.has_value()) {
+    effective_from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{});
+  } else if (from.has_value()) {
+    effective_from = from.value();
   }
 
-  // Build SelectStatement with appropriate constructor
-  std::shared_ptr<sql::ast::SelectStatement> result;
+  // Build Select with appropriate constructor
+  std::shared_ptr<sql::ast::Select> result;
   if (!ctes.empty()) {
     result =
-        std::make_shared<sql::ast::SelectStatement>(columns, effective_from, ctes, is_distinct, with_recursive_ctes);
+        std::make_shared<sql::ast::Select>(columns, effective_from, ctes, is_distinct, with_recursive_ctes);
   } else if (group_by.has_value()) {
-    result = std::make_shared<sql::ast::SelectStatement>(columns, effective_from, group_by.value(), is_distinct);
-  } else if (from_stmt.has_value()) {
-    result = std::make_shared<sql::ast::SelectStatement>(columns, from_stmt.value(), is_distinct);
+    result = std::make_shared<sql::ast::Select>(columns, effective_from, group_by.value(), is_distinct);
+  } else if (from.has_value()) {
+    result = std::make_shared<sql::ast::Select>(columns, from.value(), is_distinct);
   } else {
-    result = std::make_shared<sql::ast::SelectStatement>(columns, is_distinct);
+    result = std::make_shared<sql::ast::Select>(columns, is_distinct);
   }
 
   // Pop per-SELECT scope frame (avoid leaking inner state)
@@ -195,9 +195,9 @@ std::any SqlParserVisitor::visitFrom(psr::FromContext* ctx) {
   // Now that all sources are registered, resolve any pending references
   ResolvePendingReferences();
 
-  // Note: WHERE clause is handled separately in visitSelectStatement
-  // to match the AST structure where WHERE is part of FromStatement
-  return std::make_shared<sql::ast::FromStatement>(sources);
+  // Note: WHERE clause is handled separately in visitSelect
+  // to match the AST structure where WHERE is part of From
+  return std::make_shared<sql::ast::From>(sources);
 }
 
 std::any SqlParserVisitor::visitTableSource(psr::TableSourceContext* ctx) {
@@ -222,8 +222,8 @@ std::any SqlParserVisitor::visitTableSource(psr::TableSourceContext* ctx) {
 
 std::any SqlParserVisitor::visitSubquerySource(psr::SubquerySourceContext* ctx) {
   auto select_result = visit(ctx->select());
-  auto select_statement = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(select_result);
-  auto selectable = std::static_pointer_cast<sql::ast::Sourceable>(select_statement);
+  auto select = std::any_cast<std::shared_ptr<sql::ast::Select>>(select_result);
+  auto selectable = std::static_pointer_cast<sql::ast::Sourceable>(select);
 
   if (ctx->sourceAlias()) {
     auto alias_result = visit(ctx->sourceAlias());
@@ -287,17 +287,17 @@ std::any SqlParserVisitor::visitGroupBy(psr::GroupByContext* ctx) {
 }
 
 std::any SqlParserVisitor::visitUnionAll(psr::UnionAllContext* ctx) {
-  std::vector<std::shared_ptr<sql::ast::SelectStatement>> members;
+  std::vector<std::shared_ptr<sql::ast::Select>> members;
 
   // First SELECT
   auto first_result = visit(ctx->select(0));
-  auto first = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(first_result);
+  auto first = std::any_cast<std::shared_ptr<sql::ast::Select>>(first_result);
   members.push_back(first);
 
   // Remaining SELECTs
   for (size_t i = 1; i < ctx->select().size(); i++) {
     auto select_result = visit(ctx->select(i));
-    auto select = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(select_result);
+    auto select = std::any_cast<std::shared_ptr<sql::ast::Select>>(select_result);
     members.push_back(select);
   }
 
@@ -310,13 +310,13 @@ std::any SqlParserVisitor::visitUnionSimple(psr::UnionSimpleContext* ctx) {
 
   // First SELECT
   auto first_result = visit(ctx->select(0));
-  auto first = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(first_result);
+  auto first = std::any_cast<std::shared_ptr<sql::ast::Select>>(first_result);
   members.push_back(std::static_pointer_cast<sql::ast::Sourceable>(first));
 
   // Remaining SELECTs
   for (size_t i = 1; i < ctx->select().size(); i++) {
     auto select_result = visit(ctx->select(i));
-    auto select = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(select_result);
+    auto select = std::any_cast<std::shared_ptr<sql::ast::Select>>(select_result);
     members.push_back(std::static_pointer_cast<sql::ast::Sourceable>(select));
   }
 
@@ -362,8 +362,8 @@ std::any SqlParserVisitor::visitCte(psr::CteContext* ctx) {
   std::string cte_name = ctx->cteName->getText();
 
   // Get the SELECT statement
-  auto select_statement = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->select()));
-  auto sourceable = std::static_pointer_cast<sql::ast::Sourceable>(select_statement);
+  auto select = std::any_cast<std::shared_ptr<sql::ast::Select>>(visit(ctx->select()));
+  auto sourceable = std::static_pointer_cast<sql::ast::Sourceable>(select);
 
   // Handle column list if present
   std::vector<std::string> def_columns;
@@ -428,7 +428,7 @@ std::any SqlParserVisitor::visitComparisonCondition(psr::ComparisonConditionCont
 
 std::any SqlParserVisitor::visitExistsCondition(psr::ExistsConditionContext* ctx) {
   auto select_result = visit(ctx->select());
-  auto select = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(select_result);
+  auto select = std::any_cast<std::shared_ptr<sql::ast::Select>>(select_result);
 
   auto exists_condition = std::make_shared<sql::ast::Exists>(select);
   return std::static_pointer_cast<sql::ast::Condition>(exists_condition);
@@ -463,7 +463,7 @@ std::any SqlParserVisitor::visitInclusion(psr::InclusionContext* ctx) {
   }
 
   auto select_result = visit(ctx->select());
-  auto select = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(select_result);
+  auto select = std::any_cast<std::shared_ptr<sql::ast::Select>>(select_result);
 
   return std::make_shared<sql::ast::Inclusion>(columns, select, is_not);
 }
@@ -760,8 +760,8 @@ std::any SqlParserVisitor::visitCreateView(psr::CreateViewContext* ctx) {
   std::string view_name = ctx->viewName->getText();
 
   // Get the SELECT statement
-  auto select_statement = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->select()));
-  auto sourceable = std::static_pointer_cast<sql::ast::Sourceable>(select_statement);
+  auto select = std::any_cast<std::shared_ptr<sql::ast::Select>>(visit(ctx->select()));
+  auto sourceable = std::static_pointer_cast<sql::ast::Sourceable>(select);
 
   // Handle column list if present
   std::vector<std::string> def_columns;
@@ -784,8 +784,8 @@ std::any SqlParserVisitor::visitCreateTable(psr::CreateTableContext* ctx) {
   std::string table_name = ctx->tableName->getText();
 
   // Get the SELECT statement
-  auto select_statement = std::any_cast<std::shared_ptr<sql::ast::SelectStatement>>(visit(ctx->select()));
-  auto sourceable = std::static_pointer_cast<sql::ast::Sourceable>(select_statement);
+  auto select = std::any_cast<std::shared_ptr<sql::ast::Select>>(visit(ctx->select()));
+  auto sourceable = std::static_pointer_cast<sql::ast::Sourceable>(select);
 
   // Handle column list if present
   std::vector<std::string> def_columns;

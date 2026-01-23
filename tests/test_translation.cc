@@ -521,6 +521,11 @@ TEST_F(TranslationTest, ExpressionVariableTerms1) {
             "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1 AND T1.x < 5");
 }
 
+TEST_F(TranslationTest, ExpressionVariableTerms2) {
+  EXPECT_EQ(TranslateExpression("[x] : x+1 where A(x)"),
+            "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1 AND T1.x < 5");
+}
+
 
 TEST_F(TranslationTest, Program) {
   EXPECT_EQ(TranslateDefinition("def R {[x in A]: B[x]}"),

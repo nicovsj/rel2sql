@@ -7,16 +7,16 @@ namespace rel2sql {
 
 namespace sql::ast {
 
-void FlattenerOptimizer::Visit(SelectStatement& select_statement) {
+void FlattenerOptimizer::Visit(Select& select) {
   // Visit children first
-  ExpressionVisitor::Visit(select_statement);
+  ExpressionVisitor::Visit(select);
 
-  TryFlattenSubquery(select_statement);
+  TryFlattenSubquery(select);
 }
 
 bool FlattenerOptimizer::CanFlattenSubquery(const std::shared_ptr<Source>& source) {
   if (source->is_cte) return false;
-  auto select_subquery = std::dynamic_pointer_cast<SelectStatement>(source->sourceable);
+  auto select_subquery = std::dynamic_pointer_cast<Select>(source->sourceable);
   if (!select_subquery) return false;
   if (select_subquery->ctes_are_recursive) return false;
   if (!select_subquery->from.has_value()) return false;
@@ -25,7 +25,7 @@ bool FlattenerOptimizer::CanFlattenSubquery(const std::shared_ptr<Source>& sourc
 }
 
 std::unordered_map<std::string, std::shared_ptr<Term>> FlattenerOptimizer::BuildTermMap(
-    const std::shared_ptr<SelectStatement>& subquery) {
+    const std::shared_ptr<Select>& subquery) {
   std::unordered_map<std::string, std::shared_ptr<Term>> column_map;
 
   for (auto& column : subquery->columns) {
@@ -51,8 +51,7 @@ std::unordered_map<std::string, std::shared_ptr<Term>> FlattenerOptimizer::Build
   return column_map;
 }
 
-void FlattenerOptimizer::MergeWhereConditions(FromStatement& outer_from,
-                                              const std::shared_ptr<Condition>& subquery_where) {
+void FlattenerOptimizer::MergeWhereConditions(From& outer_from, const std::shared_ptr<Condition>& subquery_where) {
   if (!subquery_where) return;
 
   if (!outer_from.where.has_value()) {
@@ -67,7 +66,7 @@ void FlattenerOptimizer::MergeWhereConditions(FromStatement& outer_from,
   outer_from.where = std::make_shared<LogicalCondition>(conditions, LogicalOp::AND);
 }
 
-void FlattenerOptimizer::MergeCTEs(SelectStatement& outer_select, const std::shared_ptr<SelectStatement>& subquery) {
+void FlattenerOptimizer::MergeCTEs(Select& outer_select, const std::shared_ptr<Select>& subquery) {
   if (!subquery) return;
   if (subquery->ctes.empty()) return;
 
@@ -75,7 +74,7 @@ void FlattenerOptimizer::MergeCTEs(SelectStatement& outer_select, const std::sha
   outer_select.ctes.insert(outer_select.ctes.end(), subquery->ctes.begin(), subquery->ctes.end());
 }
 
-bool FlattenerOptimizer::TryFlattenSubquery(SelectStatement& select_statement) {
+bool FlattenerOptimizer::TryFlattenSubquery(Select& select_statement) {
   if (!select_statement.from.has_value()) return false;
 
   auto& from_statement = *select_statement.from.value();
@@ -88,7 +87,7 @@ bool FlattenerOptimizer::TryFlattenSubquery(SelectStatement& select_statement) {
       continue;
     }
 
-    auto select_subquery = std::dynamic_pointer_cast<SelectStatement>(source->sourceable);
+    auto select_subquery = std::dynamic_pointer_cast<Select>(source->sourceable);
     const std::string old_alias = source->Alias();
     auto term_map = BuildTermMap(select_subquery);
 

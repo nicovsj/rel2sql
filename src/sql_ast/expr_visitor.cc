@@ -10,6 +10,13 @@ void ExpressionVisitor::Visit(Expression& expression) { expression.Accept(*this)
 
 void ExpressionVisitor::Visit(Sourceable& sourceable) { sourceable.Accept(*this); }
 
+void ExpressionVisitor::Visit(Query& query) {
+  for (auto& cte : query.ctes) {
+    Visit(*cte);
+  }
+  query.Accept(*this);
+}
+
 void ExpressionVisitor::Visit(Selectable& selectable) { selectable.Accept(*this); }
 
 void ExpressionVisitor::Visit(Condition& condition) { condition.Accept(*this); }
@@ -18,7 +25,7 @@ void ExpressionVisitor::Visit(Term& term) { term.Accept(*this); }
 
 //
 
-void ExpressionVisitor::Visit(AliasStatement& _) {}
+void ExpressionVisitor::Visit(Alias& _) {}
 
 void ExpressionVisitor::Visit(Source& source) {
   Visit(*source.sourceable);
@@ -82,12 +89,12 @@ void ExpressionVisitor::Visit(CaseWhen& case_when) {
   }
 }
 
-void ExpressionVisitor::Visit(FromStatement& from_statement) {
-  for (auto& source : from_statement.sources) {
+void ExpressionVisitor::Visit(From& from) {
+  for (auto& source : from.sources) {
     Visit(*source);
   }
-  if (from_statement.where) {
-    Visit(*from_statement.where.value());
+  if (from.where) {
+    Visit(*from.where.value());
   }
 }
 
@@ -97,21 +104,17 @@ void ExpressionVisitor::Visit(GroupBy& group_by) {
   }
 }
 
-void ExpressionVisitor::Visit(SelectStatement& select_statement) {
-  for (auto& column : select_statement.columns) {
+void ExpressionVisitor::Visit(Select& select) {
+  for (auto& column : select.columns) {
     Visit(*column);
   }
 
-  if (select_statement.from) {
-    Visit(*select_statement.from.value());
+  if (select.from) {
+    Visit(*select.from.value());
   }
 
-  for (auto& cte : select_statement.ctes) {
-    Visit(*cte);
-  }
-
-  if (select_statement.group_by) {
-    Visit(*select_statement.group_by.value());
+  if (select.group_by) {
+    Visit(*select.group_by.value());
   }
 }
 

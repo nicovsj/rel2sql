@@ -17,9 +17,9 @@ class Optimizer : public BaseOptimizer {
  public:
   using BaseOptimizer::Visit;
 
-  void Visit(SelectStatement& select_statement) override {
-    // Cast SelectStatement to Expression
-    auto& expression = static_cast<Expression&>(select_statement);
+  void Visit(Select& select) override {
+    // Cast Select to Expression
+    auto& expression = static_cast<Expression&>(select);
 
     constant_optimizer_.Visit(expression);
 

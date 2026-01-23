@@ -11,17 +11,17 @@ class CTEFromRefCounter final : public ExpressionVisitor {
  public:
   explicit CTEFromRefCounter(std::string cte_name) : cte_name_(std::move(cte_name)) {}
 
-  void Visit(FromStatement& from_statement) override {
+  void Visit(From& from) override {
     // Count references in this FROM's sources
-    for (auto& source : from_statement.sources) {
+    for (auto& source : from.sources) {
       if (source && source->Alias() == cte_name_) {
         ++count_;
       }
       ExpressionVisitor::Visit(*source);
     }
 
-    if (from_statement.where) {
-      ExpressionVisitor::Visit(*from_statement.where.value());
+    if (from.where) {
+      ExpressionVisitor::Visit(*from.where.value());
     }
   }
 
@@ -34,43 +34,43 @@ class CTEFromRefCounter final : public ExpressionVisitor {
 
 }  // namespace
 
-void CTEInliner::Visit(SelectStatement& select_statement) {
+void CTEInliner::Visit(Select& select) {
   // Visit children first
-  ExpressionVisitor::Visit(select_statement);
+  ExpressionVisitor::Visit(select);
 
   // Do not attempt to inline / move recursive CTEs into the FROM clause.
   // Recursive CTEs rely on the SQL engine's recursive WITH support, and
   // rewriting them as plain subqueries would break semantics.
-  if (select_statement.ctes_are_recursive) {
+  if (select.ctes_are_recursive) {
     return;
   }
 
   std::vector<std::shared_ptr<Source>> new_ctes;
 
   // Try to inline remaining CTEs into FROM clause
-  for (auto& cte : select_statement.ctes) {
-    if (!TryReplaceRedundantCTE(cte, select_statement)) {
+  for (auto& cte : select.ctes) {
+    if (!TryReplaceRedundantCTE(cte, select)) {
       new_ctes.push_back(cte);
     }
   }
 
-  select_statement.ctes = new_ctes;
+  select.ctes = new_ctes;
 
-  if (select_statement.ctes.empty()) {
-    select_statement.ctes_are_recursive = false;
+  if (select.ctes.empty()) {
+    select.ctes_are_recursive = false;
   }
 }
 
-std::size_t CTEInliner::CountCTEReferencesInFromClauses(const SelectStatement& root, const std::string& cte_name) {
+std::size_t CTEInliner::CountCTEReferencesInFromClauses(const Select& root, const std::string& cte_name) {
   // ExpressionVisitor API is non-const; we only read, so const_cast is safe here.
-  auto& mutable_root = const_cast<SelectStatement&>(root);
+  auto& mutable_root = const_cast<Select&>(root);
   CTEFromRefCounter counter(cte_name);
   mutable_root.Accept(counter);
   return counter.count();
 }
 
-bool CTEInliner::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, const SelectStatement& owning_select) {
-  auto cte_select = std::dynamic_pointer_cast<SelectStatement>(cte->sourceable);
+bool CTEInliner::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, const Select& owning_select) {
+  auto cte_select = std::dynamic_pointer_cast<Select>(cte->sourceable);
   // CTE must be a SELECT statement
   if (!cte_select) return false;
 
@@ -95,7 +95,7 @@ bool CTEInliner::TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, cons
 }
 
 bool CTEInliner::TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& cte,
-                                               const std::shared_ptr<SelectStatement>& cte_select) {
+                                             const std::shared_ptr<Select>& cte_select) {
   // CTE must have a single wildcard column
   if (cte_select->columns.size() != 1 || !std::dynamic_pointer_cast<Wildcard>(cte_select->columns[0])) return false;
 
@@ -126,8 +126,7 @@ bool CTEInliner::TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& cte,
   return true;
 }
 
-bool CTEInliner::TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte,
-                                        const std::shared_ptr<SelectStatement>& cte_select) {
+bool CTEInliner::TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte, const std::shared_ptr<Select>& cte_select) {
   // Create a subquery source from the CTE's SELECT statement
   auto subquery_sourceable = std::static_pointer_cast<Sourceable>(cte_select);
   auto new_source = std::make_shared<Source>(subquery_sourceable, cte->Alias(), false);

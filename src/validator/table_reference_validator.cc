@@ -6,44 +6,44 @@ namespace rel2sql {
 
 namespace sql::ast {
 
-void TableReferenceValidator::Visit(SelectStatement& select_statement) {
+void TableReferenceValidator::Visit(Select& select) {
   // Collect aliases from CTEs first (they're available in the query)
-  for (auto& cte : select_statement.ctes) {
+  for (auto& cte : select.ctes) {
     CollectAliasFromSource(*cte);
   }
 
   // Collect aliases from FROM clause
-  if (select_statement.from) {
-    for (auto& source : select_statement.from.value()->sources) {
+  if (select.from) {
+    for (auto& source : select.from.value()->sources) {
       CollectAliasFromSource(*source);
     }
   }
 
   // Now validate all expressions in the SELECT statement
   // Visit columns in SELECT list
-  for (auto& column : select_statement.columns) {
+  for (auto& column : select.columns) {
     column->Accept(*this);
   }
 
   // Visit FROM clause (which includes WHERE)
-  if (select_statement.from) {
-    select_statement.from.value()->Accept(*this);
+  if (select.from) {
+    select.from.value()->Accept(*this);
   }
 
   // Visit GROUP BY
-  if (select_statement.group_by) {
-    select_statement.group_by.value()->Accept(*this);
+  if (select.group_by) {
+    select.group_by.value()->Accept(*this);
   }
 }
 
-void TableReferenceValidator::Visit(FromStatement& from_statement) {
+void TableReferenceValidator::Visit(From& from) {
   // Visit sources (already collected aliases, but need to visit for subqueries)
-  for (auto& source : from_statement.sources) {
+  for (auto& source : from.sources) {
     source->Accept(*this);
   }
   // Visit WHERE clause
-  if (from_statement.where) {
-    from_statement.where.value()->Accept(*this);
+  if (from.where) {
+    from.where.value()->Accept(*this);
   }
 }
 

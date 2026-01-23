@@ -40,9 +40,8 @@ class ValidatingOptimizer : public BaseOptimizer {
 
     if (!validator.IsValid()) {
       auto errors = validator.GetErrors();
-      std::string error_msg = std::format(
-          "Validation failed after optimization step '{}' with {} error(s):\n",
-          step_name, errors.size());
+      std::string error_msg =
+          std::format("Validation failed after optimization step '{}' with {} error(s):\n", step_name, errors.size());
       for (size_t i = 0; i < errors.size(); ++i) {
         error_msg += std::format("  {}. {}", i + 1, errors[i].message);
         if (i < errors.size() - 1) {
@@ -53,9 +52,9 @@ class ValidatingOptimizer : public BaseOptimizer {
     }
   }
 
-  void Visit(SelectStatement& select_statement) override {
-    // Cast SelectStatement to Expression
-    auto& expression = static_cast<Expression&>(select_statement);
+  void Visit(Select& select) override {
+    // Cast Select to Expression
+    auto& expression = static_cast<Expression&>(select);
 
     // Validate initial state
     ValidateAndReport(expression, "initial state");

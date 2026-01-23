@@ -8,11 +8,12 @@ namespace sql::ast {
 // Forward declarations
 class Expression;
 class Sourceable;
+class Query;
 class Selectable;
 class Condition;
 class Term;
 
-class AliasStatement;
+class Alias;
 class Source;
 class Table;
 class Values;
@@ -28,9 +29,9 @@ class LogicalCondition;
 class Inclusion;
 class Exists;
 class CaseWhen;
-class FromStatement;
+class From;
 class GroupBy;
-class SelectStatement;
+class Select;
 class Union;
 class UnionAll;
 class CreateTable;
@@ -44,12 +45,13 @@ class ExpressionVisitor {
   // Base class
   virtual void Visit(Expression& expression);
   virtual void Visit(Sourceable& sourceable);
+  virtual void Visit(Query& query);
   virtual void Visit(Selectable& selectable);
   virtual void Visit(Condition& condition);
   virtual void Visit(Term& term);
 
   // Derived classes
-  virtual void Visit(AliasStatement& alias_statement);
+  virtual void Visit(Alias& alias);
   virtual void Visit(Source& source);
   virtual void Visit(Table& table);
   virtual void Visit(Values& values);
@@ -65,9 +67,9 @@ class ExpressionVisitor {
   virtual void Visit(Inclusion& inclusion);
   virtual void Visit(Exists& exists);
   virtual void Visit(CaseWhen& case_when);
-  virtual void Visit(FromStatement& from_statement);
+  virtual void Visit(From& from);
   virtual void Visit(GroupBy& group_by);
-  virtual void Visit(SelectStatement& select_statement);
+  virtual void Visit(Select& select);
   virtual void Visit(Union& union_expr);
   virtual void Visit(UnionAll& union_all_expr);
   virtual void Visit(CreateTable& create_table);

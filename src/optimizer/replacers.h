@@ -80,13 +80,13 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
     }
   }
 
-  void Visit(FromStatement& from_statement) override {
+  void Visit(From& from) override {
     if (!new_source_) {
-      ExpressionVisitor::Visit(from_statement);
+      ExpressionVisitor::Visit(from);
       return;
     }
 
-    for (auto& source : from_statement.sources) {
+    for (auto& source : from.sources) {
       if (source->Alias() == old_source_name_) {
         source = new_source_;
         continue;
@@ -94,8 +94,8 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
       ExpressionVisitor::Visit(*source);
     }
 
-    if (from_statement.where) {
-      ExpressionVisitor::Visit(*from_statement.where.value());
+    if (from.where) {
+      ExpressionVisitor::Visit(*from.where.value());
     }
   }
 
@@ -125,13 +125,13 @@ class SourceReplacer : public ExpressionVisitor {
   SourceReplacer(const std::string& old_source_name, std::shared_ptr<Source> new_source)
       : old_source_name_(old_source_name), new_source_(new_source) {}
 
-  void Visit(FromStatement& from_statement) override {
+  void Visit(From& from) override {
     if (!new_source_) {
-      ExpressionVisitor::Visit(from_statement);
+      ExpressionVisitor::Visit(from);
       return;
     }
 
-    for (auto& source : from_statement.sources) {
+    for (auto& source : from.sources) {
       if (source->Alias() == old_source_name_) {
         source = new_source_;
         continue;
@@ -139,8 +139,8 @@ class SourceReplacer : public ExpressionVisitor {
       ExpressionVisitor::Visit(*source);
     }
 
-    if (from_statement.where) {
-      ExpressionVisitor::Visit(*from_statement.where.value());
+    if (from.where) {
+      ExpressionVisitor::Visit(*from.where.value());
     }
   }
 
@@ -213,35 +213,35 @@ class LogicalConditionFlattener : public ExpressionVisitor {
  * Visitor that removes duplicate sources and redundant equalities from the FROM clause and WHERE clause.
  */
 class RedundancyReplacer : public ExpressionVisitor {
-  void Visit(FromStatement& from_statement) override {
-    for (auto& source : from_statement.sources) {
+  void Visit(From& from) override {
+    for (auto& source : from.sources) {
       ExpressionVisitor::Visit(*source);
     }
 
     std::unordered_set<std::string> seen_aliases;
 
-    auto new_end = std::remove_if(from_statement.sources.begin(), from_statement.sources.end(),
+    auto new_end = std::remove_if(from.sources.begin(), from.sources.end(),
                                   [&seen_aliases](const std::shared_ptr<Source>& source) {
                                     return !seen_aliases.insert(source->Alias()).second;  // Returns true if duplicate
                                   });
 
-    from_statement.sources.erase(new_end, from_statement.sources.end());
+    from.sources.erase(new_end, from.sources.end());
 
-    if (from_statement.where) {
-      ExpressionVisitor::Visit(*from_statement.where.value());
+    if (from.where) {
+      ExpressionVisitor::Visit(*from.where.value());
 
       // Check if the WHERE condition should be removed
       // Case 1: Single ComparisonCondition that's redundant
-      auto comp_condition = std::dynamic_pointer_cast<ComparisonCondition>(from_statement.where.value());
+      auto comp_condition = std::dynamic_pointer_cast<ComparisonCondition>(from.where.value());
       if (comp_condition) {
         std::set<EqualityPair> seen_equalities;
-        if (IsRedundantEquality(from_statement.where.value(), seen_equalities)) {
-          from_statement.where = std::nullopt;
+        if (IsRedundantEquality(from.where.value(), seen_equalities)) {
+          from.where = std::nullopt;
         }
       }
       // Case 2: LogicalCondition that became empty after removing redundant conditions
-      else if (from_statement.where.value()->IsEmpty()) {
-        from_statement.where = std::nullopt;
+      else if (from.where.value()->IsEmpty()) {
+        from.where = std::nullopt;
       }
     }
   }

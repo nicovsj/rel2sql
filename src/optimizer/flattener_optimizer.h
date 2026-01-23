@@ -10,10 +10,10 @@ class FlattenerOptimizer : public BaseOptimizer {
  public:
   using BaseOptimizer::Visit;
 
-  void Visit(SelectStatement& select_statement) override;
+  void Visit(Select& select) override;
 
  private:
-  bool TryFlattenSubquery(SelectStatement& select_statement);
+  bool TryFlattenSubquery(Select& select);
 
   // Helper functions for subquery flattening
 
@@ -21,14 +21,13 @@ class FlattenerOptimizer : public BaseOptimizer {
   static bool CanFlattenSubquery(const std::shared_ptr<Source>& source);
 
   // Build a map of term names to terms in the subquery.
-  static std::unordered_map<std::string, std::shared_ptr<Term>> BuildTermMap(
-      const std::shared_ptr<SelectStatement>& subquery);
+  static std::unordered_map<std::string, std::shared_ptr<Term>> BuildTermMap(const std::shared_ptr<Select>& subquery);
 
   // Merge WHERE conditions of the outer and subquery.
-  static void MergeWhereConditions(FromStatement& outer_from, const std::shared_ptr<Condition>& subquery_where);
+  static void MergeWhereConditions(From& outer_from, const std::shared_ptr<Condition>& subquery_where);
 
   // Merge subquery CTEs into the outer SELECT scope.
-  static void MergeCTEs(SelectStatement& outer_select, const std::shared_ptr<SelectStatement>& subquery);
+  static void MergeCTEs(Select& outer_select, const std::shared_ptr<Select>& subquery);
 };  // class FlattenerOptimizer
 
 }  // namespace sql::ast

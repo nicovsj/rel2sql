@@ -31,8 +31,9 @@ enum class LogicalOp { AND, OR, NOT };
 
 using constant_t = std::variant<int, double, std::string, bool>;
 
-class SelectStatement;
+class Select;
 class Values;
+class Source;
 
 class Expression {
  public:
@@ -61,21 +62,61 @@ class Sourceable : public Expression {
   virtual void Accept(ExpressionVisitor& visitor) override = 0;
 };
 
-class AliasStatement : public Expression {
+// Base class for query-like Sourceables that can have CTEs
+// Note: Source is forward declared above, full definition comes later
+class Query : public Sourceable {
+ public:
+  std::vector<std::shared_ptr<Source>> ctes;
+  bool ctes_are_recursive = false;
+
+  Query() = default;
+
+  Query(std::vector<std::shared_ptr<Source>> ctes, bool ctes_are_recursive = false)
+      : ctes(std::move(ctes)), ctes_are_recursive(ctes_are_recursive) {}
+
+  virtual ~Query() = default;
+
+  // Helper method to print CTEs (used by derived classes)
+  // Implementation moved to after Source definition to avoid incomplete type issues
+  void PrintCTEs(std::ostream& os) const;
+
+  // Helper method to check CTE equality (used by derived classes in Equals)
+  // Implementation moved to after Source definition to avoid incomplete type issues
+  bool CTEsEqual(const Query& other) const;
+
+  // Accept method for visitor pattern
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  // Transfer CTEs from this Query to another Query (moves them, clearing this Query's CTEs)
+  // This is useful for bottom-up translation where subquery CTEs need to be lifted to parent queries
+  void TransferCTEsTo(Query& other) {
+    // Append this Query's CTEs to the destination
+    other.ctes.insert(other.ctes.end(), ctes.begin(), ctes.end());
+
+    // If either Query is recursive, the result should be recursive
+    other.ctes_are_recursive = other.ctes_are_recursive || ctes_are_recursive;
+
+    // Clear this Query's CTEs after transfer
+    ctes.clear();
+    ctes_are_recursive = false;
+  }
+};
+
+class Alias : public Expression {
  public:
   std::string name;
   std::vector<std::string> columns;
 
-  AliasStatement(std::string name) : name(name) {}
+  Alias(std::string name) : name(name) {}
 
-  AliasStatement(std::string name, std::vector<std::string> columns) : name(name), columns(columns) {}
+  Alias(std::string name, std::vector<std::string> columns) : name(name), columns(columns) {}
 
   std::ostream& Print(std::ostream& os) const override { return os << Access(); }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
   bool Equals(const Expression& other) const override {
-    const auto* other_alias = dynamic_cast<const AliasStatement*>(&other);
+    const auto* other_alias = dynamic_cast<const Alias*>(&other);
     if (!other_alias) return false;
     return name == other_alias->name && columns == other_alias->columns;
   }
@@ -102,15 +143,13 @@ class AliasStatement : public Expression {
 class Source : public Expression {
  public:
   std::shared_ptr<Sourceable> sourceable;
-  std::optional<std::shared_ptr<AliasStatement>> alias;
+  std::optional<std::shared_ptr<Alias>> alias;
   std::vector<std::string> def_columns;
   bool is_subquery;
   bool is_cte;
 
   static bool CheckIsSubquery(std::shared_ptr<Sourceable> sourceable) {
-    return std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr ||
-           std::dynamic_pointer_cast<Values>(sourceable) != nullptr ||
-           std::dynamic_pointer_cast<Union>(sourceable) != nullptr;
+    return std::dynamic_pointer_cast<Query>(sourceable) != nullptr;
   }
 
   Source(std::shared_ptr<Sourceable> sourceable)
@@ -120,15 +159,15 @@ class Source : public Expression {
     }
   }
 
-  Source(std::shared_ptr<Sourceable> sourceable, std::string alias, bool is_cte = false,
+  Source(std::shared_ptr<Sourceable> sourceable, std::string alias_name, bool is_cte = false,
          const std::vector<std::string>& def_columns = {})
       : sourceable(sourceable),
-        alias(std::make_shared<AliasStatement>(alias)),
+        alias(std::make_shared<sql::ast::Alias>(alias_name)),
         def_columns(def_columns),
         is_subquery(CheckIsSubquery(sourceable)),
         is_cte(is_cte) {}
 
-  Source(std::shared_ptr<Sourceable> sourceable, std::shared_ptr<AliasStatement> alias, bool is_cte = false,
+  Source(std::shared_ptr<Sourceable> sourceable, std::shared_ptr<Alias> alias, bool is_cte = false,
          const std::vector<std::string>& def_columns = {})
       : sourceable(sourceable),
         alias(alias),
@@ -214,7 +253,7 @@ class Source : public Expression {
 
   bool IsSourceable() const { return !IsCTE() && !IsSubquery(); }
 
-  bool IsSelectStatement() const { return std::dynamic_pointer_cast<SelectStatement>(sourceable) != nullptr; }
+  bool IsSelect() const { return std::dynamic_pointer_cast<Select>(sourceable) != nullptr; }
 
   bool IsValues() const { return std::dynamic_pointer_cast<Values>(sourceable) != nullptr; }
 };
@@ -250,6 +289,33 @@ class Table : public Sourceable {
     }
   }
 };
+
+// Implementation of Query methods (after Source is fully defined)
+inline void Query::PrintCTEs(std::ostream& os) const {
+  if (!ctes.empty()) {
+    os << "WITH ";
+    if (ctes_are_recursive) {
+      os << "RECURSIVE ";
+    }
+    for (size_t i = 0; i < ctes.size(); i++) {
+      os << ctes[i]->Declaration() << " AS " << ctes[i]->Definition();
+      if (i < ctes.size() - 1) {
+        os << ", ";
+      } else {
+        os << " ";
+      }
+    }
+  }
+}
+
+inline bool Query::CTEsEqual(const Query& other) const {
+  if (ctes.size() != other.ctes.size()) return false;
+  if (ctes_are_recursive != other.ctes_are_recursive) return false;
+  for (size_t i = 0; i < ctes.size(); i++) {
+    if (*ctes[i] != *other.ctes[i]) return false;
+  }
+  return true;
+}
 
 class Selectable : public Expression {
  public:
@@ -349,11 +415,11 @@ class Constant : public Term {
   }
 
   std::string ToString() const override {
-    return std::visit(
-        utl::overloaded{[](int arg) { return std::to_string(arg); }, [](double arg) { return fmt::format("{:g}", arg); },
-                        [](std::string arg) { return fmt::format("'{}'", arg); },
-                        [](bool arg) { return arg ? std::string("TRUE") : std::string("FALSE"); }},
-        value);
+    return std::visit(utl::overloaded{[](int arg) { return std::to_string(arg); },
+                                      [](double arg) { return fmt::format("{:g}", arg); },
+                                      [](std::string arg) { return fmt::format("'{}'", arg); },
+                                      [](bool arg) { return arg ? std::string("TRUE") : std::string("FALSE"); }},
+                      value);
   }
 };
 
@@ -398,9 +464,7 @@ class ParenthesisTerm : public Term {
     return *term == *other_parenthesis_term->term;
   }
 
-  std::string ToString() const override {
-    return "(" + term->ToString() + ")";
-  }
+  std::string ToString() const override { return "(" + term->ToString() + ")"; }
 };
 
 class Function : public Term {
@@ -478,7 +542,7 @@ class Column : public Term {
   }
 };
 
-class Values : public Sourceable {
+class Values : public Query {
  public:
   std::vector<std::vector<Constant>> values;
 
@@ -495,6 +559,7 @@ class Values : public Sourceable {
   }
 
   std::ostream& Print(std::ostream& os) const override {
+    PrintCTEs(os);
     os << "VALUES ";
     for (size_t i = 0; i < values.size(); i++) {
       auto row = values[i];
@@ -518,6 +583,7 @@ class Values : public Sourceable {
   bool Equals(const Expression& other) const override {
     const auto* other_values = dynamic_cast<const Values*>(&other);
     if (!other_values) return false;
+    if (!CTEsEqual(*other_values)) return false;
     if (values.size() != other_values->values.size()) return false;
     for (size_t i = 0; i < values.size(); i++) {
       if (values[i].size() != other_values->values[i].size()) return false;
@@ -645,10 +711,10 @@ class LogicalCondition : public Condition {
 class Inclusion : public Condition {
  public:
   std::vector<std::shared_ptr<Column>> columns;
-  std::shared_ptr<SelectStatement> select;
+  std::shared_ptr<Select> select;
   bool is_not;
 
-  Inclusion(std::vector<std::shared_ptr<Column>> columns, std::shared_ptr<SelectStatement> select, bool is_not = false)
+  Inclusion(std::vector<std::shared_ptr<Column>> columns, std::shared_ptr<Select> select, bool is_not = false)
       : columns(columns), select(select), is_not(is_not) {}
 
   std::ostream& Print(std::ostream& os) const override;
@@ -662,9 +728,9 @@ class Inclusion : public Condition {
 
 class Exists : public Condition {
  public:
-  std::shared_ptr<SelectStatement> select;
+  std::shared_ptr<Select> select;
 
-  Exists(std::shared_ptr<SelectStatement> select) : select(select) {}
+  Exists(std::shared_ptr<Select> select) : select(select) {}
 
   std::ostream& Print(std::ostream& os) const override;
 
@@ -709,22 +775,22 @@ class CaseWhen : public Term {
   }
 };
 
-class FromStatement : public Expression {
+class From : public Expression {
  public:
   std::vector<std::shared_ptr<Source>> sources;
   std::optional<std::shared_ptr<Condition>> where;
 
-  FromStatement(std::shared_ptr<Source> source) : sources({source}) {}
+  From(std::shared_ptr<Source> source) : sources({source}) {}
 
-  FromStatement(std::shared_ptr<Source> source, std::shared_ptr<Condition> where) : sources({source}) {
+  From(std::shared_ptr<Source> source, std::shared_ptr<Condition> where) : sources({source}) {
     if (where && !where->IsEmpty()) {
       this->where = where;
     }
   }
 
-  FromStatement(std::vector<std::shared_ptr<Source>> sources) : sources(sources) {}
+  From(std::vector<std::shared_ptr<Source>> sources) : sources(sources) {}
 
-  FromStatement(std::vector<std::shared_ptr<Source>> sources, std::shared_ptr<Condition> where) : sources(sources) {
+  From(std::vector<std::shared_ptr<Source>> sources, std::shared_ptr<Condition> where) : sources(sources) {
     if (where && !where->IsEmpty()) {
       this->where = where;
     }
@@ -749,7 +815,7 @@ class FromStatement : public Expression {
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
   bool Equals(const Expression& other) const override {
-    const auto* other_from = dynamic_cast<const FromStatement*>(&other);
+    const auto* other_from = dynamic_cast<const From*>(&other);
     if (!other_from) return false;
     if (sources.size() != other_from->sources.size()) return false;
     for (size_t i = 0; i < sources.size(); i++) {
@@ -816,52 +882,34 @@ class GroupBy : public Expression {
   }
 };
 
-class SelectStatement : public Sourceable {
+class Select : public Query {
  public:
   std::vector<std::shared_ptr<Selectable>> columns;
-  std::optional<std::shared_ptr<FromStatement>> from;
-  std::vector<std::shared_ptr<Source>> ctes;
+  std::optional<std::shared_ptr<From>> from;
   std::optional<std::shared_ptr<GroupBy>> group_by;
   bool is_distinct = false;
-  bool ctes_are_recursive = false;
 
-  SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, bool is_distinct = false)
+  Select(const std::vector<std::shared_ptr<Selectable>>& columns, bool is_distinct = false)
       : columns(columns), is_distinct(is_distinct) {}
 
-  SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from,
-                  bool is_distinct = false)
+  Select(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<From> from,
+         bool is_distinct = false)
       : columns(columns), from(from), is_distinct(is_distinct) {}
 
-  SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from,
-                  std::shared_ptr<GroupBy> group_by, bool is_distinct = false)
+  Select(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<From> from,
+         std::shared_ptr<GroupBy> group_by, bool is_distinct = false)
       : columns(columns), from(from), group_by(group_by), is_distinct(is_distinct) {}
 
-  SelectStatement(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<FromStatement> from,
-                  std::vector<std::shared_ptr<Source>> ctes, bool is_distinct = false,
-                  bool ctes_are_recursive = false)
-      : columns(columns),
+  Select(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<From> from,
+         std::vector<std::shared_ptr<Source>> ctes, bool is_distinct = false, bool ctes_are_recursive = false)
+      : Query(ctes, ctes_are_recursive),
+        columns(columns),
         from(from),
-        ctes(ctes),
         group_by(std::nullopt),
-        is_distinct(is_distinct),
-        ctes_are_recursive(ctes_are_recursive) {}
+        is_distinct(is_distinct) {}
 
   std::ostream& Print(std::ostream& os) const override {
-    if (!ctes.empty()) {
-      os << "WITH ";
-      if (ctes_are_recursive) {
-        os << "RECURSIVE ";
-      }
-    }
-    for (size_t i = 0; i < ctes.size(); i++) {
-      os << ctes[i]->Declaration() << " AS " << ctes[i]->Definition();
-
-      if (i < ctes.size() - 1) {
-        os << ", ";
-      } else {
-        os << " ";
-      }
-    }
+    PrintCTEs(os);
     os << "SELECT ";
     if (is_distinct) {
       os << "DISTINCT ";
@@ -891,7 +939,7 @@ class SelectStatement : public Sourceable {
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
   bool Equals(const Expression& other) const override {
-    const auto* other_select = dynamic_cast<const SelectStatement*>(&other);
+    const auto* other_select = dynamic_cast<const Select*>(&other);
     if (!other_select) return false;
     if (is_distinct != other_select->is_distinct) return false;
     if (columns.size() != other_select->columns.size()) return false;
@@ -902,11 +950,7 @@ class SelectStatement : public Sourceable {
     if (from.has_value() && other_select->from.has_value()) {
       if (*from.value() != *other_select->from.value()) return false;
     }
-    if (ctes.size() != other_select->ctes.size()) return false;
-    if (ctes_are_recursive != other_select->ctes_are_recursive) return false;
-    for (size_t i = 0; i < ctes.size(); i++) {
-      if (*ctes[i] != *other_select->ctes[i]) return false;
-    }
+    if (!CTEsEqual(*other_select)) return false;
     if (group_by.has_value() != other_select->group_by.has_value()) return false;
     if (group_by.has_value() && other_select->group_by.has_value()) {
       if (*group_by.value() != *other_select->group_by.value()) return false;
@@ -915,7 +959,7 @@ class SelectStatement : public Sourceable {
   }
 };
 
-class Union : public Sourceable {
+class Union : public Query {
  public:
   std::vector<std::shared_ptr<Sourceable>> members;
 
@@ -923,7 +967,16 @@ class Union : public Sourceable {
 
   Union(std::vector<std::shared_ptr<Sourceable>> members) : members(members) {}
 
+  Union(std::shared_ptr<Sourceable> lhs, std::shared_ptr<Sourceable> rhs, std::vector<std::shared_ptr<Source>> ctes,
+        bool ctes_are_recursive = false)
+      : Query(ctes, ctes_are_recursive), members({lhs, rhs}) {}
+
+  Union(std::vector<std::shared_ptr<Sourceable>> members, std::vector<std::shared_ptr<Source>> ctes,
+        bool ctes_are_recursive = false)
+      : Query(ctes, ctes_are_recursive), members(members) {}
+
   std::ostream& Print(std::ostream& os) const override {
+    PrintCTEs(os);
     for (size_t i = 0; i < members.size(); i++) {
       os << *members[i];
       if (i < members.size() - 1) {
@@ -938,6 +991,7 @@ class Union : public Sourceable {
   bool Equals(const Expression& other) const override {
     const auto* other_union = dynamic_cast<const Union*>(&other);
     if (!other_union) return false;
+    if (!CTEsEqual(*other_union)) return false;
     if (members.size() != other_union->members.size()) return false;
     for (size_t i = 0; i < members.size(); i++) {
       if (*members[i] != *other_union->members[i]) return false;
@@ -946,15 +1000,24 @@ class Union : public Sourceable {
   }
 };
 
-class UnionAll : public Sourceable {
+class UnionAll : public Query {
  public:
-  std::vector<std::shared_ptr<SelectStatement>> members;
+  std::vector<std::shared_ptr<Select>> members;
 
-  UnionAll(std::shared_ptr<SelectStatement> lhs, std::shared_ptr<SelectStatement> rhs) : members({lhs, rhs}) {}
+  UnionAll(std::shared_ptr<Select> lhs, std::shared_ptr<Select> rhs) : members({lhs, rhs}) {}
 
-  UnionAll(std::vector<std::shared_ptr<SelectStatement>> members) : members(members) {}
+  UnionAll(std::vector<std::shared_ptr<Select>> members) : members(members) {}
+
+  UnionAll(std::shared_ptr<Select> lhs, std::shared_ptr<Select> rhs, std::vector<std::shared_ptr<Source>> ctes,
+           bool ctes_are_recursive = false)
+      : Query(ctes, ctes_are_recursive), members({lhs, rhs}) {}
+
+  UnionAll(std::vector<std::shared_ptr<Select>> members, std::vector<std::shared_ptr<Source>> ctes,
+           bool ctes_are_recursive = false)
+      : Query(ctes, ctes_are_recursive), members(members) {}
 
   std::ostream& Print(std::ostream& os) const override {
+    PrintCTEs(os);
     for (size_t i = 0; i < members.size(); i++) {
       os << *members[i];
       if (i < members.size() - 1) {
@@ -969,6 +1032,7 @@ class UnionAll : public Sourceable {
   bool Equals(const Expression& other) const override {
     const auto* other_union_all = dynamic_cast<const UnionAll*>(&other);
     if (!other_union_all) return false;
+    if (!CTEsEqual(*other_union_all)) return false;
     if (members.size() != other_union_all->members.size()) return false;
     for (size_t i = 0; i < members.size(); i++) {
       if (*members[i] != *other_union_all->members[i]) return false;

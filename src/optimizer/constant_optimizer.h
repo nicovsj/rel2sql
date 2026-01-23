@@ -11,7 +11,7 @@ class ConstantOptimizer : public BaseOptimizer {
  public:
   using BaseOptimizer::Visit;
 
-  void Visit(FromStatement& from_statement) override;
+  void Visit(From& from) override;
 
 };  // class ConstantOptimizer
 

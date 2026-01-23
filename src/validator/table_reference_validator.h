@@ -46,8 +46,8 @@ class TableReferenceValidator : public BaseValidator {
     return missing_table_aliases_;
   }
 
-  void Visit(SelectStatement& select_statement) override;
-  void Visit(FromStatement& from_statement) override;
+  void Visit(Select& select) override;
+  void Visit(From& from) override;
   void Visit(Column& column) override;
   void Visit(Wildcard& wildcard) override;
   void Visit(Source& source) override;

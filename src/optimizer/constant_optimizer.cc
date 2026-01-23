@@ -14,7 +14,7 @@ struct ConstantSourceData {
 };
 
 bool ExtractConstantSourceData(const std::shared_ptr<Source>& source, ConstantSourceData& out) {
-  auto select = std::dynamic_pointer_cast<SelectStatement>(source->sourceable);
+  auto select = std::dynamic_pointer_cast<Select>(source->sourceable);
   // Source must be a SELECT statement
   if (!select) return false;
 
@@ -36,18 +36,18 @@ bool ExtractConstantSourceData(const std::shared_ptr<Source>& source, ConstantSo
   return true;
 }
 
-void ApplyConstantReplacement(const ConstantSourceData& data, FromStatement& from_statement) {
-  if (!from_statement.where) return;
+void ApplyConstantReplacement(const ConstantSourceData& data, From& from) {
+  if (!from.where) return;
   ConstantReplacer replacer(data.source_alias, data.term_alias, data.constant);
-  from_statement.where.value()->Accept(replacer);
+  from.where.value()->Accept(replacer);
 }
 
-void ConstantOptimizer::Visit(FromStatement& from_statement) {
+void ConstantOptimizer::Visit(From& from) {
   // First pass: extract data for suitable sources (nullptr if not suitable)
   std::vector<std::unique_ptr<ConstantSourceData>> data_per_source;
-  data_per_source.reserve(from_statement.sources.size());
+  data_per_source.reserve(from.sources.size());
   bool has_not_suitable = false;
-  for (const auto& source : from_statement.sources) {
+  for (const auto& source : from.sources) {
     auto data = std::make_unique<ConstantSourceData>();
     if (ExtractConstantSourceData(source, *data)) {
       data_per_source.push_back(std::move(data));
@@ -58,23 +58,23 @@ void ConstantOptimizer::Visit(FromStatement& from_statement) {
   }
 
   // Second pass: if at least one source is not suitable, replace each suitable source
-  if (has_not_suitable && from_statement.where) {
+  if (has_not_suitable && from.where) {
     std::vector<std::shared_ptr<Source>> new_sources;
-    new_sources.reserve(from_statement.sources.size());
-    for (std::size_t i = 0; i < from_statement.sources.size(); ++i) {
-      const auto& source = from_statement.sources[i];
+    new_sources.reserve(from.sources.size());
+    for (std::size_t i = 0; i < from.sources.size(); ++i) {
+      const auto& source = from.sources[i];
       if (data_per_source[i]) {
-        ApplyConstantReplacement(*data_per_source[i], from_statement);
+        ApplyConstantReplacement(*data_per_source[i], from);
         // Do not carry this source over (it's inlined into WHERE)
         continue;
       }
       new_sources.push_back(source);
     }
-    from_statement.sources = std::move(new_sources);
+    from.sources = std::move(new_sources);
   }
 
   // Recurse into remaining sources
-  for (auto& source : from_statement.sources) {
+  for (auto& source : from.sources) {
     Visit(*source);
   }
 }

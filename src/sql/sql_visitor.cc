@@ -29,7 +29,7 @@ std::shared_ptr<sql::ast::Sourceable> SQLVisitor::TryGetTopLevelIDSelect(psr::Re
 void SQLVisitor::ApplyDistinctToDefinitionSelects(const std::shared_ptr<sql::ast::Sourceable>& sourceable) {
   if (!sourceable) return;
 
-  if (auto select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(sourceable)) {
+  if (auto select = std::dynamic_pointer_cast<sql::ast::Select>(sourceable)) {
     select->is_distinct = true;
     return;
   }
@@ -183,7 +183,7 @@ std::shared_ptr<sql::ast::Sourceable> SQLVisitor::VisitRelAbsLogic(psr::RelAbsCo
   // Define the VALUES expression used in the FROM clause
   auto values_expr = std::make_shared<sql::ast::Values>(values);
   auto values_alias =
-      std::make_shared<sql::ast::AliasStatement>(GenerateTableAlias("I"), std::vector<std::string>{"i"});
+      std::make_shared<sql::ast::Alias>(GenerateTableAlias("I"), std::vector<std::string>{"i"});
   auto values_source = std::make_shared<sql::ast::Source>(values_expr, values_alias);
   from_sources.push_back(values_source);
   auto values_col = std::make_shared<sql::ast::Column>("i", values_source);
@@ -202,9 +202,9 @@ std::shared_ptr<sql::ast::Sourceable> SQLVisitor::VisitRelAbsLogic(psr::RelAbsCo
     selects.push_back(term_selectable);
   }
 
-  auto from_statement = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
+  auto from = std::make_shared<sql::ast::From>(from_sources, condition);
 
-  auto query = std::make_shared<sql::ast::SelectStatement>(selects, from_statement);
+  auto query = std::make_shared<sql::ast::Select>(selects, from);
 
   return query;
 }
@@ -225,7 +225,7 @@ std::any SQLVisitor::visitLitExpr(psr::LitExprContext* ctx) {
   auto selectable = std::make_shared<sql::ast::TermSelectable>(constant, "A1");
 
   auto select_statement =
-      std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable});
+      std::make_shared<sql::ast::Select>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable});
 
   return std::static_pointer_cast<sql::ast::Expression>(select_statement);
 }
@@ -270,11 +270,10 @@ std::any SQLVisitor::visitTermExpr(psr::TermExprContext* ctx) {
   // Wrap the term in TermSelectable with alias "A1"
   auto selectable = std::make_shared<sql::ast::TermSelectable>(term, "A1");
 
-  // Create SelectStatement with the term selectable
-  auto select_statement =
-      std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable});
+  // Create Select with the term selectable
+  auto select = std::make_shared<sql::ast::Select>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable});
 
-  return std::static_pointer_cast<sql::ast::Expression>(select_statement);
+  return std::static_pointer_cast<sql::ast::Expression>(select);
 }
 
 std::any SQLVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
@@ -314,9 +313,9 @@ std::any SQLVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
     }
   }
 
-  auto from_statement = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
+  auto from = std::make_shared<sql::ast::From>(from_sources, condition);
 
-  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from_statement);
+  auto query = std::make_shared<sql::ast::Select>(select_columns, from);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
@@ -359,12 +358,12 @@ std::shared_ptr<sql::ast::Expression> SQLVisitor::TranslateConditionExprComparat
     select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(column));
   }
 
-  auto from_statement =
-      std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery});
+  auto from =
+      std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery});
 
   std::vector<std::shared_ptr<sql::ast::Condition>> new_conditions;
-  if (from_statement->where.has_value()) {
-    new_conditions.push_back(from_statement->where.value());
+  if (from->where.has_value()) {
+    new_conditions.push_back(from->where.value());
   }
 
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> free_var_sources;
@@ -392,9 +391,9 @@ std::shared_ptr<sql::ast::Expression> SQLVisitor::TranslateConditionExprComparat
     new_where = std::make_shared<sql::ast::LogicalCondition>(new_conditions, sql::ast::LogicalOp::AND);
   }
 
-  from_statement->where = new_where;
+  from->where = new_where;
 
-  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from_statement);
+  auto query = std::make_shared<sql::ast::Select>(select_columns, from);
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
 
@@ -439,10 +438,10 @@ std::any SQLVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
     select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(column));
   }
 
-  auto from_statement = std::make_shared<sql::ast::FromStatement>(
+  auto from = std::make_shared<sql::ast::From>(
       std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery, rhs_subquery}, condition);
 
-  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from_statement);
+  auto query = std::make_shared<sql::ast::Select>(select_columns, from);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
@@ -473,24 +472,23 @@ std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
   auto expr_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
       std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->expr())));
 
-  // Extract CTEs from nested SelectStatements and lift them to the outer level
+  // Extract CTEs from nested Selects and lift them to the outer level
   std::vector<std::shared_ptr<sql::ast::Source>> nested_ctes;
-  auto nested_select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(expr_sql);
+  auto nested_select = std::dynamic_pointer_cast<sql::ast::Select>(expr_sql);
   if (nested_select && !nested_select->ctes.empty() && !nested_select->ctes_are_recursive) {
-    // Extract CTEs from the nested SelectStatement
+    // Extract CTEs from the nested Select
     nested_ctes = nested_select->ctes;
 
-    // Create a new SelectStatement without CTEs to use as the subquery
+    // Create a new Select without CTEs to use as the subquery
     // Handle different constructor cases based on what fields are present
     if (nested_select->group_by.has_value() && nested_select->from.has_value()) {
-      expr_sql =
-          std::make_shared<sql::ast::SelectStatement>(nested_select->columns, nested_select->from.value(),
-                                                      nested_select->group_by.value(), nested_select->is_distinct);
+      expr_sql = std::make_shared<sql::ast::Select>(nested_select->columns, nested_select->from.value(),
+                                                    nested_select->group_by.value(), nested_select->is_distinct);
     } else if (nested_select->from.has_value()) {
-      expr_sql = std::make_shared<sql::ast::SelectStatement>(nested_select->columns, nested_select->from.value(),
-                                                             nested_select->is_distinct);
+      expr_sql = std::make_shared<sql::ast::Select>(nested_select->columns, nested_select->from.value(),
+                                                    nested_select->is_distinct);
     } else {
-      expr_sql = std::make_shared<sql::ast::SelectStatement>(nested_select->columns, nested_select->is_distinct);
+      expr_sql = std::make_shared<sql::ast::Select>(nested_select->columns, nested_select->is_distinct);
     }
   }
 
@@ -548,9 +546,9 @@ std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
 
   auto condition = BindingsEqualityShorthand(ctx->expr(), cte_map);
 
-  auto from = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
+  auto from = std::make_shared<sql::ast::From>(from_sources, condition);
 
-  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from, ctes);
+  auto query = std::make_shared<sql::ast::Select>(select_columns, from, ctes);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
@@ -567,24 +565,23 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
   auto formula_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(
       std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(ctx->formula())));
 
-  // Extract CTEs from nested SelectStatements and lift them to the outer level
+  // Extract CTEs from nested Selects and lift them to the outer level
   std::vector<std::shared_ptr<sql::ast::Source>> nested_ctes;
-  auto nested_select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(formula_sql);
+  auto nested_select = std::dynamic_pointer_cast<sql::ast::Select>(formula_sql);
   if (nested_select && !nested_select->ctes.empty() && !nested_select->ctes_are_recursive) {
-    // Extract CTEs from the nested SelectStatement
+    // Extract CTEs from the nested Select
     nested_ctes = nested_select->ctes;
 
-    // Create a new SelectStatement without CTEs to use as the subquery
+    // Create a new Select without CTEs to use as the subquery
     // Handle different constructor cases based on what fields are present
     if (nested_select->group_by.has_value() && nested_select->from.has_value()) {
-      formula_sql =
-          std::make_shared<sql::ast::SelectStatement>(nested_select->columns, nested_select->from.value(),
-                                                      nested_select->group_by.value(), nested_select->is_distinct);
+      formula_sql = std::make_shared<sql::ast::Select>(nested_select->columns, nested_select->from.value(),
+                                                       nested_select->group_by.value(), nested_select->is_distinct);
     } else if (nested_select->from.has_value()) {
-      formula_sql = std::make_shared<sql::ast::SelectStatement>(nested_select->columns, nested_select->from.value(),
-                                                                nested_select->is_distinct);
+      formula_sql = std::make_shared<sql::ast::Select>(nested_select->columns, nested_select->from.value(),
+                                                       nested_select->is_distinct);
     } else {
-      formula_sql = std::make_shared<sql::ast::SelectStatement>(nested_select->columns, nested_select->is_distinct);
+      formula_sql = std::make_shared<sql::ast::Select>(nested_select->columns, nested_select->is_distinct);
     }
   }
 
@@ -615,8 +612,8 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
     }
 
     auto subquery_from =
-        std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{recursive_cte_source});
-    auto subquery = std::make_shared<sql::ast::SelectStatement>(subquery_select_columns, subquery_from);
+        std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{recursive_cte_source});
+    auto subquery = std::make_shared<sql::ast::Select>(subquery_select_columns, subquery_from);
     formula_source = std::make_shared<sql::ast::Source>(subquery, GenerateTableAlias());
   } else {
     formula_source = std::make_shared<sql::ast::Source>(formula_sql, GenerateTableAlias());
@@ -673,12 +670,12 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
 
   auto condition = BindingsEqualityShorthand(ctx->formula(), cte_map);
 
-  auto from = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
+  auto from = std::make_shared<sql::ast::From>(from_sources, condition);
 
   // For recursive case, mark the query as recursive
   bool is_recursive = bindings_formula_node->is_recursive && !bindings_formula_node->recursive_definition_name.empty();
 
-  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from, ctes, false, is_recursive);
+  auto query = std::make_shared<sql::ast::Select>(select_columns, from, ctes, false, is_recursive);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
@@ -790,9 +787,9 @@ std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
     select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, fmt::format("A{}", i)));
   }
 
-  auto from_statement = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
+  auto from = std::make_shared<sql::ast::From>(from_sources, condition);
 
-  auto query = std::make_shared<sql::ast::SelectStatement>(select_cols, from_statement);
+  auto query = std::make_shared<sql::ast::Select>(select_cols, from);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
@@ -888,9 +885,9 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext* ctx) {
   }
 
   auto select_cols = SpecialAppliedVarList(ctx->applBase(), non_var_params, var_params, non_var_param_by_free_vars);
-  auto from_statement = std::make_shared<sql::ast::FromStatement>(from_sources, condition);
+  auto from = std::make_shared<sql::ast::From>(from_sources, condition);
 
-  auto query = std::make_shared<sql::ast::SelectStatement>(select_cols, from_statement);
+  auto query = std::make_shared<sql::ast::Select>(select_cols, from);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
@@ -1073,8 +1070,8 @@ std::any SQLVisitor::VisitGeneralizedConjunction(const std::vector<antlr4::Parse
   auto condition = EqualityShorthand(input_ctxs);
   auto select_columns = VarListShorthand(input_ctxs);
 
-  auto from = std::make_shared<sql::ast::FromStatement>(subqueries, condition);
-  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from);
+  auto from = std::make_shared<sql::ast::From>(subqueries, condition);
+  auto query = std::make_shared<sql::ast::Select>(select_columns, from);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
@@ -1092,7 +1089,7 @@ std::any SQLVisitor::VisitConjunctionWithTerms(psr::BinOpContext* ctx) {
   std::vector<antlr4::ParserRuleContext*> other_formulas = GetNode(ctx)->non_comparator_conjuncts;
   std::vector<antlr4::ParserRuleContext*> comparator_formulas = GetNode(ctx)->comparator_conjuncts;
 
-  auto select_expression = std::static_pointer_cast<sql::ast::SelectStatement>(
+  auto select_expression = std::static_pointer_cast<sql::ast::Select>(
       std::any_cast<std::shared_ptr<sql::ast::Expression>>(VisitGeneralizedConjunction(other_formulas)));
 
   auto from_statement = select_expression->from.value();
@@ -1157,7 +1154,7 @@ std::any SQLVisitor::VisitConjunctionWithNegations(psr::BinOpContext* ctx) {
   std::vector<antlr4::ParserRuleContext*> other_formulas = GetNode(ctx)->non_negated_conjuncts;
   std::vector<antlr4::ParserRuleContext*> negated_formulas = GetNode(ctx)->negated_conjuncts;
 
-  auto select_expression = std::static_pointer_cast<sql::ast::SelectStatement>(
+  auto select_expression = std::static_pointer_cast<sql::ast::Select>(
       std::any_cast<std::shared_ptr<sql::ast::Expression>>(VisitGeneralizedConjunction(other_formulas)));
 
   auto from_statement = select_expression->from.value();
@@ -1179,7 +1176,7 @@ std::any SQLVisitor::VisitConjunctionWithNegations(psr::BinOpContext* ctx) {
   }
 
   for (auto negated_formula : negated_formulas) {
-    auto negated_formula_sql = std::static_pointer_cast<sql::ast::SelectStatement>(
+    auto negated_formula_sql = std::static_pointer_cast<sql::ast::Select>(
         std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(negated_formula)));
 
     auto negated_formula_node = GetNode(negated_formula);
@@ -1232,14 +1229,14 @@ std::any SQLVisitor::VisitDisjunction(psr::BinOpContext* ctx) {
   auto rhs_cols = VarListShorthand(std::vector<antlr4::ParserRuleContext*>{ctx->rhs});
 
   auto lhs_from =
-      std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery});
+      std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery});
 
   auto rhs_from =
-      std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{rhs_subquery});
+      std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{rhs_subquery});
 
-  auto lhs_select = std::make_shared<sql::ast::SelectStatement>(lhs_cols, lhs_from);
+  auto lhs_select = std::make_shared<sql::ast::Select>(lhs_cols, lhs_from);
 
-  auto rhs_select = std::make_shared<sql::ast::SelectStatement>(rhs_cols, rhs_from);
+  auto rhs_select = std::make_shared<sql::ast::Select>(rhs_cols, rhs_from);
 
   auto query = std::make_shared<sql::ast::Union>(lhs_select, rhs_select);
 
@@ -1305,9 +1302,9 @@ std::any SQLVisitor::VisitExistential(psr::QuantificationContext* ctx) {
     condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
   }
 
-  auto from = std::make_shared<sql::ast::FromStatement>(sources, condition);
+  auto from = std::make_shared<sql::ast::From>(sources, condition);
 
-  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, from);
+  auto query = std::make_shared<sql::ast::Select>(select_columns, from);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
@@ -1350,9 +1347,9 @@ std::any SQLVisitor::VisitUniversal(psr::QuantificationContext* ctx) {
 
   auto wildcard = std::make_shared<sql::ast::Wildcard>();
 
-  auto inter_inner_from = std::make_shared<sql::ast::FromStatement>(sources);
+  auto inter_inner_from = std::make_shared<sql::ast::From>(sources);
 
-  auto inter_inner_select = std::make_shared<sql::ast::SelectStatement>(
+  auto inter_inner_select = std::make_shared<sql::ast::Select>(
       std::vector<std::shared_ptr<sql::ast::Selectable>>{wildcard}, inter_inner_from);
 
   std::vector<std::shared_ptr<sql::ast::Column>> inclusion_tuple;
@@ -1371,19 +1368,19 @@ std::any SQLVisitor::VisitUniversal(psr::QuantificationContext* ctx) {
 
   auto wildcard2 = std::make_shared<sql::ast::Wildcard>();
 
-  auto inner_from = std::make_shared<sql::ast::FromStatement>(bound_domain_sources, inclusion);
+  auto inner_from = std::make_shared<sql::ast::From>(bound_domain_sources, inclusion);
 
-  auto inner_select = std::make_shared<sql::ast::SelectStatement>(
-      std::vector<std::shared_ptr<sql::ast::Selectable>>{wildcard2}, inner_from);
+  auto inner_select =
+      std::make_shared<sql::ast::Select>(std::vector<std::shared_ptr<sql::ast::Selectable>>{wildcard2}, inner_from);
 
   auto exists = std::make_shared<sql::ast::Exists>(inner_select);
 
   auto not_exists = std::make_shared<sql::ast::LogicalCondition>(
       std::vector<std::shared_ptr<sql::ast::Condition>>{exists}, sql::ast::LogicalOp::NOT);
 
-  auto outer_from = std::make_shared<sql::ast::FromStatement>(sources, not_exists);
+  auto outer_from = std::make_shared<sql::ast::From>(sources, not_exists);
 
-  auto query = std::make_shared<sql::ast::SelectStatement>(select_columns, outer_from);
+  auto query = std::make_shared<sql::ast::Select>(select_columns, outer_from);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
@@ -1425,14 +1422,14 @@ std::any SQLVisitor::VisitAggregate(sql::ast::AggregateFunction function, psr::E
 
   columns.push_back(aggregate_column);
 
-  auto from = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{subquery});
+  auto from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{subquery});
 
-  std::shared_ptr<sql::ast::SelectStatement> query;
+  std::shared_ptr<sql::ast::Select> query;
 
   if (group_by) {
-    query = std::make_shared<sql::ast::SelectStatement>(columns, from, group_by);
+    query = std::make_shared<sql::ast::Select>(columns, from, group_by);
   } else {
-    query = std::make_shared<sql::ast::SelectStatement>(columns, from);
+    query = std::make_shared<sql::ast::Select>(columns, from);
   }
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
@@ -1496,15 +1493,15 @@ std::any SQLVisitor::SpecialVisitRelAbs(psr::RelAbsContext* ctx) {
     column_names.push_back(fmt::format("A{}", i));
   }
 
-  auto alias = std::make_shared<sql::ast::AliasStatement>(GenerateTableAlias(), column_names);
+  auto alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias(), column_names);
   auto source = std::make_shared<sql::ast::Source>(values_expr, alias);
 
-  auto from = std::make_shared<sql::ast::FromStatement>(std::vector<std::shared_ptr<sql::ast::Source>>{source});
+  auto from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{source});
 
   auto wildcard = std::make_shared<sql::ast::Wildcard>();
   auto select_columns = std::vector<std::shared_ptr<sql::ast::Selectable>>{wildcard};
 
-  auto select = std::make_shared<sql::ast::SelectStatement>(select_columns, from, true);  // true for DISTINCT
+  auto select = std::make_shared<sql::ast::Select>(select_columns, from, true);  // true for DISTINCT
 
   return std::static_pointer_cast<sql::ast::Expression>(select);
 }
@@ -1526,7 +1523,7 @@ std::any SQLVisitor::SpecialVisitProductExpr(psr::ProductExprContext* ctx) {
     selects.push_back(std::make_shared<sql::ast::TermSelectable>(constant));
   }
 
-  auto query = std::make_shared<sql::ast::SelectStatement>(selects);
+  auto query = std::make_shared<sql::ast::Select>(selects);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
@@ -1557,7 +1554,7 @@ std::shared_ptr<sql::ast::Source> SQLVisitor::CreateTableSource(const std::strin
     }
     table = std::make_shared<sql::ast::Table>(table_name, edb_info->arity, attribute_names);
     // Create a source with an alias that includes the attribute names
-    auto alias = std::make_shared<sql::ast::AliasStatement>(GenerateTableAlias());
+    auto alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias());
     return std::make_shared<sql::ast::Source>(table, alias);
   } else {
     // Fallback to default table creation if EDBInfo not found
@@ -1867,8 +1864,8 @@ std::shared_ptr<sql::ast::Expression> SQLVisitor::GetExpressionFromID(antlr4::Pa
       auto col = std::make_shared<sql::ast::Column>(col_name, source);
       select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(col, col_name));
     }
-    auto from_stmt = std::make_shared<sql::ast::FromStatement>(source);
-    return std::make_shared<sql::ast::SelectStatement>(select_columns, from_stmt);
+    auto from = std::make_shared<sql::ast::From>(source);
+    return std::make_shared<sql::ast::Select>(select_columns, from);
   }
 
   return table;
@@ -1922,7 +1919,7 @@ SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext* base,
     // Not a variable, let the visitor handle it
     auto param_sql = std::any_cast<std::shared_ptr<sql::ast::Expression>>(visit(param));
 
-    if (auto subquery_sql = std::dynamic_pointer_cast<sql::ast::SelectStatement>(param_sql)) {
+    if (auto subquery_sql = std::dynamic_pointer_cast<sql::ast::Select>(param_sql)) {
       // Then the parameter is not a variable
       auto param_subquery = std::make_shared<sql::ast::Source>(subquery_sql, GenerateTableAlias());
       GetNode(param)->sql_expression = param_subquery;
@@ -2008,23 +2005,23 @@ SQLVisitor::CollectReferencedStoredCTEs(const std::unordered_set<Bound>& safe_re
           // Add CTE if not already seen
           if (seen_ctes.insert(stored_cte).second) {
             // Check if the stored CTE's sourceable has nested CTEs
-            auto nested_select = std::dynamic_pointer_cast<sql::ast::SelectStatement>(stored_cte->sourceable);
+            auto nested_select = std::dynamic_pointer_cast<sql::ast::Select>(stored_cte->sourceable);
             if (nested_select && !nested_select->ctes.empty() && !nested_select->ctes_are_recursive) {
               // Extract nested CTEs
               extracted_ctes.insert(extracted_ctes.end(), nested_select->ctes.begin(), nested_select->ctes.end());
 
-              // Create a new SelectStatement without CTEs
+              // Create a new Select without CTEs
               std::shared_ptr<sql::ast::Sourceable> cleaned_sourceable;
               if (nested_select->group_by.has_value() && nested_select->from.has_value()) {
-                cleaned_sourceable = std::make_shared<sql::ast::SelectStatement>(
-                    nested_select->columns, nested_select->from.value(), nested_select->group_by.value(),
-                    nested_select->is_distinct);
+                cleaned_sourceable =
+                    std::make_shared<sql::ast::Select>(nested_select->columns, nested_select->from.value(),
+                                                       nested_select->group_by.value(), nested_select->is_distinct);
               } else if (nested_select->from.has_value()) {
-                cleaned_sourceable = std::make_shared<sql::ast::SelectStatement>(
+                cleaned_sourceable = std::make_shared<sql::ast::Select>(
                     nested_select->columns, nested_select->from.value(), nested_select->is_distinct);
               } else {
                 cleaned_sourceable =
-                    std::make_shared<sql::ast::SelectStatement>(nested_select->columns, nested_select->is_distinct);
+                    std::make_shared<sql::ast::Select>(nested_select->columns, nested_select->is_distinct);
               }
 
               // Create a new Source with the cleaned sourceable
@@ -2076,7 +2073,7 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
       auto constant_bound = std::dynamic_pointer_cast<ConstantSource>(bound_source);
       auto generic_bound = std::dynamic_pointer_cast<GenericSource>(bound_source);
 
-      std::shared_ptr<sql::ast::SelectStatement> select;
+      std::shared_ptr<sql::ast::Select> select;
       bool select_created = false;
 
       if (!constant_bound && !table_bound && !generic_bound) {
@@ -2097,7 +2094,7 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
         if (matching_cte) {
           // Create a SELECT that references the stored CTE in its FROM clause
           // The stored CTE is already a complete Source with is_cte=true
-          auto from = std::make_shared<sql::ast::FromStatement>(matching_cte);
+          auto from = std::make_shared<sql::ast::From>(matching_cte);
 
           std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
           if (projection.projected_indices.size() == generic_bound->arity) {
@@ -2114,14 +2111,14 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
             }
           }
 
-          select = std::make_shared<sql::ast::SelectStatement>(columns, from);
+          select = std::make_shared<sql::ast::Select>(columns, from);
           select_created = true;
         } else {
           // No stored CTE, proceed with normal GenericSource handling
           auto sourceable = generic_bound->source;
-          auto alias = std::make_shared<sql::ast::AliasStatement>(GenerateTableAlias());
+          auto alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias());
           auto source = std::make_shared<sql::ast::Source>(sourceable, alias);
-          auto from = std::make_shared<sql::ast::FromStatement>(source);
+          auto from = std::make_shared<sql::ast::From>(source);
 
           std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
           if (projection.projected_indices.size() == generic_bound->arity) {
@@ -2136,15 +2133,14 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
             }
           }
 
-          select = std::make_shared<sql::ast::SelectStatement>(columns, from);
+          select = std::make_shared<sql::ast::Select>(columns, from);
           select_created = true;
         }
       } else if (constant_bound) {
         auto sql_constant = std::make_shared<sql::ast::Constant>(constant_bound->value);
         auto selectable = std::make_shared<sql::ast::TermSelectable>(sql_constant, "A1");
 
-        select =
-            std::make_shared<sql::ast::SelectStatement>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable});
+        select = std::make_shared<sql::ast::Select>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable});
         select_created = true;
 
       } else {
@@ -2160,10 +2156,10 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
           table = std::make_shared<sql::ast::Table>(table_bound->table_name, ast_->GetArity(table_bound->table_name));
         }
 
-        auto alias = std::make_shared<sql::ast::AliasStatement>(GenerateTableAlias());
+        auto alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias());
 
         auto source = std::make_shared<sql::ast::Source>(table, alias);
-        auto from = std::make_shared<sql::ast::FromStatement>(source);
+        auto from = std::make_shared<sql::ast::From>(source);
         // Create columns based on domain.indices
         // If all columns are selected, use wildcard for better readability
         std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
@@ -2178,7 +2174,7 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
             columns.push_back(term_selectable);
           }
         }
-        select = std::make_shared<sql::ast::SelectStatement>(columns, from);
+        select = std::make_shared<sql::ast::Select>(columns, from);
         select_created = true;
       }
 
@@ -2315,12 +2311,12 @@ SQLVisitor::CreateRecursiveCTEFromFormula(std::shared_ptr<sql::ast::Sourceable> 
   sql::ast::TableNameUpdater updater(recursive_definition_name, recursive_alias);
   formula_sql->Accept(updater);
 
-  // Extract CTEs from the formula (if it's a SelectStatement)
+  // Extract CTEs from the formula (if it's a Select)
   std::vector<std::shared_ptr<sql::ast::Source>> formula_ctes;
-  auto select_stmt = std::dynamic_pointer_cast<sql::ast::SelectStatement>(formula_sql);
-  if (select_stmt) {
-    formula_ctes.insert(formula_ctes.end(), select_stmt->ctes.begin(), select_stmt->ctes.end());
-    select_stmt->ctes.clear();
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(formula_sql);
+  if (select) {
+    formula_ctes.insert(formula_ctes.end(), select->ctes.begin(), select->ctes.end());
+    select->ctes.clear();
   }
 
   // Create recursive CTE R0 with columns named A1, A2, etc. (not free variables)

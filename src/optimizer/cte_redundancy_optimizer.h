@@ -10,12 +10,11 @@ class CTERedundancyOptimizer : public BaseOptimizer {
  public:
   using BaseOptimizer::Visit;
 
-  void Visit(SelectStatement& select_statement) override;
+  void Visit(Select& select) override;
 
  private:
   bool TryReplaceRedundantCTEInTermsOfOtherCTE(const std::shared_ptr<Source>& cte,
-                                                const std::shared_ptr<SelectStatement>& cte_select,
-                                                const SelectStatement& parent_select);
+                                               const std::shared_ptr<Select>& cte_select, const Select& parent_select);
 
   std::string GetColumnNameFromSelectable(const std::shared_ptr<Selectable>& selectable, size_t index);
 };  // class CTERedundancyOptimizer

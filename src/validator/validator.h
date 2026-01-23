@@ -11,22 +11,18 @@ class Validator : public BaseValidator {
  public:
   using BaseValidator::Visit;
 
-  void Visit(SelectStatement& select_statement) override {
-    // Cast SelectStatement to Expression
-    auto& expression = static_cast<Expression&>(select_statement);
+  void Visit(Select& select) override {
+    // Cast Select to Expression
+    auto& expression = static_cast<Expression&>(select);
 
     table_reference_validator_.Visit(expression);
   }
 
   // Returns true if all validations passed, false otherwise
-  bool IsValid() const override {
-    return table_reference_validator_.IsValid();
-  }
+  bool IsValid() const override { return table_reference_validator_.IsValid(); }
 
   // Returns all validation errors from all validators
-  std::vector<ValidationError> GetErrors() const override {
-    return table_reference_validator_.GetErrors();
-  }
+  std::vector<ValidationError> GetErrors() const override { return table_reference_validator_.GetErrors(); }
 
  private:
   TableReferenceValidator table_reference_validator_;

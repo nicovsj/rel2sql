@@ -5,38 +5,38 @@
 namespace rel2sql {
 namespace sql::ast {
 
-void CTERedundancyOptimizer::Visit(SelectStatement& select_statement) {
+void CTERedundancyOptimizer::Visit(Select& select) {
   // Visit children first
-  ExpressionVisitor::Visit(select_statement);
+  ExpressionVisitor::Visit(select);
 
   // Do not attempt to optimize recursive CTEs.
   // Recursive CTEs rely on the SQL engine's recursive WITH support.
-  if (select_statement.ctes_are_recursive) {
+  if (select.ctes_are_recursive) {
     return;
   }
 
   std::vector<std::shared_ptr<Source>> new_ctes;
 
   // Try to eliminate CTEs that are redundant in terms of other CTEs
-  for (auto& cte : select_statement.ctes) {
-    auto cte_select = std::dynamic_pointer_cast<SelectStatement>(cte->sourceable);
-    if (cte_select && TryReplaceRedundantCTEInTermsOfOtherCTE(cte, cte_select, select_statement)) {
+  for (auto& cte : select.ctes) {
+    auto cte_select = std::dynamic_pointer_cast<Select>(cte->sourceable);
+    if (cte_select && TryReplaceRedundantCTEInTermsOfOtherCTE(cte, cte_select, select)) {
       // CTE was eliminated, don't add it to new_ctes
       continue;
     }
     new_ctes.push_back(cte);
   }
 
-  select_statement.ctes = new_ctes;
+  select.ctes = new_ctes;
 
-  if (select_statement.ctes.empty()) {
-    select_statement.ctes_are_recursive = false;
+  if (select.ctes.empty()) {
+    select.ctes_are_recursive = false;
   }
 }
 
-bool CTERedundancyOptimizer::TryReplaceRedundantCTEInTermsOfOtherCTE(
-    const std::shared_ptr<Source>& cte, const std::shared_ptr<SelectStatement>& cte_select,
-    const SelectStatement& parent_select) {
+bool CTERedundancyOptimizer::TryReplaceRedundantCTEInTermsOfOtherCTE(const std::shared_ptr<Source>& cte,
+                                                                     const std::shared_ptr<Select>& cte_select,
+                                                                     const Select& parent_select) {
   // Check if this CTE is a simple SELECT * FROM <other_cte> pattern
   // CTE must have a single wildcard column
   if (cte_select->columns.size() != 1 || !std::dynamic_pointer_cast<Wildcard>(cte_select->columns[0])) {
@@ -49,8 +49,7 @@ bool CTERedundancyOptimizer::TryReplaceRedundantCTEInTermsOfOtherCTE(
   }
 
   // CTE must have no WHERE clause or GROUP BY
-  if (cte_select->from.value()->where.has_value() || cte_select->group_by.has_value() ||
-      cte_select->is_distinct) {
+  if (cte_select->from.value()->where.has_value() || cte_select->group_by.has_value() || cte_select->is_distinct) {
     return false;
   }
 
@@ -72,7 +71,7 @@ bool CTERedundancyOptimizer::TryReplaceRedundantCTEInTermsOfOtherCTE(
   // Get the column names from the referenced CTE
   // If the referenced CTE has def_columns, use those
   // Otherwise, we need to get column names from its SELECT statement
-  auto referenced_cte_select = std::dynamic_pointer_cast<SelectStatement>(referenced_cte->sourceable);
+  auto referenced_cte_select = std::dynamic_pointer_cast<Select>(referenced_cte->sourceable);
   if (!referenced_cte_select) {
     return false;
   }
@@ -122,8 +121,8 @@ bool CTERedundancyOptimizer::TryReplaceRedundantCTEInTermsOfOtherCTE(
   return true;
 }
 
-std::string CTERedundancyOptimizer::GetColumnNameFromSelectable(
-    const std::shared_ptr<Selectable>& selectable, size_t index) {
+std::string CTERedundancyOptimizer::GetColumnNameFromSelectable(const std::shared_ptr<Selectable>& selectable,
+                                                                size_t index) {
   // If the selectable has an alias, use it
   if (selectable->HasAlias()) {
     return selectable->Alias();
