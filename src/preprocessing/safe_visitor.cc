@@ -208,86 +208,21 @@ std::any SafeVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
 }
 
 std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
-
   visit(ctx->applBase());
 
+  // Special handling for aggregates
   if (ctx->applBase()->T_ID() && AGGREGATE_MAP.find(ctx->applBase()->T_ID()->getText()) != AGGREGATE_MAP.end()) {
     auto param_ctx = *ctx->applParams()->applParam().begin();
     visit(param_ctx);
-
-    auto node = GetNode(ctx);
-
-    auto child_node = GetNode(param_ctx);
-
-    node->safety = child_node->safety;
-
+    GetNode(ctx)->safety = GetNode(param_ctx)->safety;
     return {};
   }
 
   if (ctx->applBase()->T_ID()) {
-    std::vector<size_t> variable_indices;
-    std::vector<std::string> variable_names;
-
-    for (size_t i = 0; i < ctx->applParams()->applParam().size(); i++) {
-      auto param = ctx->applParams()->applParam()[i];
-      visit(param);
-
-      auto node = GetNode(param);
-      auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
-      if (!term_expr_ctx) continue;
-      auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
-      if (!id_term_ctx) continue;
-      if (node->variables.size() != 1) continue;
-
-      auto variable = *node->variables.begin();
-
-      variable_indices.push_back(i);
-      variable_names.push_back(variable);
-    }
-
-    Bound bound{variable_names};
-
     std::string id = ctx->applBase()->T_ID()->getText();
-    auto arity = ast_->GetArity(id);
-
-    auto table_source = TableSource(id, arity);
-    auto projection = Projection(variable_indices, table_source);
-
-    bound.Add(projection);
-
-    GetNode(ctx)->safety = BoundSet({bound});
-
-    return {};
-  }
-  if (ctx->applBase()->relAbs()) {
-    std::vector<std::string> variable_names;
-    std::vector<size_t> variable_indices;
-
-    for (size_t i = 0; i < ctx->applParams()->applParam().size(); i++) {
-      auto param = ctx->applParams()->applParam()[i];
-      visit(param);
-      auto node = GetNode(param);
-      auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
-      if (!term_expr_ctx) continue;
-      auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
-      if (!id_term_ctx) continue;
-      if (node->variables.size() != 1) continue;
-      auto variable = *node->variables.begin();
-
-      variable_names.push_back(variable);
-      variable_indices.push_back(i);
-    }
-
-    auto node = GetNode(ctx);
-    auto base_node = GetNode(ctx->applBase());
-
-    auto promised_source = PromisedSource{base_node->arity};
-
-    auto projection = Projection(variable_indices, promised_source);
-
-    auto bound = Bound(variable_names, {projection});
-
-    node->safety = BoundSet({bound});
+    ComputeIDApplicationSafety(GetNode(ctx), ctx->applParams(), id);
+  } else if (ctx->applBase()->relAbs()) {
+    ComputeRelAbsApplicationSafety(GetNode(ctx), GetNode(ctx->applBase()), ctx->applParams());
   }
 
   return {};
@@ -296,78 +231,74 @@ std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
 std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
   visit(ctx->applBase());
 
-  // Base is an ID
   if (ctx->applBase()->T_ID()) {
     std::string id = ctx->applBase()->T_ID()->getText();
-    ComputeFullApplicationOnIDSafety(ctx, id);
-    return {};
-  }
-
-  if (ctx->applBase()->relAbs()) {
-    std::vector<std::string> variable_names;
-    std::vector<size_t> variable_indices;
-
-    for (size_t i = 0; i < ctx->applParams()->applParam().size(); i++) {
-      auto param = ctx->applParams()->applParam()[i];
-      visit(param);
-      auto node = GetNode(param);
-      auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
-      if (!term_expr_ctx) continue;
-      auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
-      if (!id_term_ctx) continue;
-      if (node->variables.size() != 1) continue;
-      auto variable = *node->variables.begin();
-
-      variable_names.push_back(variable);
-      variable_indices.push_back(i);
-    }
-
-    auto node = GetNode(ctx);
-    auto base_node = GetNode(ctx->applBase());
-
-    auto promised_source = PromisedSource{base_node->arity};
-
-    auto projection = Projection(variable_indices, promised_source);
-
-    auto bound = Bound(variable_names, {projection});
-
-    node->safety = BoundSet({bound});
+    ComputeIDApplicationSafety(GetNode(ctx), ctx->applParams(), id);
+  } else if (ctx->applBase()->relAbs()) {
+    ComputeRelAbsApplicationSafety(GetNode(ctx), GetNode(ctx->applBase()), ctx->applParams());
   }
 
   return {};
 }
 
-void SafeVisitor::ComputeFullApplicationOnIDSafety(psr::FullApplContext* ctx, const std::string& id) {
+void SafeVisitor::ComputeIDApplicationSafety(std::shared_ptr<RelASTNode> node, psr::ApplParamsContext* params, const std::string& id) {
   std::vector<std::string> variable_names;
   std::vector<size_t> variable_indices;
 
-  for (size_t i = 0; i < ctx->applParams()->applParam().size(); i++) {
-    auto param = ctx->applParams()->applParam()[i];
+  for (size_t i = 0; i < params->applParam().size(); i++) {
+    auto param = params->applParam()[i];
     visit(param);
-    auto node = GetNode(param);
+    auto param_node = GetNode(param);
 
     auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
     if (!term_expr_ctx) continue;
     auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
     if (!id_term_ctx) continue;
-    if (node->variables.size() != 1) continue;
+    if (param_node->variables.size() != 1) continue;
 
-    auto variable = *node->variables.begin();
+    auto variable = *param_node->variables.begin();
 
     variable_indices.push_back(i);
     variable_names.push_back(variable);
   }
 
-  Bound binding_bound{variable_names};
+  Bound bound{variable_names};
 
   auto arity = ast_->GetArity(id);
-
   auto table_source = TableSource(id, arity);
   auto projection = Projection(variable_indices, table_source);
 
-  binding_bound.Add(projection);
+  bound.Add(projection);
 
-  GetNode(ctx)->safety = BoundSet({binding_bound});
+  node->safety = BoundSet({bound});
+}
+
+void SafeVisitor::ComputeRelAbsApplicationSafety(std::shared_ptr<RelASTNode> node, std::shared_ptr<RelASTNode> base_node, psr::ApplParamsContext* params) {
+  std::vector<std::string> variable_names;
+  std::vector<size_t> variable_indices;
+
+  for (size_t i = 0; i < params->applParam().size(); i++) {
+    auto param = params->applParam()[i];
+    visit(param);
+    auto param_node = GetNode(param);
+
+    auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
+    if (!term_expr_ctx) continue;
+    auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
+    if (!id_term_ctx) continue;
+    if (param_node->variables.size() != 1) continue;
+
+    auto variable = *param_node->variables.begin();
+
+    variable_names.push_back(variable);
+    variable_indices.push_back(i);
+  }
+
+  auto promised_source = PromisedSource{base_node->arity};
+  auto projection = Projection(variable_indices, promised_source);
+  auto bound = Bound(variable_names, {projection});
+
+  node->safety = BoundSet({bound});
 }
 
 std::any SafeVisitor::visitBinOp(psr::BinOpContext* ctx) {

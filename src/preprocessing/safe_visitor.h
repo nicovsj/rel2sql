@@ -65,14 +65,15 @@ class SafeVisitor : public BaseVisitor {
 
   std::any visitApplParam(psr::ApplParamContext* ctx) override;
 
- protected:
-  // Made protected so FixpointSafetyVisitor can access it
-  void ComputeFullApplicationOnIDSafety(psr::FullApplContext* ctx, const std::string& id);
-
  private:
   std::any VisitConjunction(psr::BinOpContext* ctx);
 
   std::any VisitDisjunction(psr::BinOpContext* ctx);
+
+  // Common helpers for application safety computation
+  void ComputeIDApplicationSafety(std::shared_ptr<RelASTNode> node, psr::ApplParamsContext* params, const std::string& id);
+
+  void ComputeRelAbsApplicationSafety(std::shared_ptr<RelASTNode> node, std::shared_ptr<RelASTNode> base_node, psr::ApplParamsContext* params);
 
   // Extract individual variable domains from a BoundSet and store them in RelAST
   void ExtractAndStoreVariableDomains(const BoundSet& safety);
