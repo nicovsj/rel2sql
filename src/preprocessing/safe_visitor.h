@@ -70,7 +70,9 @@ class SafeVisitor : public BaseVisitor {
 
   std::any VisitDisjunction(psr::BinOpContext* ctx);
 
-  // Common helpers for application safety computation
+  // Common helpers for safety computation
+  void ComputeBindingsSafety(std::shared_ptr<RelASTNode> current_node, std::shared_ptr<RelASTNode> child_node, psr::BindingInnerContext* bindings);
+
   void ComputeIDApplicationSafety(std::shared_ptr<RelASTNode> node, psr::ApplParamsContext* params, const std::string& id);
 
   void ComputeRelAbsApplicationSafety(std::shared_ptr<RelASTNode> node, std::shared_ptr<RelASTNode> base_node, psr::ApplParamsContext* params);

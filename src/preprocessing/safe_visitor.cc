@@ -139,50 +139,21 @@ std::any SafeVisitor::visitFormulaExpr(psr::FormulaExprContext* ctx) {
 }
 
 std::any SafeVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
-  auto current_node = GetNode(ctx);
-
   visit(ctx->expr());
-
-  auto expr_node = GetNode(ctx->expr());
-
-  std::vector<std::string> variables;
-  // Also handle explicit domain bindings (e.g., x in R)
-  for (auto& binding : ctx->bindingInner()->binding()) {
-    variables.push_back(binding->id->getText());
-
-    // If binding has an explicit domain, store it
-    if (binding->id_domain) {
-      std::string var_name = binding->id->getText();
-      std::string domain_name = binding->id_domain->getText();
-      int domain_arity = ast_->GetArity(domain_name);
-
-      auto table_source = TableSource(domain_name, domain_arity);
-      auto projection = Projection(table_source);
-
-      std::unordered_set<Projection> explicit_domain = {projection};
-      ast_->AddVariableDomain(var_name, explicit_domain);
-    }
-  }
-
-  current_node->safety = expr_node->safety.WithRemovedVariables(variables);
-
-  // Extract and store variable domains from the expression's safety
-  ExtractAndStoreVariableDomains(expr_node->safety);
-
+  ComputeBindingsSafety(GetNode(ctx), GetNode(ctx->expr()), ctx->bindingInner());
   return {};
 }
 
 std::any SafeVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
-  auto current_node = GetNode(ctx);
-
   visit(ctx->formula());
+  ComputeBindingsSafety(GetNode(ctx), GetNode(ctx->formula()), ctx->bindingInner());
+  return {};
+}
 
-  auto formula_node = GetNode(ctx->formula());
-
+void SafeVisitor::ComputeBindingsSafety(std::shared_ptr<RelASTNode> current_node, std::shared_ptr<RelASTNode> child_node, psr::BindingInnerContext* bindings) {
   std::vector<std::string> variables;
 
-  // Also handle explicit domain bindings (e.g., x in R)
-  for (auto& binding : ctx->bindingInner()->binding()) {
+  for (auto& binding : bindings->binding()) {
     variables.push_back(binding->id->getText());
 
     // If binding has an explicit domain, store it
@@ -199,12 +170,8 @@ std::any SafeVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
     }
   }
 
-  current_node->safety = formula_node->safety.WithRemovedVariables(variables);
-
-  // Extract and store variable domains from the formula's safety
-  ExtractAndStoreVariableDomains(formula_node->safety);
-
-  return {};
+  current_node->safety = child_node->safety.WithRemovedVariables(variables);
+  ExtractAndStoreVariableDomains(child_node->safety);
 }
 
 std::any SafeVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
@@ -349,36 +316,8 @@ std::any SafeVisitor::visitUnOp(psr::UnOpContext* ctx) {
 }
 
 std::any SafeVisitor::visitQuantification(psr::QuantificationContext* ctx) {
-  auto current_node = GetNode(ctx);
-
   visit(ctx->formula());
-
-  auto formula_node = GetNode(ctx->formula());
-
-  std::vector<std::string> variables;
-  // Also handle explicit domain bindings (e.g., x in R)
-  for (auto& binding : ctx->bindingInner()->binding()) {
-    variables.push_back(binding->id->getText());
-
-    // If binding has an explicit domain, store it
-    if (binding->id_domain) {
-      std::string var_name = binding->id->getText();
-      std::string domain_name = binding->id_domain->getText();
-      int domain_arity = ast_->GetArity(domain_name);
-
-      auto table_source = TableSource(domain_name, domain_arity);
-      auto projection = Projection(table_source);
-
-      std::unordered_set<Projection> explicit_domain = {projection};
-      ast_->AddVariableDomain(var_name, explicit_domain);
-    }
-  }
-
-  current_node->safety = formula_node->safety.WithRemovedVariables(variables);
-
-  // Extract and store variable domains from the formula's safety
-  ExtractAndStoreVariableDomains(formula_node->safety);
-
+  ComputeBindingsSafety(GetNode(ctx), GetNode(ctx->formula()), ctx->bindingInner());
   return {};
 }
 
