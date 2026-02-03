@@ -13,10 +13,10 @@ relDef: s = 'def' name = T_ID relAbs;
 
 literal:
 	T_INT_LIT																	# int
-	| T_NEG_INT_LIT																# negInt
+	| T_OP_MINUS T_INT_LIT														# negInt
 	| T_META_INT_LIT															# metaInt
 	| T_FLOAT_LIT																# float
-	| T_NEG_FLOAT_LIT															# negFloat
+	| T_OP_MINUS T_FLOAT_LIT													# negFloat
 	| T_RELNAME_LIT																# relName
 	| T_RELNAME_STR_LIT															# relNameStr
 	| T_RELNAME_MSTR_LIT														# relNameMstr
@@ -58,10 +58,10 @@ arithmeticOperator: T_OP_PLUS | T_OP_MINUS | T_OP_MULT | T_OP_DIV;
 comparator: T_OP_COMP | T_OP_NEQ | T_OP_EQ;
 
 numericalConstant:
-	T_INT_LIT			# numInt
-	| T_NEG_INT_LIT		# numNegInt
-	| T_FLOAT_LIT		# numFloat
-	| T_NEG_FLOAT_LIT	# numNegFloat;
+	T_INT_LIT					# numInt
+	| T_OP_MINUS T_INT_LIT		# numNegInt
+	| T_FLOAT_LIT				# numFloat
+	| T_OP_MINUS T_FLOAT_LIT	# numNegFloat;
 
 term:
 	T_ID								# IDTerm

@@ -118,15 +118,13 @@ fragment OCT_INT: '0o' ('_'? OCT)+;
 fragment HEX_INT: '0x' ('_'? HEX)+;
 T_META_INT_LIT: '#' (DEC_INT | OCT_INT | HEX_INT);
 T_INT_LIT: DEC_INT | OCT_INT | HEX_INT;
-T_NEG_INT_LIT: '-' DEC_INT;
-// Have to specifically handle this as a token, otherwise they will parse as "-0" and "x..."
+// Have to specifically handle these as a token, otherwise they will parse as "-0x" and "x..."
 ERR_INVALID_NEG_OCT_HEX: '-' (OCT_INT | HEX_INT);
 
 fragment EXPONENT: [eE] [+-]? DEC_INT;
 fragment POINT_FLOAT: DEC_INT? '.' DEC ('_'? DEC)* | DEC_INT '.';
 fragment EXPONENT_FLOAT: (DEC_INT | POINT_FLOAT) EXPONENT;
 T_FLOAT_LIT: POINT_FLOAT | EXPONENT_FLOAT;
-T_NEG_FLOAT_LIT: '-' (POINT_FLOAT | EXPONENT_FLOAT);
 
 T_DATE_LIT: DEC DEC DEC DEC '-' DEC DEC '-' DEC DEC;
 fragment F_TIME_DIGITS: DEC DEC ':' DEC DEC ':' DEC DEC ('.' DEC DEC DEC)?;
