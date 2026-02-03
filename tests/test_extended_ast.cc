@@ -1191,4 +1191,49 @@ TEST(TermPolynomialVisitorTest, DivisionByVariableIsInvalid) {
   EXPECT_FALSE(term_node->term_linear_coeffs.has_value());
 }
 
+TEST(TermPolynomialVisitorTest, FailedLinearityOfTerm1) {
+  std::string input = "x*x + 1";
+  auto parser_unique = GetParser(input);
+  auto parser = std::shared_ptr<psr>(std::move(parser_unique));
+  auto tree = parser->expr();
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
+
+  auto term_expr = dynamic_cast<psr::TermExprContext*>(tree);
+  ASSERT_NE(term_expr, nullptr);
+
+  auto term_node = ast.GetNode(term_expr->term());
+  EXPECT_TRUE(term_node->IsInvalidTermExpression());
+  EXPECT_FALSE(term_node->term_linear_coeffs.has_value());
+}
+
+TEST(TermPolynomialVisitorTest, FailedLinearityOfTerm2) {
+  std::string input = "(x+1) * (x+2)";
+  auto parser_unique = GetParser(input);
+  auto parser = std::shared_ptr<psr>(std::move(parser_unique));
+  auto tree = parser->expr();
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
+
+  auto term_expr = dynamic_cast<psr::TermExprContext*>(tree);
+  ASSERT_NE(term_expr, nullptr);
+
+  auto term_node = ast.GetNode(term_expr->term());
+  EXPECT_TRUE(term_node->IsInvalidTermExpression());
+  EXPECT_FALSE(term_node->term_linear_coeffs.has_value());
+}
+
+TEST(TermPolynomialVisitorTest, NullPolynomialTerm) {
+  std::string input = "(1-1)*x";
+  auto parser_unique = GetParser(input);
+  auto parser = std::shared_ptr<psr>(std::move(parser_unique));
+  auto tree = parser->expr();
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
+
+  auto term_expr = dynamic_cast<psr::TermExprContext*>(tree);
+  ASSERT_NE(term_expr, nullptr);
+
+  auto term_node = ast.GetNode(term_expr->term());
+  EXPECT_TRUE(term_node->IsNullPolynomialTerm());
+}
+
+
 }  // namespace rel2sql
