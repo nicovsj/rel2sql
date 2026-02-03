@@ -303,6 +303,24 @@ bool operator==(const RelASTNode& lhs, const RelASTNode& rhs) {
     throw ExtendedNodeDifferenceException(nullptr, "safeness", "Safeness sets differ");
   }
 
+  // Compare linear term analysis metadata
+  if (lhs.term_linear_invalid != rhs.term_linear_invalid) {
+    throw ExtendedNodeDifferenceException(
+        nullptr, "term_linear_invalid",
+        "term_linear_invalid flag differs: " + std::to_string(lhs.term_linear_invalid) + " vs " +
+            std::to_string(rhs.term_linear_invalid));
+  }
+
+  if (lhs.term_linear_coeffs.has_value() != rhs.term_linear_coeffs.has_value()) {
+    throw ExtendedNodeDifferenceException(nullptr, "term_linear_coeffs",
+                                          "Presence of term_linear_coeffs differs between nodes");
+  }
+
+  if (lhs.term_linear_coeffs.has_value() && rhs.term_linear_coeffs.has_value() &&
+      lhs.term_linear_coeffs.value() != rhs.term_linear_coeffs.value()) {
+    throw ExtendedNodeDifferenceException(nullptr, "term_linear_coeffs", "term_linear_coeffs values differ");
+  }
+
   // Compare multiple_defs (by pointer equality since they're ParserRuleContext pointers)
   if (lhs.multiple_defs.size() != rhs.multiple_defs.size()) {
     throw ExtendedNodeDifferenceException(nullptr, "multiple_defs",

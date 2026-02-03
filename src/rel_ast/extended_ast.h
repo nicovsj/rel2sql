@@ -4,9 +4,11 @@
 #include <antlr4-runtime.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "rel_ast/bound_set.h"
@@ -57,10 +59,42 @@ struct RelASTNode {
   std::vector<antlr4::ParserRuleContext*> negated_conjuncts;
   std::vector<antlr4::ParserRuleContext*> non_negated_conjuncts;
 
+  // Optional affine model for numerical term expressions in a single variable.
+  // When present, represents the polynomial a * x + b computed over the term tree.
+  // Only meaningful for numerical term/term-expression contexts and only under
+  // the assumption that at most one identifier appears in the term. Non-linear
+  // or multi-variable terms will leave this unset and instead mark
+  // term_linear_invalid = true.
+  std::optional<std::pair<double, double>> term_linear_coeffs;
+  bool term_linear_invalid = false;
+
   // Children nodes in the ExtendedAST tree structure
   std::vector<std::shared_ptr<RelASTNode>> children;
 
   const std::vector<std::shared_ptr<RelASTNode>>& GetChildren() const { return children; }
+
+  // Returns true if the associated term expression was determined to be
+  // non-linear, a rational function, or otherwise unsupported by the
+  // linear term analysis visitor.
+  bool IsInvalidTermExpression() const { return term_linear_invalid; }
+
+  // Returns true if the analyzed term corresponds to the zero polynomial 0 * x + 0.
+  // Only meaningful when term_linear_coeffs has a value.
+  bool IsNullPolynomialTerm() const {
+    if (!term_linear_coeffs) return false;
+    auto [a, b] = *term_linear_coeffs;
+    return a == 0.0 && b == 0.0;
+  }
+
+  // Returns the unique root of the analyzed linear polynomial a * x + b, if it exists.
+  // If the term was marked invalid, not analyzed, or corresponds to a constant
+  // polynomial (a == 0), std::nullopt is returned.
+  std::optional<double> GetPolynomialRoot() const {
+    if (term_linear_invalid || !term_linear_coeffs) return std::nullopt;
+    auto [a, b] = *term_linear_coeffs;
+    if (a == 0.0) return std::nullopt;
+    return -b / a;
+  }
 
   void VariablesInplaceUnion(const RelASTNode& other) {
     variables.insert(other.variables.begin(), other.variables.end());

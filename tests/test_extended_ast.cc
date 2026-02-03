@@ -1098,4 +1098,97 @@ TEST(VariableDomainTest, DomainMatchesSafetyAnalysis) {
   EXPECT_TRUE(HasTableProjection(y_domain, "G", 0)) << "y should have projection from G";
 }
 
+// --- Linear term analysis tests ---
+
+TEST(TermPolynomialVisitorTest, VariableOnly) {
+  std::string input = "x";
+  auto parser_unique = GetParser(input);
+  auto parser = std::shared_ptr<psr>(std::move(parser_unique));
+  auto tree = parser->expr();
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
+
+  auto term_expr = dynamic_cast<psr::TermExprContext*>(tree);
+  ASSERT_NE(term_expr, nullptr);
+
+  auto term_node = ast.GetNode(term_expr->term());
+  EXPECT_FALSE(term_node->IsInvalidTermExpression());
+  ASSERT_TRUE(term_node->term_linear_coeffs.has_value());
+  auto [a, b] = term_node->term_linear_coeffs.value();
+  EXPECT_DOUBLE_EQ(a, 1.0);
+  EXPECT_DOUBLE_EQ(b, 0.0);
+}
+
+TEST(TermPolynomialVisitorTest, AffineTermAndRoot) {
+  std::string input = "2 * x - 4";
+  auto parser_unique = GetParser(input);
+  auto parser = std::shared_ptr<psr>(std::move(parser_unique));
+  auto tree = parser->expr();
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
+
+  auto term_expr = dynamic_cast<psr::TermExprContext*>(tree);
+  ASSERT_NE(term_expr, nullptr);
+
+  auto term_node = ast.GetNode(term_expr->term());
+  EXPECT_FALSE(term_node->IsInvalidTermExpression());
+  ASSERT_TRUE(term_node->term_linear_coeffs.has_value());
+  auto [a, b] = term_node->term_linear_coeffs.value();
+  EXPECT_DOUBLE_EQ(a, 2.0);
+  EXPECT_DOUBLE_EQ(b, -4.0);
+
+  auto root = term_node->GetPolynomialRoot();
+  ASSERT_TRUE(root.has_value());
+  EXPECT_DOUBLE_EQ(root.value(), 2.0);  // 2x - 4 = 0 -> x = 2
+}
+
+
+TEST(TermPolynomialVisitorTest, DivisionByConstant) {
+  std::string input = "x / 2";
+  auto parser_unique = GetParser(input);
+  auto parser = std::shared_ptr<psr>(std::move(parser_unique));
+  auto tree = parser->expr();
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
+
+  auto term_expr = dynamic_cast<psr::TermExprContext*>(tree);
+  ASSERT_NE(term_expr, nullptr);
+
+  auto term_node = ast.GetNode(term_expr->term());
+  EXPECT_FALSE(term_node->IsInvalidTermExpression());
+  ASSERT_TRUE(term_node->term_linear_coeffs.has_value());
+  auto [a, b] = term_node->term_linear_coeffs.value();
+  EXPECT_DOUBLE_EQ(a, 0.5);
+  EXPECT_DOUBLE_EQ(b, 0.0);
+}
+
+TEST(TermPolynomialVisitorTest, MultiVariableTermIsInvalid) {
+  std::string input = "x + y";
+  auto parser_unique = GetParser(input);
+  auto parser = std::shared_ptr<psr>(std::move(parser_unique));
+  auto tree = parser->expr();
+
+  // Declare x and y as variables via a dummy relation definition context.
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
+
+  auto term_expr = dynamic_cast<psr::TermExprContext*>(tree);
+  ASSERT_NE(term_expr, nullptr);
+
+  auto term_node = ast.GetNode(term_expr->term());
+  EXPECT_TRUE(term_node->IsInvalidTermExpression());
+  EXPECT_FALSE(term_node->term_linear_coeffs.has_value());
+}
+
+TEST(TermPolynomialVisitorTest, DivisionByVariableIsInvalid) {
+  std::string input = "2 / x";
+  auto parser_unique = GetParser(input);
+  auto parser = std::shared_ptr<psr>(std::move(parser_unique));
+  auto tree = parser->expr();
+  auto ast = Preprocessor(rel2sql::RelationMap()).Process(tree);
+
+  auto term_expr = dynamic_cast<psr::TermExprContext*>(tree);
+  ASSERT_NE(term_expr, nullptr);
+
+  auto term_node = ast.GetNode(term_expr->term());
+  EXPECT_TRUE(term_node->IsInvalidTermExpression());
+  EXPECT_FALSE(term_node->term_linear_coeffs.has_value());
+}
+
 }  // namespace rel2sql

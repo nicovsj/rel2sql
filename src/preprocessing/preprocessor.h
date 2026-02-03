@@ -11,6 +11,7 @@
 #include "preprocessing/safe_visitor.h"
 #include "preprocessing/tree_structure_visitor.h"
 #include "preprocessing/vars_visitor.h"
+#include "preprocessing/term_polynomial_visitor.h"
 #include "rel_ast/extended_ast.h"
 
 namespace rel2sql {
@@ -36,6 +37,7 @@ class Preprocessor {
         variables_visitor_(ast_),
         recursion_visitor_(ast_),
         literal_visitor_(ast_),
+        term_poly_visitor_(ast_),
         balancing_visitor_(ast_),
         safeness_visitor_(ast_) {}
 
@@ -47,6 +49,7 @@ class Preprocessor {
         variables_visitor_(ast_),
         recursion_visitor_(ast_),
         literal_visitor_(ast_),
+        term_poly_visitor_(ast_),
         balancing_visitor_(ast_),
         safeness_visitor_(ast_) {}
 
@@ -64,6 +67,7 @@ class Preprocessor {
     variables_visitor_.visit(tree);
     recursion_visitor_.visit(tree);
     literal_visitor_.visit(tree);
+    term_poly_visitor_.visit(tree);
     balancing_visitor_.visit(tree);
     safeness_visitor_.visit(tree);
 
@@ -78,6 +82,7 @@ class Preprocessor {
   VariablesVisitor variables_visitor_;
   RecursionVisitor recursion_visitor_;
   LiteralVisitor literal_visitor_;
+  TermPolynomialVisitor term_poly_visitor_;
   BalancingVisitor balancing_visitor_;
   SafeVisitor safeness_visitor_;
 };
