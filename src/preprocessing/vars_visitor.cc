@@ -57,11 +57,24 @@ std::any VariablesVisitor::visitOpTerm(psr::OpTermContext* ctx) {
   visit(ctx->lhs);
   visit(ctx->rhs);
 
-  node->variables = GetNode(ctx->lhs)->variables;
-  node->free_variables = GetNode(ctx->lhs)->free_variables;
+  auto lhs_node = GetNode(ctx->lhs);
+  auto rhs_node = GetNode(ctx->rhs);
 
-  node->VariablesInplaceUnion(*GetNode(ctx->rhs));
+  node->variables = lhs_node->variables;
+  node->free_variables = lhs_node->free_variables;
 
+  node->VariablesInplaceUnion(*rhs_node);
+
+  return {};
+}
+
+std::any VariablesVisitor::visitParenthesisTerm(psr::ParenthesisTermContext* ctx) {
+  visit(ctx->term());
+  auto node = GetNode(ctx);
+  auto term_node = GetNode(ctx->term());
+
+  node->variables = term_node->variables;
+  node->free_variables = term_node->free_variables;
   return {};
 }
 

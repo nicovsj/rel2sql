@@ -26,6 +26,8 @@ class VariablesVisitor : public BaseVisitor {
 
   std::any visitOpTerm(psr::OpTermContext* ctx) override;
 
+  std::any visitParenthesisTerm(psr::ParenthesisTermContext* ctx) override;
+
   // Expression branches
 
   std::any visitTermExpr(psr::TermExprContext* ctx) override;
