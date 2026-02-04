@@ -251,9 +251,7 @@ TEST_F(OptimizationTest, BindingFormula3) {
 }
 
 TEST_F(OptimizationTest, BindingFormula4) {
-  EXPECT_EQ(TranslateExpression("(x): A(x+1)"),
-            "WITH S0(x) AS (SELECT T3.A1 AS A1 FROM B AS T3) SELECT S0.x AS A1 FROM (SELECT T0.A1 AS x FROM B AS T0, "
-            "(SELECT 1 AS A1) AS T1 WHERE T0.A2 = T1.A1) AS T2, S0 WHERE S0.x = T2.x");
+  EXPECT_EQ(TranslateExpression("(x): A(x+1)"), "SELECT T0.A1 - 1 AS A1 FROM A AS T0");
 }
 
 TEST_F(OptimizationTest, NestedBindingFormula) {
