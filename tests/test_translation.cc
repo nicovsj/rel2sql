@@ -547,6 +547,22 @@ TEST_F(TranslationTest, ParameterVariableTerms7) {
             "T0.A2 = T2.A1");
 }
 
+TEST_F(TranslationTest, FailedParameterVariableTerms1) {
+  EXPECT_THROW(TranslateExpression("A(x+y)"), VariableException);
+}
+
+TEST_F(TranslationTest, FailedParameterVariableTerms2) {
+  EXPECT_THROW(TranslateExpression("A(x*x)"), VariableException);
+}
+
+TEST_F(TranslationTest, FailedParameterVariableTerms3) {
+  EXPECT_THROW(TranslateExpression("A(x*x - x*x)"), VariableException);
+}
+
+TEST_F(TranslationTest, FailedParameterVariableTerms4) {
+  EXPECT_THROW(TranslateExpression("A((1-1)*x)"), VariableException);
+}
+
 TEST_F(TranslationTest, DISABLED_ExpressionVariableTerms1) {
   EXPECT_EQ(TranslateExpression("[x] : x where A(x)"),
             "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1 AND T1.x < 5");

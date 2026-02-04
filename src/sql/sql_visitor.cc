@@ -1645,8 +1645,7 @@ std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::ApplicationVariabl
       for (auto it1 = variable_params.begin(), it2 = std::next(it1); it2 != variable_params.end(); it1++, it2++) {
         auto lhs_term = MakeTermForVariableFromParamSlot(*it1, ra_subquery);
         auto rhs_term = MakeTermForVariableFromParamSlot(*it2, ra_subquery);
-        conditions.push_back(
-            std::make_shared<sql::ast::ComparisonCondition>(lhs_term, sql::ast::CompOp::EQ, rhs_term));
+        conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs_term, sql::ast::CompOp::EQ, rhs_term));
       }
     }
   }
@@ -1772,7 +1771,7 @@ std::shared_ptr<sql::ast::Term> SQLVisitor::MakeTermForVariableFromParamSlot(
   auto term_node = GetNode(term_expr_ctx);
   if (term_node->IsInvalidTermExpression() || term_node->IsNullPolynomialTerm() ||
       !term_node->term_linear_coeffs.has_value()) {
-    throw InternalException("Invalid or null polynomial term in parameter.");
+    throw VariableException("Invalid or null polynomial term in parameter.");
   }
 
   auto [a, b] = term_node->term_linear_coeffs.value();
