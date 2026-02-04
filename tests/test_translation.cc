@@ -477,6 +477,12 @@ TEST_F(TranslationTest, FormulaBindings4) {
             "(SELECT * FROM RA0) SELECT S0.x AS A1 FROM (SELECT RA0.A1 AS x FROM RA0) AS T3, S0 WHERE S0.x = T3.x");
 }
 
+TEST_F(TranslationTest, FormulaBindings5) {
+  EXPECT_EQ(TranslateExpression("(x): A(x+1)"),
+            "WITH S0(x) AS (SELECT T2.A1 - 1 AS A1 FROM A AS T2) SELECT S0.x AS A1 FROM (SELECT T0.A1 - 1 AS x FROM A "
+            "AS T0) AS T1, S0 WHERE S0.x = T1.x");
+}
+
 TEST_F(TranslationTest, ExpressionBindings1) {
   EXPECT_EQ(TranslateExpression("[x]: A[x] where x > 1"),
             "WITH S0(x) AS (SELECT * FROM A AS T3) SELECT S0.x AS A1 FROM (SELECT T1.x FROM (SELECT T0.A1 AS x FROM A "

@@ -184,6 +184,12 @@ class SQLVisitor : public BaseVisitor {
       const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources,
       std::shared_ptr<sql::ast::Term>& comparison) const;
 
+  // Apply affine coefficients (a,b) to a base column term, yielding (col - b)/a
+  // (with the same parenthesization rules used for parameter translation).
+  std::shared_ptr<sql::ast::Term> ApplyAffineToColumn(
+      const std::shared_ptr<sql::ast::Column>& column,
+      const std::optional<std::pair<double, double>>& coeff) const;
+
   // Build the term expression for the variable x from a parameter slot: (column - b)/a.
   // Used when equating repeated term parameters so that x is the same in both (e.g. A1-1 = A2+1).
   std::shared_ptr<sql::ast::Term> MakeTermForVariableFromParamSlot(

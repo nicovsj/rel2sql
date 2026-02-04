@@ -58,7 +58,9 @@ struct BoundSet {
 
       // Only keep bounds that have at least one projection remaining
       if (!cleaned_domain.empty()) {
-        cleaned_bounds.insert(Bound(bound.variables, cleaned_domain));
+        Bound cleaned(bound.variables, cleaned_domain);
+        cleaned.coeffs = bound.coeffs;
+        cleaned_bounds.insert(std::move(cleaned));
       }
     }
 

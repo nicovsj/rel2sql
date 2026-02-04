@@ -250,6 +250,12 @@ TEST_F(OptimizationTest, BindingFormula3) {
             "(1), (2)) AS I0(i) WHERE T0.A1 = 1 AND T3.A1 = 3");
 }
 
+TEST_F(OptimizationTest, BindingFormula4) {
+  EXPECT_EQ(TranslateExpression("(x): A(x+1)"),
+            "WITH S0(x) AS (SELECT T3.A1 AS A1 FROM B AS T3) SELECT S0.x AS A1 FROM (SELECT T0.A1 AS x FROM B AS T0, "
+            "(SELECT 1 AS A1) AS T1 WHERE T0.A2 = T1.A1) AS T2, S0 WHERE S0.x = T2.x");
+}
+
 TEST_F(OptimizationTest, NestedBindingFormula) {
   EXPECT_EQ(TranslateExpression("[x]: {(y) : B(x,y)}"), "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0");
 }

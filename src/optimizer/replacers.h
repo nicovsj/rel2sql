@@ -58,6 +58,21 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
         term_map_(term_map),
         replace_alias_(replace_alias) {}
 
+  // Core helper: if a term slot currently holds a Column from the old source and
+  // there is an entry in term_map_ for that column name, replace the entire slot
+  // with the mapped term (which may be an arbitrary expression).
+  void ReplaceTermSlot(std::shared_ptr<Term>& slot) {
+    auto column = std::dynamic_pointer_cast<Column>(slot);
+    if (!column) return;
+    if (!column->source || column->source.value()->Alias() != old_source_name_) return;
+
+    auto it = term_map_.find(column->name);
+    if (it == term_map_.end()) return;
+
+    // Replace the whole term (e.g. T1.x -> (T0.A1 - 1)/3)
+    slot = it->second;
+  }
+
   void Visit(TermSelectable& term_selectable) override {
     // When visiting a TermSelectable and the term is a column, it is a special case
     auto column = std::dynamic_pointer_cast<Column>(term_selectable.term);
@@ -78,6 +93,52 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
       }
       term_selectable.term = it->second;
     }
+  }
+
+  // For generic Term references (e.g. in operations, parentheses, functions...),
+  // dispatch to the concrete node type via Accept. Column occurrences are then
+  // handled in the specific overrides below.
+  void Visit(Term& term) override {
+    term.Accept(*this);
+  }
+
+  void Visit(Operation& operation) override {
+    // First recurse into children so nested expressions are rewritten.
+    ExpressionVisitor::Visit(operation);
+    // Then replace any direct Column children that should become full terms.
+    ReplaceTermSlot(operation.lhs);
+    ReplaceTermSlot(operation.rhs);
+  }
+
+  void Visit(ParenthesisTerm& parenthesis_term) override {
+    // Recurse first.
+    ExpressionVisitor::Visit(parenthesis_term);
+    ReplaceTermSlot(parenthesis_term.term);
+  }
+
+  void Visit(Function& function) override {
+    // Recurse first.
+    ExpressionVisitor::Visit(function);
+    ReplaceTermSlot(function.arg);
+  }
+
+  void Visit(CaseWhen& case_when) override {
+    // Manually recurse so we can rewrite each term slot.
+    for (auto& [condition, term] : case_when.cases) {
+      ExpressionVisitor::Visit(*condition);
+      ReplaceTermSlot(term);
+    }
+  }
+
+  void Visit(ComparisonCondition& comparison_condition) override {
+    // Recurse into child terms first so nested expressions get rewritten.
+    ExpressionVisitor::Visit(*comparison_condition.lhs);
+    ExpressionVisitor::Visit(*comparison_condition.rhs);
+
+    // Now, if lhs/rhs are simple columns from the old source and there is a
+    // mapping in term_map_, replace the entire term slot with the mapped term.
+    ReplaceTermSlot(comparison_condition.lhs);
+    ReplaceTermSlot(comparison_condition.rhs);
   }
 
   void Visit(From& from) override {
@@ -275,6 +336,12 @@ class RedundancyReplacer : public ExpressionVisitor {
     auto comp_condition = std::dynamic_pointer_cast<ComparisonCondition>(condition);
     if (!comp_condition || comp_condition->op != CompOp::EQ) {
       return false;  // Keep non-equality conditions
+    }
+
+    // If both sides of the equality are structurally identical terms
+    // (e.g., T0.A1 - 1 = T0.A1 - 1), the comparison is redundant.
+    if (comp_condition->lhs && comp_condition->rhs && *comp_condition->lhs == *comp_condition->rhs) {
+      return true;
     }
 
     auto left_column = std::dynamic_pointer_cast<Column>(comp_condition->lhs);

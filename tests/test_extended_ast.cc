@@ -770,6 +770,34 @@ TEST(SafetyVisitorTest, Composition2) {
   }
 }
 
+TEST(SafetyVisitorTest, ParameterVariableTerms1) {
+  auto edb = rel2sql::relation_map::FromArityMap({{"A", 1}});
+  auto [ast, tree] = ProcessFormula("A(x+1)", edb);
+
+  auto full_appl = dynamic_cast<psr::FullApplContext*>(tree.get());
+  ASSERT_NE(full_appl, nullptr);
+
+  auto node = ast.GetNode(full_appl);
+
+  EXPECT_EQ(node->safety.Size(), 1);
+
+  auto bindings_bound = *node->safety.bounds.begin();
+
+  EXPECT_EQ(bindings_bound.variables.size(), 1);
+  EXPECT_EQ(bindings_bound.variables[0], "x");
+
+  EXPECT_EQ(bindings_bound.coeffs.size(), 1);
+  EXPECT_EQ(bindings_bound.coeffs[0].value().first, 1.0);
+  EXPECT_EQ(bindings_bound.coeffs[0].value().second, 1.0);
+
+  EXPECT_EQ(bindings_bound.domain.size(), 1);
+
+  auto projection = *bindings_bound.domain.begin();
+
+  EXPECT_EQ(projection.projected_indices.size(), 1);
+  EXPECT_EQ(projection.projected_indices[0], 0);
+}
+
 // Helper function to get variable domain
 std::unordered_set<Projection> GetVariableDomain(const RelAST& ast, const std::string& var) {
   return ast.GetVariableDomain(var);
@@ -779,8 +807,7 @@ std::unordered_set<Projection> GetVariableDomain(const RelAST& ast, const std::s
 bool HasTableProjection(const std::unordered_set<Projection>& domain, const std::string& table_name, size_t index) {
   for (const auto& proj : domain) {
     auto table_source = std::dynamic_pointer_cast<TableSource>(ResolvePromisedSource(proj.source));
-    if (table_source && table_source->table_name == table_name &&
-        proj.projected_indices.size() == 1 &&
+    if (table_source && table_source->table_name == table_name && proj.projected_indices.size() == 1 &&
         proj.projected_indices[0] == index) {
       return true;
     }
@@ -885,7 +912,6 @@ TEST(VariableDomainTest, MultiVariableFromBindingsExpr) {
 
   // Verify y has projection from F (index 1)
   EXPECT_TRUE(HasTableProjection(y_domain, "F", 1)) << "y should have projection from F at index 1";
-
 }
 
 TEST(VariableDomainTest, ExplicitDomainBinding) {
@@ -1140,7 +1166,6 @@ TEST(TermPolynomialVisitorTest, AffineTermAndRoot) {
   EXPECT_DOUBLE_EQ(root.value(), 2.0);  // 2x - 4 = 0 -> x = 2
 }
 
-
 TEST(TermPolynomialVisitorTest, DivisionByConstant) {
   std::string input = "x / 2";
   auto parser_unique = GetParser(input);
@@ -1234,6 +1259,5 @@ TEST(TermPolynomialVisitorTest, NullPolynomialTerm) {
   auto term_node = ast.GetNode(term_expr->term());
   EXPECT_TRUE(term_node->IsNullPolynomialTerm());
 }
-
 
 }  // namespace rel2sql

@@ -211,6 +211,7 @@ std::any SafeVisitor::visitFullAppl(psr::FullApplContext* ctx) {
 void SafeVisitor::ComputeIDApplicationSafety(std::shared_ptr<RelASTNode> node, psr::ApplParamsContext* params, const std::string& id) {
   std::vector<std::string> variable_names;
   std::vector<size_t> variable_indices;
+  std::vector<std::optional<std::pair<double, double>>> coeffs;
 
   for (size_t i = 0; i < params->applParam().size(); i++) {
     auto param = params->applParam()[i];
@@ -219,17 +220,27 @@ void SafeVisitor::ComputeIDApplicationSafety(std::shared_ptr<RelASTNode> node, p
 
     auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
     if (!term_expr_ctx) continue;
-    auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
-    if (!id_term_ctx) continue;
+    auto term_node = GetNode(term_expr_ctx->term());
+
+    // Require exactly one variable in this parameter (x or a*x+b).
     if (param_node->variables.size() != 1) continue;
 
     auto variable = *param_node->variables.begin();
 
     variable_indices.push_back(i);
     variable_names.push_back(variable);
+
+    // Attach affine coefficients (a,b) for linear term parameters where available.
+    if (term_node->term_linear_coeffs && !term_node->IsInvalidTermExpression()) {
+      coeffs.push_back(term_node->term_linear_coeffs);
+    } else {
+      // Default to identity mapping for plain variables or unsupported terms.
+      coeffs.emplace_back(std::nullopt);
+    }
   }
 
   Bound bound{variable_names};
+  bound.coeffs = std::move(coeffs);
 
   auto arity = ast_->GetArity(id);
   auto table_source = TableSource(id, arity);
@@ -243,6 +254,7 @@ void SafeVisitor::ComputeIDApplicationSafety(std::shared_ptr<RelASTNode> node, p
 void SafeVisitor::ComputeRelAbsApplicationSafety(std::shared_ptr<RelASTNode> node, std::shared_ptr<RelASTNode> base_node, psr::ApplParamsContext* params) {
   std::vector<std::string> variable_names;
   std::vector<size_t> variable_indices;
+  std::vector<std::optional<std::pair<double, double>>> coeffs;
 
   for (size_t i = 0; i < params->applParam().size(); i++) {
     auto param = params->applParam()[i];
@@ -251,19 +263,25 @@ void SafeVisitor::ComputeRelAbsApplicationSafety(std::shared_ptr<RelASTNode> nod
 
     auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
     if (!term_expr_ctx) continue;
-    auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
-    if (!id_term_ctx) continue;
+    auto term_node = GetNode(term_expr_ctx->term());
     if (param_node->variables.size() != 1) continue;
 
     auto variable = *param_node->variables.begin();
 
     variable_names.push_back(variable);
     variable_indices.push_back(i);
+
+    if (term_node->term_linear_coeffs && !term_node->IsInvalidTermExpression()) {
+      coeffs.push_back(term_node->term_linear_coeffs);
+    } else {
+      coeffs.emplace_back(std::nullopt);
+    }
   }
 
   auto promised_source = PromisedSource{base_node->arity};
   auto projection = Projection(variable_indices, promised_source);
-  auto bound = Bound(variable_names, {projection});
+  Bound bound(variable_names, {projection});
+  bound.coeffs = std::move(coeffs);
 
   node->safety = BoundSet({bound});
 }
@@ -299,6 +317,27 @@ std::any SafeVisitor::VisitDisjunction(psr::BinOpContext* ctx) {
 
   auto lhs_safeness = GetNode(ctx->lhs)->safety;
   auto rhs_safeness = GetNode(ctx->rhs)->safety;
+
+   auto has_non_trivial_affine = [](const BoundSet& safety) {
+    for (const auto& bound : safety.bounds) {
+      for (const auto& coeff_opt : bound.coeffs) {
+        if (!coeff_opt.has_value()) continue;
+        auto [a, b] = *coeff_opt;
+        if (a != 1.0 || b != 0.0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  if (has_non_trivial_affine(lhs_safeness) || has_non_trivial_affine(rhs_safeness)) {
+    SourceLocation location = GetSourceLocation(ctx);
+    throw NotImplementedException(
+        "Safety analysis for disjunctions with linear term parameters (a*x + b) "
+        "is not supported yet when (a,b) != (1,0).",
+        location);
+  }
 
   auto current_node = GetNode(ctx);
 

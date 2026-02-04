@@ -55,7 +55,23 @@ Bound MergeBindingsToCompleteTable(const std::vector<Bound>& bindings, const std
   std::unordered_set<Projection> merged_domain;
   merged_domain.insert(full_projection);
 
-  return Bound(variables, merged_domain);
+  Bound result(variables, merged_domain);
+  // When collapsing to a full-table bound, only retain affine coefficients if
+  // they are compatible across all contributing bindings (identical or all default).
+  if (!bindings.empty()) {
+    const auto& base_coeffs = bindings[0].coeffs;
+    bool compatible = true;
+    for (const auto& b : bindings) {
+      if (b.coeffs != base_coeffs) {
+        compatible = false;
+        break;
+      }
+    }
+    if (compatible) {
+      result.coeffs = base_coeffs;
+    }
+  }
+  return result;
 }
 
 // Finds the common variables between two variable vectors and returns:
@@ -114,7 +130,19 @@ Bound ProjectBoundToIndices(const Bound& bound, const std::vector<size_t>& indic
     projected_domain.insert(Projection(new_projected_indices, projection.source));
   }
 
-  return Bound(projected_vars, projected_domain);
+  Bound result(projected_vars, projected_domain);
+  // Project affine coefficients alongside variables when present.
+  if (!bound.coeffs.empty()) {
+    std::vector<std::optional<std::pair<double, double>>> projected_coeffs;
+    projected_coeffs.reserve(indices.size());
+    for (size_t idx : indices) {
+      if (idx < bound.coeffs.size()) {
+        projected_coeffs.push_back(bound.coeffs[idx]);
+      }
+    }
+    result.coeffs = std::move(projected_coeffs);
+  }
+  return result;
 }
 
 }  // namespace

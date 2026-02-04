@@ -35,7 +35,10 @@ std::unordered_map<std::string, std::shared_ptr<Term>> FlattenerOptimizer::Build
     }
     auto column_cast = std::dynamic_pointer_cast<Column>(term_selectable->term);
     auto case_when_cast = std::dynamic_pointer_cast<CaseWhen>(term_selectable->term);
-    if (!column_cast and !case_when_cast) {
+    // We can flatten simple projections (plain columns), CASE WHENs, and
+    // general term expressions like arithmetic operations, as long as they
+    // have an alias. For non-column terms we fall back to the alias name.
+    if (!column_cast && !case_when_cast && !term_selectable->HasAlias()) {
       continue;
     }
 
@@ -43,6 +46,9 @@ std::unordered_map<std::string, std::shared_ptr<Term>> FlattenerOptimizer::Build
     if (column_cast) {
       aliased_column_name = term_selectable->HasAlias() ? term_selectable->Alias() : column_cast->name;
     } else if (case_when_cast) {
+      aliased_column_name = term_selectable->Alias();
+    } else {
+      // General term (e.g., arithmetic expression); must have an alias to be referenced.
       aliased_column_name = term_selectable->Alias();
     }
     column_map[aliased_column_name] = term_selectable->term;

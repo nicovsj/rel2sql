@@ -1145,6 +1145,39 @@ void SQLVisitor::SpecialAddSourceToFreeVariablesInTerm(
   }
 }
 
+std::shared_ptr<sql::ast::Term> SQLVisitor::ApplyAffineToColumn(
+    const std::shared_ptr<sql::ast::Column>& column,
+    const std::optional<std::pair<double, double>>& coeff) const {
+  // No affine info or identity (1,0): return the column as-is.
+  if (!coeff.has_value()) {
+    return column;
+  }
+  auto [a, b] = *coeff;
+  if (a == 1.0 && b == 0.0) {
+    return column;
+  }
+
+  std::shared_ptr<sql::ast::Term> term = column;
+
+  if (b < 0.0) {
+    term = std::make_shared<sql::ast::Operation>(
+        term, std::make_shared<sql::ast::Constant>(-b), "+");
+  } else if (b > 0.0) {
+    term = std::make_shared<sql::ast::Operation>(
+        term, std::make_shared<sql::ast::Constant>(b), "-");
+  }
+
+  if (a != 1.0) {
+    if (b != 0.0) {
+      term = std::make_shared<sql::ast::ParenthesisTerm>(term);
+    }
+    term = std::make_shared<sql::ast::Operation>(
+        term, std::make_shared<sql::ast::Constant>(a), "/");
+  }
+
+  return term;
+}
+
 std::any SQLVisitor::VisitConjunctionWithNegations(psr::BinOpContext* ctx) {
   // We know that this subtree is a conjunction of formulas of the form:
   //
@@ -1987,8 +2020,8 @@ std::unordered_set<Bound> SQLVisitor::SafeFunction(psr::BindingInnerContext* bin
 
   auto safeness = GetNode(expr_ctx)->safety;
 
-  for (auto [vars, union_domain] : safeness.bounds) {
-    for (auto var : vars) {
+  for (const auto& bound : safeness.bounds) {
+    for (const auto& var : bound.variables) {
       if (binding_vars.find(var) != binding_vars.end()) {
         binding_vars.erase(var);
       }
@@ -2089,6 +2122,9 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
       throw std::runtime_error("Empty union domain");
     }
 
+    // Precompute whether this bound uses any non-trivial affine coefficients.
+    bool use_affine = elem.HasNonTrivialAffine();
+
     // Build selects for each domain
     std::vector<std::shared_ptr<sql::ast::Sourceable>> selects;
     for (auto projection : elem.domain) {
@@ -2123,16 +2159,23 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
           auto from = std::make_shared<sql::ast::From>(matching_cte);
 
           std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
-          if (projection.projected_indices.size() == generic_bound->arity) {
-            // All columns selected - use wildcard
+          if (!use_affine && projection.projected_indices.size() == generic_bound->arity) {
+            // All columns selected and no affine mapping: use wildcard for readability.
             auto wildcard = std::make_shared<sql::ast::Wildcard>();
             columns.push_back(wildcard);
           } else {
-            // Select specific columns based on projected_indices
-            for (int index : projection.projected_indices) {
+            // Select specific columns based on projected_indices, optionally applying affine coeffs.
+            for (size_t pos = 0; pos < projection.projected_indices.size(); ++pos) {
+              int index = static_cast<int>(projection.projected_indices[pos]);
               std::string column_name = GetColumnNameFromSource(matching_cte, index);
-              auto column = std::make_shared<sql::ast::Column>(column_name, matching_cte);
-              auto term_selectable = std::make_shared<sql::ast::TermSelectable>(column, fmt::format("A{}", index + 1));
+              auto base_col = std::make_shared<sql::ast::Column>(column_name, matching_cte);
+              std::optional<std::pair<double, double>> coeff;
+              if (pos < elem.coeffs.size()) {
+                coeff = elem.coeffs[pos];
+              }
+              auto term = use_affine ? ApplyAffineToColumn(base_col, coeff) : base_col;
+              auto term_selectable =
+                  std::make_shared<sql::ast::TermSelectable>(term, fmt::format("A{}", index + 1));
               columns.push_back(term_selectable);
             }
           }
@@ -2147,14 +2190,21 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
           auto from = std::make_shared<sql::ast::From>(source);
 
           std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
-          if (projection.projected_indices.size() == generic_bound->arity) {
+          if (!use_affine && projection.projected_indices.size() == generic_bound->arity) {
             auto wildcard = std::make_shared<sql::ast::Wildcard>();
             columns.push_back(wildcard);
           } else {
-            for (int index : projection.projected_indices) {
+            for (size_t pos = 0; pos < projection.projected_indices.size(); ++pos) {
+              int index = static_cast<int>(projection.projected_indices[pos]);
               std::string column_name = GetColumnNameFromSource(source, index);
-              auto column = std::make_shared<sql::ast::Column>(column_name, source);
-              auto term_selectable = std::make_shared<sql::ast::TermSelectable>(column, fmt::format("A{}", index + 1));
+              auto base_col = std::make_shared<sql::ast::Column>(column_name, source);
+              std::optional<std::pair<double, double>> coeff;
+              if (pos < elem.coeffs.size()) {
+                coeff = elem.coeffs[pos];
+              }
+              auto term = use_affine ? ApplyAffineToColumn(base_col, coeff) : base_col;
+              auto term_selectable =
+                  std::make_shared<sql::ast::TermSelectable>(term, fmt::format("A{}", index + 1));
               columns.push_back(term_selectable);
             }
           }
@@ -2189,14 +2239,21 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
         // Create columns based on domain.indices
         // If all columns are selected, use wildcard for better readability
         std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
-        if (static_cast<int>(projection.projected_indices.size()) == table->arity) {
+        if (!use_affine && static_cast<int>(projection.projected_indices.size()) == table->arity) {
           auto wildcard = std::make_shared<sql::ast::Wildcard>();
           columns.push_back(wildcard);
         } else {
-          for (int index : projection.projected_indices) {
+          for (size_t pos = 0; pos < projection.projected_indices.size(); ++pos) {
+            int index = static_cast<int>(projection.projected_indices[pos]);
             std::string column_name = table->GetAttributeName(index);
-            auto column = std::make_shared<sql::ast::Column>(column_name, source);
-            auto term_selectable = std::make_shared<sql::ast::TermSelectable>(column, fmt::format("A{}", index + 1));
+            auto base_col = std::make_shared<sql::ast::Column>(column_name, source);
+            std::optional<std::pair<double, double>> coeff;
+            if (pos < elem.coeffs.size()) {
+              coeff = elem.coeffs[pos];
+            }
+            auto term = use_affine ? ApplyAffineToColumn(base_col, coeff) : base_col;
+            auto term_selectable =
+                std::make_shared<sql::ast::TermSelectable>(term, fmt::format("A{}", index + 1));
             columns.push_back(term_selectable);
           }
         }
@@ -2287,8 +2344,7 @@ std::shared_ptr<sql::ast::Condition> SQLVisitor::BindingsEqualityShorthand(
   std::vector<std::shared_ptr<sql::ast::Condition>> conditions;
 
   for (auto const& [bound, cte] : safe_result) {
-    auto const& [vars, union_domain] = bound;
-    for (auto const& var : vars) {
+    for (auto const& var : bound.variables) {
       if (expr_free_vars.find(var) != expr_free_vars.end()) {
         auto condition = std::make_shared<sql::ast::ComparisonCondition>(
             std::make_shared<sql::ast::Column>(var, cte), sql::ast::CompOp::EQ,
