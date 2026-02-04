@@ -182,8 +182,7 @@ std::shared_ptr<sql::ast::Sourceable> SQLVisitor::VisitRelAbsLogic(psr::RelAbsCo
 
   // Define the VALUES expression used in the FROM clause
   auto values_expr = std::make_shared<sql::ast::Values>(values);
-  auto values_alias =
-      std::make_shared<sql::ast::Alias>(GenerateTableAlias("I"), std::vector<std::string>{"i"});
+  auto values_alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias("I"), std::vector<std::string>{"i"});
   auto values_source = std::make_shared<sql::ast::Source>(values_expr, values_alias);
   from_sources.push_back(values_source);
   auto values_col = std::make_shared<sql::ast::Column>("i", values_source);
@@ -358,8 +357,7 @@ std::shared_ptr<sql::ast::Expression> SQLVisitor::TranslateConditionExprComparat
     select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(column));
   }
 
-  auto from =
-      std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery});
+  auto from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery});
 
   std::vector<std::shared_ptr<sql::ast::Condition>> new_conditions;
   if (from->where.has_value()) {
@@ -855,15 +853,16 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext* ctx) {
 
   base_node->sql_expression = ra_source;
 
-  auto [var_params, non_var_params] = GetVariableAndNonVariableParams(ctx->applBase(), ctx->applParams()->applParam());
+  auto [term_params, non_term_params] =
+      GetVariableAndNonVariableParams(ctx->applBase(), ctx->applParams()->applParam());
 
-  auto non_var_param_by_free_vars = GetFirstNonVarParamByFreeVariables(non_var_params);
+  auto non_term_param_by_free_vars = GetFirstNonVarParamByFreeVariables(non_term_params);
 
   auto conditions =
-      ApplicationVariableConditions(ctx->applBase(), var_params, non_var_params, non_var_param_by_free_vars);
+      ApplicationVariableConditions(ctx->applBase(), term_params, non_term_params, non_term_param_by_free_vars);
 
   std::vector<antlr4::ParserRuleContext*> source_ctxs;
-  for (auto [param, _] : non_var_params) {
+  for (auto [param, _] : non_term_params) {
     source_ctxs.push_back(param);
   }
 
@@ -884,7 +883,7 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext* ctx) {
     condition = std::make_shared<sql::ast::LogicalCondition>(conditions, sql::ast::LogicalOp::AND);
   }
 
-  auto select_cols = SpecialAppliedVarList(ctx->applBase(), non_var_params, var_params, non_var_param_by_free_vars);
+  auto select_cols = SpecialAppliedVarList(ctx->applBase(), non_term_params, term_params, non_term_param_by_free_vars);
   auto from = std::make_shared<sql::ast::From>(from_sources, condition);
 
   auto query = std::make_shared<sql::ast::Select>(select_cols, from);
@@ -1016,7 +1015,7 @@ std::any SQLVisitor::visitOpTerm(psr::OpTermContext* ctx) {
   auto rhs_term = std::any_cast<std::shared_ptr<sql::ast::Term>>(visit(ctx->rhs));
 
   return std::static_pointer_cast<sql::ast::Term>(
-      std::make_shared<sql::ast::Operation>(lhs_term, rhs_term, ctx->arithmeticOperator()->getText()));
+      std::make_shared<sql::ast::Operation>(lhs_term, rhs_term, ctx->op->getText()));
 }
 
 std::any SQLVisitor::visitParenthesisTerm(psr::ParenthesisTermContext* ctx) {
@@ -1135,12 +1134,14 @@ std::any SQLVisitor::VisitConjunctionWithTerms(psr::BinOpContext* ctx) {
 
 void SQLVisitor::SpecialAddSourceToFreeVariablesInTerm(
     const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources,
-    std::shared_ptr<sql::ast::Term>& term) {
+    std::shared_ptr<sql::ast::Term>& term) const {
   if (auto column = std::dynamic_pointer_cast<sql::ast::Column>(term)) {
     column->source = free_var_sources.at(column->name);
   } else if (auto operation = std::dynamic_pointer_cast<sql::ast::Operation>(term)) {
     SpecialAddSourceToFreeVariablesInTerm(free_var_sources, operation->lhs);
     SpecialAddSourceToFreeVariablesInTerm(free_var_sources, operation->rhs);
+  } else if (auto paren = std::dynamic_pointer_cast<sql::ast::ParenthesisTerm>(term)) {
+    SpecialAddSourceToFreeVariablesInTerm(free_var_sources, paren->term);
   }
 }
 
@@ -1228,11 +1229,9 @@ std::any SQLVisitor::VisitDisjunction(psr::BinOpContext* ctx) {
   auto lhs_cols = VarListShorthand(std::vector<antlr4::ParserRuleContext*>{ctx->lhs});
   auto rhs_cols = VarListShorthand(std::vector<antlr4::ParserRuleContext*>{ctx->rhs});
 
-  auto lhs_from =
-      std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery});
+  auto lhs_from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{lhs_subquery});
 
-  auto rhs_from =
-      std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{rhs_subquery});
+  auto rhs_from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{rhs_subquery});
 
   auto lhs_select = std::make_shared<sql::ast::Select>(lhs_cols, lhs_from);
 
@@ -1591,18 +1590,18 @@ std::string SQLVisitor::GetColumnNameFromSource(const std::shared_ptr<sql::ast::
 }
 
 std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::ApplicationVariableConditions(
-    psr::ApplBaseContext* base_appl_ctx, const std::vector<IndexedContext>& variable_param_ctxs,
-    const std::vector<IndexedContext>& non_variable_param_ctxs,
-    const std::unordered_map<std::string, IndexedContext>& params_by_free_vars) const {
+    psr::ApplBaseContext* base_appl_ctx, const std::vector<ParameterSlot>& variable_param_ctxs,
+    const std::vector<ParameterSlot>& non_variable_param_ctxs,
+    const std::unordered_map<std::string, ParameterSlot>& params_by_free_vars) const {
   std::vector<std::shared_ptr<sql::ast::Condition>> conditions;
 
   // Map the singled-out variables that are parameters to the set of parameter contexts
   // where they are appearing. The set is ordered by the index of the parameter context.
-  std::unordered_map<std::string, std::set<IndexedContext>> params_by_variable;
+  std::unordered_map<std::string, std::set<ParameterSlot>> params_by_variable;
 
   for (auto numbered_ctx : variable_param_ctxs) {
     // The first variable should be the only one
-    auto variable = *(GetNode(numbered_ctx.ctx)->variables.begin());
+    auto variable = *(GetNode(numbered_ctx.context)->variables.begin());
     params_by_variable[variable].insert(numbered_ctx);
   }
 
@@ -1613,49 +1612,48 @@ std::vector<std::shared_ptr<sql::ast::Condition>> SQLVisitor::ApplicationVariabl
   for (auto [explicit_variable, variable_params] : params_by_variable) {
     auto found = params_by_free_vars.find(explicit_variable);
     if (found != params_by_free_vars.end()) {
-      // Then the variable is also in one of the sub queries, and we need to equate the respective columns
+      // The variable is also in one of the subqueries. Express that the relation column equals
+      // the value of the parameter term (e.g. ra_column = 2*x - 4), so x is bound via (column - b)/a.
       auto found_numbered_ctx = found->second;
+      auto min_sql = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(found_numbered_ctx.context)->sql_expression);
 
-      auto min_sql = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(found_numbered_ctx.ctx)->sql_expression);
-
-      auto lhs = std::make_shared<sql::ast::Column>(explicit_variable, min_sql);
-
-      // The ctxs_that_are_the_variable set is ordered by the index of the parameter context
-      // so we can just take the first one to do the equality
-      auto min_parameter_variable_index = variable_params.begin()->index;
-      // Always use proper column name from the table (EDBInfo handles both custom and standard naming)
-      std::string rhs_column_name;
+      auto min_parameter_variable_index = variable_params.begin()->parameter_index;
+      std::string lhs_column_name;
       if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(ra_subquery->sourceable)) {
-        rhs_column_name = table->GetAttributeName(min_parameter_variable_index - 1);  // Convert to 0-based index
+        lhs_column_name = table->GetAttributeName(min_parameter_variable_index - 1);
       } else {
-        rhs_column_name = fmt::format("A{}", min_parameter_variable_index);
+        lhs_column_name = fmt::format("A{}", min_parameter_variable_index);
       }
-      auto rhs = std::make_shared<sql::ast::Column>(rhs_column_name, ra_subquery);
+      auto lhs = std::make_shared<sql::ast::Column>(lhs_column_name, ra_subquery);
 
-      conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs));
+      // RHS is the term expression (e.g. 2*x - 4) with the variable's column source set to min_sql
+      auto param_ctx = variable_params.begin()->context;
+      auto rhs_term = std::dynamic_pointer_cast<sql::ast::Term>(GetNode(param_ctx)->sql_expression);
+      if (rhs_term) {
+        std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> var_sources{{explicit_variable, min_sql}};
+        SpecialAddSourceToFreeVariablesInTerm(var_sources, rhs_term);
+        conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs_term));
+      } else {
+        // Fallback: equate variable column with relation column (simple variable case)
+        auto rhs = std::make_shared<sql::ast::Column>(explicit_variable, min_sql);
+        conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(rhs, sql::ast::CompOp::EQ, lhs));
+      }
     }
     if (variable_params.size() > 1) {
-      // Then the variable is repeated as a parameter multiple times, and we need to equate those columns
+      // The variable appears in multiple term parameters (e.g. B(x+1, x-1)). Equate the
+      // expressions for x so the same value is implied: (A1 - 1) = (A2 + 1), not A1 = A2.
       for (auto it1 = variable_params.begin(), it2 = std::next(it1); it2 != variable_params.end(); it1++, it2++) {
-        // Always use proper column names from the table (EDBInfo handles both custom and standard naming)
-        std::string lhs_column_name, rhs_column_name;
-        if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(ra_subquery->sourceable)) {
-          lhs_column_name = table->GetAttributeName(it1->index - 1);  // Convert to 0-based index
-          rhs_column_name = table->GetAttributeName(it2->index - 1);  // Convert to 0-based index
-        } else {
-          lhs_column_name = fmt::format("A{}", it1->index);
-          rhs_column_name = fmt::format("A{}", it2->index);
-        }
-        auto lhs = std::make_shared<sql::ast::Column>(lhs_column_name, ra_subquery);
-        auto rhs = std::make_shared<sql::ast::Column>(rhs_column_name, ra_subquery);
-        conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs));
+        auto lhs_term = MakeTermForVariableFromParamSlot(*it1, ra_subquery);
+        auto rhs_term = MakeTermForVariableFromParamSlot(*it2, ra_subquery);
+        conditions.push_back(
+            std::make_shared<sql::ast::ComparisonCondition>(lhs_term, sql::ast::CompOp::EQ, rhs_term));
       }
     }
   }
 
   for (size_t i = 1; i < non_variable_param_ctxs.size(); i++) {
-    auto ctx = non_variable_param_ctxs[i].ctx;
-    auto index = non_variable_param_ctxs[i].index;
+    auto ctx = non_variable_param_ctxs[i].context;
+    auto index = non_variable_param_ctxs[i].parameter_index;
     auto sq = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(ctx)->sql_expression);
     auto lhs = std::make_shared<sql::ast::Column>(fmt::format("A{}", index), ra_subquery);
     auto rhs = std::make_shared<sql::ast::Column>("A1", sq);
@@ -1755,75 +1753,106 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::VarListShorthand(
   return columns;
 }
 
-std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVarList(
-    psr::ApplBaseContext* base_ctx, std::vector<IndexedContext> input_ctxs,
-    std::vector<IndexedContext> variable_param_ctxs,
-    std::unordered_map<std::string, IndexedContext> free_vars_in_non_variable_params) const {
-  std::unordered_set<std::string> seen_vars;
+std::shared_ptr<sql::ast::Term> SQLVisitor::MakeTermForVariableFromParamSlot(
+    const ParameterSlot& slot, const std::shared_ptr<sql::ast::Source>& ra_subquery) const {
+  auto* param_ctx = static_cast<psr::ApplParamContext*>(slot.context);
+  std::string column_name;
+  if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(ra_subquery->sourceable)) {
+    column_name = table->GetAttributeName(static_cast<int>(slot.parameter_index) - 1);
+  } else {
+    column_name = fmt::format("A{}", slot.parameter_index);
+  }
+  auto column = std::make_shared<sql::ast::Column>(column_name, ra_subquery);
 
-  std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
-
-  std::unordered_map<int, std::string> bound_variable_ctxs_by_index;
-
-  // Remove variable parameters that are already part of the free variables of non-variable parameters
-  variable_param_ctxs.erase(
-      std::remove_if(variable_param_ctxs.begin(), variable_param_ctxs.end(),
-                     [this, &free_vars_in_non_variable_params](auto const& ctx) {
-                       return free_vars_in_non_variable_params.find(*GetNode(ctx.ctx)->variables.begin()) !=
-                              free_vars_in_non_variable_params.end();
-                     }),
-      variable_param_ctxs.end());
-
-  // Map the non-free (bound) variable parameter indexes to the variable names
-  for (auto const& [ctx, index] : variable_param_ctxs) {
-    auto variables = GetNode(ctx)->variables;
-
-    if (variables.size() != 1) {
-      throw std::runtime_error("Variable parameter with more than one variable");
-    }
-    auto variable = *variables.begin();
-
-    bound_variable_ctxs_by_index[index] = variable;
+  std::shared_ptr<sql::ast::Term> term = column;
+  auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param_ctx->expr());
+  if (!term_expr_ctx) {
+    throw InternalException("Term parameter with no term expression.");
+  }
+  auto term_node = GetNode(term_expr_ctx);
+  if (term_node->IsInvalidTermExpression() || term_node->IsNullPolynomialTerm() ||
+      !term_node->term_linear_coeffs.has_value()) {
+    throw InternalException("Invalid or null polynomial term in parameter.");
   }
 
-  // Zip both input_ctxs and final_ctxs
-  std::vector<IndexedContext> final_ctxs;
-  final_ctxs.reserve(variable_param_ctxs.size() + input_ctxs.size());
-  final_ctxs.insert(final_ctxs.end(), variable_param_ctxs.begin(), variable_param_ctxs.end());
-  final_ctxs.insert(final_ctxs.end(), input_ctxs.begin(), input_ctxs.end());
+  auto [a, b] = term_node->term_linear_coeffs.value();
+  if (a != 0.0) {
+    if (b < 0.0) {
+      term = std::make_shared<sql::ast::Operation>(term, std::make_shared<sql::ast::Constant>(-b), "+");
+    } else if (b > 0.0) {
+      term = std::make_shared<sql::ast::Operation>(term, std::make_shared<sql::ast::Constant>(b), "-");
+    }
+    if (a != 1.0) {
+      if (b != 0.0) {
+        term = std::make_shared<sql::ast::ParenthesisTerm>(term);
+      }
+      term = std::make_shared<sql::ast::Operation>(term, std::make_shared<sql::ast::Constant>(a), "/");
+    }
+  }
+  return term;
+}
 
-  std::sort(final_ctxs.begin(), final_ctxs.end(), [](auto const& a, auto const& b) { return a.index < b.index; });
+std::shared_ptr<sql::ast::Selectable> SQLVisitor::MakeBoundVariableParamSelectable(
+    psr::ApplParamContext* param_ctx, size_t index, const std::shared_ptr<sql::ast::Source>& ra_subquery,
+    const std::string& bound_var) const {
+  ParameterSlot slot{param_ctx, index};
+  auto term = MakeTermForVariableFromParamSlot(slot, ra_subquery);
+  return std::make_shared<sql::ast::TermSelectable>(term, bound_var);
+}
+
+std::shared_ptr<sql::ast::Selectable> SQLVisitor::MakeSubqueryColumnSelectable(antlr4::ParserRuleContext* ctx,
+                                                                               const std::string& var) const {
+  auto subquery = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(ctx)->sql_expression);
+  auto column = std::make_shared<sql::ast::Column>(var, subquery);
+  return std::make_shared<sql::ast::TermSelectable>(column);
+}
+
+std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::SpecialAppliedVarList(
+    psr::ApplBaseContext* base_ctx, std::vector<ParameterSlot> non_term_param_slots,
+    std::vector<ParameterSlot> term_param_slots,
+    std::unordered_map<std::string, ParameterSlot> free_vars_in_non_term_params) const {
+  // Drop term parameters whose variable is already provided by a non-term parameter.
+  std::erase_if(term_param_slots, [this, &free_vars_in_non_term_params](auto const& slot) {
+    auto const& vars = GetNode(slot.context)->variables;
+    return !vars.empty() && free_vars_in_non_term_params.count(*vars.begin()) != 0;
+  });
+
+  // parameter_index -> variable_name for term parameters that are bound (e.g. F(x) or F(2*x-4)).
+  std::unordered_map<size_t, std::string> variable_name_by_term_parameter_index;
+
+  for (auto const& slot : term_param_slots) {
+    auto const& variables = GetNode(slot.context)->variables;
+    if (variables.size() != 1) {
+      throw InternalException("Term parameter with more than one variable.");
+    }
+    variable_name_by_term_parameter_index[slot.parameter_index] = *variables.begin();
+  }
+
+  // Merge and sort by parameter index so we emit columns in application order.
+  std::vector<ParameterSlot> ordered_slots;
+  ordered_slots.reserve(term_param_slots.size() + non_term_param_slots.size());
+  ordered_slots.insert(ordered_slots.end(), term_param_slots.begin(), term_param_slots.end());
+  ordered_slots.insert(ordered_slots.end(), non_term_param_slots.begin(), non_term_param_slots.end());
+  std::sort(ordered_slots.begin(), ordered_slots.end(),
+            [](auto const& a, auto const& b) { return a.parameter_index < b.parameter_index; });
 
   auto ra_subquery = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(base_ctx)->sql_expression);
 
-  for (auto const& [ctx, index] : final_ctxs) {
-    for (auto const& var : GetNode(ctx)->free_variables) {
-      if (seen_vars.find(var) != seen_vars.end()) continue;
+  std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
+  std::unordered_set<std::string> seen_vars;
 
-      std::shared_ptr<sql::ast::Selectable> selectable;
+  for (auto const& slot : ordered_slots) {
+    for (auto const& var : GetNode(slot.context)->free_variables) {
+      if (seen_vars.count(var) != 0) continue;
 
-      if (auto found = bound_variable_ctxs_by_index.find(index); found != bound_variable_ctxs_by_index.end()) {
-        auto bound_var = found->second;
-
-        // Use proper column name from the table instead of hardcoded A{}
-        std::string column_name;
-        if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(ra_subquery->sourceable)) {
-          // The index is 1-based, but GetAttributeName expects 0-based index
-          int adjusted_index = index - 1;
-          column_name = table->GetAttributeName(adjusted_index);
-        } else {
-          column_name = fmt::format("A{}", index);
-        }
-        auto column = std::make_shared<sql::ast::Column>(column_name, ra_subquery);
-        selectable = std::make_shared<sql::ast::TermSelectable>(column, bound_var);
+      auto it = variable_name_by_term_parameter_index.find(slot.parameter_index);
+      if (it != variable_name_by_term_parameter_index.end()) {
+        // slot.context is from term_param_slots, so it is an ApplParamContext.
+        auto* param_ctx = static_cast<psr::ApplParamContext*>(slot.context);
+        columns.push_back(MakeBoundVariableParamSelectable(param_ctx, slot.parameter_index, ra_subquery, it->second));
       } else {
-        auto subquery = std::dynamic_pointer_cast<sql::ast::Source>(GetNode(ctx)->sql_expression);
-
-        auto column = std::make_shared<sql::ast::Column>(var, subquery);
-        selectable = std::make_shared<sql::ast::TermSelectable>(column);
+        columns.push_back(MakeSubqueryColumnSelectable(slot.context, var));
       }
-
-      columns.push_back(selectable);
       seen_vars.insert(var);
     }
   }
@@ -1871,16 +1900,16 @@ std::shared_ptr<sql::ast::Expression> SQLVisitor::GetExpressionFromID(antlr4::Pa
   return table;
 }
 
-std::unordered_map<std::string, SQLVisitor::IndexedContext> SQLVisitor::GetFirstNonVarParamByFreeVariables(
-    const std::vector<IndexedContext>& non_var_params) {
-  std::unordered_map<std::string, IndexedContext> minimum_context_by_free_variable;
+std::unordered_map<std::string, SQLVisitor::ParameterSlot> SQLVisitor::GetFirstNonVarParamByFreeVariables(
+    const std::vector<ParameterSlot>& non_var_params) {
+  std::unordered_map<std::string, ParameterSlot> minimum_context_by_free_variable;
 
-  for (auto indexed_ctx : non_var_params) {
-    for (auto var : GetNode(indexed_ctx.ctx)->free_variables) {
+  for (auto slot : non_var_params) {
+    for (auto var : GetNode(slot.context)->free_variables) {
       if (minimum_context_by_free_variable.find(var) == minimum_context_by_free_variable.end()) {
-        minimum_context_by_free_variable[var] = indexed_ctx;
-      } else if (indexed_ctx.index < minimum_context_by_free_variable[var].index) {
-        minimum_context_by_free_variable[var] = indexed_ctx;
+        minimum_context_by_free_variable[var] = slot;
+      } else if (slot.parameter_index < minimum_context_by_free_variable[var].parameter_index) {
+        minimum_context_by_free_variable[var] = slot;
       }
     }
   }
@@ -1888,13 +1917,13 @@ std::unordered_map<std::string, SQLVisitor::IndexedContext> SQLVisitor::GetFirst
   return minimum_context_by_free_variable;
 }
 
-std::pair<std::vector<SQLVisitor::IndexedContext>, std::vector<SQLVisitor::IndexedContext>>
+std::pair<std::vector<SQLVisitor::ParameterSlot>, std::vector<SQLVisitor::ParameterSlot>>
 SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext* base,
                                             const std::vector<psr::ApplParamContext*>& params) {
   /*
    * Splits the parameters of the full application into variable and non-variable parameters.
    */
-  std::vector<IndexedContext> var_params, non_var_params = {{base, 0}};
+  std::vector<ParameterSlot> var_params, non_var_params = {{base, 0}};
 
   for (size_t i = 0; i < params.size(); i++) {
     auto param = params[i];
@@ -1904,16 +1933,14 @@ SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext* base,
 
     // Check if the parameter is a variable before visiting it
     auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
-    if (term_expr_ctx) {
-      auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
-      if (id_term_ctx && param_node->variables.size() == 1) {
-        // This is a variable parameter - create Column directly
-        auto variable = *param_node->variables.begin();
-        auto variable_sql = std::make_shared<sql::ast::Column>(variable);
-        param_node->sql_expression = variable_sql;
-        var_params.push_back({param, i + 1});
-        continue;
-      }
+    if (term_expr_ctx && param_node->variables.size() == 1) {
+      // This is a variable parameter - visit the term directly to get the SQL expression
+      // This handles both simple variables (IDTerm) and arithmetic operations (OpTerm, etc.)
+      auto term_sql = std::any_cast<std::shared_ptr<sql::ast::Term>>(visit(term_expr_ctx->term()));
+      // Term extends Expression, so we can use it directly
+      param_node->sql_expression = std::static_pointer_cast<sql::ast::Expression>(term_sql);
+      var_params.push_back({param, i + 1});
+      continue;
     }
 
     // Not a variable, let the visitor handle it

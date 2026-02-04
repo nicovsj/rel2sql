@@ -21,11 +21,12 @@ class SQLVisitor : public BaseVisitor {
 
   using ContextSourcePair = std::pair<antlr4::ParserRuleContext*, std::shared_ptr<sql::ast::Source>>;
 
-  struct IndexedContext {
-    antlr4::ParserRuleContext* ctx;
-    size_t index;
+  /** A single parameter slot in a relation application: parse context and its 1-based position. */
+  struct ParameterSlot {
+    antlr4::ParserRuleContext* context;
+    size_t parameter_index;
 
-    bool operator<(const IndexedContext& other) const { return index < other.index; }
+    bool operator<(const ParameterSlot& other) const { return parameter_index < other.parameter_index; }
   };
 
   explicit SQLVisitor(std::shared_ptr<RelAST> ast);
@@ -139,22 +140,22 @@ class SQLVisitor : public BaseVisitor {
   std::vector<std::shared_ptr<sql::ast::Selectable>> VarListShorthand(std::vector<ContextSourcePair> ctx_source_pairs);
 
   std::vector<std::shared_ptr<sql::ast::Condition>> ApplicationVariableConditions(
-      psr::ApplBaseContext* base_appl_ctx, const std::vector<IndexedContext>& var_param_ctxs,
-      const std::vector<IndexedContext>& non_var_param_ctxs,
-      const std::unordered_map<std::string, IndexedContext>& params_by_free_vars) const;
+      psr::ApplBaseContext* base_appl_ctx, const std::vector<ParameterSlot>& var_param_ctxs,
+      const std::vector<ParameterSlot>& non_var_param_ctxs,
+      const std::unordered_map<std::string, ParameterSlot>& params_by_free_vars) const;
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> SpecialAppliedVarList(
-      psr::ApplBaseContext* base_ctx, std::vector<IndexedContext> input_ctxs,
-      std::vector<IndexedContext> variable_param_ctxs,
-      std::unordered_map<std::string, IndexedContext> free_vars_in_non_variable_params) const;
+      psr::ApplBaseContext* base_ctx, std::vector<ParameterSlot> input_param_slots,
+      std::vector<ParameterSlot> term_param_slots,
+      std::unordered_map<std::string, ParameterSlot> free_vars_in_non_variable_params) const;
 
   std::shared_ptr<sql::ast::Expression> GetExpressionFromID(antlr4::ParserRuleContext* ctx, std::string id,
                                                             bool is_top_level = false);
 
-  std::unordered_map<std::string, IndexedContext> GetFirstNonVarParamByFreeVariables(
-      const std::vector<IndexedContext>& other_param_ctxs);
+  std::unordered_map<std::string, ParameterSlot> GetFirstNonVarParamByFreeVariables(
+      const std::vector<ParameterSlot>& other_param_ctxs);
 
-  std::pair<std::vector<IndexedContext>, std::vector<IndexedContext>> GetVariableAndNonVariableParams(
+  std::pair<std::vector<ParameterSlot>, std::vector<ParameterSlot>> GetVariableAndNonVariableParams(
       psr::ApplBaseContext* base, const std::vector<psr::ApplParamContext*>& params);
 
   std::unordered_set<Bound> SafeFunction(psr::BindingInnerContext* binding_ctx, antlr4::ParserRuleContext* expr_ctx);
@@ -181,7 +182,21 @@ class SQLVisitor : public BaseVisitor {
 
   void SpecialAddSourceToFreeVariablesInTerm(
       const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources,
-      std::shared_ptr<sql::ast::Term>& comparison);
+      std::shared_ptr<sql::ast::Term>& comparison) const;
+
+  // Build the term expression for the variable x from a parameter slot: (column - b)/a.
+  // Used when equating repeated term parameters so that x is the same in both (e.g. A1-1 = A2+1).
+  std::shared_ptr<sql::ast::Term> MakeTermForVariableFromParamSlot(
+      const ParameterSlot& slot, const std::shared_ptr<sql::ast::Source>& ra_subquery) const;
+
+  // Build SELECT term for a bound variable parameter: column or (column - b)/a when linear.
+  std::shared_ptr<sql::ast::Selectable> MakeBoundVariableParamSelectable(
+      psr::ApplParamContext* param_ctx, size_t index, const std::shared_ptr<sql::ast::Source>& ra_subquery,
+      const std::string& bound_var) const;
+
+  // Build SELECT term for a variable that comes from a subquery column.
+  std::shared_ptr<sql::ast::Selectable> MakeSubqueryColumnSelectable(antlr4::ParserRuleContext* ctx,
+                                                                     const std::string& var) const;
 
   std::shared_ptr<sql::ast::Sourceable> VisitRelAbsLogic(psr::RelAbsContext* ctx);
   void ApplyDistinctToDefinitionSelects(const std::shared_ptr<sql::ast::Sourceable>& sourceable);

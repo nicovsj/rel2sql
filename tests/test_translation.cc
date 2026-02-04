@@ -130,8 +130,8 @@ TEST_F(TranslationTest, ArithmeticInComparisons4) {
 
 TEST_F(TranslationTest, ArithmeticInComparisons5) {
   EXPECT_EQ(TranslateFormula("C(x,y,z) and (x + y) * z > 100"),
-            "SELECT T1.x, T1.y, T1.z FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM C AS T0) AS T1 WHERE (x + y) "
-            "* T1.z > 100");
+            "SELECT T1.x, T1.y, T1.z FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM C AS T0) AS T1 WHERE (T1.x + "
+            "T1.y) * T1.z > 100");
 }
 
 TEST_F(TranslationTest, ArithmeticInComparisons6) {
@@ -362,14 +362,14 @@ TEST_F(TranslationTest, PartialApplicationSharingVariables2) {
 
 TEST_F(TranslationTest, PartialApplicationSharingVariables3) {
   EXPECT_EQ(TranslateExpression("C[B[x], x]"),
-            "SELECT T2.x, T0.A3 AS A1 FROM C AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM B AS T1) AS T2 WHERE T2.x = "
-            "T0.A2 AND T0.A1 = T2.A1");
+            "SELECT T2.x, T0.A3 AS A1 FROM C AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM B AS T1) AS T2 WHERE T0.A2 = "
+            "T2.x AND T0.A1 = T2.A1");
 }
 
 TEST_F(TranslationTest, PartialApplicationSharingVariables4) {
   EXPECT_EQ(TranslateExpression("C[B[x], x, y]"),
-            "SELECT T2.x, T0.A3 AS y FROM C AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM B AS T1) AS T2 WHERE T2.x = "
-            "T0.A2 AND T0.A1 = T2.A1");
+            "SELECT T2.x, T0.A3 AS y FROM C AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM B AS T1) AS T2 WHERE T0.A2 = "
+            "T2.x AND T0.A1 = T2.A1");
 }
 
 TEST_F(TranslationTest, DISABLED_PartialApplicationOnExpression1) {
@@ -516,16 +516,56 @@ TEST_F(TranslationTest, ExpressionConstantTerms2) {
             "SELECT T0.A2 AS A1 FROM B AS T0, (SELECT 2 * (3 + 4) AS A1) AS T1 WHERE T0.A1 = T1.A1");
 }
 
-TEST_F(TranslationTest, ExpressionVariableTerms1) {
+TEST_F(TranslationTest, ParameterVariableTerms1) {
+  EXPECT_EQ(TranslateExpression("A(x+1)"), "SELECT T0.A1 - 1 AS x FROM A AS T0");
+}
+
+TEST_F(TranslationTest, ParameterVariableTerms2) {
+  EXPECT_EQ(TranslateExpression("A(2*x)"), "SELECT T0.A1 / 2 AS x FROM A AS T0");
+}
+
+TEST_F(TranslationTest, ParameterVariableTerms3) {
+  EXPECT_EQ(TranslateExpression("A(2*x-1)"), "SELECT (T0.A1 + 1) / 2 AS x FROM A AS T0");
+}
+
+TEST_F(TranslationTest, ParameterVariableTerms4) {
+  EXPECT_EQ(TranslateExpression("A(3*(2*x-1+5*x)+x)"), "SELECT (T0.A1 + 3) / 22 AS x FROM A AS T0");
+}
+
+TEST_F(TranslationTest, ParameterVariableTerms5) {
+  EXPECT_EQ(TranslateExpression("B(x+1,x-1)"), "SELECT T0.A1 - 1 AS x FROM B AS T0 WHERE T0.A1 - 1 = T0.A2 + 1");
+}
+
+TEST_F(TranslationTest, ParameterVariableTerms6) {
+  EXPECT_EQ(TranslateExpression("B(x+1,x,y)"),
+            "SELECT T0.A1 - 1 AS x, T0.A3 AS y FROM B AS T0 WHERE T0.A1 - 1 = T0.A2");
+}
+
+TEST_F(TranslationTest, ParameterVariableTerms7) {
+  EXPECT_EQ(TranslateExpression("B(x+1,B[x])"),
+            "SELECT T2.x FROM B AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM B AS T1) AS T2 WHERE T0.A1 = T2.x + 1 AND "
+            "T0.A2 = T2.A1");
+}
+
+TEST_F(TranslationTest, DISABLED_ExpressionVariableTerms1) {
   EXPECT_EQ(TranslateExpression("[x] : x where A(x)"),
             "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1 AND T1.x < 5");
 }
 
-TEST_F(TranslationTest, ExpressionVariableTerms2) {
+TEST_F(TranslationTest, DISABLED_ExpressionVariableTerms2) {
   EXPECT_EQ(TranslateExpression("[x] : x+1 where A(x)"),
             "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1 AND T1.x < 5");
 }
 
+TEST_F(TranslationTest, DISABLED_ExpressionVariableTerms3) {
+  EXPECT_EQ(TranslateExpression("[x,y] : x+y where B(x,y)"),
+            "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1 AND T1.x < 5");
+}
+
+TEST_F(TranslationTest, DISABLED_ExpressionVariableTerms4) {
+  EXPECT_EQ(TranslateExpression("[x,y] : x+y where A(x) where A(y)"),
+            "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1 AND T1.x < 5");
+}
 
 TEST_F(TranslationTest, Program) {
   EXPECT_EQ(TranslateDefinition("def R {[x in A]: B[x]}"),

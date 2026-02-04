@@ -185,12 +185,12 @@ TEST_F(OptimizationTest, PartialApplicationSharingVariables2) {
 
 TEST_F(OptimizationTest, PartialApplicationSharingVariables3) {
   EXPECT_EQ(TranslateExpression("C[B[x], x]"),
-            "SELECT T1.A1 AS x, T0.A3 AS A1 FROM C AS T0, B AS T1 WHERE T1.A1 = T0.A2 AND T0.A1 = T1.A2");
+            "SELECT T1.A1 AS x, T0.A3 AS A1 FROM C AS T0, B AS T1 WHERE T0.A2 = T1.A1 AND T0.A1 = T1.A2");
 }
 
 TEST_F(OptimizationTest, PartialApplicationSharingVariables4) {
   EXPECT_EQ(TranslateExpression("C[B[x], x, y]"),
-            "SELECT T1.A1 AS x, T0.A3 AS y FROM C AS T0, B AS T1 WHERE T1.A1 = T0.A2 AND T0.A1 = T1.A2");
+            "SELECT T1.A1 AS x, T0.A3 AS y FROM C AS T0, B AS T1 WHERE T0.A2 = T1.A1 AND T0.A1 = T1.A2");
 }
 
 TEST_F(OptimizationTest, AggregateExpression1) {

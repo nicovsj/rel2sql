@@ -98,7 +98,7 @@ std::any TermPolynomialVisitor::visitOpTerm(psr::OpTermContext* ctx) {
   auto [a1, b1] = lhs_node->term_linear_coeffs.value();
   auto [a2, b2] = rhs_node->term_linear_coeffs.value();
 
-  const std::string op_text = ctx->arithmeticOperator()->getText();
+  const std::string op_text = ctx->op->getText();
 
   if (op_text == "+") {
     SetLinear(node, a1 + a2, b1 + b2);
