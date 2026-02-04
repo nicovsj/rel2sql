@@ -53,8 +53,6 @@ productInner: (exprs = expr (',' exprs = expr)*)?;
 
 relAbs: '{' (exprs = expr (';' exprs = expr)*)? '}';
 
-arithmeticOperator: T_OP_PLUS | T_OP_MINUS | T_OP_MULT | T_OP_DIV;
-
 comparator: T_OP_COMP | T_OP_NEQ | T_OP_EQ;
 
 numericalConstant:
@@ -63,11 +61,13 @@ numericalConstant:
 	| T_FLOAT_LIT				# numFloat
 	| T_OP_MINUS T_FLOAT_LIT	# numNegFloat;
 
+// Operator precedence: first alternative = highest (binds tightest). So * / before + -.
 term:
-	T_ID								# IDTerm
-	| numericalConstant					# numTerm
-	| lhs = term arithmeticOperator rhs = term	# opTerm
-	| '(' term ')'						# parenthesisTerm;
+	lhs = term op = (T_OP_MULT | T_OP_DIV) rhs = term		# opTerm
+	| lhs = term op = (T_OP_PLUS | T_OP_MINUS) rhs = term	# opTerm
+	| T_ID													# IDTerm
+	| numericalConstant										# numTerm
+	| '(' term ')'											# parenthesisTerm;
 
 // The order of the rules below matters for precedence.
 expr:
