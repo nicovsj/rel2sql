@@ -1,0 +1,451 @@
+#ifndef REL_AST_REL_AST_H
+#define REL_AST_REL_AST_H
+
+#include <antlr4-runtime.h>
+
+#include <memory>
+#include <optional>
+#include <set>
+#include <string>
+#include <variant>
+#include <vector>
+
+#include "rel_ast/bound_set.h"
+#include "sql_ast/sql_ast.h"
+
+namespace rel2sql {
+
+// Forward declarations (RelASTVisitor defined in rel_ast_visitor.h)
+class RelASTVisitor;
+
+// =============================================================================
+// Enums
+// =============================================================================
+
+enum class RelCompOp { EQ, NEQ, LT, GT, LTE, GTE };
+
+enum class RelLogicalOp { AND, OR };
+
+enum class RelQuantOp { EXISTS, FORALL };
+
+enum class RelTermOp { ADD, SUB, MUL, DIV };
+
+// =============================================================================
+// Supporting types (used in multiple node types)
+// =============================================================================
+
+using RelLiteralValue = std::variant<int, double, std::string, bool>;
+
+// Binding: literal | id (in domain)?
+struct RelBinding {
+  virtual ~RelBinding() = default;
+  virtual std::string ToString() const = 0;
+};
+struct RelLiteralBinding : RelBinding {
+  RelLiteralValue value;
+  explicit RelLiteralBinding(RelLiteralValue v) : value(std::move(v)) {}
+  std::string ToString() const override;
+};
+struct RelVarBinding : RelBinding {
+  std::string id;
+  std::optional<std::string> domain;
+  RelVarBinding(std::string id, std::optional<std::string> domain)
+      : id(std::move(id)), domain(std::move(domain)) {}
+  std::string ToString() const override;
+};
+
+// applBase: T_ID | relAbs
+struct RelAbstraction;
+struct RelApplBase {
+  virtual ~RelApplBase() = default;
+  virtual std::string ToString() const = 0;
+};
+struct RelIDApplBase : RelApplBase {
+  std::string id;
+  explicit RelIDApplBase(std::string id) : id(std::move(id)) {}
+  std::string ToString() const override;
+};
+struct RelAbstractionApplBase : RelApplBase {
+  std::shared_ptr<RelAbstraction> rel_abs;
+  explicit RelAbstractionApplBase(std::shared_ptr<RelAbstraction> abs) : rel_abs(std::move(abs)) {}
+  std::string ToString() const override;
+};
+
+// applParam: '_' | expr
+struct RelExpr;
+struct RelApplParam {
+  virtual ~RelApplParam() = default;
+  virtual std::string ToString() const = 0;
+  virtual bool IsUnderscore() const { return false; }
+  virtual std::shared_ptr<RelExpr> GetExpr() const { return nullptr; }
+};
+struct RelUnderscoreParam : RelApplParam {
+  std::string ToString() const override { return "_"; }
+  bool IsUnderscore() const override { return true; }
+};
+struct RelExprApplParam : RelApplParam {
+  std::shared_ptr<RelExpr> expr;
+  explicit RelExprApplParam(std::shared_ptr<RelExpr> e) : expr(std::move(e)) {}
+  std::string ToString() const override;
+  std::shared_ptr<RelExpr> GetExpr() const override { return expr; }
+};
+
+// =============================================================================
+// Base node with metadata
+// =============================================================================
+
+class RelNode {
+ public:
+  virtual ~RelNode() = default;
+
+  virtual void Accept(RelASTVisitor& visitor) = 0;
+  virtual std::string ToString() const = 0;
+
+  // Source location for error reporting (nullptr for synthetic nodes)
+  antlr4::ParserRuleContext* ctx = nullptr;
+
+  // Variables bound in the current context
+  std::set<std::string> variables;
+  std::set<std::string> free_variables;
+
+  // SQL expression (set during translation)
+  std::shared_ptr<sql::ast::Expression> sql_expression;
+
+  bool disabled = false;
+  std::optional<sql::ast::constant_t> constant;
+
+  bool has_only_literal_values = false;
+  std::vector<std::shared_ptr<RelAbstraction>> multiple_defs;
+
+  bool is_recursive = false;
+  std::string recursive_definition_name;
+
+  size_t arity = 0;
+  BoundSet safety;
+
+  // AND term partitioning (for formulas)
+  std::vector<std::shared_ptr<RelNode>> comparator_conjuncts;
+  std::vector<std::shared_ptr<RelNode>> non_comparator_conjuncts;
+  std::vector<std::shared_ptr<RelNode>> negated_conjuncts;
+  std::vector<std::shared_ptr<RelNode>> non_negated_conjuncts;
+
+  // Linear term analysis (for terms)
+  std::optional<std::pair<double, double>> term_linear_coeffs;
+  bool term_linear_invalid = false;
+
+  void VariablesInplaceUnion(const RelNode& other) {
+    variables.insert(other.variables.begin(), other.variables.end());
+    free_variables.insert(other.free_variables.begin(), other.free_variables.end());
+  }
+
+  void VariablesInplaceDifference(const RelNode& other) {
+    variables.insert(other.variables.begin(), other.variables.end());
+    for (const auto& var : other.free_variables) {
+      free_variables.erase(var);
+    }
+  }
+
+  bool IsInvalidTermExpression() const { return term_linear_invalid; }
+
+  bool IsNullPolynomialTerm() const {
+    if (!term_linear_coeffs) return false;
+    auto [a, b] = *term_linear_coeffs;
+    return a == 0.0 && b == 0.0;
+  }
+
+  std::optional<double> GetPolynomialRoot() const {
+    if (term_linear_invalid || !term_linear_coeffs) return std::nullopt;
+    auto [a, b] = *term_linear_coeffs;
+    if (a == 0.0) return std::nullopt;
+    return -b / a;
+  }
+
+  bool IsConjunctionWithTerms() const { return !comparator_conjuncts.empty(); }
+  bool IsConjunctionWithNegations() const { return !negated_conjuncts.empty(); }
+};
+
+// =============================================================================
+// Literals
+// =============================================================================
+
+struct RelLiteral : RelNode {
+  RelLiteralValue value;
+
+  explicit RelLiteral(RelLiteralValue v) : value(std::move(v)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToString() const override;
+};
+
+// =============================================================================
+// RelAbstraction - { expr ; expr ; ... }
+// =============================================================================
+
+struct RelExpr;
+struct RelAbstraction : RelNode {
+  std::vector<std::shared_ptr<RelExpr>> exprs;
+
+  RelAbstraction() = default;
+  explicit RelAbstraction(std::vector<std::shared_ptr<RelExpr>> exprs) : exprs(std::move(exprs)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToString() const override;
+};
+
+// =============================================================================
+// Terms
+// =============================================================================
+
+struct RelTerm : RelNode {
+  virtual ~RelTerm() = default;
+  std::string ToString() const override { return ToStringImpl(); }
+  virtual std::string ToStringImpl() const = 0;
+};
+
+struct RelIDTerm : RelTerm {
+  std::string id;
+
+  explicit RelIDTerm(std::string id) : id(std::move(id)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelNumTerm : RelTerm {
+  sql::ast::constant_t value;
+
+  explicit RelNumTerm(sql::ast::constant_t value) : value(std::move(value)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelOpTerm : RelTerm {
+  std::shared_ptr<RelTerm> lhs;
+  RelTermOp op;
+  std::shared_ptr<RelTerm> rhs;
+
+  RelOpTerm(std::shared_ptr<RelTerm> lhs, RelTermOp op, std::shared_ptr<RelTerm> rhs)
+      : lhs(std::move(lhs)), op(op), rhs(std::move(rhs)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelParenthesisTerm : RelTerm {
+  std::shared_ptr<RelTerm> term;
+
+  explicit RelParenthesisTerm(std::shared_ptr<RelTerm> term) : term(std::move(term)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+// =============================================================================
+// Formulas
+// =============================================================================
+
+struct RelFormula : RelNode {
+  virtual ~RelFormula() = default;
+  std::string ToString() const override { return ToStringImpl(); }
+  virtual std::string ToStringImpl() const = 0;
+};
+
+struct RelFormulaBool : RelFormula {
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelComparison : RelFormula {
+  std::shared_ptr<RelTerm> lhs;
+  RelCompOp op;
+  std::shared_ptr<RelTerm> rhs;
+
+  RelComparison(std::shared_ptr<RelTerm> lhs, RelCompOp op, std::shared_ptr<RelTerm> rhs)
+      : lhs(std::move(lhs)), op(op), rhs(std::move(rhs)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelUnOp : RelFormula {
+  std::shared_ptr<RelFormula> formula;
+
+  explicit RelUnOp(std::shared_ptr<RelFormula> formula) : formula(std::move(formula)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelBinOp : RelFormula {
+  std::shared_ptr<RelFormula> lhs;
+  RelLogicalOp op;
+  std::shared_ptr<RelFormula> rhs;
+
+  RelBinOp(std::shared_ptr<RelFormula> lhs, RelLogicalOp op, std::shared_ptr<RelFormula> rhs)
+      : lhs(std::move(lhs)), op(op), rhs(std::move(rhs)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelParen : RelFormula {
+  std::shared_ptr<RelFormula> formula;
+
+  explicit RelParen(std::shared_ptr<RelFormula> formula) : formula(std::move(formula)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelQuantification : RelFormula {
+  RelQuantOp op;
+  std::vector<std::shared_ptr<RelBinding>> bindings;
+  std::shared_ptr<RelFormula> formula;
+
+  RelQuantification(RelQuantOp op, std::vector<std::shared_ptr<RelBinding>> bindings,
+                    std::shared_ptr<RelFormula> formula)
+      : op(op), bindings(std::move(bindings)), formula(std::move(formula)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelFullAppl : RelFormula {
+  std::shared_ptr<RelApplBase> base;
+  std::vector<std::shared_ptr<RelApplParam>> params;
+
+  RelFullAppl(std::shared_ptr<RelApplBase> base, std::vector<std::shared_ptr<RelApplParam>> params)
+      : base(std::move(base)), params(std::move(params)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+// =============================================================================
+// Expressions
+// =============================================================================
+
+struct RelExpr : RelNode {
+  virtual ~RelExpr() = default;
+  std::string ToString() const override { return ToStringImpl(); }
+  virtual std::string ToStringImpl() const = 0;
+};
+
+struct RelLitExpr : RelExpr {
+  std::shared_ptr<RelLiteral> literal;
+
+  explicit RelLitExpr(std::shared_ptr<RelLiteral> literal) : literal(std::move(literal)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelTermExpr : RelExpr {
+  std::shared_ptr<RelTerm> term;
+
+  explicit RelTermExpr(std::shared_ptr<RelTerm> term) : term(std::move(term)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelProductExpr : RelExpr {
+  std::vector<std::shared_ptr<RelExpr>> exprs;
+
+  RelProductExpr() = default;
+  explicit RelProductExpr(std::vector<std::shared_ptr<RelExpr>> exprs) : exprs(std::move(exprs)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelConditionExpr : RelExpr {
+  std::shared_ptr<RelExpr> lhs;
+  std::shared_ptr<RelFormula> rhs;
+
+  RelConditionExpr(std::shared_ptr<RelExpr> lhs, std::shared_ptr<RelFormula> rhs)
+      : lhs(std::move(lhs)), rhs(std::move(rhs)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelAbstractionExpr : RelExpr {
+  std::shared_ptr<RelAbstraction> rel_abs;
+
+  explicit RelAbstractionExpr(std::shared_ptr<RelAbstraction> rel_abs) : rel_abs(std::move(rel_abs)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelFormulaExpr : RelExpr {
+  std::shared_ptr<RelFormula> formula;
+
+  explicit RelFormulaExpr(std::shared_ptr<RelFormula> formula) : formula(std::move(formula)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelBindingsExpr : RelExpr {
+  std::vector<std::shared_ptr<RelBinding>> bindings;
+  std::shared_ptr<RelExpr> expr;
+
+  RelBindingsExpr(std::vector<std::shared_ptr<RelBinding>> bindings, std::shared_ptr<RelExpr> expr)
+      : bindings(std::move(bindings)), expr(std::move(expr)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelBindingsFormula : RelExpr {
+  std::vector<std::shared_ptr<RelBinding>> bindings;
+  std::shared_ptr<RelFormula> formula;
+
+  RelBindingsFormula(std::vector<std::shared_ptr<RelBinding>> bindings, std::shared_ptr<RelFormula> formula)
+      : bindings(std::move(bindings)), formula(std::move(formula)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+struct RelPartialAppl : RelExpr {
+  std::shared_ptr<RelApplBase> base;
+  std::vector<std::shared_ptr<RelApplParam>> params;
+
+  RelPartialAppl(std::shared_ptr<RelApplBase> base, std::vector<std::shared_ptr<RelApplParam>> params)
+      : base(std::move(base)), params(std::move(params)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToStringImpl() const override;
+};
+
+// =============================================================================
+// Program level
+// =============================================================================
+
+struct RelDef : RelNode {
+  std::string name;
+  std::shared_ptr<RelAbstraction> body;
+
+  RelDef(std::string name, std::shared_ptr<RelAbstraction> body) : name(std::move(name)), body(std::move(body)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToString() const override;
+};
+
+struct RelProgram : RelNode {
+  std::vector<std::shared_ptr<RelDef>> defs;
+
+  RelProgram() = default;
+  explicit RelProgram(std::vector<std::shared_ptr<RelDef>> defs) : defs(std::move(defs)) {}
+
+  void Accept(RelASTVisitor& visitor) override;
+  std::string ToString() const override;
+};
+
+}  // namespace rel2sql
+
+#endif  // REL_AST_REL_AST_H

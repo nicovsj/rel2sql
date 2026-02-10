@@ -213,6 +213,10 @@ TEST_F(OptimizationTest, AggregateExpression5) {
   EXPECT_EQ(TranslateExpression("max[B[x]]"), "SELECT T0.A1 AS x, MAX(T0.A2) AS A1 FROM B AS T0 GROUP BY T0.A1");
 }
 
+TEST_F(OptimizationTest, AggregateExpression6) {
+  EXPECT_EQ(TranslateExpression("(x): A(x) or D(x)"), "SELECT T0.A1 AS x, MAX(T0.A2) AS A1 FROM B AS T0 GROUP BY T0.A1");
+}
+
 TEST_F(OptimizationTest, RelationalAbstraction) {
   EXPECT_EQ(
       TranslateExpression("{(1,2); (3,4)}"),
@@ -222,8 +226,7 @@ TEST_F(OptimizationTest, RelationalAbstraction) {
 
 TEST_F(OptimizationTest, BindingExpression) {
   EXPECT_EQ(TranslateExpression("[x in A, y in D]: C[x, y]"),
-            "SELECT S1.A1 AS A1, S0.A1 AS A2, T0.A3 AS A3 FROM C AS T0, A AS S1, D AS S0 WHERE S1.A1 = T0.A1 AND S0.A1 "
-            "= T0.A2");
+            "SELECT T0.A1 AS A1, T0.A2 AS A2, T0.A3 AS A3 FROM C AS T0");
 }
 
 TEST_F(OptimizationTest, BindingExpressionBounded) {
@@ -252,6 +255,10 @@ TEST_F(OptimizationTest, BindingFormula3) {
 
 TEST_F(OptimizationTest, BindingFormula4) {
   EXPECT_EQ(TranslateExpression("(x): A(x+1)"), "SELECT T0.A1 - 1 AS A1 FROM A AS T0");
+}
+
+TEST_F(OptimizationTest, BindingFormula5) {
+  EXPECT_EQ(TranslateExpression("(x): A(2*x+1)"), "SELECT (T0.A1 - 1) / 2 AS A1 FROM A AS T0");
 }
 
 TEST_F(OptimizationTest, NestedBindingFormula) {

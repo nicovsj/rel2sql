@@ -500,11 +500,9 @@ std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
 
   auto bounds = SafeCover(ctx->bindingInner(), ctx->expr());
 
-  auto cte_map = ComputeBindingsCTEs(bounds);
-
   auto select_columns = VarListShorthand({{ctx, expr_source}});
 
-  auto binding_output = ComputeBindingsOutput(cte_map, ctx->bindingInner());
+  auto binding_output = BindingsOutput(ctx->bindingInner(), ctx->expr());
 
   select_columns.insert(select_columns.end(), binding_output.begin(), binding_output.end());
 
@@ -518,37 +516,9 @@ std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
 
   std::vector<std::shared_ptr<sql::ast::Source>> from_sources = {expr_source};
 
-  // Collect stored CTEs from full_appl_ctes_ that are referenced in safe_result FIRST
-  // (so they're defined before binding CTEs that reference them)
-  auto [extracted_stored_ctes, stored_ctes] = CollectReferencedStoredCTEs(bounds);
+  auto from = std::make_shared<sql::ast::From>(from_sources);
 
-  std::vector<std::shared_ptr<sql::ast::Source>> ctes;
-  // Add extracted nested CTEs from stored CTEs first
-  ctes.insert(ctes.end(), extracted_stored_ctes.begin(), extracted_stored_ctes.end());
-
-  // Add nested CTEs from the expression (if any) - these come after extracted stored CTEs
-  // but before stored CTEs and binding CTEs that may reference them
-  ctes.insert(ctes.end(), nested_ctes.begin(), nested_ctes.end());
-
-  // Add the stored CTEs (with cleaned sourceables)
-  ctes.insert(ctes.end(), stored_ctes.begin(), stored_ctes.end());
-
-  // Then add binding CTEs (which may reference the stored CTEs above)
-  for (auto& [_, cte] : cte_map) {
-    ctes.push_back(cte);
-  }
-
-  // Only add binding CTEs to from_sources, NOT stored RA CTEs
-  // Stored CTEs are only in the CTE list for definition, not in the FROM clause
-  for (auto& [_, cte] : cte_map) {
-    from_sources.push_back(cte);
-  }
-
-  auto condition = BindingsEqualityShorthand(ctx->expr(), cte_map);
-
-  auto from = std::make_shared<sql::ast::From>(from_sources, condition);
-
-  auto query = std::make_shared<sql::ast::Select>(select_columns, from, ctes);
+  auto query = std::make_shared<sql::ast::Select>(select_columns, from);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
@@ -624,58 +594,19 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
   // Continue with normal bindings formula flow
   auto bounds = SafeCover(ctx->bindingInner(), ctx->formula());
 
-  auto cte_map = ComputeBindingsCTEs(bounds);
-
   auto select_columns = VarListShorthand({{ctx, formula_source}});
 
-  auto binding_output = ComputeBindingsOutput(cte_map, ctx->bindingInner());
+  auto binding_output = BindingsOutput(ctx->bindingInner(), ctx->formula());
 
   select_columns.insert(select_columns.end(), binding_output.begin(), binding_output.end());
 
+  auto explicit_binding_sources_map = GetExplicitBindingSourcesMap(ctx->bindingInner());
+
   std::vector<std::shared_ptr<sql::ast::Source>> from_sources = {formula_source};
 
-  // Collect stored CTEs from full_appl_ctes_ that are referenced in safe_result FIRST
-  // (so they're defined before binding CTEs that reference them)
-  auto [extracted_stored_ctes, stored_ctes] = CollectReferencedStoredCTEs(bounds);
+  auto from = std::make_shared<sql::ast::From>(from_sources);
 
-  std::vector<std::shared_ptr<sql::ast::Source>> ctes;
-  // Add extracted nested CTEs from stored CTEs first
-  ctes.insert(ctes.end(), extracted_stored_ctes.begin(), extracted_stored_ctes.end());
-
-  // Add nested CTEs from the formula (if any) - these come after extracted stored CTEs
-  // but before stored CTEs, formula CTEs and binding CTEs that may reference them
-  ctes.insert(ctes.end(), nested_ctes.begin(), nested_ctes.end());
-
-  // Add the stored CTEs (with cleaned sourceables)
-  ctes.insert(ctes.end(), stored_ctes.begin(), stored_ctes.end());
-
-  // Add formula CTEs (for recursive case, these are CTEs from the recursive definition)
-  ctes.insert(ctes.end(), formula_ctes.begin(), formula_ctes.end());
-
-  // Then add binding CTEs (which may reference the stored CTEs above)
-  for (auto& [_, cte] : cte_map) {
-    ctes.push_back(cte);
-  }
-
-  // If recursive, add the recursive CTE after binding CTEs
-  if (bindings_formula_node->is_recursive && !bindings_formula_node->recursive_definition_name.empty()) {
-    ctes.push_back(recursive_cte_source);
-  }
-
-  // Only add binding CTEs to from_sources, NOT stored RA CTEs
-  // Stored CTEs are only in the CTE list for definition, not in the FROM clause
-  for (auto& [_, cte] : cte_map) {
-    from_sources.push_back(cte);
-  }
-
-  auto condition = BindingsEqualityShorthand(ctx->formula(), cte_map);
-
-  auto from = std::make_shared<sql::ast::From>(from_sources, condition);
-
-  // For recursive case, mark the query as recursive
-  bool is_recursive = bindings_formula_node->is_recursive && !bindings_formula_node->recursive_definition_name.empty();
-
-  auto query = std::make_shared<sql::ast::Select>(select_columns, from, ctes, false, is_recursive);
+  auto query = std::make_shared<sql::ast::Select>(select_columns, from, false);
 
   return std::static_pointer_cast<sql::ast::Expression>(query);
 }
@@ -697,54 +628,7 @@ std::any SQLVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
 
   auto ra_sql = std::any_cast<std::shared_ptr<sql::ast::Sourceable>>(visit(ctx->applBase()));
 
-  std::shared_ptr<sql::ast::Source> stored_cte = nullptr;
-
-  if (ctx->applBase()->relAbs()) {
-    // We should check if the base of the full application is a relation abstraction with free variables.
-    // If it is, then it will happen that both the safety bound will use the relational abstraction SQL as the source,
-    // alongside this very same full application. We solve this SQL duplication by storing the CTE in the
-    // full_appl_ctes_ map. This way, we can reuse the same CTE for both the safety bound and the full application.
-    auto node = GetNode(ctx);
-
-    if (node->safety.Size() != 1) {
-      throw InternalException("Full application on a relational abstraction with wrong number of bounds");
-    }
-
-    auto bound = *node->safety.bounds.begin();
-    auto projection = *bound.domain.begin();
-    auto promised_source = std::dynamic_pointer_cast<PromisedSource>(projection.source);
-
-    if (!promised_source) {
-      throw InternalException("Source of relational abstraction is not promised");
-    }
-
-    // Check if this Full Application has free variables (only store CTE for relAbs with free vars)
-    if (!node->free_variables.empty()) {
-      // Create a CTE from the relational abstraction SQL
-      auto cte_alias = GenerateTableAlias("RA");
-      auto cte = std::make_shared<sql::ast::Source>(ra_sql, cte_alias, true);
-
-      // Store the CTE keyed by projection (with PromisedSource) for later reuse in ComputeBindingsCTEs
-      // Note: We store with the original projection containing PromisedSource
-      full_appl_ctes_[projection] = cte;
-      stored_cte = cte;
-
-      // Fulfill the PromisedSource with the sourceable
-      // When resolved later, it will become a GenericSource that we can match to the stored CTE
-      promised_source->Fulfill(ra_sql);
-    } else {
-      // No free variables, just fulfill with the sourceable directly
-      promised_source->Fulfill(ra_sql);
-    }
-  }
-
-  std::shared_ptr<sql::ast::Source> ra_source;
-
-  if (stored_cte) {
-    ra_source = stored_cte;
-  } else {
-    ra_source = std::make_shared<sql::ast::Source>(ra_sql, GenerateTableAlias());
-  }
+  auto ra_source = std::make_shared<sql::ast::Source>(ra_sql, GenerateTableAlias());
 
   GetNode(ctx->applBase())->sql_expression = ra_source;
 
@@ -800,60 +684,10 @@ std::any SQLVisitor::visitFullAppl(psr::FullApplContext* ctx) {
    */
   auto ra_sql = std::any_cast<std::shared_ptr<sql::ast::Sourceable>>(visit(ctx->applBase()));
 
-  std::shared_ptr<sql::ast::Source> stored_cte = nullptr;
-
-  if (ctx->applBase()->relAbs()) {
-    // We should check if the base of the full application is a relation abstraction with free variables.
-    // If it is, then it will happen that both the safety bound will use the relational abstraction SQL as the source,
-    // alongside this very same full application. We solve this SQL duplication by storing the CTE in the
-    // full_appl_ctes_ map. This way, we can reuse the same CTE for both the safety bound and the full application.
-    auto node = GetNode(ctx);
-
-    if (node->safety.Size() != 1) {
-      throw InternalException("Full application on a relational abstraction with wrong number of bounds");
-    }
-
-    auto bound = *node->safety.bounds.begin();
-    auto projection = *bound.domain.begin();
-    auto promised_source = std::dynamic_pointer_cast<PromisedSource>(projection.source);
-
-    if (!promised_source) {
-      throw InternalException("Source of relational abstraction is not promised");
-    }
-
-    // Check if this Full Application has free variables (only store CTE for relAbs with free vars)
-    if (!node->free_variables.empty()) {
-      // Create a CTE from the relational abstraction SQL
-      auto cte_alias = GenerateTableAlias("RA");
-      auto cte = std::make_shared<sql::ast::Source>(ra_sql, cte_alias, true);
-
-      // Store the CTE keyed by projection (with PromisedSource) for later reuse in ComputeBindingsCTEs
-      // Note: We store with the original projection containing PromisedSource
-      full_appl_ctes_[projection] = cte;
-      stored_cte = cte;
-
-      // Fulfill the PromisedSource with the sourceable
-      // When resolved later, it will become a GenericSource that we can match to the stored CTE
-      promised_source->Fulfill(ra_sql);
-    } else {
-      // No free variables, just fulfill with the sourceable directly
-      promised_source->Fulfill(ra_sql);
-    }
-  }
-
   // Use the stored CTE as the source if available, otherwise create a new source from ra_sql
-  std::shared_ptr<sql::ast::Source> ra_source;
-  if (stored_cte) {
-    // Use the stored CTE directly - it's already a Source with is_cte=true
-    ra_source = stored_cte;
-  } else {
-    // No stored CTE, create a new source from the sourceable
-    ra_source = std::make_shared<sql::ast::Source>(ra_sql, GenerateTableAlias());
-  }
+  auto ra_source = std::make_shared<sql::ast::Source>(ra_sql, GenerateTableAlias());
 
-  auto base_node = GetNode(ctx->applBase());
-
-  base_node->sql_expression = ra_source;
+  GetNode(ctx->applBase())->sql_expression = ra_source;
 
   auto [term_params, non_term_params] =
       GetVariableAndNonVariableParams(ctx->applBase(), ctx->applParams()->applParam());
@@ -2022,268 +1856,57 @@ BoundSet SQLVisitor::SafeCover(psr::BindingInnerContext* binding_ctx, antlr4::Pa
   return small_cover;
 }
 
-std::pair<std::vector<std::shared_ptr<sql::ast::Source>>, std::vector<std::shared_ptr<sql::ast::Source>>>
-SQLVisitor::CollectReferencedStoredCTEs(const BoundSet& bounds) {
-  /*
-   * Collects stored CTEs from full_appl_ctes_ that are referenced in safe_result.
-   * These CTEs are needed first (before binding CTEs that may reference them).
-   * Matching is done by checking if GenericSource's sourceable matches stored CTE's sourceable.
-   * Also extracts nested CTEs from stored CTEs and returns them separately.
-   * Returns a pair: (extracted nested CTEs, stored CTEs with cleaned sourceables)
-   */
-  std::vector<std::shared_ptr<sql::ast::Source>> stored_ctes;
-  std::vector<std::shared_ptr<sql::ast::Source>> extracted_ctes;
-  std::unordered_set<std::shared_ptr<sql::ast::Source>> seen_ctes;
-
-  for (const auto& bound : bounds.bounds) {
-    for (const auto& projection : bound.domain) {
-      auto bound_source = ResolvePromisedSource(projection.source);
-      auto generic_bound = std::dynamic_pointer_cast<GenericSource>(bound_source);
-      if (!generic_bound) {
-        continue;
-      }
-
-      // Check if this GenericSource matches any stored CTE
-      for (const auto& [stored_proj, stored_cte] : full_appl_ctes_) {
-        if (stored_proj.projected_indices == projection.projected_indices &&
-            stored_cte->sourceable == generic_bound->source) {
-          // Add CTE if not already seen
-          if (seen_ctes.insert(stored_cte).second) {
-            // Check if the stored CTE's sourceable has nested CTEs
-            auto nested_select = std::dynamic_pointer_cast<sql::ast::Select>(stored_cte->sourceable);
-            if (nested_select && !nested_select->ctes.empty() && !nested_select->ctes_are_recursive) {
-              // Extract nested CTEs
-              extracted_ctes.insert(extracted_ctes.end(), nested_select->ctes.begin(), nested_select->ctes.end());
-
-              // Create a new Select without CTEs
-              std::shared_ptr<sql::ast::Sourceable> cleaned_sourceable;
-              if (nested_select->group_by.has_value() && nested_select->from.has_value()) {
-                cleaned_sourceable =
-                    std::make_shared<sql::ast::Select>(nested_select->columns, nested_select->from.value(),
-                                                       nested_select->group_by.value(), nested_select->is_distinct);
-              } else if (nested_select->from.has_value()) {
-                cleaned_sourceable = std::make_shared<sql::ast::Select>(
-                    nested_select->columns, nested_select->from.value(), nested_select->is_distinct);
-              } else {
-                cleaned_sourceable =
-                    std::make_shared<sql::ast::Select>(nested_select->columns, nested_select->is_distinct);
-              }
-
-              // Create a new Source with the cleaned sourceable
-              std::shared_ptr<sql::ast::Source> cleaned_cte;
-              if (stored_cte->alias.has_value()) {
-                cleaned_cte = std::make_shared<sql::ast::Source>(cleaned_sourceable, stored_cte->alias.value(), true,
-                                                                 stored_cte->def_columns);
-              } else {
-                cleaned_cte = std::make_shared<sql::ast::Source>(cleaned_sourceable, GenerateTableAlias(), true,
-                                                                 stored_cte->def_columns);
-              }
-              stored_ctes.push_back(cleaned_cte);
-            } else {
-              // No nested CTEs, use the stored CTE as-is
-              stored_ctes.push_back(stored_cte);
-            }
-          }
-          // If already seen, skip (already added to stored_ctes)
-          break;  // Found matching CTE for this projection
-        }
-      }
-    }
-  }
-
-  return std::make_pair(extracted_ctes, stored_ctes);
-}
-
-std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::ComputeBindingsCTEs(const BoundSet& bounds) {
-  /*
-   * Computes the CTEs for the bindings. Associates each safe result with the CTE that it generates for after use.
-   * Also collects stored CTEs from full_appl_ctes_ that are used, which should be included in higher-level queries.
-   */
-
-  std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> cte_map;
-
-  for (auto& elem : bounds.bounds) {
-    if (elem.domain.empty()) {
-      throw std::runtime_error("Empty union domain");
-    }
-
-    // Precompute whether this bound uses any non-trivial affine coefficients.
-    bool use_affine = elem.HasNonTrivialAffine();
-
-    // Build selects for each domain
-    std::vector<std::shared_ptr<sql::ast::Sourceable>> selects;
-    for (auto projection : elem.domain) {
-      // Create table with attribute names from EDBInfo (whether custom or standard A1, A2, etc.)
-
-      auto bound_source = ResolvePromisedSource(projection.source);
-      auto table_bound = std::dynamic_pointer_cast<TableSource>(bound_source);
-      auto constant_bound = std::dynamic_pointer_cast<ConstantSource>(bound_source);
-      auto generic_bound = std::dynamic_pointer_cast<GenericSource>(bound_source);
-
-      std::shared_ptr<sql::ast::Select> select;
-      bool select_created = false;
-
-      if (!constant_bound && !table_bound && !generic_bound) {
-        throw std::runtime_error("Unknown domain source type");
-      } else if (generic_bound) {
-        // Check if there's a stored CTE for this projection (from a Full Application with relAbs)
-        // We need to match by sourceable and projected_indices since the projection may have been resolved
-        std::shared_ptr<sql::ast::Source> matching_cte = nullptr;
-        for (const auto& [stored_proj, stored_cte] : full_appl_ctes_) {
-          // Check if projected_indices match and if the GenericSource's sourceable matches the stored CTE's sourceable
-          if (stored_proj.projected_indices == projection.projected_indices &&
-              stored_cte->sourceable == generic_bound->source) {
-            matching_cte = stored_cte;
-            break;
-          }
-        }
-
-        if (matching_cte) {
-          // Create a SELECT that references the stored CTE in its FROM clause
-          // The stored CTE is already a complete Source with is_cte=true
-          auto from = std::make_shared<sql::ast::From>(matching_cte);
-
-          std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
-          if (!use_affine && projection.projected_indices.size() == generic_bound->arity) {
-            // All columns selected and no affine mapping: use wildcard for readability.
-            auto wildcard = std::make_shared<sql::ast::Wildcard>();
-            columns.push_back(wildcard);
-          } else {
-            // Select specific columns based on projected_indices, optionally applying affine coeffs.
-            for (size_t pos = 0; pos < projection.projected_indices.size(); ++pos) {
-              int index = static_cast<int>(projection.projected_indices[pos]);
-              std::string column_name = GetColumnNameFromSource(matching_cte, index);
-              auto base_col = std::make_shared<sql::ast::Column>(column_name, matching_cte);
-              std::optional<std::pair<double, double>> coeff;
-              if (pos < elem.coeffs.size()) {
-                coeff = elem.coeffs[pos];
-              }
-              auto term = use_affine ? ApplyAffineToColumn(base_col, coeff) : base_col;
-              auto term_selectable = std::make_shared<sql::ast::TermSelectable>(term, fmt::format("A{}", index + 1));
-              columns.push_back(term_selectable);
-            }
-          }
-
-          select = std::make_shared<sql::ast::Select>(columns, from);
-          select_created = true;
-        } else {
-          // No stored CTE, proceed with normal GenericSource handling
-          auto sourceable = generic_bound->source;
-          auto alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias());
-          auto source = std::make_shared<sql::ast::Source>(sourceable, alias);
-          auto from = std::make_shared<sql::ast::From>(source);
-
-          std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
-          if (!use_affine && projection.projected_indices.size() == generic_bound->arity) {
-            auto wildcard = std::make_shared<sql::ast::Wildcard>();
-            columns.push_back(wildcard);
-          } else {
-            for (size_t pos = 0; pos < projection.projected_indices.size(); ++pos) {
-              int index = static_cast<int>(projection.projected_indices[pos]);
-              std::string column_name = GetColumnNameFromSource(source, index);
-              auto base_col = std::make_shared<sql::ast::Column>(column_name, source);
-              std::optional<std::pair<double, double>> coeff;
-              if (pos < elem.coeffs.size()) {
-                coeff = elem.coeffs[pos];
-              }
-              auto term = use_affine ? ApplyAffineToColumn(base_col, coeff) : base_col;
-              auto term_selectable = std::make_shared<sql::ast::TermSelectable>(term, fmt::format("A{}", index + 1));
-              columns.push_back(term_selectable);
-            }
-          }
-
-          select = std::make_shared<sql::ast::Select>(columns, from);
-          select_created = true;
-        }
-      } else if (constant_bound) {
-        auto sql_constant = std::make_shared<sql::ast::Constant>(constant_bound->value);
-        auto selectable = std::make_shared<sql::ast::TermSelectable>(sql_constant, "A1");
-
-        select = std::make_shared<sql::ast::Select>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable});
-        select_created = true;
-
-      } else {
-        auto edb_info = ast_->GetRelationInfo(table_bound->table_name);
-        std::shared_ptr<sql::ast::Table> table;
-        if (edb_info && edb_info->arity > 0) {
-          std::vector<std::string> attribute_names;
-          for (int i = 0; i < edb_info->arity; ++i) {
-            attribute_names.push_back(edb_info->AttributeName(i));
-          }
-          table = std::make_shared<sql::ast::Table>(table_bound->table_name, edb_info->arity, attribute_names);
-        } else {
-          table = std::make_shared<sql::ast::Table>(table_bound->table_name, ast_->GetArity(table_bound->table_name));
-        }
-
-        auto alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias());
-
-        auto source = std::make_shared<sql::ast::Source>(table, alias);
-        auto from = std::make_shared<sql::ast::From>(source);
-        // Create columns based on domain.indices
-        // If all columns are selected, use wildcard for better readability
-        std::vector<std::shared_ptr<sql::ast::Selectable>> columns;
-        if (!use_affine && static_cast<int>(projection.projected_indices.size()) == table->arity) {
-          auto wildcard = std::make_shared<sql::ast::Wildcard>();
-          columns.push_back(wildcard);
-        } else {
-          for (size_t pos = 0; pos < projection.projected_indices.size(); ++pos) {
-            int index = static_cast<int>(projection.projected_indices[pos]);
-            std::string column_name = table->GetAttributeName(index);
-            auto base_col = std::make_shared<sql::ast::Column>(column_name, source);
-            std::optional<std::pair<double, double>> coeff;
-            if (pos < elem.coeffs.size()) {
-              coeff = elem.coeffs[pos];
-            }
-            auto term = use_affine ? ApplyAffineToColumn(base_col, coeff) : base_col;
-            auto term_selectable = std::make_shared<sql::ast::TermSelectable>(term, fmt::format("A{}", index + 1));
-            columns.push_back(term_selectable);
-          }
-        }
-        select = std::make_shared<sql::ast::Select>(columns, from);
-        select_created = true;
-      }
-
-      if (select_created) {
-        selects.push_back(select);
-      }
-    }
-
-    // Create final source - either from union or single select
-    std::shared_ptr<sql::ast::Source> source;
-    if (elem.domain.size() > 1) {
-      auto union_cte = std::make_shared<sql::ast::Union>(selects);
-      source = std::make_shared<sql::ast::Source>(union_cte, GenerateTableAlias("S"), true, elem.variables);
-    } else {
-      source = std::make_shared<sql::ast::Source>(selects[0], GenerateTableAlias("S"), true, elem.variables);
-    }
-
-    cte_map[elem] = source;
-  }
-
-  return cte_map;
-}
-
-std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::ComputeBindingsOutput(
-    const std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>>& cte_map,
-    psr::BindingInnerContext* binding_ctx) {
-  /*
-   * Computes the output for the bindings.
-   */
+std::vector<std::shared_ptr<sql::ast::Selectable>> SQLVisitor::BindingsOutput(psr::BindingInnerContext* binding_ctx,
+                                                                              antlr4::ParserRuleContext* expr_ctx) {
   std::vector<std::shared_ptr<sql::ast::Selectable>> output;
-
-  // Create a function that resolves the CTE for a given binding variable. This is used to avoid
-  // recomputing the CTE for the same binding variable multiple times.
-  auto resolve_binding_cte = MakeBindingCTEResolver(cte_map);
+  auto inner_node = GetNode(expr_ctx);
 
   for (auto binding : binding_ctx->binding()) {
-    auto binding_var = binding->id->getText();
-    auto binding_cte = resolve_binding_cte(binding_var);
-    auto column = std::make_shared<sql::ast::Column>(binding_var, binding_cte);
-    auto selectable = std::make_shared<sql::ast::TermSelectable>(column, fmt::format("A{}", output.size() + 1));
+    auto binding_node = GetNode(binding);
+
+    if (binding_node->variables.size() != 1) {
+      throw SemanticException("Binding must have exactly one variable", ErrorCode::UNBALANCED_VARIABLE);
+    }
+
+    auto variable_name = *binding_node->variables.begin();
+
+    if (inner_node->free_variables.find(variable_name) == inner_node->free_variables.end()) {
+      throw SemanticException("Variable is not free", ErrorCode::UNBALANCED_VARIABLE);
+    }
+
+    auto variable_source = std::dynamic_pointer_cast<sql::ast::Source>(inner_node->sql_expression);
+
+    auto column = std::make_shared<sql::ast::Column>(variable_name, variable_source);
+    auto selectable = std::make_shared<sql::ast::TermSelectable>(column, std::format("A{}", output.size() + 1));
+
     output.push_back(selectable);
   }
 
   return output;
+}
+
+std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> SQLVisitor::GetExplicitBindingSourcesMap(
+    psr::BindingInnerContext* binding_ctx) {
+  std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> explicit_binding_sources_map;
+  for (auto binding : binding_ctx->binding()) {
+    if (!binding->id_domain) continue;
+
+    auto variable_name = binding->id->getText();
+
+    auto table =
+        std::make_shared<sql::ast::Table>(binding->id_domain->getText(), ast_->GetArity(binding->id_domain->getText()));
+
+    auto table_source = std::make_shared<sql::ast::Source>(table, GenerateTableAlias());
+
+    auto from = std::make_shared<sql::ast::From>(table_source);
+
+    auto column = std::make_shared<sql::ast::Column>("A1", table_source);
+    auto selectable = std::make_shared<sql::ast::TermSelectable>(column, variable_name);
+
+    explicit_binding_sources_map[variable_name] = table_source;
+  }
+
+  return explicit_binding_sources_map;
 }
 
 std::function<std::shared_ptr<sql::ast::Source>(const std::string&)> SQLVisitor::MakeBindingCTEResolver(

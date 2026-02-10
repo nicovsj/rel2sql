@@ -6,8 +6,12 @@
 #include "optimizer/optimizer.h"
 #include "parser/error_listener.h"
 #include "preprocessing/preprocessor.h"
+#include "preprocessing/preprocessor_rel.h"
+#include "rel_ast/rel_ast.h"
 #include "rel_ast/relation_info.h"
+#include "rel_ast/rel_ast_container.h"
 #include "sql/sql_visitor.h"
+#include "sql/sql_visitor_rel.h"
 
 namespace rel2sql {
 
@@ -36,6 +40,13 @@ inline std::shared_ptr<sql::ast::Expression> GetSQLFromAST(const RelAST& ast) {
   return std::any_cast<std::shared_ptr<sql::ast::Expression>>(sql);
 }
 
+inline std::shared_ptr<sql::ast::Expression> GetSQLFromRelContainer(RelASTContainer& container) {
+  auto root = container.Root();
+  if (!root) return nullptr;
+  SQLVisitorRel visitor(&container);
+  return visitor.Translate(*root);
+}
+
 inline std::shared_ptr<sql::ast::Expression> GetSQL(std::string_view input,
                                                     const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   auto parser = GetParser(input);
@@ -62,6 +73,53 @@ inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQL(std::string_view 
   auto ast = preprocessor.Process(tree);
 
   return GetSQLFromAST(ast);
+}
+
+/** Rel pipeline: parse → PreprocessorRel → SQLVisitorRel → (optional) Optimizer */
+inline std::shared_ptr<sql::ast::Expression> GetSQLRel(std::string_view input,
+                                                       const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  PreprocessorRel preprocessor(edb_map);
+  auto& container = preprocessor.Process(tree);
+  auto sql = GetSQLFromRelContainer(container);
+  if (!sql) return nullptr;
+  sql::ast::Optimizer optimizer;
+  optimizer.Visit(*sql);
+  return sql;
+}
+
+inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQLRel(
+    std::string_view input, const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
+  auto parser = GetParser(input);
+  auto tree = parser->program();
+  PreprocessorRel preprocessor(edb_map);
+  auto& container = preprocessor.Process(tree);
+  return GetSQLFromRelContainer(container);
+}
+
+/** Rel pipeline: parse as formula → PreprocessorRel → SQLVisitorRel. No def wrapper, no DISTINCT. */
+inline std::shared_ptr<sql::ast::Expression> GetSQLFromFormula(
+    std::string_view input, const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
+  auto parser = GetParser(input);
+  auto tree = parser->formula();
+  PreprocessorRel preprocessor(edb_map);
+  std::shared_ptr<RelFormula> formula;
+  preprocessor.ProcessFormula(tree, formula);
+  SQLVisitorRel visitor(preprocessor.GetContainer());
+  return visitor.TranslateFormula(*formula);
+}
+
+/** Rel pipeline: parse as expr → PreprocessorRel → SQLVisitorRel. No def wrapper, no DISTINCT. */
+inline std::shared_ptr<sql::ast::Expression> GetSQLFromExpr(
+    std::string_view input, const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
+  auto parser = GetParser(input);
+  auto tree = parser->expr();
+  PreprocessorRel preprocessor(edb_map);
+  std::shared_ptr<RelExpr> expr;
+  preprocessor.ProcessExpr(tree, expr);
+  SQLVisitorRel visitor(preprocessor.GetContainer());
+  return visitor.TranslateExpr(*expr);
 }
 
 }  // namespace rel2sql

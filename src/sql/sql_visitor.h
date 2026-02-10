@@ -161,10 +161,10 @@ class SQLVisitor : public BaseVisitor {
   // Computes a minimal safety bound set for the bindings and the expression
   BoundSet SafeCover(psr::BindingInnerContext* binding_ctx, antlr4::ParserRuleContext* expr_ctx);
 
-  std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> ComputeBindingsCTEs(const BoundSet& bounds);
+  std::vector<std::shared_ptr<sql::ast::Selectable>> BindingsOutput(psr::BindingInnerContext* binding_ctx,
+                                                                    antlr4::ParserRuleContext* expr_ctx);
 
-  std::vector<std::shared_ptr<sql::ast::Selectable>> ComputeBindingsOutput(
-      const std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>>& safe_result,
+  std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> GetExplicitBindingSourcesMap(
       psr::BindingInnerContext* binding_ctx);
 
   std::function<std::shared_ptr<sql::ast::Source>(const std::string&)> MakeBindingCTEResolver(
@@ -172,13 +172,6 @@ class SQLVisitor : public BaseVisitor {
 
   std::shared_ptr<sql::ast::Condition> BindingsEqualityShorthand(
       antlr4::ParserRuleContext* expr, const std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>>& safe_result);
-
-  // Collects stored CTEs from full_appl_ctes_ that are referenced in safe_result.
-  // These CTEs are needed first (before binding CTEs that may reference them).
-  // Also extracts nested CTEs from stored CTEs and returns them separately.
-  // Returns a pair: (extracted nested CTEs, stored CTEs)
-  std::pair<std::vector<std::shared_ptr<sql::ast::Source>>, std::vector<std::shared_ptr<sql::ast::Source>>>
-  CollectReferencedStoredCTEs(const BoundSet& bounds);
 
   void SpecialAddSourceToFreeVariablesInTerm(
       const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources,
@@ -209,10 +202,6 @@ class SQLVisitor : public BaseVisitor {
   std::unordered_map<std::string, int> table_alias_prefix_counter_;
 
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> table_index_;
-
-  // Stores CTEs for Full Applications with relAbs base and free variables
-  // Keyed by Projection, so they can be reused when processing bindings
-  std::unordered_map<Projection, std::shared_ptr<sql::ast::Source>> full_appl_ctes_;
 
   std::shared_ptr<sql::ast::Sourceable> TryGetTopLevelIDSelect(psr::RelAbsContext* ctx);
 

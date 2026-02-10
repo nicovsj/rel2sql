@@ -6,14 +6,25 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
 namespace rel2sql {
 
 struct RelASTNode;
+struct RelAbstraction;
+class RelNode;
 
+// Legacy RecursiveBranchInfo (uses RelASTNode for old pipeline)
 struct RecursiveBranchInfo {
   std::shared_ptr<RelASTNode> exists_clause;
   std::shared_ptr<RelASTNode> recursive_call;
   std::shared_ptr<RelASTNode> residual_formula;
+};
+
+// Typed RecursiveBranchInfo (uses RelNode for new RelAST pipeline)
+struct RecursiveBranchInfoTyped {
+  std::shared_ptr<RelNode> exists_clause;
+  std::shared_ptr<RelNode> recursive_call;
+  std::shared_ptr<RelNode> residual_formula;
 };
 
 struct RecursionInfo {
@@ -21,6 +32,16 @@ struct RecursionInfo {
   std::vector<RecursiveBranchInfo> recursive_disjuncts;
 
   bool empty() const { return non_recursive_disjuncts.empty() && recursive_disjuncts.empty(); }
+};
+
+// Typed RecursionInfo for new RelAST pipeline
+struct RecursionInfoTyped {
+  std::vector<std::shared_ptr<RelAbstraction>> non_recursive_disjuncts;
+  std::vector<RecursiveBranchInfoTyped> recursive_disjuncts;
+
+  bool empty() const {
+    return non_recursive_disjuncts.empty() && recursive_disjuncts.empty();
+  }
 };
 
 struct RelationInfo {
@@ -80,6 +101,34 @@ struct RelationInfo {
   bool HasRecursionMetadata() const { return !recursion_metadata.empty(); }
 
   const RecursionInfo& RecursionMetadata() const { return recursion_metadata; }
+};
+
+// RelationInfo for new RelAST pipeline (uses typed recursion metadata)
+struct RelationInfoTyped {
+  std::vector<std::string> attribute_names;
+  int arity;
+  std::vector<std::string> dependencies;
+  RecursionInfoTyped recursion_metadata;
+
+  explicit RelationInfoTyped(int arity = 0) : arity(arity) {
+    attribute_names.reserve(arity);
+    for (int i = 0; i < arity; ++i) {
+      attribute_names.push_back("A" + std::to_string(i + 1));
+    }
+  }
+
+  explicit RelationInfoTyped(std::vector<std::string> names)
+      : attribute_names(std::move(names)), arity(static_cast<int>(attribute_names.size())) {}
+
+  void AddDependency(const std::string& id) { dependencies.push_back(id); }
+
+  void AddNonRecursiveDisjunct(const std::shared_ptr<RelAbstraction>& node) {
+    recursion_metadata.non_recursive_disjuncts.push_back(node);
+  }
+
+  void AddRecursiveDisjunct(const RecursiveBranchInfoTyped& info) {
+    recursion_metadata.recursive_disjuncts.push_back(info);
+  }
 };
 
 struct RelationMap {

@@ -5,8 +5,6 @@
 
 #include "RelParser.h"
 #include "api/translate.h"
-#include "preprocessing/preprocessor.h"
-#include "rel_ast/extended_ast.h"
 #include "rel_ast/relation_info.h"
 #include "support/exceptions.h"
 #include "test_common.h"
@@ -15,42 +13,28 @@ using psr = rel_parser::RelParser;
 
 namespace rel2sql {
 
-std::string TranslateWithoutOptimization(antlr4::ParserRuleContext* tree,
-                                         const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
-  Preprocessor preprocessor(edb_map);
-  auto ast = preprocessor.Process(tree);
-
-  auto sql = GetSQLFromAST(ast);
-
-  return sql->ToString();
-}
-
 class TranslationTest : public ::testing::Test {
  protected:
   void SetUp() override { default_edb_map = CreateDefaultEDBMap(); }
 
   std::string TranslateFormula(const std::string& input) {
-    auto parser = GetParser(input);
-    auto tree = parser->formula();
-    return TranslateWithoutOptimization(tree, default_edb_map);
+    auto sql = GetSQLFromFormula(input, default_edb_map);
+    return sql ? sql->ToString() : "";
   }
 
   std::string TranslateExpression(const std::string& input) {
-    auto parser = GetParser(input);
-    auto tree = parser->expr();
-    return TranslateWithoutOptimization(tree, default_edb_map);
+    auto sql = GetSQLFromExpr(input, default_edb_map);
+    return sql ? sql->ToString() : "";
   }
 
   std::string TranslateProgram(const std::string& input) {
-    auto parser = GetParser(input);
-    auto tree = parser->program();
-    return TranslateWithoutOptimization(tree, default_edb_map);
+    auto sql = GetUnoptimizedSQLRel(input, default_edb_map);
+    return sql ? sql->ToString() : "";
   }
 
   std::string TranslateDefinition(const std::string& input) {
-    auto parser = GetParser(input);
-    auto tree = parser->relDef();
-    return TranslateWithoutOptimization(tree, default_edb_map);
+    auto sql = GetUnoptimizedSQLRel(input, default_edb_map);
+    return sql ? sql->ToString() : "";
   }
 
   rel2sql::RelationMap default_edb_map;
@@ -59,23 +43,27 @@ class TranslationTest : public ::testing::Test {
 TEST_F(TranslationTest, FullApplication1) { EXPECT_EQ(TranslateFormula("A(x)"), "SELECT T0.A1 AS x FROM A AS T0"); }
 
 TEST_F(TranslationTest, FullApplication2) {
-  EXPECT_EQ(TranslateFormula("B(x, y)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0");
+  EXPECT_EQ(TranslateFormula("B(x,y)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0");
 }
 
 TEST_F(TranslationTest, FullApplication3) {
-  EXPECT_EQ(TranslateFormula("C(x, y, z)"), "SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM C AS T0");
+  EXPECT_EQ(TranslateFormula("C(x,y,z)"), "SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM C AS T0");
 }
 
 TEST_F(TranslationTest, FullApplication4) {
-  EXPECT_EQ(TranslateFormula("B(x, x)"), "SELECT T0.A1 AS x FROM B AS T0 WHERE T0.A1 = T0.A2");
+  EXPECT_EQ(TranslateFormula("B(x,x)"), "SELECT T0.A1 AS x FROM B AS T0 WHERE T0.A1 = T0.A2");
 }
 
 TEST_F(TranslationTest, FullApplication5) {
-  EXPECT_EQ(TranslateFormula("C(x, x, x)"), "SELECT T0.A1 AS x FROM C AS T0 WHERE T0.A1 = T0.A2 AND T0.A2 = T0.A3");
+  EXPECT_EQ(TranslateFormula("C(x,x,x)"), "SELECT T0.A1 AS x FROM C AS T0 WHERE T0.A1 = T0.A2 AND T0.A2 = T0.A3");
 }
 
 TEST_F(TranslationTest, FullApplication6) {
-  EXPECT_EQ(TranslateFormula("C(x, y, x)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM C AS T0 WHERE T0.A1 = T0.A3");
+  EXPECT_EQ(TranslateFormula("C(x,y,x)"), "SELECT T0.A1 AS x, T0.A2 AS y FROM C AS T0 WHERE T0.A1 = T0.A3");
+}
+
+TEST_F(TranslationTest, FullApplication7) {
+  EXPECT_EQ(TranslateFormula("{1}(x)"), "SELECT T1.A1 AS x FROM (SELECT 1 AS A1) AS T1");
 }
 
 TEST_F(TranslationTest, OperatorFormula) {
@@ -162,20 +150,18 @@ TEST_F(TranslationTest, FloatLiteral) {
 
 TEST_F(TranslationTest, ConjunctionFormula) {
   EXPECT_EQ(TranslateFormula("A(x) and D(x)"),
-            "SELECT T1.x FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1, (SELECT T2.A1 AS x FROM D AS T2) AS T3 WHERE "
-            "T1.x = T3.x");
+            "SELECT T2.x FROM (SELECT T0.A1 AS x FROM A AS T0) AS T2, (SELECT T1.A1 AS x FROM D AS T1) AS T3 WHERE "
+            "T2.x = T3.x");
 }
 
 TEST_F(TranslationTest, DisjunctionFormula) {
-  EXPECT_EQ(TranslateFormula("A(x) or D(x)"),
-            "SELECT T2.x FROM (SELECT T0.A1 AS x FROM A AS T0) AS T2 UNION SELECT T3.x FROM (SELECT T1.A1 AS x FROM D "
-            "AS T1) AS T3");
+  EXPECT_EQ(TranslateFormula("A(x) or D(x)"), "SELECT T0.A1 AS x FROM A AS T0 UNION SELECT T1.A1 AS x FROM D AS T1");
 }
 
 TEST_F(TranslationTest, DisjunctionFormula2) {
   EXPECT_EQ(TranslateFormula("A(x) or (D(x) and G(x))"),
-            "SELECT T5.x FROM (SELECT T0.A1 AS x FROM A AS T0) AS T5 UNION SELECT T6.x FROM (SELECT T2.x FROM (SELECT "
-            "T1.A1 AS x FROM D AS T1) AS T2, (SELECT T3.A1 AS x FROM G AS T3) AS T4 WHERE T2.x = T4.x) AS T6");
+            "SELECT T0.A1 AS x FROM A AS T0 UNION SELECT T3.x FROM (SELECT T1.A1 AS x FROM D AS T1) AS T3, (SELECT "
+            "T2.A1 AS x FROM G AS T2) AS T4 WHERE T3.x = T4.x");
 }
 
 TEST_F(TranslationTest, NegationFormula1) {
@@ -192,8 +178,8 @@ TEST_F(TranslationTest, NegationFormula2) {
 
 TEST_F(TranslationTest, NegationFormula3) {
   EXPECT_EQ(TranslateFormula("A(x) and not (D(x) or G(x))"),
-            "SELECT T1.x FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1 WHERE T1.x NOT IN (SELECT T4.x FROM (SELECT T2.A1 "
-            "AS x FROM D AS T2) AS T4 UNION SELECT T5.x FROM (SELECT T3.A1 AS x FROM G AS T3) AS T5)");
+            "SELECT T1.x FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1 WHERE T1.x NOT IN (SELECT T4.x AS x FROM (SELECT "
+            "T2.A1 AS x FROM D AS T2 UNION SELECT T3.A1 AS x FROM G AS T3) AS T4)");
 }
 
 TEST_F(TranslationTest, NegationFormula4) {
@@ -214,19 +200,19 @@ TEST_F(TranslationTest, ExistentialFormula2) {
 
 TEST_F(TranslationTest, ExistentialFormula3) {
   EXPECT_EQ(TranslateFormula("exists ((y in A) | B(x, y))"),
-            "SELECT T2.x FROM (SELECT T1.A1 AS x, T1.A2 AS y FROM B AS T1) AS T2, A AS T0 WHERE T2.y = T0.A1");
+            "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0) AS T1, A AS T2 WHERE T1.y = T2.A1");
 }
 
 TEST_F(TranslationTest, ExistentialFormula4) {
   EXPECT_EQ(TranslateFormula("exists ((y in A, z in D) | C(x, y, z))"),
-            "SELECT T3.x FROM (SELECT T2.A1 AS x, T2.A2 AS y, T2.A3 AS z FROM C AS T2) AS T3, A AS T0, D AS T1 WHERE "
-            "T3.y = T0.A1 AND T3.z = T1.A1");
+            "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM C AS T0) AS T1, A AS T2, D AS T3 WHERE "
+            "T1.y = T2.A1 AND T1.z = T3.A1");
 }
 
 TEST_F(TranslationTest, ExistentialFormula5) {
   EXPECT_EQ(
       TranslateFormula("exists ((y in A, z) | C(x, y, z))"),
-      "SELECT T2.x FROM (SELECT T1.A1 AS x, T1.A2 AS y, T1.A3 AS z FROM C AS T1) AS T2, A AS T0 WHERE T2.y = T0.A1");
+      "SELECT T1.x FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM C AS T0) AS T1, A AS T2 WHERE T1.y = T2.A1");
 }
 
 TEST_F(TranslationTest, NestedQuantifiers1) {
@@ -237,11 +223,10 @@ TEST_F(TranslationTest, NestedQuantifiers1) {
 }
 
 TEST_F(TranslationTest, NestedQuantifiers2) {
-  EXPECT_EQ(
-      TranslateFormula("exists ((y in A) | forall ((z in D) | C(x, y, z)))"),
-      "SELECT T4.x FROM (SELECT T3.x, T3.y FROM (SELECT T2.A1 AS x, T2.A2 AS y, T2.A3 AS z FROM C AS T2) AS T3 WHERE "
-      "NOT EXISTS (SELECT * FROM D AS T1 WHERE (T3.x, T3.y, T1.A1) NOT IN (SELECT * FROM (SELECT T2.A1 AS x, T2.A2 AS "
-      "y, T2.A3 AS z FROM C AS T2) AS T3))) AS T4, A AS T0 WHERE T4.y = T0.A1");
+  EXPECT_EQ(TranslateFormula("exists ((y in A) | forall ((z in D) | C(x, y, z)))"),
+            "SELECT T3.x FROM (SELECT T2.x, T2.y FROM (SELECT T1.A1 AS x, T1.A2 AS y, T1.A3 AS z FROM C AS T1) AS T2 "
+            "WHERE NOT EXISTS (SELECT * FROM D AS T0 WHERE (T2.x, T2.y, T0.A1) NOT IN (SELECT * FROM (SELECT T1.A1 AS "
+            "x, T1.A2 AS y, T1.A3 AS z FROM C AS T1) AS T2))) AS T3, A AS T4 WHERE T3.y = T4.A1");
 }
 
 TEST_F(TranslationTest, NestedQuantifiers3) {
@@ -253,9 +238,9 @@ TEST_F(TranslationTest, NestedQuantifiers3) {
 
 TEST_F(TranslationTest, NestedQuantifiers4) {
   EXPECT_EQ(TranslateFormula("exists ((y) | exists ((z) | exists ((w) | I(x, y, z) and I(y, z, w))))"),
-            "SELECT T6.x FROM (SELECT T5.x, T5.y FROM (SELECT T4.x, T4.y, T4.z FROM (SELECT T1.x, T1.y, T1.z, T3.w "
-            "FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM I AS T0) AS T1, (SELECT T2.A1 AS y, T2.A2 AS z, "
-            "T2.A3 AS w FROM I AS T2) AS T3 WHERE T1.z = T3.z AND T1.y = T3.y) AS T4) AS T5) AS T6");
+            "SELECT T6.x FROM (SELECT T5.x, T5.y FROM (SELECT T4.x, T4.y, T4.z FROM (SELECT T2.x, T2.y, T2.z, T3.w "
+            "FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM I AS T0) AS T2, (SELECT T1.A1 AS y, T1.A2 AS z, "
+            "T1.A3 AS w FROM I AS T1) AS T3 WHERE T2.z = T3.z AND T2.y = T3.y) AS T4) AS T5) AS T6");
 }
 
 TEST_F(TranslationTest, UniversalFormula1) {
@@ -306,8 +291,8 @@ TEST_F(TranslationTest, NestedConditional1) {
 TEST_F(TranslationTest, NestedConditional2) {
   EXPECT_EQ(
       TranslateExpression("B[x] where (A(x) and D(x))"),
-      "SELECT T5.x, T5.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T5, (SELECT T2.x FROM (SELECT T1.A1 AS "
-      "x FROM A AS T1) AS T2, (SELECT T3.A1 AS x FROM D AS T3) AS T4 WHERE T2.x = T4.x) AS T6 WHERE T5.x = T6.x");
+      "SELECT T5.x, T5.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T5, (SELECT T3.x FROM (SELECT T1.A1 AS "
+      "x FROM A AS T1) AS T3, (SELECT T2.A1 AS x FROM D AS T2) AS T4 WHERE T3.x = T4.x) AS T6 WHERE T5.x = T6.x");
 }
 
 TEST_F(TranslationTest, PartialApplication1) {
@@ -362,14 +347,14 @@ TEST_F(TranslationTest, PartialApplicationSharingVariables2) {
 
 TEST_F(TranslationTest, PartialApplicationSharingVariables3) {
   EXPECT_EQ(TranslateExpression("C[B[x], x]"),
-            "SELECT T2.x, T0.A3 AS A1 FROM C AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM B AS T1) AS T2 WHERE T0.A2 = "
-            "T2.x AND T0.A1 = T2.A1");
+            "SELECT T2.x, T0.A3 AS A1 FROM C AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM B AS T1) AS T2 WHERE T0.A1 = "
+            "T2.A1 AND T0.A2 = T2.x");
 }
 
 TEST_F(TranslationTest, PartialApplicationSharingVariables4) {
   EXPECT_EQ(TranslateExpression("C[B[x], x, y]"),
-            "SELECT T2.x, T0.A3 AS y FROM C AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM B AS T1) AS T2 WHERE T0.A2 = "
-            "T2.x AND T0.A1 = T2.A1");
+            "SELECT T2.x, T0.A3 AS y FROM C AS T0, (SELECT T1.A1 AS x, T1.A2 AS A1 FROM B AS T1) AS T2 WHERE T0.A1 = "
+            "T2.A1 AND T0.A2 = T2.x");
 }
 
 TEST_F(TranslationTest, DISABLED_PartialApplicationOnExpression1) {
@@ -483,6 +468,24 @@ TEST_F(TranslationTest, FormulaBindings5) {
             "AS T0) AS T1, S0 WHERE S0.x = T1.x");
 }
 
+TEST_F(TranslationTest, FormulaBindings6) {
+  EXPECT_EQ(TranslateExpression("(x): A(x) and D(x)"),
+            "WITH S0(x) AS (SELECT * FROM D AS T5) SELECT S0.x AS A1 FROM (SELECT T1.x FROM (SELECT T0.A1 AS x FROM A "
+            "AS T0) AS T1, (SELECT T2.A1 AS x FROM D AS T2) AS T3 WHERE T1.x = T3.x) AS T4, S0 WHERE S0.x = T4.x");
+}
+
+TEST_F(TranslationTest, FormulaBindings7) {
+  EXPECT_EQ(TranslateExpression("(x,y,z): (B(x,y) or E(y,z)) and H(x,z)"),
+            "WITH S0(x) AS (SELECT * FROM A AS T2) SELECT S0.x AS A1 FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1, S0 "
+            "WHERE S0.x = T1.x");
+}
+
+TEST_F(TranslationTest, FormulaBindings8) {
+  EXPECT_EQ(TranslateExpression("(x in A): D(x)"),
+            "WITH S0(x) AS (SELECT T3.A1 AS A1 FROM B AS T3) SELECT S0.x AS A1 FROM (SELECT T0.A1 AS x FROM B AS T0, "
+            "(SELECT 1 AS A1) AS T1 WHERE T0.A2 = T1.A1) AS T2, S0 WHERE S0.x = T2.x");
+}
+
 TEST_F(TranslationTest, ExpressionBindings1) {
   EXPECT_EQ(TranslateExpression("[x]: A[x] where x > 1"),
             "WITH S0(x) AS (SELECT * FROM A AS T3) SELECT S0.x AS A1 FROM (SELECT T1.x FROM (SELECT T0.A1 AS x FROM A "
@@ -490,26 +493,24 @@ TEST_F(TranslationTest, ExpressionBindings1) {
 }
 
 TEST_F(TranslationTest, ExpressionBindings2) {
-  EXPECT_EQ(TranslateExpression("[x in T, y in R]: F[x, y]"),
-            "WITH S1(x) AS (SELECT * FROM T AS T3), S0(y) AS (SELECT * FROM R AS T2) SELECT S1.x AS A1, S0.y AS A2, "
-            "T1.A1 AS A3 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T1, S1, S0 WHERE S1.x = "
-            "T1.x AND S0.y = T1.y");
+  EXPECT_EQ(
+      TranslateExpression("[x in T, y in R]: F[x, y]"),
+      "WITH S0(x, y) AS (SELECT T2.A1 AS A1, T2.A2 AS A2 FROM F AS T2) SELECT S0.x AS A1, S0.y AS A2, T1.A1 AS A3 FROM "
+      "(SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM F AS T0) AS T1, S0 WHERE S0.x = T1.x AND S0.y = T1.y");
 }
 
 TEST_F(TranslationTest, ExpressionBindings3) {
   EXPECT_EQ(TranslateExpression("[x in A, y]: C[x, y] where D(y)"),
-            "WITH S2(x) AS (SELECT * FROM A AS T7), S1(x, y) AS (SELECT T6.A1 AS A1, T6.A2 AS A2 FROM C AS T6), S0(y) "
-            "AS (SELECT * FROM D AS T5) SELECT S2.x AS A1, S1.y AS A2, T4.A1 AS A3 FROM (SELECT T2.x, T2.y, T2.A1 FROM "
-            "(SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM C AS T0) AS T2, (SELECT T1.A1 AS y FROM D AS T1) AS T3 "
-            "WHERE T2.y = T3.y) AS T4, S2, S1, S0 WHERE S2.x = T4.x AND S1.x = T4.x AND S1.y = T4.y AND S0.y = T4.y "
-            "AND S1.y = S0.y AND S2.x = S1.x");
+            "WITH S0(x, y) AS (SELECT T5.A1 AS A1, T5.A2 AS A2 FROM C AS T5) SELECT S0.x AS A1, S0.y AS A2, T4.A1 AS "
+            "A3 FROM (SELECT T2.x, T2.y, T2.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM C AS T0) AS T2, "
+            "(SELECT T1.A1 AS y FROM D AS T1) AS T3 WHERE T2.y = T3.y) AS T4, S0 WHERE S0.x = T4.x AND S0.y = T4.y");
 }
 
 TEST_F(TranslationTest, ExpressionBindings4) {
-  EXPECT_EQ(TranslateExpression("[x in A, y in D]: C[x, y]"),
-            "WITH S1(x) AS (SELECT * FROM A AS T3), S0(y) AS (SELECT * FROM D AS T2) SELECT S1.x AS A1, S0.y AS A2, "
-            "T1.A1 AS A3 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM C AS T0) AS T1, S1, S0 WHERE S1.x = "
-            "T1.x AND S0.y = T1.y");
+  EXPECT_EQ(
+      TranslateExpression("[x in A, y in D]: C[x, y]"),
+      "WITH S0(x, y) AS (SELECT T2.A1 AS A1, T2.A2 AS A2 FROM C AS T2) SELECT S0.x AS A1, S0.y AS A2, T1.A1 AS A3 FROM "
+      "(SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS A1 FROM C AS T0) AS T1, S0 WHERE S0.x = T1.x AND S0.y = T1.y");
 }
 
 TEST_F(TranslationTest, ExpressionConstantTerms1) {
@@ -611,7 +612,7 @@ TEST_F(TranslationTest, MultipleDefs2) {
 
 TEST_F(TranslationTest, TableDefinition) {
   EXPECT_EQ(TranslateDefinition("def R {(1,2);(3,4)}"),
-            "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2))");
+            "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));");
 }
 
 // Tests for EDB with named attributes
@@ -626,8 +627,8 @@ TEST_F(TranslationTest, NamedAttributesConjunction) {
   default_edb_map["S"] = RelationInfo({"student_id", "grade"});
 
   EXPECT_EQ(TranslateFormula("R(x, y) and S(x, z)"),
-            "SELECT T1.x, T1.y, T3.z FROM (SELECT T0.id AS x, T0.name AS y FROM R AS T0) AS T1, (SELECT T2.student_id "
-            "AS x, T2.grade AS z FROM S AS T2) AS T3 WHERE T1.x = T3.x");
+            "SELECT T2.x, T2.y, T3.z FROM (SELECT T0.id AS x, T0.name AS y FROM R AS T0) AS T2, (SELECT T1.student_id "
+            "AS x, T1.grade AS z FROM S AS T1) AS T3 WHERE T2.x = T3.x");
 }
 
 TEST_F(TranslationTest, NamedAttributesExistential) {
@@ -635,8 +636,8 @@ TEST_F(TranslationTest, NamedAttributesExistential) {
   default_edb_map["S"] = RelationInfo({"course_id"});
 
   EXPECT_EQ(TranslateFormula("exists ((y in S) | R(x, y))"),
-            "SELECT T2.x FROM (SELECT T1.student_id AS x, T1.course_id AS y FROM R AS T1) AS T2, S AS T0 WHERE T2.y = "
-            "T0.course_id");
+            "SELECT T1.x FROM (SELECT T0.student_id AS x, T0.course_id AS y FROM R AS T0) AS T1, S AS T2 WHERE T1.y = "
+            "T2.course_id");
 }
 
 TEST_F(TranslationTest, NamedAttributesPartialApplication) {
@@ -645,7 +646,7 @@ TEST_F(TranslationTest, NamedAttributesPartialApplication) {
   EXPECT_EQ(
       TranslateDefinition("def S {R[x]}"),
       "CREATE OR REPLACE VIEW S AS (SELECT DISTINCT T0.student_id AS x, T0.course_id AS A1, T0.grade AS A2 FROM R "
-      "AS T0)");
+      "AS T0);");
 }
 
 TEST_F(TranslationTest, NamedAttributesAggregate) {
@@ -653,7 +654,7 @@ TEST_F(TranslationTest, NamedAttributesAggregate) {
 
   EXPECT_EQ(TranslateDefinition("def S {max[R[x]]}"),
             "CREATE OR REPLACE VIEW S AS (SELECT DISTINCT T1.x, MAX(T1.A1) AS A1 FROM (SELECT T0.student_id AS x, "
-            "T0.grade AS A1 FROM R AS T0) AS T1 GROUP BY T1.x)");
+            "T0.grade AS A1 FROM R AS T0) AS T1 GROUP BY T1.x);");
 }
 
 // Tests for EDB with single attribute
@@ -687,10 +688,10 @@ TEST_F(TranslationTest, NamedAttributesBindingFormula) {
 
 TEST_F(TranslationTest, CompositionRelation) {
   EXPECT_EQ(TranslateExpression("(x, y): exists((z) | B(x, z) and E(z, y))"),
-            "WITH S1(y) AS (SELECT T7.A2 AS A2 FROM E AS T7), S0(x) AS (SELECT T6.A1 AS A1 FROM B AS T6) SELECT S0.x "
-            "AS A1, S1.y AS A2 FROM (SELECT T4.x, T4.y FROM (SELECT T1.x, T1.z, T3.y FROM (SELECT T0.A1 AS x, T0.A2 AS "
+            "WITH S1(x) AS (SELECT T7.A1 AS A1 FROM B AS T7), S0(y) AS (SELECT T6.A2 AS A2 FROM E AS T6) SELECT S1.x "
+            "AS A1, S0.y AS A2 FROM (SELECT T4.x, T4.y FROM (SELECT T1.x, T1.z, T3.y FROM (SELECT T0.A1 AS x, T0.A2 AS "
             "z FROM B AS T0) AS T1, (SELECT T2.A1 AS z, T2.A2 AS y FROM E AS T2) AS T3 WHERE T1.z = T3.z) AS T4) AS "
-            "T5, S1, S0 WHERE S1.y = T5.y AND S0.x = T5.x");
+            "T5, S1, S0 WHERE S1.x = T5.x AND S0.y = T5.y");
 }
 
 TEST_F(TranslationTest, SelfComposition) {
@@ -710,13 +711,14 @@ TEST_F(TranslationTest, FirstTransitivityComposition) {
 }
 
 TEST_F(TranslationTest, SimpleReferenceDefinition) {
-  EXPECT_EQ(TranslateDefinition("def R {A}"), "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0)");
+  EXPECT_EQ(TranslateDefinition("def R {A}"),
+            "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0);");
 }
 
 TEST_F(TranslationTest, ExistentialNotBoundingAllVariables) {
-  EXPECT_EQ(TranslateFormula("exists((y) | A(x) and B(y))"),
-            "SELECT T4.x FROM (SELECT T1.x, T3.y FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1, (SELECT T2.A1 AS y FROM "
-            "B AS T2) AS T3) AS T4");
+  EXPECT_EQ(TranslateFormula("exists((y) | A(x) and D(y))"),
+            "SELECT T4.x FROM (SELECT T2.x, T3.y FROM (SELECT T0.A1 AS x FROM A AS T0) AS T2, (SELECT T1.A1 AS y FROM "
+            "D AS T1) AS T3) AS T4");
 }
 
 TEST_F(TranslationTest, RecursiveDefinition) {
@@ -735,12 +737,12 @@ TEST_F(TranslationTest, TransitiveClosure) {
   default_edb_map["R"] = RelationInfo(2);
 
   EXPECT_EQ(TranslateDefinition("def Q {(x,y) : R(x,y) or exists((z) | R(x,z) and Q(z,y))}"),
-            "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE S1(y) AS (SELECT T10.A2 AS A2 FROM R AS T10), S0(x) AS "
-            "(SELECT T9.A1 AS A1 FROM R AS T9), R0(A1, A2) AS (SELECT T6.x, T6.y FROM (SELECT T0.A1 AS x, T0.A2 AS y "
+            "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE S1(x) AS (SELECT T10.A1 AS A1 FROM R AS T10), S0(y) AS "
+            "(SELECT T9.A2 AS A2 FROM R AS T9), R0(A1, A2) AS (SELECT T6.x, T6.y FROM (SELECT T0.A1 AS x, T0.A2 AS y "
             "FROM R AS T0) AS T6 UNION SELECT T7.x, T7.y FROM (SELECT T5.x, T5.y FROM (SELECT T2.x, T2.z, T4.y FROM "
             "(SELECT T1.A1 AS x, T1.A2 AS z FROM R AS T1) AS T2, (SELECT T3.A1 AS z, T3.A2 AS y FROM R0 AS T3) AS T4 "
-            "WHERE T2.z = T4.z) AS T5) AS T7) SELECT DISTINCT S0.x AS A1, S1.y AS A2 FROM (SELECT R0.A1 AS x, R0.A2 AS "
-            "y FROM R0) AS T8, S1, S0 WHERE S1.y = T8.y AND S0.x = T8.x)");
+            "WHERE T2.z = T4.z) AS T5) AS T7) SELECT DISTINCT S1.x AS A1, S0.y AS A2 FROM (SELECT R0.A1 AS x, R0.A2 AS "
+            "y FROM R0) AS T8, S1, S0 WHERE S1.x = T8.x AND S0.y = T8.y)");
 }
 
 TEST_F(TranslationTest, WeirdEdgeCase1) {

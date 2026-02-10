@@ -62,6 +62,17 @@ cc_test(
 )
 
 cc_test(
+    name = "test_bound_set",
+    srcs = [
+        "test_bound_set.cc",
+    ],
+    deps = [
+        "//:rel2sql",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "test_exceptions",
     srcs = [
         "test_exceptions.cc",
@@ -77,6 +88,18 @@ cc_test(
     name = "test_sql_parser",
     srcs = [
         "test_sql_parser.cc",
+    ],
+    deps = [
+        "//:rel2sql",
+        ":test_common",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "test_rel_ast",
+    srcs = [
+        "test_rel_ast.cc",
     ],
     deps = [
         "//:rel2sql",
