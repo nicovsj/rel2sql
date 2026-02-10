@@ -158,10 +158,10 @@ class SQLVisitor : public BaseVisitor {
   std::pair<std::vector<ParameterSlot>, std::vector<ParameterSlot>> GetVariableAndNonVariableParams(
       psr::ApplBaseContext* base, const std::vector<psr::ApplParamContext*>& params);
 
-  std::unordered_set<Bound> SafeFunction(psr::BindingInnerContext* binding_ctx, antlr4::ParserRuleContext* expr_ctx);
+  // Computes a minimal safety bound set for the bindings and the expression
+  BoundSet SafeCover(psr::BindingInnerContext* binding_ctx, antlr4::ParserRuleContext* expr_ctx);
 
-  std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> ComputeBindingsCTEs(
-      std::unordered_set<Bound>& safe_result);
+  std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> ComputeBindingsCTEs(const BoundSet& bounds);
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> ComputeBindingsOutput(
       const std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>>& safe_result,
@@ -178,7 +178,7 @@ class SQLVisitor : public BaseVisitor {
   // Also extracts nested CTEs from stored CTEs and returns them separately.
   // Returns a pair: (extracted nested CTEs, stored CTEs)
   std::pair<std::vector<std::shared_ptr<sql::ast::Source>>, std::vector<std::shared_ptr<sql::ast::Source>>>
-  CollectReferencedStoredCTEs(const std::unordered_set<Bound>& safe_result);
+  CollectReferencedStoredCTEs(const BoundSet& bounds);
 
   void SpecialAddSourceToFreeVariablesInTerm(
       const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources,
@@ -186,9 +186,8 @@ class SQLVisitor : public BaseVisitor {
 
   // Apply affine coefficients (a,b) to a base column term, yielding (col - b)/a
   // (with the same parenthesization rules used for parameter translation).
-  std::shared_ptr<sql::ast::Term> ApplyAffineToColumn(
-      const std::shared_ptr<sql::ast::Column>& column,
-      const std::optional<std::pair<double, double>>& coeff) const;
+  std::shared_ptr<sql::ast::Term> ApplyAffineToColumn(const std::shared_ptr<sql::ast::Column>& column,
+                                                      const std::optional<std::pair<double, double>>& coeff) const;
 
   // Build the term expression for the variable x from a parameter slot: (column - b)/a.
   // Used when equating repeated term parameters so that x is the same in both (e.g. A1-1 = A2+1).

@@ -1,5 +1,7 @@
 #include "sql_visitor.h"
 
+#include <algorithm>
+
 #include "optimizer/replacers.h"
 #include "sql_ast/sql_ast.h"
 #include "support/exceptions.h"
@@ -496,9 +498,9 @@ std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
 
   auto free_variables = GetNode(ctx)->free_variables;
 
-  auto safe_result = SafeFunction(ctx->bindingInner(), ctx->expr());
+  auto bounds = SafeCover(ctx->bindingInner(), ctx->expr());
 
-  auto cte_map = ComputeBindingsCTEs(safe_result);
+  auto cte_map = ComputeBindingsCTEs(bounds);
 
   auto select_columns = VarListShorthand({{ctx, expr_source}});
 
@@ -518,7 +520,7 @@ std::any SQLVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
 
   // Collect stored CTEs from full_appl_ctes_ that are referenced in safe_result FIRST
   // (so they're defined before binding CTEs that reference them)
-  auto [extracted_stored_ctes, stored_ctes] = CollectReferencedStoredCTEs(safe_result);
+  auto [extracted_stored_ctes, stored_ctes] = CollectReferencedStoredCTEs(bounds);
 
   std::vector<std::shared_ptr<sql::ast::Source>> ctes;
   // Add extracted nested CTEs from stored CTEs first
@@ -620,9 +622,9 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
   GetNode(ctx->formula())->sql_expression = formula_source;
 
   // Continue with normal bindings formula flow
-  auto safe_result = SafeFunction(ctx->bindingInner(), ctx->formula());
+  auto bounds = SafeCover(ctx->bindingInner(), ctx->formula());
 
-  auto cte_map = ComputeBindingsCTEs(safe_result);
+  auto cte_map = ComputeBindingsCTEs(bounds);
 
   auto select_columns = VarListShorthand({{ctx, formula_source}});
 
@@ -634,7 +636,7 @@ std::any SQLVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
 
   // Collect stored CTEs from full_appl_ctes_ that are referenced in safe_result FIRST
   // (so they're defined before binding CTEs that reference them)
-  auto [extracted_stored_ctes, stored_ctes] = CollectReferencedStoredCTEs(safe_result);
+  auto [extracted_stored_ctes, stored_ctes] = CollectReferencedStoredCTEs(bounds);
 
   std::vector<std::shared_ptr<sql::ast::Source>> ctes;
   // Add extracted nested CTEs from stored CTEs first
@@ -1146,8 +1148,7 @@ void SQLVisitor::SpecialAddSourceToFreeVariablesInTerm(
 }
 
 std::shared_ptr<sql::ast::Term> SQLVisitor::ApplyAffineToColumn(
-    const std::shared_ptr<sql::ast::Column>& column,
-    const std::optional<std::pair<double, double>>& coeff) const {
+    const std::shared_ptr<sql::ast::Column>& column, const std::optional<std::pair<double, double>>& coeff) const {
   // No affine info or identity (1,0): return the column as-is.
   if (!coeff.has_value()) {
     return column;
@@ -1160,19 +1161,16 @@ std::shared_ptr<sql::ast::Term> SQLVisitor::ApplyAffineToColumn(
   std::shared_ptr<sql::ast::Term> term = column;
 
   if (b < 0.0) {
-    term = std::make_shared<sql::ast::Operation>(
-        term, std::make_shared<sql::ast::Constant>(-b), "+");
+    term = std::make_shared<sql::ast::Operation>(term, std::make_shared<sql::ast::Constant>(-b), "+");
   } else if (b > 0.0) {
-    term = std::make_shared<sql::ast::Operation>(
-        term, std::make_shared<sql::ast::Constant>(b), "-");
+    term = std::make_shared<sql::ast::Operation>(term, std::make_shared<sql::ast::Constant>(b), "-");
   }
 
   if (a != 1.0) {
     if (b != 0.0) {
       term = std::make_shared<sql::ast::ParenthesisTerm>(term);
     }
-    term = std::make_shared<sql::ast::Operation>(
-        term, std::make_shared<sql::ast::Constant>(a), "/");
+    term = std::make_shared<sql::ast::Operation>(term, std::make_shared<sql::ast::Constant>(a), "/");
   }
 
   return term;
@@ -1990,16 +1988,10 @@ SQLVisitor::GetVariableAndNonVariableParams(psr::ApplBaseContext* base,
   return std::make_pair(var_params, non_var_params);
 }
 
-std::unordered_set<Bound> SQLVisitor::SafeFunction(psr::BindingInnerContext* binding_ctx,
-                                                   antlr4::ParserRuleContext* expr_ctx) {
-  /*
-   * Computes the safe function from the paper.
-   */
+BoundSet SQLVisitor::SafeCover(psr::BindingInnerContext* binding_ctx, antlr4::ParserRuleContext* expr_ctx) {
+  BoundSet binding_explicit_bounds;
 
-  std::unordered_set<Bound> safe_result;
-
-  std::set<std::string> binding_vars(GetNode(binding_ctx)->variables);
-
+  // Extrat the bounds written directly in the binding like (x in R)
   for (auto binding : binding_ctx->binding()) {
     if (!binding->id_domain) continue;
 
@@ -2009,35 +2001,29 @@ std::unordered_set<Bound> SQLVisitor::SafeFunction(psr::BindingInnerContext* bin
     auto projection_table = Projection(table_source);
 
     auto bindings_bound = Bound({binding->id->getText()}, {projection_table});
-    safe_result.insert(bindings_bound);
-
-    binding_vars.erase(binding->id->getText());
+    binding_explicit_bounds.Insert(bindings_bound);
   }
 
-  if (binding_vars.empty()) {
-    return safe_result;
+  auto expr_bounds = GetNode(expr_ctx)->safety;
+
+  auto total_bounds = binding_explicit_bounds.UnionWith(expr_bounds);
+
+  auto binding_vars = GetNode(binding_ctx)->variables;
+
+  // Check if all binding variables are bound (i.e. they are safe)
+  if (!std::includes(total_bounds.bound_variables.begin(), total_bounds.bound_variables.end(), binding_vars.begin(),
+                     binding_vars.end())) {
+    throw SemanticException("Not all variables are bound", ErrorCode::UNBALANCED_VARIABLE);
   }
 
-  auto safeness = GetNode(expr_ctx)->safety;
+  // Compute a minimal cover of the bounds
+  auto small_cover = total_bounds.SmallCover();
 
-  for (const auto& bound : safeness.bounds) {
-    for (const auto& var : bound.variables) {
-      if (binding_vars.find(var) != binding_vars.end()) {
-        binding_vars.erase(var);
-      }
-    }
-  }
-
-  if (binding_vars.empty()) {
-    safe_result.insert(safeness.bounds.begin(), safeness.bounds.end());
-    return safe_result;
-  }
-
-  throw SemanticException("Not all variables are bound", ErrorCode::UNBALANCED_VARIABLE);
+  return small_cover;
 }
 
 std::pair<std::vector<std::shared_ptr<sql::ast::Source>>, std::vector<std::shared_ptr<sql::ast::Source>>>
-SQLVisitor::CollectReferencedStoredCTEs(const std::unordered_set<Bound>& safe_result) {
+SQLVisitor::CollectReferencedStoredCTEs(const BoundSet& bounds) {
   /*
    * Collects stored CTEs from full_appl_ctes_ that are referenced in safe_result.
    * These CTEs are needed first (before binding CTEs that may reference them).
@@ -2049,7 +2035,7 @@ SQLVisitor::CollectReferencedStoredCTEs(const std::unordered_set<Bound>& safe_re
   std::vector<std::shared_ptr<sql::ast::Source>> extracted_ctes;
   std::unordered_set<std::shared_ptr<sql::ast::Source>> seen_ctes;
 
-  for (const auto& bound : safe_result) {
+  for (const auto& bound : bounds.bounds) {
     for (const auto& projection : bound.domain) {
       auto bound_source = ResolvePromisedSource(projection.source);
       auto generic_bound = std::dynamic_pointer_cast<GenericSource>(bound_source);
@@ -2108,8 +2094,7 @@ SQLVisitor::CollectReferencedStoredCTEs(const std::unordered_set<Bound>& safe_re
   return std::make_pair(extracted_ctes, stored_ctes);
 }
 
-std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::ComputeBindingsCTEs(
-    std::unordered_set<Bound>& safe_result) {
+std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::ComputeBindingsCTEs(const BoundSet& bounds) {
   /*
    * Computes the CTEs for the bindings. Associates each safe result with the CTE that it generates for after use.
    * Also collects stored CTEs from full_appl_ctes_ that are used, which should be included in higher-level queries.
@@ -2117,7 +2102,7 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
 
   std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> cte_map;
 
-  for (auto& elem : safe_result) {
+  for (auto& elem : bounds.bounds) {
     if (elem.domain.empty()) {
       throw std::runtime_error("Empty union domain");
     }
@@ -2174,8 +2159,7 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
                 coeff = elem.coeffs[pos];
               }
               auto term = use_affine ? ApplyAffineToColumn(base_col, coeff) : base_col;
-              auto term_selectable =
-                  std::make_shared<sql::ast::TermSelectable>(term, fmt::format("A{}", index + 1));
+              auto term_selectable = std::make_shared<sql::ast::TermSelectable>(term, fmt::format("A{}", index + 1));
               columns.push_back(term_selectable);
             }
           }
@@ -2203,8 +2187,7 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
                 coeff = elem.coeffs[pos];
               }
               auto term = use_affine ? ApplyAffineToColumn(base_col, coeff) : base_col;
-              auto term_selectable =
-                  std::make_shared<sql::ast::TermSelectable>(term, fmt::format("A{}", index + 1));
+              auto term_selectable = std::make_shared<sql::ast::TermSelectable>(term, fmt::format("A{}", index + 1));
               columns.push_back(term_selectable);
             }
           }
@@ -2252,8 +2235,7 @@ std::unordered_map<Bound, std::shared_ptr<sql::ast::Source>> SQLVisitor::Compute
               coeff = elem.coeffs[pos];
             }
             auto term = use_affine ? ApplyAffineToColumn(base_col, coeff) : base_col;
-            auto term_selectable =
-                std::make_shared<sql::ast::TermSelectable>(term, fmt::format("A{}", index + 1));
+            auto term_selectable = std::make_shared<sql::ast::TermSelectable>(term, fmt::format("A{}", index + 1));
             columns.push_back(term_selectable);
           }
         }
