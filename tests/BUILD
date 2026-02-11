@@ -14,18 +14,6 @@ cc_library(
 )
 
 cc_test(
-    name = "test_extended_ast",
-    srcs = [
-        "test_extended_ast.cc",
-    ],
-    deps = [
-        "//:rel2sql",
-        ":test_common",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "test_translation",
     srcs = [
         "test_translation.cc",

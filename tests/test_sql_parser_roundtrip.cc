@@ -3,7 +3,6 @@
 
 #include "api/translate.h"
 #include "parser/sql_parse.h"
-#include "preprocessing/preprocessor.h"
 #include "rel_ast/relation_info.h"
 #include "test_common.h"
 
@@ -13,25 +12,11 @@ class DISABLED_SqlParserRoundTripTest : public ::testing::Test {
  protected:
   void SetUp() override { default_edb_map = CreateDefaultEDBMap(); }
 
-  // Helper function to perform round-trip test:
-  // 1. Parse Rel query → get sql::ast (without optimization)
-  // 2. Convert sql::ast → SQL string
-  // 3. Parse SQL string → get new sql::ast
-  // 4. Compare original and parsed sql::ast structures
   void TestRoundTripFormula(const std::string& rel_query) {
-    auto parser = GetParser(rel_query);
-    auto tree = parser->formula();
-
-    Preprocessor preprocessor(default_edb_map);
-    auto ast = preprocessor.Process(tree);
-    auto original_sql_ast = GetSQLFromAST(ast);
-
+    auto original_sql_ast = GetSQLFromFormula(rel_query, default_edb_map);
+    if (!original_sql_ast) return;
     std::string sql_string = original_sql_ast->ToString();
-
-    // Parse the SQL string back to sql::ast
     auto parsed_sql_ast = ParseSQL(sql_string, default_edb_map);
-
-    // Compare the ASTs
     EXPECT_TRUE(AreASTsEqual(original_sql_ast, parsed_sql_ast))
         << "Round-trip failed for formula: " << rel_query << "\n"
         << "Original SQL: " << sql_string << "\n"
@@ -40,19 +25,10 @@ class DISABLED_SqlParserRoundTripTest : public ::testing::Test {
   }
 
   void TestRoundTripExpression(const std::string& rel_query) {
-    auto parser = GetParser(rel_query);
-    auto tree = parser->expr();
-
-    Preprocessor preprocessor(default_edb_map);
-    auto ast = preprocessor.Process(tree);
-    auto original_sql_ast = GetSQLFromAST(ast);
-
+    auto original_sql_ast = GetSQLFromExpr(rel_query, default_edb_map);
+    if (!original_sql_ast) return;
     std::string sql_string = original_sql_ast->ToString();
-
-    // Parse the SQL string back to sql::ast
     auto parsed_sql_ast = ParseSQL(sql_string, default_edb_map);
-
-    // Compare the ASTs
     EXPECT_TRUE(AreASTsEqual(original_sql_ast, parsed_sql_ast))
         << "Round-trip failed for expression: " << rel_query << "\n"
         << "Original SQL: " << sql_string << "\n"
@@ -61,19 +37,10 @@ class DISABLED_SqlParserRoundTripTest : public ::testing::Test {
   }
 
   void TestRoundTripDefinition(const std::string& rel_query) {
-    auto parser = GetParser(rel_query);
-    auto tree = parser->relDef();
-
-    Preprocessor preprocessor(default_edb_map);
-    auto ast = preprocessor.Process(tree);
-    auto original_sql_ast = GetSQLFromAST(ast);
-
+    auto original_sql_ast = GetUnoptimizedSQLRel(rel_query, default_edb_map);
+    if (!original_sql_ast) return;
     std::string sql_string = original_sql_ast->ToString();
-
-    // Parse the SQL string back to sql::ast
     auto parsed_sql_ast = ParseSQL(sql_string, default_edb_map);
-
-    // Compare the ASTs
     EXPECT_TRUE(AreASTsEqual(original_sql_ast, parsed_sql_ast))
         << "Round-trip failed for definition: " << rel_query << "\n"
         << "Original SQL: " << sql_string << "\n"

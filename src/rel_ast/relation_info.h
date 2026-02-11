@@ -9,32 +9,15 @@
 
 namespace rel2sql {
 
-struct RelASTNode;
 struct RelAbstraction;
 class RelNode;
 
-// Legacy RecursiveBranchInfo (uses RelASTNode for old pipeline)
-struct RecursiveBranchInfo {
-  std::shared_ptr<RelASTNode> exists_clause;
-  std::shared_ptr<RelASTNode> recursive_call;
-  std::shared_ptr<RelASTNode> residual_formula;
-};
-
-// Typed RecursiveBranchInfo (uses RelNode for new RelAST pipeline)
 struct RecursiveBranchInfoTyped {
   std::shared_ptr<RelNode> exists_clause;
   std::shared_ptr<RelNode> recursive_call;
   std::shared_ptr<RelNode> residual_formula;
 };
 
-struct RecursionInfo {
-  std::vector<std::shared_ptr<RelASTNode>> non_recursive_disjuncts;
-  std::vector<RecursiveBranchInfo> recursive_disjuncts;
-
-  bool empty() const { return non_recursive_disjuncts.empty() && recursive_disjuncts.empty(); }
-};
-
-// Typed RecursionInfo for new RelAST pipeline
 struct RecursionInfoTyped {
   std::vector<std::shared_ptr<RelAbstraction>> non_recursive_disjuncts;
   std::vector<RecursiveBranchInfoTyped> recursive_disjuncts;
@@ -48,9 +31,7 @@ struct RelationInfo {
   std::vector<std::string> attribute_names;
   int arity;
   std::vector<std::string> dependencies;
-  RecursionInfo recursion_metadata;
 
-  // Default constructor for unnamed relations (uses A1, A2, A3...)
   RelationInfo() = default;
 
   // Constructor for unnamed relations with explicit arity - auto-populates A1, A2, A3...
@@ -91,19 +72,8 @@ struct RelationInfo {
   }
 
   void AddDependency(const std::string& id) { dependencies.push_back(id); }
-
-  void AddNonRecursiveDisjunct(const std::shared_ptr<RelASTNode>& node) {
-    recursion_metadata.non_recursive_disjuncts.push_back(node);
-  }
-
-  void AddRecursiveDisjunct(const RecursiveBranchInfo& info) { recursion_metadata.recursive_disjuncts.push_back(info); }
-
-  bool HasRecursionMetadata() const { return !recursion_metadata.empty(); }
-
-  const RecursionInfo& RecursionMetadata() const { return recursion_metadata; }
 };
 
-// RelationInfo for new RelAST pipeline (uses typed recursion metadata)
 struct RelationInfoTyped {
   std::vector<std::string> attribute_names;
   int arity;

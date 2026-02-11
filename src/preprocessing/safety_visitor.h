@@ -7,9 +7,9 @@
 
 namespace rel2sql {
 
-class SafeVisitorRel : public RelASTVisitor {
+class SafetyVisitor : public RelASTVisitor {
  public:
-  explicit SafeVisitorRel(RelASTContainer* container) : container_(container) {}
+  explicit SafetyVisitor(RelASTContainer* container) : container_(container) {}
 
   void Visit(RelProgram& node) override;
   void Visit(RelDef& node) override;

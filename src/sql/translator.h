@@ -16,15 +16,12 @@
 namespace rel2sql {
 
 /**
- * SQLVisitor that operates on typed RelAST nodes.
- * Produces sql::ast::Expression from RelProgram.
- *
- * This is the Rel-pipeline replacement for SQLVisitor.
- * Currently implements a subset of translations; more cases added incrementally.
+ * Translator that translates RelAST nodes to sql::ast::Expression.
+ * Produces sql::ast::Expression from RelProgram, RelFormula, and RelExpr.
  */
-class SQLVisitorRel : public RelASTVisitor {
+class Translator : public RelASTVisitor {
  public:
-  explicit SQLVisitorRel(RelASTContainer* container) : container_(container) {}
+  explicit Translator(RelASTContainer* container) : container_(container) {}
 
   std::shared_ptr<sql::ast::Expression> Translate(RelProgram& program);
   std::shared_ptr<sql::ast::Expression> TranslateFormula(RelFormula& formula);

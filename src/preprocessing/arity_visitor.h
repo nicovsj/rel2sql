@@ -1,77 +1,42 @@
-#ifndef ARITY_VISITOR_H
-#define ARITY_VISITOR_H
+#ifndef PREPROCESSING_ARITY_VISITOR_REL_H
+#define PREPROCESSING_ARITY_VISITOR_REL_H
 
-#include <antlr4-runtime.h>
-
-#include "preprocessing/base_visitor.h"
-#include "rel_ast/extended_ast.h"
+#include "rel_ast/rel_ast.h"
+#include "rel_ast/rel_ast_container.h"
+#include "rel_ast/rel_ast_visitor.h"
 
 namespace rel2sql {
 
-class ArityVisitor : public BaseVisitor {
-  /*
-   * Visitor that computes the arity of each ID in the Rel program.
-   */
+class ArityVisitor : public RelASTVisitor {
  public:
-  explicit ArityVisitor(std::shared_ptr<RelAST> ast);
+  explicit ArityVisitor(RelASTContainer* container) : container_(container) {}
 
-  std::any visitProgram(psr::ProgramContext* ctx) override;
+  void Visit(RelProgram& node) override;
+  void Visit(RelDef& node) override;
+  void Visit(RelAbstraction& node) override;
+  void Visit(RelLitExpr& node) override;
+  void Visit(RelTermExpr& node) override;
+  void Visit(RelProductExpr& node) override;
+  void Visit(RelConditionExpr& node) override;
+  void Visit(RelAbstractionExpr& node) override;
+  void Visit(RelFormulaExpr& node) override;
+  void Visit(RelBindingsExpr& node) override;
+  void Visit(RelBindingsFormula& node) override;
+  void Visit(RelPartialAppl& node) override;
+  void Visit(RelFullAppl& node) override;
+  void Visit(RelIDTerm& node) override;
+  void Visit(RelNumTerm& node) override;
+  void Visit(RelOpTerm& node) override;
+  void Visit(RelParenthesisTerm& node) override;
 
-  std::any visitRelDef(psr::RelDefContext* ctx) override;
+ private:
+  int GetArityFromBase(const std::shared_ptr<RelApplBase>& base);
+  int GetArityFromParams(const std::vector<std::shared_ptr<RelApplParam>>& params);
 
-  std::any visitRelAbs(psr::RelAbsContext* ctx) override;
-
-  // Expression branches
-
-  std::any visitLitExpr(psr::LitExprContext* ctx) override;
-
-  std::any visitTermExpr(psr::TermExprContext* ctx) override;
-
-  std::any visitProductExpr(psr::ProductExprContext* ctx) override;
-
-  std::any visitConditionExpr(psr::ConditionExprContext* ctx) override;
-
-  std::any visitRelAbsExpr(psr::RelAbsExprContext* ctx) override;
-
-  std::any visitFormulaExpr(psr::FormulaExprContext* ctx) override;
-
-  std::any visitBindingsExpr(psr::BindingsExprContext* ctx) override;
-
-  std::any visitBindingsFormula(psr::BindingsFormulaContext* ctx) override;
-
-  std::any visitPartialAppl(psr::PartialApplContext* ctx) override;
-
-  // Formula branches
-
-  std::any visitFullAppl(psr::FullApplContext* ctx) override;
-
-  std::any visitBinOp(psr::BinOpContext* ctx) override;
-
-  std::any visitUnOp(psr::UnOpContext* ctx) override;
-
-  std::any visitQuantification(psr::QuantificationContext* ctx) override;
-
-  std::any visitParen(psr::ParenContext* ctx) override;
-
-  std::any visitComparison(psr::ComparisonContext* ctx) override;
-
-  //  Binding branches
-
-  std::any visitApplBase(psr::ApplBaseContext* ctx) override;
-
-  std::any visitApplParams(psr::ApplParamsContext* ctx) override;
-
-  // Term branches
-
-  std::any visitNumTerm(psr::NumTermContext* ctx) override;
-
-  std::any visitOpTerm(psr::OpTermContext* ctx) override;
-
-  std::any visitIDTerm(psr::IDTermContext* ctx) override;
-
-  std::any visitParenthesisTerm(psr::ParenthesisTermContext* ctx) override;
+  RelASTContainer* container_;
+  std::unordered_map<std::string, std::vector<std::shared_ptr<RelDef>>> defs_by_id_;
 };
 
 }  // namespace rel2sql
 
-#endif  // ARITY_VISITOR_H
+#endif  // PREPROCESSING_ARITY_VISITOR_REL_H

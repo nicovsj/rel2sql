@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
 
 #include "api/translate.h"
-#include "preprocessing/arity_visitor_rel.h"
-#include "preprocessing/ids_visitor_rel.h"
-#include "preprocessing/preprocessor_rel.h"
-#include "preprocessing/vars_visitor_rel.h"
+#include "preprocessing/arity_visitor.h"
+#include "preprocessing/ids_visitor.h"
+#include "preprocessing/preprocessor.h"
+#include "preprocessing/vars_visitor.h"
 #include "rel_ast/rel_ast_builder.h"
 #include "rel_ast/rel_ast_container.h"
 #include "rel_ast/rel_ast_visitor.h"
@@ -58,7 +58,7 @@ TEST(RelASTBuilderTest, IDsVisitorPopulatesContainer) {
   RelASTContainer container(edb_map);
   container.SetRoot(program);
 
-  IDsVisitorRel ids_visitor(&container);
+  IDsVisitor ids_visitor(&container);
   program->Accept(ids_visitor);
 
   EXPECT_TRUE(container.IsIDB("R"));
@@ -81,10 +81,10 @@ TEST(RelASTBuilderTest, ArityVisitorPopulatesArity) {
   RelASTContainer container(edb_map);
   container.SetRoot(program);
 
-  IDsVisitorRel ids_visitor(&container);
+  IDsVisitor ids_visitor(&container);
   program->Accept(ids_visitor);
 
-  ArityVisitorRel arity_visitor(&container);
+  ArityVisitor arity_visitor(&container);
   program->Accept(arity_visitor);
 
   EXPECT_EQ(container.GetArity("R"), 0);  // Formula expr has arity 0
@@ -106,13 +106,13 @@ TEST(RelASTBuilderTest, VariablesVisitorPopulatesVars) {
   RelASTContainer container(edb_map);
   container.SetRoot(program);
 
-  IDsVisitorRel ids_visitor(&container);
+  IDsVisitor ids_visitor(&container);
   program->Accept(ids_visitor);
 
-  ArityVisitorRel arity_visitor(&container);
+  ArityVisitor arity_visitor(&container);
   program->Accept(arity_visitor);
 
-  VariablesVisitorRel vars_visitor(&container);
+  VariablesVisitor vars_visitor(&container);
   program->Accept(vars_visitor);
 
   // R's body is condition: A(x) where B(x). Variables should include x.
@@ -129,7 +129,7 @@ TEST(RelASTBuilderTest, PreprocessorRelPipeline) {
   auto parser = GetParser("def R { A(x) where B(x) }");
   auto tree = parser->program();
 
-  PreprocessorRel preprocessor(edb_map);
+  Preprocessor preprocessor(edb_map);
   auto& container = preprocessor.Process(tree);
 
   EXPECT_TRUE(container.IsIDB("R"));
@@ -151,7 +151,7 @@ TEST(RelASTBuilderTest, SQLVisitorRelLiteralProgram) {
   auto parser = GetParser("def output { (1, 2) }");
   auto tree = parser->program();
 
-  PreprocessorRel preprocessor(edb_map);
+  Preprocessor preprocessor(edb_map);
   auto& container = preprocessor.Process(tree);
 
   auto sql = GetSQLFromRelContainer(container);
@@ -170,7 +170,7 @@ TEST(RelASTBuilderTest, SQLVisitorRelEDBProgram) {
   auto parser = GetParser("def output { A }");
   auto tree = parser->program();
 
-  PreprocessorRel preprocessor(edb_map);
+  Preprocessor preprocessor(edb_map);
   auto& container = preprocessor.Process(tree);
 
   auto sql = GetSQLFromRelContainer(container);

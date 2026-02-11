@@ -1,12 +1,12 @@
-#include "preprocessing/safe_visitor_rel.h"
+#include "preprocessing/safety_visitor.h"
 
-#include "preprocessing/fixpoint_safety_visitor_rel.h"
-#include "rel_ast/extended_ast.h"
+#include "preprocessing/fixpoint_safety_visitor.h"
+#include "sql/aggregate_map.h"
 #include "support/exceptions.h"
 
 namespace rel2sql {
 
-void SafeVisitorRel::Visit(RelProgram& node) {
+void SafetyVisitor::Visit(RelProgram& node) {
   std::unordered_set<std::string> visited;
   for (const auto& id : container_->SortedIDs()) {
     for (auto& def : node.defs) {
@@ -21,7 +21,7 @@ void SafeVisitorRel::Visit(RelProgram& node) {
   }
 }
 
-void SafeVisitorRel::Visit(RelDef& node) {
+void SafetyVisitor::Visit(RelDef& node) {
   current_relation_ = node.name;
 
   auto info = container_->GetRelationInfo(current_relation_);
@@ -29,7 +29,7 @@ void SafeVisitorRel::Visit(RelDef& node) {
     if (node.body && node.body->exprs.size() == 1) {
       auto* bf = dynamic_cast<RelBindingsFormula*>(node.body->exprs[0].get());
       if (bf) {
-        FixpointSafetyVisitorRel fixpoint_visitor(container_, node.name);
+        FixpointSafetyVisitor fixpoint_visitor(container_, node.name);
         BoundSet fixpoint_safety = fixpoint_visitor.ComputeFixpoint(*bf);
         if (bf->formula) bf->formula->safety = fixpoint_safety;
         fixpoint_visitor.ComputeBindingsSafety(*bf, *bf->formula, bf->bindings);
@@ -44,7 +44,7 @@ void SafeVisitorRel::Visit(RelDef& node) {
   current_relation_.clear();
 }
 
-void SafeVisitorRel::Visit(RelAbstraction& node) {
+void SafetyVisitor::Visit(RelAbstraction& node) {
   if (node.exprs.empty()) return;
   node.exprs[0]->Accept(*this);
   node.safety = node.exprs[0]->safety;
@@ -54,12 +54,12 @@ void SafeVisitorRel::Visit(RelAbstraction& node) {
   }
 }
 
-void SafeVisitorRel::Visit(RelTermExpr& node) {
+void SafetyVisitor::Visit(RelTermExpr& node) {
   if (node.term) node.term->Accept(*this);
   if (node.term) node.safety = node.term->safety;
 }
 
-void SafeVisitorRel::Visit(RelProductExpr& node) {
+void SafetyVisitor::Visit(RelProductExpr& node) {
   node.safety = BoundSet();
   for (auto& expr : node.exprs) {
     if (expr) {
@@ -69,7 +69,7 @@ void SafeVisitorRel::Visit(RelProductExpr& node) {
   }
 }
 
-void SafeVisitorRel::Visit(RelConditionExpr& node) {
+void SafetyVisitor::Visit(RelConditionExpr& node) {
   if (node.lhs) node.lhs->Accept(*this);
   if (node.rhs) node.rhs->Accept(*this);
   if (node.lhs && node.rhs) {
@@ -77,38 +77,38 @@ void SafeVisitorRel::Visit(RelConditionExpr& node) {
   }
 }
 
-void SafeVisitorRel::Visit(RelAbstractionExpr& node) {
+void SafetyVisitor::Visit(RelAbstractionExpr& node) {
   if (node.rel_abs) {
     node.rel_abs->Accept(*this);
     node.safety = node.rel_abs->safety;
   }
 }
 
-void SafeVisitorRel::Visit(RelFormulaExpr& node) {
+void SafetyVisitor::Visit(RelFormulaExpr& node) {
   if (node.formula) {
     node.formula->Accept(*this);
     node.safety = node.formula->safety;
   }
 }
 
-void SafeVisitorRel::Visit(RelBindingsExpr& node) {
+void SafetyVisitor::Visit(RelBindingsExpr& node) {
   if (node.expr) node.expr->Accept(*this);
   if (node.expr) ComputeBindingsSafety(node, *node.expr, node.bindings);
 }
 
-void SafeVisitorRel::Visit(RelBindingsFormula& node) {
+void SafetyVisitor::Visit(RelBindingsFormula& node) {
   if (node.formula) node.formula->Accept(*this);
   if (node.formula) ComputeBindingsSafety(node, *node.formula, node.bindings);
 }
 
-void SafeVisitorRel::Visit(RelPartialAppl& node) {
+void SafetyVisitor::Visit(RelPartialAppl& node) {
   if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node.base.get())) {
     if (abs_base->rel_abs) abs_base->rel_abs->Accept(*this);
   }
 
   if (auto* id_base = dynamic_cast<RelIDApplBase*>(node.base.get())) {
     std::string id = id_base->id;
-    if (AGGREGATE_MAP.find(id) != AGGREGATE_MAP.end()) {
+    if (GetAggregateMap().find(id) != GetAggregateMap().end()) {
       if (!node.params.empty()) {
         auto expr = node.params[0]->GetExpr();
         if (expr) {
@@ -124,7 +124,7 @@ void SafeVisitorRel::Visit(RelPartialAppl& node) {
   }
 }
 
-void SafeVisitorRel::Visit(RelFullAppl& node) {
+void SafetyVisitor::Visit(RelFullAppl& node) {
   if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node.base.get())) {
     if (abs_base->rel_abs) abs_base->rel_abs->Accept(*this);
   }
@@ -136,7 +136,7 @@ void SafeVisitorRel::Visit(RelFullAppl& node) {
   }
 }
 
-void SafeVisitorRel::Visit(RelBinOp& node) {
+void SafetyVisitor::Visit(RelBinOp& node) {
   if (node.op == RelLogicalOp::AND) {
     if (node.lhs) node.lhs->Accept(*this);
     if (node.rhs) node.rhs->Accept(*this);
@@ -173,26 +173,26 @@ void SafeVisitorRel::Visit(RelBinOp& node) {
                              SourceLocation(0, 0));
 }
 
-void SafeVisitorRel::Visit(RelUnOp& node) {
+void SafetyVisitor::Visit(RelUnOp& node) {
   if (node.formula) {
     node.formula->Accept(*this);
     node.safety = node.formula->safety;
   }
 }
 
-void SafeVisitorRel::Visit(RelQuantification& node) {
+void SafetyVisitor::Visit(RelQuantification& node) {
   if (node.formula) node.formula->Accept(*this);
   if (node.formula) ComputeBindingsSafety(node, *node.formula, node.bindings);
 }
 
-void SafeVisitorRel::Visit(RelParen& node) {
+void SafetyVisitor::Visit(RelParen& node) {
   if (node.formula) {
     node.formula->Accept(*this);
     node.safety = node.formula->safety;
   }
 }
 
-void SafeVisitorRel::Visit(RelComparison& node) {
+void SafetyVisitor::Visit(RelComparison& node) {
   if (node.lhs) node.lhs->Accept(*this);
   if (node.rhs) node.rhs->Accept(*this);
 
@@ -218,7 +218,7 @@ void SafeVisitorRel::Visit(RelComparison& node) {
   node.safety = BoundSet({Bound({variable_name}, {Projection(ConstantSource(constant))})});
 }
 
-void SafeVisitorRel::ComputeBindingsSafety(RelNode& current, RelNode& child,
+void SafetyVisitor::ComputeBindingsSafety(RelNode& current, RelNode& child,
                                            const std::vector<std::shared_ptr<RelBinding>>& bindings) {
   std::vector<std::string> variables;
   for (const auto& b : bindings) {
@@ -236,7 +236,7 @@ void SafeVisitorRel::ComputeBindingsSafety(RelNode& current, RelNode& child,
   ExtractAndStoreVariableDomains(child.safety);
 }
 
-void SafeVisitorRel::ComputeIDApplicationSafety(RelNode& node,
+void SafetyVisitor::ComputeIDApplicationSafety(RelNode& node,
                                                 const std::vector<std::shared_ptr<RelApplParam>>& params,
                                                 const std::string& id) {
   std::vector<std::string> variable_names;
@@ -273,7 +273,7 @@ void SafeVisitorRel::ComputeIDApplicationSafety(RelNode& node,
   node.safety = BoundSet({bound});
 }
 
-void SafeVisitorRel::ComputeRelAbsApplicationSafety(RelNode& node, RelNode& base_node,
+void SafetyVisitor::ComputeRelAbsApplicationSafety(RelNode& node, RelNode& base_node,
                                                     const std::vector<std::shared_ptr<RelApplParam>>& params) {
   std::vector<std::string> variable_names;
   std::vector<size_t> variable_indices;
@@ -305,7 +305,7 @@ void SafeVisitorRel::ComputeRelAbsApplicationSafety(RelNode& node, RelNode& base
   node.safety = BoundSet({bound});
 }
 
-Projection SafeVisitorRel::ExtractSingleVariableProjection(const Projection& proj,
+Projection SafetyVisitor::ExtractSingleVariableProjection(const Projection& proj,
                                                            size_t variable_index) const {
   if (variable_index >= proj.projected_indices.size()) {
     throw std::runtime_error("Variable index out of bounds");
@@ -313,7 +313,7 @@ Projection SafeVisitorRel::ExtractSingleVariableProjection(const Projection& pro
   return Projection({proj.projected_indices[variable_index]}, proj.source);
 }
 
-void SafeVisitorRel::ExtractAndStoreVariableDomains(const BoundSet& safety) {
+void SafetyVisitor::ExtractAndStoreVariableDomains(const BoundSet& safety) {
   for (const auto& bound : safety.bounds) {
     for (size_t var_index = 0; var_index < bound.variables.size(); ++var_index) {
       const std::string& var = bound.variables[var_index];

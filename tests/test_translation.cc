@@ -3,13 +3,10 @@
 
 #include <regex>
 
-#include "RelParser.h"
 #include "api/translate.h"
 #include "rel_ast/relation_info.h"
 #include "support/exceptions.h"
 #include "test_common.h"
-
-using psr = rel_parser::RelParser;
 
 namespace rel2sql {
 
@@ -753,51 +750,6 @@ TEST_F(TranslationTest, WeirdEdgeCase1) {
   ASSERT_TRUE(found2) << "Pattern not found in output2";
 
   EXPECT_EQ(match1.str(), match2.str());
-
-  auto parser1 = GetParser(input1);
-  auto tree1 = parser1->program();
-  Preprocessor preprocessor1(default_edb_map);
-  auto ast1 = preprocessor1.Process(tree1);
-
-  auto parser2 = GetParser(input2);
-  auto tree2 = parser2->program();
-  Preprocessor preprocessor2(default_edb_map);
-  auto ast2 = preprocessor2.Process(tree2);
-
-  // Find the jrs RelDefContext in both ASTs
-  psr::RelDefContext* jrs_ctx1 = nullptr;
-  psr::RelDefContext* jrs_ctx2 = nullptr;
-
-  for (auto& rel_def : tree1->relDef()) {
-    if (rel_def->T_ID()->getText() == "jrs") {
-      jrs_ctx1 = rel_def;
-      break;
-    }
-  }
-
-  for (auto& rel_def : tree2->relDef()) {
-    if (rel_def->T_ID()->getText() == "jrs") {
-      jrs_ctx2 = rel_def;
-      break;
-    }
-  }
-
-  ASSERT_NE(jrs_ctx1, nullptr) << "jrs definition not found in input1";
-  ASSERT_NE(jrs_ctx2, nullptr) << "jrs definition not found in input2";
-
-  // Compare ExtendedNode for the jrs definitions using operator==
-  const auto node1 = ast1.GetNode(jrs_ctx1);
-  const auto node2 = ast2.GetNode(jrs_ctx2);
-
-  ASSERT_NE(node1, nullptr) << "jrs node1 is null";
-  ASSERT_NE(node2, nullptr) << "jrs node2 is null";
-
-  // try {
-  //   EXPECT_TRUE(*node1 == *node2) << "ExtendedNodes for jrs definition differ";
-  // } catch (const ExtendedNodeDifferenceException& e) {
-  //   FAIL() << "ExtendedNode difference found: " << e.what() << " (field: " << e.GetFieldName()
-  //          << ", details: " << e.GetDetails() << ")";
-  // }
 }
 
 // TODO: This test fails because we don't have a way to translate a comparison formula that is an equality

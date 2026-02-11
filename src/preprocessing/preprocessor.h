@@ -1,5 +1,5 @@
-#ifndef PREPROCESSOR_H
-#define PREPROCESSOR_H
+#ifndef PREPROCESSING_PREPROCESSOR_REL_H
+#define PREPROCESSING_PREPROCESSOR_REL_H
 
 #include <antlr4-runtime.h>
 
@@ -8,85 +8,88 @@
 #include "preprocessing/ids_visitor.h"
 #include "preprocessing/lit_visitor.h"
 #include "preprocessing/recursion_visitor.h"
-#include "preprocessing/safe_visitor.h"
-#include "preprocessing/tree_structure_visitor.h"
-#include "preprocessing/vars_visitor.h"
+#include "preprocessing/safety_visitor.h"
 #include "preprocessing/term_polynomial_visitor.h"
-#include "rel_ast/extended_ast.h"
+#include "preprocessing/vars_visitor.h"
+#include "rel_ast/rel_ast_builder.h"
+#include "rel_ast/rel_ast_container.h"
+#include "rel_ast/relation_info.h"
+#include "rewriter/rewriter.h"
 
 namespace rel2sql {
 
 /**
- * Preprocessor coordinates all visitors needed to preprocess a parsing tree
- * and build an ExtendedAST. This class centralizes the preprocessing step and makes
- * it clear which visitors are applied and in what order.
+ * Preprocessor that uses the RelAST pipeline: builds typed RelAST from ANTLR
+ * and runs Rel-based visitors (IDs, Arity, Variables).
  *
- * To add a new preprocessing visitor:
- * 1. Create your visitor class inheriting from BaseVisitor
- * 2. Add it as a member field to Preprocessor
- * 3. Initialize it in the constructor
- * 4. Call visitor.visit(tree) in the Process method
+ * This is the new pipeline per the Rel AST Migration Plan. Additional visitors
+ * (Recursion, Literal, TermPolynomial, Balancing, Safe) will be migrated next.
  */
 class Preprocessor {
  public:
-  Preprocessor()
-      : ast_(std::make_shared<RelAST>()),
-        tree_structure_visitor_(ast_),
-        ids_visitor_(ast_),
-        arity_visitor_(ast_),
-        variables_visitor_(ast_),
-        recursion_visitor_(ast_),
-        literal_visitor_(ast_),
-        term_poly_visitor_(ast_),
-        balancing_visitor_(ast_),
-        safeness_visitor_(ast_) {}
+  Preprocessor() : container_() {}
 
-  explicit Preprocessor(const rel2sql::RelationMap& edb_map)
-      : ast_(std::make_shared<RelAST>(nullptr, edb_map)),
-        tree_structure_visitor_(ast_),
-        ids_visitor_(ast_),
-        arity_visitor_(ast_),
-        variables_visitor_(ast_),
-        recursion_visitor_(ast_),
-        literal_visitor_(ast_),
-        term_poly_visitor_(ast_),
-        balancing_visitor_(ast_),
-        safeness_visitor_(ast_) {}
+  explicit Preprocessor(const RelationMap& edb_map) : container_(edb_map) {}
 
-  /**
-   * Process the parsing tree with all preprocessing visitors in the correct order.
-   * @param tree The parsing tree to process
-   * @return ExtendedAST containing the processed tree and extended data
-   */
-  RelAST Process(antlr4::ParserRuleContext* tree) {
-    ast_->SetParseTree(tree);
-
-    tree_structure_visitor_.visit(tree);
-    ids_visitor_.visit(tree);
-    arity_visitor_.visit(tree);
-    variables_visitor_.visit(tree);
-    recursion_visitor_.visit(tree);
-    literal_visitor_.visit(tree);
-    term_poly_visitor_.visit(tree);
-    balancing_visitor_.visit(tree);
-    safeness_visitor_.visit(tree);
-
-    return *ast_;
+  RelASTContainer& Process(antlr4::ParserRuleContext* tree) {
+    RelASTBuilder builder;
+    auto program = builder.Build(tree);
+    Rewriter rewriter;
+    rewriter.Run(program);
+    container_.SetRoot(program);
+    RunVisitorsOnRoot(program);
+    return container_;
   }
 
+  void ProcessFormula(antlr4::ParserRuleContext* tree, std::shared_ptr<RelFormula>& formula_out) {
+    RelASTBuilder builder;
+    formula_out = builder.BuildFromFormula(tree);
+    Rewriter rewriter;
+    formula_out = rewriter.Run(formula_out);
+    RunVisitorsOnRoot(formula_out);
+  }
+
+  void ProcessExpr(antlr4::ParserRuleContext* tree, std::shared_ptr<RelExpr>& expr_out) {
+    RelASTBuilder builder;
+    expr_out = builder.BuildFromExpr(tree);
+    Rewriter rewriter;
+    expr_out = rewriter.Run(expr_out);
+    RunVisitorsOnRoot(expr_out);
+  }
+
+  RelASTContainer* GetContainer() { return &container_; }
+  const RelASTContainer* GetContainer() const { return &container_; }
+
  private:
-  std::shared_ptr<RelAST> ast_;
-  TreeStructureVisitor tree_structure_visitor_;
-  IDsVisitor ids_visitor_;
-  ArityVisitor arity_visitor_;
-  VariablesVisitor variables_visitor_;
-  RecursionVisitor recursion_visitor_;
-  LiteralVisitor literal_visitor_;
-  TermPolynomialVisitor term_poly_visitor_;
-  BalancingVisitor balancing_visitor_;
-  SafeVisitor safeness_visitor_;
+  void RunVisitorsOnRoot(std::shared_ptr<RelNode> root) {
+    IDsVisitor ids_visitor(&container_);
+    root->Accept(ids_visitor);
+
+    ArityVisitor arity_visitor(&container_);
+    root->Accept(arity_visitor);
+
+    VariablesVisitor vars_visitor(&container_);
+    root->Accept(vars_visitor);
+
+    LiteralVisitor lit_visitor;
+    root->Accept(lit_visitor);
+
+    TermPolynomialVisitor term_poly_visitor;
+    root->Accept(term_poly_visitor);
+
+    RecursionVisitor recursion_visitor(&container_);
+    root->Accept(recursion_visitor);
+
+    BalancingVisitor balancing_visitor;
+    root->Accept(balancing_visitor);
+
+    SafetyVisitor safe_visitor(&container_);
+    root->Accept(safe_visitor);
+  }
+
+  RelASTContainer container_;
 };
 
 }  // namespace rel2sql
 
-#endif  // PREPROCESSOR_H
+#endif  // PREPROCESSING_PREPROCESSOR_REL_H

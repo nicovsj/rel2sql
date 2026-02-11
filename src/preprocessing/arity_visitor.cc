@@ -1,296 +1,186 @@
-#include "arity_visitor.h"
+#include "preprocessing/arity_visitor.h"
 
+#include "sql/aggregate_map.h"
 #include "support/exceptions.h"
 
 namespace rel2sql {
 
-ArityVisitor::ArityVisitor(std::shared_ptr<RelAST> ast) : BaseVisitor(ast) {}
+namespace {
 
-std::any ArityVisitor::visitProgram(psr::ProgramContext* ctx) {
-  std::unordered_map<std::string, std::vector<psr::RelDefContext*>> defs_by_id;
+SourceLocation GetSourceLocationFromNode(RelNode* node) {
+  if (!node || !node->ctx) return SourceLocation(0, 0);
+  auto* ctx = node->ctx;
+  int line = ctx->getStart() ? ctx->getStart()->getLine() : 0;
+  int column = ctx->getStart() ? ctx->getStart()->getCharPositionInLine() : 0;
+  std::string text_snippet = ctx->getText();
+  if (text_snippet.length() > 100) text_snippet = text_snippet.substr(0, 97) + "...";
+  return SourceLocation(line, column, text_snippet);
+}
 
-  for (auto& child_ctx : ctx->relDef()) {
-    std::string id = child_ctx->name->getText();
-    auto found_def = defs_by_id.find(id);
-    std::string text = child_ctx->getText();
-    auto current_node = GetNode(child_ctx);
-    // If the def is already in the map, it means that the relation has multiple defs
-    if (found_def != defs_by_id.end()) {
-      auto found_node = GetNode(found_def->second[0]->relAbs());
-      found_node->multiple_defs.push_back(child_ctx);
-      current_node->disabled = true;
-    }
-    defs_by_id[child_ctx->name->getText()].push_back(child_ctx);
-  }
+}  // namespace
 
-  for (auto& id : ast_->SortedIDs()) {
-    if (AGGREGATE_MAP.find(id) != AGGREGATE_MAP.end()) {
-      // Skip aggregate functions
-      continue;
-    }
-    if (ast_->IsEDB(id)) {
-      // Skip external databases
-      continue;
-    }
-    if (defs_by_id.find(id) == defs_by_id.end()) {
-      // Find a context to get location info - use the first definition as reference
-      antlr4::ParserRuleContext* ctx = nullptr;
-      for (auto& pair : defs_by_id) {
-        if (!pair.second.empty()) {
-          ctx = pair.second[0];
-          break;
-        }
+void ArityVisitor::Visit(RelProgram& node) {
+  defs_by_id_.clear();
+  for (auto& def : node.defs) {
+    if (!def) continue;
+    std::string id = def->name;
+    auto it = defs_by_id_.find(id);
+    if (it != defs_by_id_.end()) {
+      // Duplicate def: add body to first def's multiple_defs, disable this one
+      if (!it->second.empty() && it->second[0]->body) {
+        it->second[0]->multiple_defs.push_back(def->body);
       }
-
-      SourceLocation location = ctx ? GetSourceLocation(ctx) : SourceLocation(0, 0);
-      throw ArityException("IDB '" + id + "' is not defined", location);
+      def->disabled = true;
     }
-
-    for (auto& def : defs_by_id[id]) {
-      visit(def);
-    }
+    defs_by_id_[id].push_back(def);
   }
 
-  return {};
+  for (const auto& id : container_->SortedIDs()) {
+    if (GetAggregateMap().find(id) != GetAggregateMap().end()) continue;
+    if (container_->IsEDB(id)) continue;
+    auto it = defs_by_id_.find(id);
+    if (it == defs_by_id_.end()) {
+      SourceLocation loc(0, 0);
+      if (!defs_by_id_.empty() && !defs_by_id_.begin()->second.empty()) {
+        loc = GetSourceLocationFromNode(defs_by_id_.begin()->second[0].get());
+      }
+      throw ArityException("IDB '" + id + "' is not defined", loc);
+    }
+    for (auto& def : it->second) {
+      if (def) def->Accept(*this);
+    }
+  }
 }
 
-std::any ArityVisitor::visitRelDef(psr::RelDefContext* ctx) {
-  visit(ctx->relAbs());
-
-  GetNode(ctx)->arity = GetNode(ctx->relAbs())->arity;
-
-  ast_->AddIDB(ctx->name->getText(), GetNode(ctx)->arity);
-
-  return {};
+void ArityVisitor::Visit(RelDef& node) {
+  if (node.body) node.body->Accept(*this);
+  node.arity = node.body ? node.body->arity : 0;
+  container_->AddIDB(node.name, static_cast<int>(node.arity));
 }
 
-std::any ArityVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
-  visit(ctx->expr(0));
-
-  size_t common_arity = GetNode(ctx->expr(0))->arity;
-
-  for (size_t i = 1; i < ctx->expr().size(); i++) {
-    visit(ctx->expr(i));
-
-    if (GetNode(ctx->expr(i))->arity != common_arity) {
-      SourceLocation location = GetSourceLocation(ctx->expr(i));
+void ArityVisitor::Visit(RelAbstraction& node) {
+  if (node.exprs.empty()) return;
+  node.exprs[0]->Accept(*this);
+  size_t common_arity = node.exprs[0]->arity;
+  for (size_t i = 1; i < node.exprs.size(); ++i) {
+    node.exprs[i]->Accept(*this);
+    if (node.exprs[i]->arity != common_arity) {
       throw ArityException("Arity mismatch in relational abstraction: expected " + std::to_string(common_arity) +
-                               ", got " + std::to_string(GetNode(ctx->expr(i))->arity),
-                           location);
+                               ", got " + std::to_string(node.exprs[i]->arity),
+                           GetSourceLocationFromNode(node.exprs[i].get()));
+    }
+  }
+  node.arity = common_arity;
+}
+
+void ArityVisitor::Visit(RelLitExpr& node) { node.arity = 1; }
+
+void ArityVisitor::Visit(RelTermExpr& node) {
+  if (node.term) node.term->Accept(*this);
+  node.arity = node.term ? node.term->arity : 0;
+}
+
+void ArityVisitor::Visit(RelProductExpr& node) {
+  node.arity = 0;
+  for (auto& expr : node.exprs) {
+    if (expr) {
+      expr->Accept(*this);
+      node.arity += expr->arity;
+    }
+  }
+}
+
+void ArityVisitor::Visit(RelConditionExpr& node) {
+  if (node.lhs) node.lhs->Accept(*this);
+  if (node.rhs) node.rhs->Accept(*this);
+  node.arity = node.lhs ? node.lhs->arity : 0;
+}
+
+void ArityVisitor::Visit(RelAbstractionExpr& node) {
+  if (node.rel_abs) node.rel_abs->Accept(*this);
+  node.arity = node.rel_abs ? node.rel_abs->arity : 0;
+}
+
+void ArityVisitor::Visit(RelFormulaExpr& node) {
+  if (node.formula) node.formula->Accept(*this);
+  node.arity = 0;
+}
+
+void ArityVisitor::Visit(RelBindingsExpr& node) {
+  if (node.expr) node.expr->Accept(*this);
+  node.arity = (node.expr ? node.expr->arity : 0) + static_cast<size_t>(node.bindings.size());
+}
+
+void ArityVisitor::Visit(RelBindingsFormula& node) {
+  if (node.formula) node.formula->Accept(*this);
+  node.arity = node.bindings.size();
+}
+
+void ArityVisitor::Visit(RelPartialAppl& node) {
+  int base_arity = GetArityFromBase(node.base);
+  int params_arity = GetArityFromParams(node.params);
+  int result = base_arity - params_arity;
+
+  // If the base is an aggregate function, the arity is 1
+  if (auto* id_base = dynamic_cast<RelIDApplBase*>(node.base.get())) {
+    if (GetAggregateMap().find(id_base->id) != GetAggregateMap().end()) {
+      result = 1;
     }
   }
 
-  GetNode(ctx)->arity = common_arity;
-
-  return {};
-}
-
-std::any ArityVisitor::visitLitExpr(psr::LitExprContext* ctx) {
-  GetNode(ctx)->arity = 1;
-  return {};
-}
-
-std::any ArityVisitor::visitTermExpr(psr::TermExprContext* ctx) {
-  visit(ctx->term());
-  GetNode(ctx)->arity = GetNode(ctx->term())->arity;
-  return {};
-}
-
-std::any ArityVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
-  auto node = GetNode(ctx);
-
-  for (auto& child : ctx->productInner()->expr()) {
-    visit(child);
-    node->arity += GetNode(child)->arity;
-  }
-
-  return {};
-}
-
-std::any ArityVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
-  auto node = GetNode(ctx);
-
-  visit(ctx->lhs);
-
-  visit(ctx->rhs);
-
-  node->arity = GetNode(ctx->lhs)->arity;
-
-  return {};
-}
-
-std::any ArityVisitor::visitRelAbsExpr(psr::RelAbsExprContext* ctx) {
-  auto node = GetNode(ctx);
-
-  visit(ctx->relAbs());
-
-  node->arity = GetNode(ctx->relAbs())->arity;
-
-  return {};
-}
-
-std::any ArityVisitor::visitFormulaExpr(psr::FormulaExprContext* ctx) {
-  auto node = GetNode(ctx);
-
-  visit(ctx->formula());
-
-  node->arity = 0;
-
-  return {};
-}
-
-std::any ArityVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
-  auto node = GetNode(ctx);
-
-  visit(ctx->expr());
-
-  node->arity = GetNode(ctx->expr())->arity + ctx->bindingInner()->binding().size();
-
-  return {};
-}
-
-std::any ArityVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
-  auto node = GetNode(ctx);
-
-  visit(ctx->formula());
-
-  node->arity = ctx->bindingInner()->binding().size();
-
-  return {};
-}
-
-std::any ArityVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
-  visit(ctx->applBase());
-  auto base_arity = GetNode(ctx->applBase())->arity;
-
-  for (auto& child : ctx->applParams()->applParam()) {
-    visit(child->expr());
-    auto param_arity = GetNode(child->expr())->arity;
-    base_arity -= param_arity;
-  }
-
-  if (ctx->applBase()->T_ID()) {
-    // If the base is an aggregate function, the arity is 1
-    std::string id = ctx->applBase()->T_ID()->getText();
-    if (auto found = AGGREGATE_MAP.find(id); found != AGGREGATE_MAP.end()) {
-      base_arity = 1;
-    }
-  }
-
-  GetNode(ctx)->arity = base_arity;
-
-  if (base_arity < 0) {
+  if (result < 0) {
     throw std::runtime_error("Partial application overflows the arity of the base expression");
   }
-
-  return {};
+  node.arity = static_cast<size_t>(result);
 }
 
-std::any ArityVisitor::visitFullAppl(psr::FullApplContext* ctx) {
-  visit(ctx->applBase());
-  visit(ctx->applParams());
-
-  // Arity is zero so no need to set it
-  return {};
+void ArityVisitor::Visit(RelFullAppl& node) {
+  GetArityFromBase(node.base);
+  GetArityFromParams(node.params);
+  node.arity = 0;
 }
 
-std::any ArityVisitor::visitBinOp(psr::BinOpContext* ctx) {
-  visit(ctx->lhs);
-  visit(ctx->rhs);
-
-  // Arity is zero so no need to set it
-  return {};
+void ArityVisitor::Visit(RelIDTerm& node) {
+  auto info = container_->GetRelationInfo(node.id);
+  if (info) {
+    node.arity = static_cast<size_t>(info->arity);
+  } else {
+    node.arity = 1;  // Variable
+  }
 }
 
-std::any ArityVisitor::visitUnOp(psr::UnOpContext* ctx) {
-  visit(ctx->formula());
+void ArityVisitor::Visit(RelNumTerm& node) { node.arity = 1; }
 
-  // Arity is zero so no need to set it
-  return {};
+void ArityVisitor::Visit(RelOpTerm& node) { node.arity = 1; }
+
+void ArityVisitor::Visit(RelParenthesisTerm& node) {
+  if (node.term) node.term->Accept(*this);
+  node.arity = node.term ? node.term->arity : 0;
 }
 
-std::any ArityVisitor::visitQuantification(psr::QuantificationContext* ctx) {
-  visit(ctx->formula());
-
-  // Arity is zero so no need to set it
-  return {};
+int ArityVisitor::GetArityFromBase(const std::shared_ptr<RelApplBase>& base) {
+  if (auto* id_base = dynamic_cast<RelIDApplBase*>(base.get())) {
+    if (GetAggregateMap().find(id_base->id) != GetAggregateMap().end()) return 1;
+    auto info = container_->GetRelationInfo(id_base->id);
+    if (info) return info->arity;
+    throw ArityException("Relation '" + id_base->id + "' is not defined", SourceLocation(0, 0));
+  }
+  if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(base.get())) {
+    if (abs_base->rel_abs) abs_base->rel_abs->Accept(*this);
+    return abs_base->rel_abs ? static_cast<int>(abs_base->rel_abs->arity) : 0;
+  }
+  return 0;
 }
 
-std::any ArityVisitor::visitParen(psr::ParenContext* ctx) {
-  visit(ctx->formula());
-
-  // Arity is zero so no need to set it
-  return {};
-}
-
-std::any ArityVisitor::visitComparison(psr::ComparisonContext* ctx) {
-  visit(ctx->lhs);
-  visit(ctx->rhs);
-
-  // Arity is zero so no need to set it
-  return {};
-}
-
-std::any ArityVisitor::visitApplBase(psr::ApplBaseContext* ctx) {
-  if (ctx->T_ID()) {
-    std::string id = ctx->T_ID()->getText();
-    auto found = ast_->GetRelationInfo(id);
-    if (found != std::nullopt) {
-      GetNode(ctx)->arity = found->arity;
-    } else if (AGGREGATE_MAP.find(id) != AGGREGATE_MAP.end()) {
-      // Aggregate functions always produce a single column
-      GetNode(ctx)->arity = 1;
-    } else {
-      throw ArityException("Relation '" + id + "' is not defined", GetSourceLocation(ctx));
+int ArityVisitor::GetArityFromParams(const std::vector<std::shared_ptr<RelApplParam>>& params) {
+  int total = 0;
+  for (const auto& param : params) {
+    if (param && param->GetExpr()) {
+      param->GetExpr()->Accept(*this);
+      total += static_cast<int>(param->GetExpr()->arity);
     }
-  } else {
-    visit(ctx->relAbs());
-    GetNode(ctx)->arity = GetNode(ctx->relAbs())->arity;
   }
-
-  return {};
-}
-
-std::any ArityVisitor::visitApplParams(psr::ApplParamsContext* ctx) {
-  auto node = GetNode(ctx);
-
-  node->arity = 0;
-
-  for (auto& child : ctx->applParam()) {
-    visit(child->expr());
-    node->arity += GetNode(child)->arity;
-  }
-
-  return {};
-}
-
-std::any ArityVisitor::visitNumTerm(psr::NumTermContext* ctx) {
-  GetNode(ctx)->arity = 1;
-  return {};
-}
-
-std::any ArityVisitor::visitOpTerm(psr::OpTermContext* ctx) {
-  GetNode(ctx)->arity = 1;
-  return {};
-}
-
-std::any ArityVisitor::visitIDTerm(psr::IDTermContext* ctx) {
-  std::string id = ctx->T_ID()->getText();
-
-  if (auto found = ast_->GetRelationInfo(id); found != std::nullopt) {
-    GetNode(ctx)->arity = found->arity;
-  } else {
-    // If a relation is not found, it might be a variable
-    GetNode(ctx)->arity = 1;
-  }
-
-  return {};
-}
-
-std::any ArityVisitor::visitParenthesisTerm(psr::ParenthesisTermContext* ctx) {
-  visit(ctx->term());
-  GetNode(ctx)->arity = GetNode(ctx->term())->arity;
-  return {};
+  return total;
 }
 
 }  // namespace rel2sql

@@ -1,89 +1,68 @@
-#ifndef RECURSION_VISITOR_H
-#define RECURSION_VISITOR_H
+#ifndef PREPROCESSING_RECURSION_VISITOR_REL_H
+#define PREPROCESSING_RECURSION_VISITOR_REL_H
 
-#include <antlr4-runtime.h>
+#include <memory>
+#include <unordered_set>
 #include <vector>
 
-#include "preprocessing/base_visitor.h"
-#include "rel_ast/extended_ast.h"
+#include "rel_ast/rel_ast.h"
+#include "rel_ast/rel_ast_container.h"
+#include "rel_ast/rel_ast_visitor.h"
+#include "rel_ast/relation_info.h"
 
 namespace rel2sql {
 
-class RecursionVisitor : public BaseVisitor {
-  /*
-   * Visitor that identifies Rel definitions matching the recursion pattern:
-   * def Q {(B) : G or exists((u) | Q(w) and F(v))}
-   * and sets the recursion flag on the corresponding node.
-   */
+class RecursionVisitor : public RelASTVisitor {
  public:
-  explicit RecursionVisitor(std::shared_ptr<RelAST> ast);
+  explicit RecursionVisitor(RelASTContainer* container) : container_(container) {}
 
-  std::any visitProgram(psr::ProgramContext* ctx) override;
-
-  std::any visitRelDef(psr::RelDefContext* ctx) override;
-
-  std::any visitRelAbs(psr::RelAbsContext* ctx) override;
-
-  std::any visitBindingsFormula(psr::BindingsFormulaContext* ctx) override;
-
-  std::any visitBinOp(psr::BinOpContext* ctx) override;
-
-  std::any visitQuantification(psr::QuantificationContext* ctx) override;
-
-  std::any visitFullAppl(psr::FullApplContext* ctx) override;
+  void Visit(RelProgram& node) override;
+  void Visit(RelDef& node) override;
+  void Visit(RelAbstraction& node) override;
+  void Visit(RelBindingsFormula& node) override;
+  void Visit(RelBinOp& node) override;
+  void Visit(RelQuantification& node) override;
+  void Visit(RelFullAppl& node) override;
 
  private:
   struct RecursiveBranchMatch {
-    psr::QuantificationContext* exists_ctx = nullptr;
-    psr::FullApplContext* recursive_call = nullptr;
-    psr::FormulaContext* residual_formula = nullptr;
+    std::shared_ptr<RelQuantification> exists_clause;
+    std::shared_ptr<RelFullAppl> recursive_call;
+    std::shared_ptr<RelFormula> residual_formula;
   };
 
   struct RecursionPatternMatch {
-    std::vector<psr::FormulaContext*> base_disjuncts;
+    std::vector<std::shared_ptr<RelFormula>> base_disjuncts;
     std::vector<RecursiveBranchMatch> recursive_disjuncts;
   };
 
-  // Current ID being defined (Q in the pattern)
   std::string current_q_;
+  RelASTContainer* container_;
 
-  // Check if an ID is recursive (has cycle in dependency graph)
   bool IsRecursiveID(const std::string& id) const;
-
-  // Collect all ID references (not variables) in a context
-  std::unordered_set<std::string> CollectIDs(antlr4::ParserRuleContext* ctx) const;
-
-  // Check if all IDs are EDBs or non-recursive IDBs (excluding current_q)
+  std::unordered_set<std::string> CollectIDs(const std::shared_ptr<RelFormula>& formula) const;
   bool OnlyEDBsOrNonRecursiveIDBs(const std::unordered_set<std::string>& ids,
-                                   const std::string& current_q) const;
-
-  // Check if variables are from binding or quantification binding
+                                  const std::string& current_q) const;
   bool VariablesFromBindingOrQuantification(
-      const std::set<std::string>& vars, psr::BindingInnerContext* binding_ctx,
-      psr::BindingInnerContext* quant_binding_ctx) const;
-
-  // Check if a formula matches the pattern: G or exists(...) or exists(...)
-  // Returns true if matches, and sets recursion flag on the node
-  bool CheckRecursionPattern(psr::FormulaContext* formula_ctx, psr::BindingInnerContext* binding_ctx,
-                              RecursionPatternMatch& match);
-
-  // Check if a formula is of the form: Q(w) and F(v)
-  // Returns true if matches and F doesn't refer to Q
-  bool CheckExistsPattern(psr::QuantificationContext* quant_ctx, const std::string& q,
-                          psr::BindingInnerContext* outer_binding_ctx, RecursiveBranchMatch& match);
-
-  // Check if a FullAppl is a call to Q
-  bool IsCallToQ(psr::FullApplContext* ctx, const std::string& q) const;
-
-  // Helper to collect all OR disjuncts in a formula
-  void CollectOrDisjuncts(psr::FormulaContext* formula_ctx,
-                          std::vector<psr::FormulaContext*>& disjuncts) const;
-
-  // Helper to find Q(w) and F(v) parts in an AND formula
-  void FindAndPatternParts(psr::FormulaContext* formula_ctx, const std::string& q,
-                           psr::FullApplContext*& q_call, psr::FormulaContext*& f_part) const;
+      const std::set<std::string>& vars,
+      const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
+      const std::vector<std::shared_ptr<RelBinding>>& quant_bindings) const;
+  bool CheckRecursionPattern(const std::shared_ptr<RelFormula>& formula,
+                             const std::vector<std::shared_ptr<RelBinding>>& bindings,
+                             RecursionPatternMatch& match);
+  bool CheckExistsPattern(const std::shared_ptr<RelQuantification>& quant,
+                          const std::string& q,
+                          const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
+                          RecursiveBranchMatch& match);
+  bool IsCallToQ(const RelFullAppl& appl, const std::string& q) const;
+  void CollectOrDisjuncts(const std::shared_ptr<RelFormula>& formula,
+                          std::vector<std::shared_ptr<RelFormula>>& disjuncts) const;
+  void FindAndPatternParts(const std::shared_ptr<RelFormula>& formula,
+                           const std::string& q,
+                           std::shared_ptr<RelFullAppl>& q_call,
+                           std::shared_ptr<RelFormula>& f_part) const;
 };
 
 }  // namespace rel2sql
 
-#endif  // RECURSION_VISITOR_H
+#endif  // PREPROCESSING_RECURSION_VISITOR_REL_H

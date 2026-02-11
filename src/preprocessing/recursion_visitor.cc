@@ -1,105 +1,74 @@
-#include "recursion_visitor.h"
-
-#include <stack>
-#include <unordered_set>
-
-using StringSet = std::unordered_set<std::string>;
+#include "preprocessing/recursion_visitor.h"
 
 namespace rel2sql {
 
-RecursionVisitor::RecursionVisitor(std::shared_ptr<RelAST> extended_ast) : BaseVisitor(extended_ast) {}
-
-std::any RecursionVisitor::visitProgram(psr::ProgramContext* ctx) {
-  for (auto& child_ctx : ctx->relDef()) {
-    visit(child_ctx);
+void RecursionVisitor::Visit(RelProgram& node) {
+  for (auto& def : node.defs) {
+    if (def) def->Accept(*this);
   }
-  return {};
 }
 
-std::any RecursionVisitor::visitRelDef(psr::RelDefContext* ctx) {
-  std::string q = ctx->T_ID()->getText();
-  current_q_ = q;
-  visit(ctx->relAbs());
+void RecursionVisitor::Visit(RelDef& node) {
+  current_q_ = node.name;
+  if (node.body) node.body->Accept(*this);
   current_q_.clear();
-  return {};
 }
 
-std::any RecursionVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
-  // RelAbs should have exactly one expression that is a BindingsFormula
-  if (ctx->expr().size() != 1) {
-    return {};
+void RecursionVisitor::Visit(RelAbstraction& node) {
+  if (node.exprs.size() != 1) return;
+  auto* bf = dynamic_cast<RelBindingsFormula*>(node.exprs[0].get());
+  if (!bf) return;
+  bf->Accept(*this);
+  if (bf->is_recursive) {
+    node.is_recursive = true;
+    node.recursive_definition_name = current_q_;
   }
-
-  auto expr_ctx = ctx->expr()[0];
-  auto bindings_formula = dynamic_cast<psr::BindingsFormulaContext*>(expr_ctx);
-  if (!bindings_formula) {
-    return {};
-  }
-
-  visit(bindings_formula);
-
-  // If the BindingsFormula is recursable, also mark the RelAbs as recursable
-  if (GetNode(bindings_formula)->is_recursive) {
-    GetNode(ctx)->is_recursive = true;
-    GetNode(ctx)->recursive_definition_name = current_q_;
-  }
-
-  return {};
 }
 
-std::any RecursionVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
-  // Extract binding B and formula
-  auto binding_ctx = ctx->bindingInner();
-  auto formula_ctx = ctx->formula();
+void RecursionVisitor::Visit(RelBindingsFormula& node) {
+  RecursionPatternMatch match;
+  if (!CheckRecursionPattern(node.formula, node.bindings, match)) return;
 
-  RecursionPatternMatch pattern_match;
+  node.is_recursive = true;
+  node.recursive_definition_name = current_q_;
 
-  // Check if formula matches the recursable pattern
-  if (CheckRecursionPattern(formula_ctx, binding_ctx, pattern_match)) {
-    GetNode(ctx)->is_recursive = true;
-    GetNode(ctx)->recursive_definition_name = current_q_;
+  if (current_q_.empty()) return;
 
-    if (!current_q_.empty()) {
-      for (auto* base_ctx : pattern_match.base_disjuncts) {
-        ast_->RegisterRecursiveBaseDisjunct(current_q_, base_ctx);
-      }
-
-      for (const auto& branch : pattern_match.recursive_disjuncts) {
-        RecursiveBranchInfo info;
-        info.exists_clause = GetNode(branch.exists_ctx);
-        info.recursive_call = GetNode(branch.recursive_call);
-        info.residual_formula = GetNode(branch.residual_formula);
-        ast_->RegisterRecursiveBranch(current_q_, info);
-      }
-    }
+  for (const auto& g : match.base_disjuncts) {
+    auto formula_expr = std::make_shared<RelFormulaExpr>(g);
+    std::vector<std::shared_ptr<RelExpr>> exprs = {formula_expr};
+    auto rel_abs = std::make_shared<RelAbstraction>(std::move(exprs));
+    container_->RegisterRecursiveBaseDisjunct(current_q_, rel_abs);
   }
 
-  return {};
-}
-
-std::any RecursionVisitor::visitBinOp(psr::BinOpContext* ctx) {
-  visit(ctx->lhs);
-  visit(ctx->rhs);
-  return {};
-}
-
-std::any RecursionVisitor::visitQuantification(psr::QuantificationContext* ctx) {
-  visit(ctx->formula());
-  return {};
-}
-
-std::any RecursionVisitor::visitFullAppl(psr::FullApplContext* ctx) {
-  // Visit children to collect information
-  visit(ctx->applBase());
-  if (ctx->applParams()) {
-    visit(ctx->applParams());
+  for (const auto& branch : match.recursive_disjuncts) {
+    RecursiveBranchInfoTyped info;
+    info.exists_clause = branch.exists_clause;
+    info.recursive_call = branch.recursive_call;
+    info.residual_formula = branch.residual_formula;
+    container_->RegisterRecursiveBranch(current_q_, info);
   }
-  return {};
+}
+
+void RecursionVisitor::Visit(RelBinOp& node) {
+  if (node.lhs) node.lhs->Accept(*this);
+  if (node.rhs) node.rhs->Accept(*this);
+}
+
+void RecursionVisitor::Visit(RelQuantification& node) {
+  if (node.formula) node.formula->Accept(*this);
+}
+
+void RecursionVisitor::Visit(RelFullAppl& node) {
+  if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node.base.get())) {
+    if (abs_base->rel_abs) abs_base->rel_abs->Accept(*this);
+  }
+  for (const auto& param : node.params) {
+    if (param && param->GetExpr()) param->GetExpr()->Accept(*this);
+  }
 }
 
 bool RecursionVisitor::IsRecursiveID(const std::string& id) const {
-  // Check if ID appears in a cycle in the dependency graph
-  // Use DFS to detect cycles
   std::unordered_set<std::string> visited;
   std::unordered_set<std::string> rec_stack;
   std::stack<std::string> stack;
@@ -111,70 +80,65 @@ bool RecursionVisitor::IsRecursiveID(const std::string& id) const {
     std::string current = stack.top();
     stack.pop();
 
-    if (visited.find(current) != visited.end()) {
-      continue;
-    }
-
+    if (visited.count(current)) continue;
     visited.insert(current);
 
-    auto relation_info = ast_->GetRelationInfo(current);
-
-
-    if (relation_info != std::nullopt) {
-      for (const auto& dep : relation_info->dependencies) {
-        if (dep == id) {
-          return true;  // Found cycle back to id
-        }
-        if (visited.find(dep) == visited.end() && rec_stack.find(dep) == rec_stack.end()) {
+    auto info = container_->GetRelationInfo(current);
+    if (info) {
+      for (const auto& dep : info->dependencies) {
+        if (dep == id) return true;
+        if (!visited.count(dep) && !rec_stack.count(dep)) {
           stack.push(dep);
           rec_stack.insert(dep);
         }
       }
     }
   }
-
   return false;
 }
 
-std::unordered_set<std::string> RecursionVisitor::CollectIDs(antlr4::ParserRuleContext* ctx) const {
-  // Collect IDs referenced in the context (not variables)
-  // We look for FullAppl nodes (calls to relations) and extract the ID from applBase
-  StringSet ids;
+std::unordered_set<std::string> RecursionVisitor::CollectIDs(const std::shared_ptr<RelFormula>& formula) const {
+  std::unordered_set<std::string> ids;
+  if (!formula) return ids;
 
-  if (!ctx) {
-    return ids;
+  auto* full = dynamic_cast<RelFullAppl*>(formula.get());
+  if (full) {
+    if (auto* id_base = dynamic_cast<RelIDApplBase*>(full->base.get())) {
+      std::string id = id_base->id;
+      if (!container_->IsVar(id)) ids.insert(id);
+    }
   }
 
-  // Traverse the parse tree and look for FullAppl nodes
-  std::function<void(antlr4::tree::ParseTree*)> collect = [&](antlr4::tree::ParseTree* tree) {
-    if (!tree) return;
+  auto* partial = dynamic_cast<RelPartialAppl*>(formula.get());
+  if (partial) {
+    (void)partial;
+  }
 
-    // Check if this is a FullAppl - these are calls to relations
-    auto full_appl = dynamic_cast<psr::FullApplContext*>(tree);
-    if (full_appl && full_appl->applBase() && full_appl->applBase()->T_ID()) {
-      std::string id = full_appl->applBase()->T_ID()->getText();
-      // Only add if it's not a variable
-      if (ast_->IsVar(id)) {
-        ids.insert(id);
-      }
-    }
+  auto* bin = dynamic_cast<RelBinOp*>(formula.get());
+  if (bin) {
+    auto lhs_ids = CollectIDs(bin->lhs);
+    auto rhs_ids = CollectIDs(bin->rhs);
+    ids.insert(lhs_ids.begin(), lhs_ids.end());
+    ids.insert(rhs_ids.begin(), rhs_ids.end());
+  }
 
-    // Also check for PartialAppl
-    auto partial_appl = dynamic_cast<psr::PartialApplContext*>(tree);
-    if (partial_appl && partial_appl->applBase() && partial_appl->applBase()->T_ID()) {
-      std::string id = partial_appl->applBase()->T_ID()->getText();
-      if (ast_->IsVar(id)) {
-        ids.insert(id);
-      }
-    }
+  auto* quant = dynamic_cast<RelQuantification*>(formula.get());
+  if (quant && quant->formula) {
+    auto inner = CollectIDs(quant->formula);
+    ids.insert(inner.begin(), inner.end());
+  }
 
-    // Recursively visit children
-    for (size_t i = 0; i < tree->children.size(); i++) {
-      collect(tree->children[i]);
-    }
-  };
+  auto* unop = dynamic_cast<RelUnOp*>(formula.get());
+  if (unop && unop->formula) {
+    auto inner = CollectIDs(unop->formula);
+    ids.insert(inner.begin(), inner.end());
+  }
 
-  collect(ctx);
+  auto* paren = dynamic_cast<RelParen*>(formula.get());
+  if (paren && paren->formula) {
+    auto inner = CollectIDs(paren->formula);
+    ids.insert(inner.begin(), inner.end());
+  }
 
   return ids;
 }
@@ -182,83 +146,51 @@ std::unordered_set<std::string> RecursionVisitor::CollectIDs(antlr4::ParserRuleC
 bool RecursionVisitor::OnlyEDBsOrNonRecursiveIDBs(const std::unordered_set<std::string>& ids,
                                                   const std::string& current_q) const {
   for (const auto& id : ids) {
-    // Skip current_q
-    if (id == current_q) {
-      return false;
+    if (id == current_q) return false;
+    if (container_->IsEDB(id)) continue;
+    if (container_->IsIDB(id)) {
+      if (IsRecursiveID(id)) return false;
+      continue;
     }
-
-    // Check if it's an EDB
-    if (ast_->IsEDB(id)) continue;
-
-    // Check if it's a non-recursive IDB
-    if (ast_->IsIDB(id)) {
-      if (IsRecursiveID(id)) return false;  // Recursive IDB is not allowed
-
-      continue;  // Non-recursive IDB is OK
-    }
-
-    // Unknown ID type
     return false;
   }
-
   return true;
 }
 
-bool RecursionVisitor::VariablesFromBindingOrQuantification(const std::set<std::string>& vars,
-                                                            psr::BindingInnerContext* binding_ctx,
-                                                            psr::BindingInnerContext* quant_binding_ctx) const {
-  // Collect variables from binding B
+bool RecursionVisitor::VariablesFromBindingOrQuantification(
+    const std::set<std::string>& vars, const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
+    const std::vector<std::shared_ptr<RelBinding>>& quant_bindings) const {
   std::set<std::string> binding_vars;
-  if (binding_ctx) {
-    for (auto& binding : binding_ctx->binding()) {
-      if (binding->id) {
-        binding_vars.insert(binding->id->getText());
-      }
+  for (const auto& b : outer_bindings) {
+    if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) {
+      binding_vars.insert(vb->id);
     }
   }
-
-  // Collect variables from quantification binding u
   std::set<std::string> quant_vars;
-  if (quant_binding_ctx) {
-    for (auto& binding : quant_binding_ctx->binding()) {
-      if (binding->id) {
-        quant_vars.insert(binding->id->getText());
-      }
+  for (const auto& b : quant_bindings) {
+    if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) {
+      quant_vars.insert(vb->id);
     }
   }
-
-  // Check if all vars are from binding or quantification
   for (const auto& var : vars) {
-    if (binding_vars.find(var) == binding_vars.end() && quant_vars.find(var) == quant_vars.end()) {
-      return false;
-    }
+    if (!binding_vars.count(var) && !quant_vars.count(var)) return false;
   }
-
   return true;
 }
 
-bool RecursionVisitor::CheckRecursionPattern(psr::FormulaContext* formula_ctx, psr::BindingInnerContext* binding_ctx,
+bool RecursionVisitor::CheckRecursionPattern(const std::shared_ptr<RelFormula>& formula,
+                                             const std::vector<std::shared_ptr<RelBinding>>& bindings,
                                              RecursionPatternMatch& match) {
   match.base_disjuncts.clear();
   match.recursive_disjuncts.clear();
+  if (!formula) return false;
 
-  if (!formula_ctx) {
-    return false;
-  }
-
-  // Formula should be: G or exists(...) or exists(...)
-  // We need to check if it's a disjunction (or) with:
-  // - One part G that doesn't refer to Q
-  // - One or more exists parts
-
-  // Check if it's a BinOp with 'or'
-  auto bin_op = dynamic_cast<psr::BinOpContext*>(formula_ctx);
-  if (!bin_op || !bin_op->K_or()) {
-    // If it's not a BinOp with 'or', check if it's a single exists
-    auto quant = dynamic_cast<psr::QuantificationContext*>(formula_ctx);
-    if (quant && quant->K_exists()) {
+  auto* bin = dynamic_cast<RelBinOp*>(formula.get());
+  if (!bin || bin->op != RelLogicalOp::OR) {
+    auto quant = std::dynamic_pointer_cast<RelQuantification>(formula);
+    if (quant && quant->op == RelQuantOp::EXISTS) {
       RecursiveBranchMatch branch;
-      if (CheckExistsPattern(quant, current_q_, binding_ctx, branch)) {
+      if (CheckExistsPattern(quant, current_q_, bindings, branch)) {
         match.recursive_disjuncts.push_back(branch);
         return true;
       }
@@ -266,177 +198,116 @@ bool RecursionVisitor::CheckRecursionPattern(psr::FormulaContext* formula_ctx, p
     return false;
   }
 
-  // It's an 'or' operation, collect all disjuncts
-  std::vector<psr::FormulaContext*> disjuncts;
-  CollectOrDisjuncts(formula_ctx, disjuncts);
+  std::vector<std::shared_ptr<RelFormula>> disjuncts;
+  CollectOrDisjuncts(formula, disjuncts);
 
-  // Separate into G (non-exists) and exists parts
-  std::vector<psr::FormulaContext*> g_parts;
-  std::vector<psr::QuantificationContext*> exists_parts;
+  std::vector<std::shared_ptr<RelFormula>> g_parts;
+  std::vector<std::shared_ptr<RelQuantification>> exists_parts;
 
-  for (auto* disjunct : disjuncts) {
-    auto quant = dynamic_cast<psr::QuantificationContext*>(disjunct);
-    if (quant && quant->K_exists()) {
-      exists_parts.push_back(quant);
+  for (const auto& d : disjuncts) {
+    auto q = std::dynamic_pointer_cast<RelQuantification>(d);
+    if (q && q->op == RelQuantOp::EXISTS) {
+      exists_parts.push_back(q);
     } else {
-      g_parts.push_back(disjunct);
+      g_parts.push_back(d);
     }
   }
 
-  // Must have at least one G part and at least one exists part
-  if (g_parts.empty() || exists_parts.empty()) {
-    return false;
-  }
+  if (g_parts.empty() || exists_parts.empty()) return false;
 
-  // Check G parts: they should not refer to Q and only refer to EDBs or non-recursive IDBs
-  for (auto* g : g_parts) {
+  for (const auto& g : g_parts) {
     auto g_ids = CollectIDs(g);
-    if (g_ids.find(current_q_) != g_ids.end()) {
-      return false;  // G refers to Q
-    }
-    if (!OnlyEDBsOrNonRecursiveIDBs(g_ids, current_q_)) {
-      return false;  // G refers to something other than EDBs or non-recursive IDBs
-    }
+    if (g_ids.count(current_q_)) return false;
+    if (!OnlyEDBsOrNonRecursiveIDBs(g_ids, current_q_)) return false;
     match.base_disjuncts.push_back(g);
   }
 
-  // Check each exists part
-  for (auto* exists : exists_parts) {
+  for (const auto& exists : exists_parts) {
     RecursiveBranchMatch branch;
-    if (!CheckExistsPattern(exists, current_q_, binding_ctx, branch)) {
-      return false;
-    }
+    if (!CheckExistsPattern(exists, current_q_, bindings, branch)) return false;
     match.recursive_disjuncts.push_back(branch);
   }
 
-  if (match.base_disjuncts.empty() || match.recursive_disjuncts.empty()) {
-    return false;
-  }
-
+  if (match.base_disjuncts.empty() || match.recursive_disjuncts.empty()) return false;
   return true;
 }
 
-bool RecursionVisitor::CheckExistsPattern(psr::QuantificationContext* quant_ctx, const std::string& q,
-                                          psr::BindingInnerContext* outer_binding_ctx, RecursiveBranchMatch& match) {
-  if (!quant_ctx || !quant_ctx->formula()) {
-    return false;
-  }
+bool RecursionVisitor::CheckExistsPattern(const std::shared_ptr<RelQuantification>& quant, const std::string& q,
+                                          const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
+                                          RecursiveBranchMatch& match) {
+  if (!quant || !quant->formula) return false;
 
-  auto formula_ctx = quant_ctx->formula();
+  std::shared_ptr<RelFullAppl> q_call;
+  std::shared_ptr<RelFormula> f_part;
+  FindAndPatternParts(quant->formula, q, q_call, f_part);
 
-  // Formula should be: Q(w) and F(v)
-  // Check if it's a BinOp with 'and'
-  auto bin_op = dynamic_cast<psr::BinOpContext*>(formula_ctx);
-  if (!bin_op || !bin_op->K_and()) {
-    return false;
-  }
+  if (!q_call || !f_part) return false;
 
-  // Find Q(w) and F(v) parts
-  psr::FullApplContext* q_call = nullptr;
-  psr::FormulaContext* f_part = nullptr;
-  FindAndPatternParts(formula_ctx, q, q_call, f_part);
-
-  if (!q_call || !f_part) {
-    return false;
-  }
-
-  // Check that Q(w) doesn't refer to Q (it's just a call to Q)
-  // This is already satisfied since we checked IsCallToQ
-
-  // Check that F doesn't refer to Q
   auto f_ids = CollectIDs(f_part);
-  if (f_ids.find(q) != f_ids.end()) {
-    return false;  // F refers to Q
-  }
+  if (f_ids.count(q)) return false;
+  if (!OnlyEDBsOrNonRecursiveIDBs(f_ids, q)) return false;
 
-  // Check that F only refers to EDBs or non-recursive IDBs
-  if (!OnlyEDBsOrNonRecursiveIDBs(f_ids, q)) {
-    return false;
-  }
-
-  auto quant_binding_ctx = quant_ctx->bindingInner();
-
-  // Check variables in w (parameters of Q(w))
-  if (q_call->applParams()) {
-    std::set<std::string> w_vars;
-    for (auto& param : q_call->applParams()->applParam()) {
-      if (param->expr()) {
-        auto term_expr_ctx = dynamic_cast<psr::TermExprContext*>(param->expr());
-        if (term_expr_ctx) {
-          auto id_term_ctx = dynamic_cast<psr::IDTermContext*>(term_expr_ctx->term());
-          if (id_term_ctx) {
-            std::string var = id_term_ctx->T_ID()->getText();
-            if (ast_->IsVar(var)) {
-              w_vars.insert(var);
-            }
-          }
+  std::set<std::string> w_vars;
+  for (const auto& param : q_call->params) {
+    auto expr = param ? param->GetExpr() : nullptr;
+    if (expr) {
+      auto* term_expr = dynamic_cast<RelTermExpr*>(expr.get());
+      if (term_expr && term_expr->term) {
+        auto* id_term = dynamic_cast<RelIDTerm*>(term_expr->term.get());
+        if (id_term && container_->IsVar(id_term->id)) {
+          w_vars.insert(id_term->id);
         }
       }
     }
-    if (!VariablesFromBindingOrQuantification(w_vars, outer_binding_ctx, quant_binding_ctx)) {
-      return false;
-    }
   }
-
-  // Check variables in v (free variables in F)
-  auto f_node = GetNode(f_part);
-  std::set<std::string> v_vars = f_node->free_variables;
-  if (!VariablesFromBindingOrQuantification(v_vars, outer_binding_ctx, quant_binding_ctx)) {
+  if (!VariablesFromBindingOrQuantification(w_vars, outer_bindings, quant->bindings)) {
     return false;
   }
 
-  match.exists_ctx = quant_ctx;
+  std::set<std::string> v_vars = f_part->free_variables;
+  if (!VariablesFromBindingOrQuantification(v_vars, outer_bindings, quant->bindings)) {
+    return false;
+  }
+
+  match.exists_clause = quant;
   match.recursive_call = q_call;
   match.residual_formula = f_part;
-
   return true;
 }
 
-bool RecursionVisitor::IsCallToQ(psr::FullApplContext* ctx, const std::string& q) const {
-  if (!ctx->applBase()->T_ID()) {
-    return false;
-  }
-
-  std::string id = ctx->applBase()->T_ID()->getText();
-  return id == q;
+bool RecursionVisitor::IsCallToQ(const RelFullAppl& appl, const std::string& q) const {
+  auto* id_base = dynamic_cast<RelIDApplBase*>(appl.base.get());
+  return id_base && id_base->id == q;
 }
 
-void RecursionVisitor::CollectOrDisjuncts(psr::FormulaContext* formula_ctx,
-                                          std::vector<psr::FormulaContext*>& disjuncts) const {
-  if (!formula_ctx) return;
-
-  auto bin_op = dynamic_cast<psr::BinOpContext*>(formula_ctx);
-  if (bin_op && bin_op->K_or()) {
-    CollectOrDisjuncts(bin_op->lhs, disjuncts);
-    CollectOrDisjuncts(bin_op->rhs, disjuncts);
+void RecursionVisitor::CollectOrDisjuncts(const std::shared_ptr<RelFormula>& formula,
+                                          std::vector<std::shared_ptr<RelFormula>>& disjuncts) const {
+  if (!formula) return;
+  auto* bin = dynamic_cast<RelBinOp*>(formula.get());
+  if (bin && bin->op == RelLogicalOp::OR) {
+    CollectOrDisjuncts(bin->lhs, disjuncts);
+    CollectOrDisjuncts(bin->rhs, disjuncts);
     return;
   }
-
-  disjuncts.push_back(formula_ctx);
+  disjuncts.push_back(formula);
 }
 
-void RecursionVisitor::FindAndPatternParts(psr::FormulaContext* formula_ctx, const std::string& q,
-                                           psr::FullApplContext*& q_call, psr::FormulaContext*& f_part) const {
-  if (!formula_ctx) return;
-
-  auto bin_op = dynamic_cast<psr::BinOpContext*>(formula_ctx);
-  if (bin_op && bin_op->K_and()) {
-    FindAndPatternParts(bin_op->lhs, q, q_call, f_part);
-    FindAndPatternParts(bin_op->rhs, q, q_call, f_part);
+void RecursionVisitor::FindAndPatternParts(const std::shared_ptr<RelFormula>& formula, const std::string& q,
+                                           std::shared_ptr<RelFullAppl>& q_call,
+                                           std::shared_ptr<RelFormula>& f_part) const {
+  if (!formula) return;
+  auto* bin = dynamic_cast<RelBinOp*>(formula.get());
+  if (bin && bin->op == RelLogicalOp::AND) {
+    FindAndPatternParts(bin->lhs, q, q_call, f_part);
+    FindAndPatternParts(bin->rhs, q, q_call, f_part);
     return;
   }
-
-  auto full_appl = dynamic_cast<psr::FullApplContext*>(formula_ctx);
-  if (full_appl && IsCallToQ(full_appl, q)) {
-    if (!q_call) {
-      q_call = full_appl;
-    }
+  auto* full = dynamic_cast<RelFullAppl*>(formula.get());
+  if (full && IsCallToQ(*full, q)) {
+    if (!q_call) q_call = std::dynamic_pointer_cast<RelFullAppl>(formula);
     return;
   }
-
-  if (!f_part) {
-    f_part = formula_ctx;
-  }
+  if (!f_part) f_part = formula;
 }
 
 }  // namespace rel2sql

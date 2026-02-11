@@ -1,198 +1,183 @@
-#include "balancing_visitor.h"
+#include "preprocessing/balancing_visitor.h"
 
 #include "support/exceptions.h"
 
 namespace rel2sql {
 
-BalancingVisitor::BalancingVisitor(std::shared_ptr<RelAST> ast) : BaseVisitor(ast) {}
+namespace {
 
-std::any BalancingVisitor::visitProgram(psr::ProgramContext* ctx) {
-  visitChildren(ctx);
-  return {};
+SourceLocation GetSourceLocationFromNode(RelNode* node) {
+  if (!node || !node->ctx) return SourceLocation(0, 0);
+  auto* ctx = node->ctx;
+  int line = ctx->getStart() ? ctx->getStart()->getLine() : 0;
+  int column = ctx->getStart() ? ctx->getStart()->getCharPositionInLine() : 0;
+  std::string text_snippet = ctx->getText();
+  if (text_snippet.length() > 100) text_snippet = text_snippet.substr(0, 97) + "...";
+  return SourceLocation(line, column, text_snippet);
 }
 
-std::any BalancingVisitor::visitRelDef(psr::RelDefContext* ctx) {
-  visitChildren(ctx);
-  return {};
+}  // namespace
+
+void BalancingVisitor::Visit(RelProgram& node) {
+  RelASTVisitor::Visit(node);
 }
 
-std::any BalancingVisitor::visitRelAbs(psr::RelAbsContext* ctx) {
-  visitChildren(ctx);
-  return {};
+void BalancingVisitor::Visit(RelDef& node) {
+  RelASTVisitor::Visit(node);
 }
 
-std::any BalancingVisitor::visitProductExpr(psr::ProductExprContext* ctx) {
-  visitChildren(ctx);
-  return {};
+void BalancingVisitor::Visit(RelAbstraction& node) {
+  RelASTVisitor::Visit(node);
 }
 
-std::any BalancingVisitor::visitConditionExpr(psr::ConditionExprContext* ctx) {
-  // Allow special balancing rules for comparator-only conjunctions under the RHS of `where`.
-  // Free variables are already computed by VariablesVisitor (runs before BalancingVisitor).
-  visit(ctx->lhs);
-  condition_lhs_free_vars_stack_.push_back(GetNode(ctx->lhs)->free_variables);
-  visit(ctx->rhs);
-  condition_lhs_free_vars_stack_.pop_back();
-  return {};
+void BalancingVisitor::Visit(RelProductExpr& node) {
+  RelASTVisitor::Visit(node);
 }
 
-std::any BalancingVisitor::visitRelAbsExpr(psr::RelAbsExprContext* ctx) {
-  visitChildren(ctx);
-  return {};
+void BalancingVisitor::Visit(RelConditionExpr& node) {
+  if (node.lhs) {
+    node.lhs->Accept(*this);
+    condition_lhs_free_vars_stack_.push_back(node.lhs->free_variables);
+  }
+  if (node.rhs) node.rhs->Accept(*this);
+  if (node.lhs) condition_lhs_free_vars_stack_.pop_back();
 }
 
-std::any BalancingVisitor::visitFormulaExpr(psr::FormulaExprContext* ctx) {
-  visitChildren(ctx);
-  return {};
+void BalancingVisitor::Visit(RelAbstractionExpr& node) {
+  RelASTVisitor::Visit(node);
 }
 
-std::any BalancingVisitor::visitBindingsExpr(psr::BindingsExprContext* ctx) {
-  visit(ctx->expr());
-  return {};
+void BalancingVisitor::Visit(RelFormulaExpr& node) {
+  RelASTVisitor::Visit(node);
 }
 
-std::any BalancingVisitor::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
-  visit(ctx->formula());
-  return {};
+void BalancingVisitor::Visit(RelBindingsExpr& node) {
+  if (node.expr) node.expr->Accept(*this);
 }
 
-std::any BalancingVisitor::visitPartialAppl(psr::PartialApplContext* ctx) {
-  visitChildren(ctx);
-  return {};
+void BalancingVisitor::Visit(RelBindingsFormula& node) {
+  if (node.formula) node.formula->Accept(*this);
 }
 
-std::any BalancingVisitor::visitProductInner(psr::ProductInnerContext* ctx) {
-  visitChildren(ctx);
-  return {};
+void BalancingVisitor::Visit(RelPartialAppl& node) {
+  RelASTVisitor::Visit(node);
 }
 
-std::any BalancingVisitor::visitFullAppl(psr::FullApplContext* ctx) {
-  visitChildren(ctx);
-  return {};
+void BalancingVisitor::Visit(RelFullAppl& node) {
+  RelASTVisitor::Visit(node);
 }
 
-std::any BalancingVisitor::visitBinOp(psr::BinOpContext* ctx) {
-  if (ctx->K_and()) {
-    auto node = GetNode(ctx);
+void BalancingVisitor::Visit(RelBinOp& node) {
+  if (node.op != RelLogicalOp::AND) {
+    RelASTVisitor::Visit(node);
+    return;
+  }
 
-    // Collect and store comparator conjuncts and non-comparator conjuncts
-    CollectComparatorConjuncts(ctx, node->comparator_conjuncts, node->non_comparator_conjuncts);
+  CollectComparatorConjuncts(node.lhs, node.comparator_conjuncts, node.non_comparator_conjuncts);
+  CollectComparatorConjuncts(node.rhs, node.comparator_conjuncts, node.non_comparator_conjuncts);
 
-    // Validate that all free variables in comparator conjuncts are also present in:
-    // - non-comparator conjuncts (general case), OR
-    // - the LHS of the surrounding condition expression (special case: RHS is comparator-only)
-    if (!node->comparator_conjuncts.empty() && node->non_comparator_conjuncts.empty() &&
-        !condition_lhs_free_vars_stack_.empty()) {
-      const auto& allowed = condition_lhs_free_vars_stack_.back();
-      for (auto* comparator_ctx : node->comparator_conjuncts) {
-        for (const auto& free_var : GetNode(comparator_ctx)->free_variables) {
-          if (allowed.find(free_var) == allowed.end()) {
-            SourceLocation location = GetSourceLocation(comparator_ctx);
-            throw VariableException(
-                "Free variable '" + free_var +
-                    "' in a comparator formula is not part of the left-hand side of the same condition expression",
-                location);
-          }
+  if (!node.comparator_conjuncts.empty() && node.non_comparator_conjuncts.empty() &&
+      !condition_lhs_free_vars_stack_.empty()) {
+    const auto& allowed = condition_lhs_free_vars_stack_.back();
+    for (const auto& comp : node.comparator_conjuncts) {
+      for (const auto& free_var : comp->free_variables) {
+        if (!allowed.count(free_var)) {
+          throw VariableException(
+              "Free variable '" + free_var +
+                  "' in a comparator formula is not part of the left-hand side of the same condition expression",
+              GetSourceLocationFromNode(comp.get()));
         }
       }
-    } else {
-      ValidateComparatorFreeVariables(node->comparator_conjuncts, node->non_comparator_conjuncts);
     }
-
-    // Collect and store negated conjuncts and non-negated conjuncts
-    CollectNegatedConjuncts(ctx, node->negated_conjuncts, node->non_negated_conjuncts);
-
-    // Validate that all free variables in negated conjuncts are also present in non-negated conjuncts
-    ValidateNegatedFreeVariables(node->negated_conjuncts, node->non_negated_conjuncts);
-
-    for (auto non_comparator_conjunct : node->non_comparator_conjuncts) {
-      visit(non_comparator_conjunct);
-    }
-
-    return {};
+  } else {
+    ValidateComparatorFreeVariables(node.comparator_conjuncts, node.non_comparator_conjuncts);
   }
 
-  visitChildren(ctx);
+  CollectNegatedConjuncts(node.lhs, node.negated_conjuncts, node.non_negated_conjuncts);
+  CollectNegatedConjuncts(node.rhs, node.negated_conjuncts, node.non_negated_conjuncts);
+  ValidateNegatedFreeVariables(node.negated_conjuncts, node.non_negated_conjuncts);
 
-  return {};
+  for (const auto& conj : node.non_comparator_conjuncts) {
+    if (auto* f = dynamic_cast<RelFormula*>(conj.get())) {
+      f->Accept(*this);
+    }
+  }
 }
 
-std::any BalancingVisitor::visitUnOp(psr::UnOpContext* ctx) {
-  visit(ctx->formula());
-  return {};
+void BalancingVisitor::Visit(RelUnOp& node) {
+  if (node.formula) node.formula->Accept(*this);
 }
 
-std::any BalancingVisitor::visitQuantification(psr::QuantificationContext* ctx) {
-  visit(ctx->formula());
-  return {};
+void BalancingVisitor::Visit(RelQuantification& node) {
+  if (node.formula) node.formula->Accept(*this);
 }
 
-std::any BalancingVisitor::visitParen(psr::ParenContext* ctx) {
-  visit(ctx->formula());
-  return {};
+void BalancingVisitor::Visit(RelParen& node) {
+  if (node.formula) node.formula->Accept(*this);
 }
 
-std::any BalancingVisitor::visitApplBase(psr::ApplBaseContext* ctx) {
-  visitChildren(ctx);
-  return {};
-}
-
-std::any BalancingVisitor::visitApplParams(psr::ApplParamsContext* ctx) {
-  visitChildren(ctx);
-  return {};
-}
-
-std::any BalancingVisitor::visitApplParam(psr::ApplParamContext* ctx) {
-  visitChildren(ctx);
-  return {};
-}
-
-void BalancingVisitor::CollectComparatorConjuncts(psr::FormulaContext* formula_ctx,
-                                                  std::vector<antlr4::ParserRuleContext*>& comparator_conjuncts,
-                                                  std::vector<antlr4::ParserRuleContext*>& non_comparator_conjuncts) {
-  if (dynamic_cast<psr::ComparisonContext*>(formula_ctx)) {
-    comparator_conjuncts.push_back(formula_ctx);
+void BalancingVisitor::CollectComparatorConjuncts(
+    const std::shared_ptr<RelFormula>& formula,
+    std::vector<std::shared_ptr<RelNode>>& comparator_conjuncts,
+    std::vector<std::shared_ptr<RelNode>>& non_comparator_conjuncts) {
+  if (!formula) return;
+  if (dynamic_cast<RelComparison*>(formula.get())) {
+    comparator_conjuncts.push_back(formula);
     return;
-  } else if (auto bin_op_ctx = dynamic_cast<psr::BinOpContext*>(formula_ctx)) {
-    if (bin_op_ctx->K_and()) {
-      CollectComparatorConjuncts(bin_op_ctx->lhs, comparator_conjuncts, non_comparator_conjuncts);
-      CollectComparatorConjuncts(bin_op_ctx->rhs, comparator_conjuncts, non_comparator_conjuncts);
-      return;
-    }
   }
-
-  non_comparator_conjuncts.push_back(formula_ctx);
+  auto* bin = dynamic_cast<RelBinOp*>(formula.get());
+  if (bin && bin->op == RelLogicalOp::AND) {
+    CollectComparatorConjuncts(bin->lhs, comparator_conjuncts, non_comparator_conjuncts);
+    CollectComparatorConjuncts(bin->rhs, comparator_conjuncts, non_comparator_conjuncts);
+    return;
+  }
+  non_comparator_conjuncts.push_back(formula);
 }
 
-std::expected<void, std::pair<std::string, SourceLocation>> BalancingVisitor::ValidateFreeVariables(
-    const std::vector<antlr4::ParserRuleContext*>& checked_conjuncts,
-    const std::vector<antlr4::ParserRuleContext*>& reference_conjuncts) {
-  if (checked_conjuncts.empty()) {
-    return {};
+void BalancingVisitor::CollectNegatedConjuncts(
+    const std::shared_ptr<RelFormula>& formula,
+    std::vector<std::shared_ptr<RelNode>>& negated_conjuncts,
+    std::vector<std::shared_ptr<RelNode>>& non_negated_conjuncts) {
+  if (!formula) return;
+  auto* unop = dynamic_cast<RelUnOp*>(formula.get());
+  if (unop) {
+    negated_conjuncts.push_back(formula);
+    return;
   }
+  auto* bin = dynamic_cast<RelBinOp*>(formula.get());
+  if (bin && bin->op == RelLogicalOp::AND) {
+    CollectNegatedConjuncts(bin->lhs, negated_conjuncts, non_negated_conjuncts);
+    CollectNegatedConjuncts(bin->rhs, negated_conjuncts, non_negated_conjuncts);
+    return;
+  }
+  non_negated_conjuncts.push_back(formula);
+}
+
+std::expected<void, std::pair<std::string, SourceLocation>>
+BalancingVisitor::ValidateFreeVariables(
+    const std::vector<std::shared_ptr<RelNode>>& checked_conjuncts,
+    const std::vector<std::shared_ptr<RelNode>>& reference_conjuncts) {
+  if (checked_conjuncts.empty()) return {};
 
   std::set<std::string> reference_free_variables;
-
-  for (auto reference_conjunct : reference_conjuncts) {
-    reference_free_variables.insert(GetNode(reference_conjunct)->free_variables.begin(),
-                                    GetNode(reference_conjunct)->free_variables.end());
+  for (const auto& ref : reference_conjuncts) {
+    reference_free_variables.insert(ref->free_variables.begin(), ref->free_variables.end());
   }
 
-  for (auto checked_conjunct : checked_conjuncts) {
-    for (auto free_variable : GetNode(checked_conjunct)->free_variables) {
-      if (reference_free_variables.find(free_variable) == reference_free_variables.end()) {
-        SourceLocation location = GetSourceLocation(checked_conjunct);
-        return std::unexpected(std::make_pair(free_variable, location));
+  for (const auto& checked : checked_conjuncts) {
+    for (const auto& free_var : checked->free_variables) {
+      if (!reference_free_variables.count(free_var)) {
+        return std::unexpected(
+            std::make_pair(free_var, GetSourceLocationFromNode(checked.get())));
       }
     }
   }
-
   return {};
 }
 
 void BalancingVisitor::ValidateComparatorFreeVariables(
-    const std::vector<antlr4::ParserRuleContext*>& comparator_conjuncts,
-    const std::vector<antlr4::ParserRuleContext*>& non_comparator_conjuncts) {
+    const std::vector<std::shared_ptr<RelNode>>& comparator_conjuncts,
+    const std::vector<std::shared_ptr<RelNode>>& non_comparator_conjuncts) {
   auto result = ValidateFreeVariables(comparator_conjuncts, non_comparator_conjuncts);
   if (!result) {
     throw VariableException(
@@ -203,35 +188,15 @@ void BalancingVisitor::ValidateComparatorFreeVariables(
 }
 
 void BalancingVisitor::ValidateNegatedFreeVariables(
-    const std::vector<antlr4::ParserRuleContext*>& negated_conjuncts,
-    const std::vector<antlr4::ParserRuleContext*>& non_negated_conjuncts) {
+    const std::vector<std::shared_ptr<RelNode>>& negated_conjuncts,
+    const std::vector<std::shared_ptr<RelNode>>& non_negated_conjuncts) {
   auto result = ValidateFreeVariables(negated_conjuncts, non_negated_conjuncts);
   if (!result) {
-    throw VariableException("Free variable '" + result.error().first +
-                                "' in a negated formula is not part of a non-negated formula in the same conjunction",
-                            result.error().second);
+    throw VariableException(
+        "Free variable '" + result.error().first +
+            "' in a negated formula is not part of a non-negated formula in the same conjunction",
+        result.error().second);
   }
-}
-
-void BalancingVisitor::CollectNegatedConjuncts(psr::FormulaContext* formula_ctx,
-                                               std::vector<antlr4::ParserRuleContext*>& negated_conjuncts,
-                                               std::vector<antlr4::ParserRuleContext*>& non_negated_conjuncts) {
-  if (auto un_op_ctx = dynamic_cast<psr::UnOpContext*>(formula_ctx)) {
-    if (un_op_ctx->K_not()) {
-      negated_conjuncts.push_back(formula_ctx);
-      return;
-    }
-  }
-
-  if (auto bin_op_ctx = dynamic_cast<psr::BinOpContext*>(formula_ctx)) {
-    if (bin_op_ctx->K_and()) {
-      CollectNegatedConjuncts(bin_op_ctx->lhs, negated_conjuncts, non_negated_conjuncts);
-      CollectNegatedConjuncts(bin_op_ctx->rhs, negated_conjuncts, non_negated_conjuncts);
-      return;
-    }
-  }
-
-  non_negated_conjuncts.push_back(formula_ctx);
 }
 
 }  // namespace rel2sql

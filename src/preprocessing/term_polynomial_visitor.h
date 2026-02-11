@@ -1,10 +1,8 @@
-#ifndef TERM_POLYNOMIAL_VISITOR_H
-#define TERM_POLYNOMIAL_VISITOR_H
+#ifndef PREPROCESSING_TERM_POLYNOMIAL_VISITOR_REL_H
+#define PREPROCESSING_TERM_POLYNOMIAL_VISITOR_REL_H
 
-#include <antlr4-runtime.h>
-
-#include "preprocessing/base_visitor.h"
-#include "rel_ast/extended_ast.h"
+#include "rel_ast/rel_ast.h"
+#include "rel_ast/rel_ast_visitor.h"
 
 namespace rel2sql {
 
@@ -12,22 +10,19 @@ namespace rel2sql {
  * Visitor that computes an affine model a * x + b for numerical term
  * expressions involving at most one variable. Non-linear, multi-variable,
  * or genuinely rational terms are marked as invalid by setting
- * RelASTNode::term_linear_invalid.
+ * RelNode::term_linear_invalid.
  */
-class TermPolynomialVisitor : public BaseVisitor {
+class TermPolynomialVisitor : public RelASTVisitor {
  public:
-  explicit TermPolynomialVisitor(std::shared_ptr<RelAST> ast);
+  TermPolynomialVisitor() = default;
 
-  // Term branches
-  std::any visitNumTerm(psr::NumTermContext* ctx) override;
-  std::any visitIDTerm(psr::IDTermContext* ctx) override;
-  std::any visitOpTerm(psr::OpTermContext* ctx) override;
-  std::any visitParenthesisTerm(psr::ParenthesisTermContext* ctx) override;
-
-  // Expression wrapper
-  std::any visitTermExpr(psr::TermExprContext* ctx) override;
+  void Visit(RelNumTerm& node) override;
+  void Visit(RelIDTerm& node) override;
+  void Visit(RelOpTerm& node) override;
+  void Visit(RelParenthesisTerm& node) override;
+  void Visit(RelTermExpr& node) override;
 };
 
 }  // namespace rel2sql
 
-#endif  // TERM_POLYNOMIAL_VISITOR_H
+#endif  // PREPROCESSING_TERM_POLYNOMIAL_VISITOR_REL_H

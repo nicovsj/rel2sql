@@ -1,78 +1,43 @@
-#ifndef VARS_VISITOR_H
-#define VARS_VISITOR_H
+#ifndef PREPROCESSING_VARS_VISITOR_REL_H
+#define PREPROCESSING_VARS_VISITOR_REL_H
 
-#include <antlr4-runtime.h>
-
-#include "preprocessing/base_visitor.h"
-#include "rel_ast/extended_ast.h"
+#include "rel_ast/rel_ast.h"
+#include "rel_ast/rel_ast_container.h"
+#include "rel_ast/rel_ast_visitor.h"
 
 namespace rel2sql {
 
-class VariablesVisitor : public BaseVisitor {
-  /*
-   * Visitor that computes the free variables and variables in scope
-   * for each node in the AST.
-   */
+class VariablesVisitor : public RelASTVisitor {
  public:
-  VariablesVisitor(std::shared_ptr<RelAST> ast);
+  explicit VariablesVisitor(RelASTContainer* container) : container_(container) {}
 
-  std::any visitProgram(psr::ProgramContext* ctx) override;
+  void Visit(RelProgram& node) override;
+  void Visit(RelDef& node) override;
+  void Visit(RelAbstraction& node) override;
+  void Visit(RelIDTerm& node) override;
+  void Visit(RelNumTerm& node) override;
+  void Visit(RelOpTerm& node) override;
+  void Visit(RelParenthesisTerm& node) override;
+  void Visit(RelLitExpr& node) override;
+  void Visit(RelTermExpr& node) override;
+  void Visit(RelProductExpr& node) override;
+  void Visit(RelConditionExpr& node) override;
+  void Visit(RelAbstractionExpr& node) override;
+  void Visit(RelFormulaExpr& node) override;
+  void Visit(RelBindingsExpr& node) override;
+  void Visit(RelBindingsFormula& node) override;
+  void Visit(RelPartialAppl& node) override;
+  void Visit(RelFullAppl& node) override;
+  void Visit(RelBinOp& node) override;
+  void Visit(RelUnOp& node) override;
+  void Visit(RelQuantification& node) override;
+  void Visit(RelParen& node) override;
+  void Visit(RelComparison& node) override;
 
-  std::any visitRelDef(psr::RelDefContext* ctx) override;
-
-  std::any visitRelAbs(psr::RelAbsContext* ctx) override;
-
-  std::any visitIDTerm(psr::IDTermContext* ctx) override;
-
-  std::any visitOpTerm(psr::OpTermContext* ctx) override;
-
-  std::any visitParenthesisTerm(psr::ParenthesisTermContext* ctx) override;
-
-  // Expression branches
-
-  std::any visitTermExpr(psr::TermExprContext* ctx) override;
-
-  std::any visitProductExpr(psr::ProductExprContext* ctx) override;
-
-  std::any visitConditionExpr(psr::ConditionExprContext* ctx) override;
-
-  std::any visitRelAbsExpr(psr::RelAbsExprContext* ctx) override;
-
-  std::any visitFormulaExpr(psr::FormulaExprContext* ctx) override;
-
-  std::any visitBindingsExpr(psr::BindingsExprContext* ctx) override;
-
-  std::any visitBindingsFormula(psr::BindingsFormulaContext* ctx) override;
-
-  std::any visitPartialAppl(psr::PartialApplContext* ctx) override;
-
-  //  Formula branches
-
-  std::any visitFullAppl(psr::FullApplContext* ctx) override;
-
-  std::any visitBinOp(psr::BinOpContext* ctx) override;
-
-  std::any visitUnOp(psr::UnOpContext* ctx) override;
-
-  std::any visitQuantification(psr::QuantificationContext* ctx) override;
-
-  std::any visitParen(psr::ParenContext* ctx) override;
-
-  std::any visitComparison(psr::ComparisonContext* ctx) override;
-
-  //  Binding branches
-
-  std::any visitBindingInner(psr::BindingInnerContext* ctx) override;
-
-  std::any visitBinding(psr::BindingContext* ctx) override;
-
-  std::any visitApplBase(psr::ApplBaseContext* ctx) override;
-
-  std::any visitApplParams(psr::ApplParamsContext* ctx) override;
-
-  std::any visitApplParam(psr::ApplParamContext* ctx) override;
+ private:
+  RelASTContainer* container_;
 };
 
 }  // namespace rel2sql
 
-#endif  // VARS_VISITOR_H
+#endif  // PREPROCESSING_VARS_VISITOR_REL_H
