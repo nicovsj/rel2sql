@@ -202,20 +202,24 @@ std::string RelFormulaExpr::ToStringImpl() const {
 void RelBindingsExpr::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
 std::string RelBindingsExpr::ToStringImpl() const {
   std::ostringstream out;
+  out << "[";
   for (size_t i = 0; i < bindings.size(); ++i) {
     if (i) out << ", ";
     out << (bindings[i] ? bindings[i]->ToString() : "?");
   }
-  out << " : " << (expr ? expr->ToString() : "?");
+  out << "] : ";
+  out << (expr ? expr->ToString() : "?");
   return out.str();
 }
 void RelBindingsFormula::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
 std::string RelBindingsFormula::ToStringImpl() const {
   std::ostringstream out;
+  out << "(";
   for (size_t i = 0; i < bindings.size(); ++i) {
     if (i) out << ", ";
     out << (bindings[i] ? bindings[i]->ToString() : "?");
   }
+  out << ")";
   out << " : " << (formula ? formula->ToString() : "?");
   return out.str();
 }
