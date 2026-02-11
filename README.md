@@ -1,6 +1,21 @@
 # rel2sql
 
-This repository contains a rel2sql translation experimental tool. This project is mainly implemented in C++ with ANTLR for parsing Rel queries.
+A tool that translates [Rel](https://relational.ai/rel) queries to SQL. Implemented in C++ with ANTLR for parsing Rel queries.
+
+## Usage
+
+The CLI reads Rel from stdin or a file and prints the translated SQL:
+
+```sh
+# From stdin
+echo "def output = A" | bazel run //:rel2sql_bin
+
+# From file
+bazel run //:rel2sql_bin -- -f query.rl
+
+# Unoptimized translation (skip optimizations)
+bazel run //:rel2sql_bin -- -u -f query.rl
+```
 
 ## Table of Contents
 
@@ -14,8 +29,6 @@ This repository contains a rel2sql translation experimental tool. This project i
   - [WebAssembly (WASM) Support](#webassembly-wasm-support)
     - [Building WASM](#building-wasm)
     - [Testing WASM](#testing-wasm)
-      - [Interactive Testing](#interactive-testing)
-      - [Automated Testing (CI/CD)](#automated-testing-cicd)
     - [WASM Documentation](#wasm-documentation)
   - [Extra](#extra)
   - [Available Tasks](#available-tasks)
@@ -38,7 +51,17 @@ To build the project, run the following command:
 task build
 ```
 
-This command will build the `rel2sql` executable. It should be built in the `bazel-bin` directory.
+This builds the rel2sql library. To build the shared library instead:
+
+```sh
+task build-shared
+```
+
+Run the CLI with:
+
+```sh
+bazel run //:rel2sql_bin -- -f query.rl
+```
 
 ## Development
 
@@ -56,62 +79,53 @@ This project uses [hedron_compile_commands](https://github.com/hedronvision/baze
 
 ### Testing
 
-To run the tests, use the following command:
+To run all tests (library and WASM):
 
 ```sh
 task test
 ```
 
+To run only library tests:
+
+```sh
+task test:lib
+```
+
 ## WebAssembly (WASM) Support
 
-Rel2SQL can be compiled to WebAssembly for use in web browsers. This enables running Rel2SQL directly in the browser without server-side processing.
+Rel2SQL can be compiled to WebAssembly for use in web browsers and Node.js. This enables running Rel2SQL directly in the browser without server-side processing.
 
 ### Building WASM
 
-To build the WebAssembly module:
+To build the WebAssembly modules (Node.js and browser):
 
 ```sh
 task build-wasm
 ```
 
+For individual targets:
+
+```sh
+task build-wasm-node   # Node.js only
+task build-wasm-browser  # Browser only
+```
+
 ### Testing WASM
 
-#### Interactive Testing
-
-To build and test the WASM module with an interactive web interface:
+The full test suite (`task test`) includes WASM tests. To run only WASM tests:
 
 ```sh
-task test-wasm
+task test:wasm
 ```
 
-This will:
-1. Build the WASM module
-2. Start a local HTTP server on port 8000
-3. Open `http://localhost:8000/wasm/test_wasm.html` in your browser
-
-The test page provides:
-- Interactive Rel-to-SQL translation
-- System tests to verify WASM functionality
-- Real-time status indicators
-
-#### Automated Testing (CI/CD)
-
-For automated testing in CI workflows:
-
-```sh
-task test-wasm-bazel
-```
-
-This automated test:
-- Builds the WASM module
-- Verifies WASM files are generated correctly
-- Loads and tests the WASM module using Node.js
-- Runs translation tests with sample Rel expressions
-- Reports pass/fail status for CI integration
+This runs:
+- **test:wasm:bindings** — Tests the WASM bindings contract (requires `bazel build //wasm:rel2sql_wasm_node --config=emcc` first)
+- **test:wasm:npm** — Tests npm package build, pack, and consumption
+- **test:wasm:browser** — Starts a local HTTP server on port 8080; open `http://localhost:8080/wasm/tests/browser/test_browser.html` in your browser for interactive testing
 
 ### WASM Documentation
 
-For detailed information about the WASM implementation, testing, and troubleshooting, see [`wasm/README.md`](wasm/README.md).
+For detailed information about the WASM implementation, testing, and troubleshooting, see [`wasm/TESTING.md`](wasm/TESTING.md).
 
 ## Extra
 
