@@ -2,6 +2,8 @@
 
 ## In parameters
 
+### Approach 1: Syntactic method
+
 To translate Rel expressions like
 
 ```
@@ -91,7 +93,7 @@ From the final coefficients we can also:
 - Check **non‑nullity**: the polynomial is identically zero iff `a = 0` and `b = 0`; we reject such terms in parameter positions.
 - Compute the unique **root**, when it exists: if `a != 0`, the root is `-b / a`; if `a = 0`, there is no unique root.
 
-### Limitations of the syntactic method
+#### Limitations of the syntactic method
 
 This procedure is intentionally conservative: it never accepts a term whose true polynomial degree is greater than 1, but it may reject some genuinely linear terms when linearity only appears **after algebraic simplifications**.
 
@@ -111,6 +113,29 @@ which is a constant (hence linear) polynomial. However, our syntactic checker se
 so it correctly refuses to assign an affine summary and marks the term as invalid. This is acceptable for our purposes: we only need a **sound** (never‑wrong) filter for linear terms, not a complete one.
 
 
+### Approach 2: Variable replacement
+
+Let's go back to the full application
+```
+  A(x+1)
+```
+We can rewrite this as
+```
+  A(z) and z = x+1
+```
+This is not yet allowed in our translation because of how safety analysis is perfomed, but we can actually compute the safety of the whole conjunction.
+
+What we really have is:
+```
+ safe( A(z) ) = { (z) in A }
+ safe( z = x+1 ) = { (x) in safety(z) - 1; (z) in safety(x) + 1 }
+ safe( A(z) and z = x+1 ) = { (z) in A ; (x) in A - 1}
+```
+
+
+```
+{(x,y): A(x) or B(y)}[1,2]
+```
 ## In expressions
 
 To translate Rel expressions like
@@ -122,10 +147,61 @@ To translate Rel expressions like
 we might just rewrite it as
 
 ```
-  {(z) : z=x+1} where A(x)
+  {(z) : z=x+1 and A(x)}
 ```
 
-but then we have the problem of translating the formula `z=x+1` into SQL which is not permitted currently in our translation as it is not in a conjunction with other formulas. We could instead rewrite it as
+In general we can always do these transformations:
 ```
-  (z) : z=x+1 and A(x)
+  [x]:x+1 => [x]: {(z):z=x+1}
+  (..., x+1, ...) => (..., (z):z=x+1, ...)
+  {...; x+1; ...} => {...; (z):z=x+1; ...}
 ```
+
+now we have to deal with conditions like:
+```
+  f(x1, ..., xn) = g(y1, ..., ym)
+```
+where we'll assume that `f` and `g` are linear polynomials in their arguments.
+
+let's suppose that we see only one of these terms among a conjunction of safe formulas, so
+
+```
+ f(x1, ..., xn) = g(y1, ..., ym) and C1 and ... and Ck
+```
+
+We CAN translate this if
+```
+|{x1, ..., xn, y1, ..., ym} - (FV(C1) ∪ ... ∪ FV(Ck))| <= 1
+```
+
+meaning that all the free variables of the terms `f` and `g` are present in the conjunction but for one.
+
+Let's suppose that we have the case where variable `xi` is the one that is not present in the conjunction. And let's say that
+```
+xi = a1 x1 + ... + ai-1 xi-1 + ai+1 xi+1 + ... + an xn + b1 y1 + ... + bm ym + c
+```
+
+given that `f` and `g` are linear polynomials in their arguments then finding these coefficients is always possible and easy to do. Then we can translate this as
+
+```sql
+SELECT tr(x1) AS x1, ..., tr(xi-1) AS xi-1, tr(xi+1) AS xi+1, ..., tr(xn) AS xn,
+       tr(y1) AS y1, ..., tr(ym) AS ym,
+       ai * tr(xi) + ... + ai-1 * tr(xi-1) + ai+1 * tr(xi+1) + ... + an * tr(xn) + b1 * tr(y1) + ... + bm * tr(ym) + c AS xi
+FROM C1, C2, ..., Ck
+WHERE EQ(free_variables)
+```
+
+So for example if we have:
+```
+x = y + 1 and A(y)
+```
+then this will be translated as:
+```sql
+SELECT T1.y, T1.y + 1 AS x
+FROM (
+  SELECT T0.A1 AS y
+  FROM A AS T0
+) AS T1;
+```
+
+So in general this is a special case for linear terms present in an equality condition.
