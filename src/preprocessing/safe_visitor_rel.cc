@@ -1,7 +1,6 @@
 #include "preprocessing/safe_visitor_rel.h"
 
-#include <variant>
-
+#include "preprocessing/fixpoint_safety_visitor_rel.h"
 #include "rel_ast/extended_ast.h"
 #include "support/exceptions.h"
 
@@ -27,10 +26,18 @@ void SafeVisitorRel::Visit(RelDef& node) {
 
   auto info = container_->GetRelationInfo(current_relation_);
   if (info && !info->recursion_metadata.empty()) {
-    throw NotImplementedException(
-        "Safety analysis for recursive definitions is not yet supported in Rel pipeline. "
-        "Use the legacy pipeline for recursive programs.",
-        SourceLocation(0, 0));
+    if (node.body && node.body->exprs.size() == 1) {
+      auto* bf = dynamic_cast<RelBindingsFormula*>(node.body->exprs[0].get());
+      if (bf) {
+        FixpointSafetyVisitorRel fixpoint_visitor(container_, node.name);
+        BoundSet fixpoint_safety = fixpoint_visitor.ComputeFixpoint(*bf);
+        if (bf->formula) bf->formula->safety = fixpoint_safety;
+        fixpoint_visitor.ComputeBindingsSafety(*bf, *bf->formula, bf->bindings);
+        node.body->safety = bf->safety;
+        current_relation_.clear();
+        return;
+      }
+    }
   }
 
   if (node.body) node.body->Accept(*this);

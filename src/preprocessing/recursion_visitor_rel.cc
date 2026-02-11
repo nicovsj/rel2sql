@@ -1,8 +1,6 @@
 #include "preprocessing/recursion_visitor_rel.h"
 
-#include <algorithm>
 #include <stack>
-#include <variant>
 
 namespace rel2sql {
 
@@ -101,8 +99,7 @@ bool RecursionVisitorRel::IsRecursiveID(const std::string& id) const {
   return false;
 }
 
-std::unordered_set<std::string> RecursionVisitorRel::CollectIDs(
-    const std::shared_ptr<RelFormula>& formula) const {
+std::unordered_set<std::string> RecursionVisitorRel::CollectIDs(const std::shared_ptr<RelFormula>& formula) const {
   std::unordered_set<std::string> ids;
   if (!formula) return ids;
 
@@ -148,9 +145,8 @@ std::unordered_set<std::string> RecursionVisitorRel::CollectIDs(
   return ids;
 }
 
-bool RecursionVisitorRel::OnlyEDBsOrNonRecursiveIDBs(
-    const std::unordered_set<std::string>& ids,
-    const std::string& current_q) const {
+bool RecursionVisitorRel::OnlyEDBsOrNonRecursiveIDBs(const std::unordered_set<std::string>& ids,
+                                                     const std::string& current_q) const {
   for (const auto& id : ids) {
     if (id == current_q) return false;
     if (container_->IsEDB(id)) continue;
@@ -164,8 +160,7 @@ bool RecursionVisitorRel::OnlyEDBsOrNonRecursiveIDBs(
 }
 
 bool RecursionVisitorRel::VariablesFromBindingOrQuantification(
-    const std::set<std::string>& vars,
-    const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
+    const std::set<std::string>& vars, const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
     const std::vector<std::shared_ptr<RelBinding>>& quant_bindings) const {
   std::set<std::string> binding_vars;
   for (const auto& b : outer_bindings) {
@@ -239,11 +234,9 @@ bool RecursionVisitorRel::CheckRecursionPattern(const std::shared_ptr<RelFormula
   return true;
 }
 
-bool RecursionVisitorRel::CheckExistsPattern(
-    const std::shared_ptr<RelQuantification>& quant,
-    const std::string& q,
-    const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
-    RecursiveBranchMatch& match) {
+bool RecursionVisitorRel::CheckExistsPattern(const std::shared_ptr<RelQuantification>& quant, const std::string& q,
+                                             const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
+                                             RecursiveBranchMatch& match) {
   if (!quant || !quant->formula) return false;
 
   std::shared_ptr<RelFullAppl> q_call;
@@ -289,9 +282,8 @@ bool RecursionVisitorRel::IsCallToQ(const RelFullAppl& appl, const std::string& 
   return id_base && id_base->id == q;
 }
 
-void RecursionVisitorRel::CollectOrDisjuncts(
-    const std::shared_ptr<RelFormula>& formula,
-    std::vector<std::shared_ptr<RelFormula>>& disjuncts) const {
+void RecursionVisitorRel::CollectOrDisjuncts(const std::shared_ptr<RelFormula>& formula,
+                                             std::vector<std::shared_ptr<RelFormula>>& disjuncts) const {
   if (!formula) return;
   auto* bin = dynamic_cast<RelBinOp*>(formula.get());
   if (bin && bin->op == RelLogicalOp::OR) {
@@ -302,11 +294,9 @@ void RecursionVisitorRel::CollectOrDisjuncts(
   disjuncts.push_back(formula);
 }
 
-void RecursionVisitorRel::FindAndPatternParts(
-    const std::shared_ptr<RelFormula>& formula,
-    const std::string& q,
-    std::shared_ptr<RelFullAppl>& q_call,
-    std::shared_ptr<RelFormula>& f_part) const {
+void RecursionVisitorRel::FindAndPatternParts(const std::shared_ptr<RelFormula>& formula, const std::string& q,
+                                              std::shared_ptr<RelFullAppl>& q_call,
+                                              std::shared_ptr<RelFormula>& f_part) const {
   if (!formula) return;
   auto* bin = dynamic_cast<RelBinOp*>(formula.get());
   if (bin && bin->op == RelLogicalOp::AND) {

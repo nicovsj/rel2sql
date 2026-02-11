@@ -95,7 +95,9 @@ std::string TermOpToString(RelTermOp op) {
 }  // namespace
 
 void RelLiteral::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+
 std::string RelLiteral::ToString() const { return LiteralValueToString(value); }
+
 void RelAbstraction::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
 std::string RelAbstraction::ToString() const {
   std::ostringstream out;
@@ -109,21 +111,26 @@ std::string RelAbstraction::ToString() const {
 }
 void RelIDTerm::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
 std::string RelIDTerm::ToStringImpl() const { return id; }
+
 void RelNumTerm::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
 std::string RelNumTerm::ToStringImpl() const { return ConstantToString(value); }
+
 void RelOpTerm::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
 std::string RelOpTerm::ToStringImpl() const {
   std::string l = lhs ? lhs->ToString() : "?";
   std::string r = rhs ? rhs->ToString() : "?";
-  return "(" + l + " " + TermOpToString(op) + " " + r + ")";
+  return l + " " + TermOpToString(op) + " " + r;
 }
 void RelParenthesisTerm::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
 std::string RelParenthesisTerm::ToStringImpl() const {
   return term ? "(" + term->ToString() + ")" : "()";
 }
 void RelFormulaBool::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+
 std::string RelFormulaBool::ToStringImpl() const { return "true"; }
+
 void RelComparison::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+
 std::string RelComparison::ToStringImpl() const {
   std::string l = lhs ? lhs->ToString() : "?";
   std::string r = rhs ? rhs->ToString() : "?";
@@ -131,27 +138,30 @@ std::string RelComparison::ToStringImpl() const {
 }
 void RelUnOp::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
 std::string RelUnOp::ToStringImpl() const {
-  return formula ? "not (" + formula->ToString() + ")" : "not (?)";
+  return formula ? "not " + formula->ToString() : "not (?)";
 }
 void RelBinOp::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
 std::string RelBinOp::ToStringImpl() const {
   std::string l = lhs ? lhs->ToString() : "?";
   std::string r = rhs ? rhs->ToString() : "?";
-  return "(" + l + " " + LogicalOpToString(op) + " " + r + ")";
+  return l + " " + LogicalOpToString(op) + " " + r;
 }
+
 void RelParen::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+
 std::string RelParen::ToStringImpl() const {
   return formula ? "(" + formula->ToString() + ")" : "()";
 }
 void RelQuantification::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
 std::string RelQuantification::ToStringImpl() const {
   std::ostringstream out;
-  out << QuantOpToString(op) << " ";
+  out << QuantOpToString(op) << "( (";
   for (size_t i = 0; i < bindings.size(); ++i) {
     if (i) out << ", ";
     out << (bindings[i] ? bindings[i]->ToString() : "?");
   }
-  out << " : " << (formula ? formula->ToString() : "?");
+  out << ") | " << (formula ? formula->ToString() : "?");
+  out << ")";
   return out.str();
 }
 void RelFullAppl::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }

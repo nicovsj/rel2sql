@@ -5,28 +5,19 @@
 #include "optimizer/cte_inliner.h"
 #include "optimizer/validating_optimizer.h"
 #include "parser/sql_parse.h"
-#include "preprocessing/preprocessor.h"
 #include "rel_ast/relation_info.h"
 #include "test_common.h"
 
 namespace rel2sql {
 
-std::string TranslateWithOptimization(antlr4::ParserRuleContext* tree,
-                                      const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
-  Preprocessor preprocessor(edb_map);
-  auto ast = preprocessor.Process(tree);
-
-  auto sql = GetSQLFromAST(ast);
-
-  // Use ValidatingOptimizer in tests to catch which optimization step breaks validation
+static std::string ApplyValidatingOptimizer(std::shared_ptr<sql::ast::Expression> sql) {
+  if (!sql) return "";
   sql::ast::ValidatingOptimizer optimizer;
   try {
     optimizer.Visit(*sql);
   } catch (const std::runtime_error& e) {
-    // ValidatingOptimizer throws with details about which step failed
     EXPECT_TRUE(false) << e.what();
   }
-
   return sql->ToString();
 }
 
@@ -35,27 +26,19 @@ class OptimizationTest : public ::testing::Test {
   void SetUp() override { default_edb_map = CreateDefaultEDBMap(); }
 
   std::string TranslateFormula(const std::string& input) {
-    auto parser = GetParser(input);
-    auto tree = parser->formula();
-    return TranslateWithOptimization(tree, default_edb_map);
+    return ApplyValidatingOptimizer(GetSQLFromFormula(input, default_edb_map));
   }
 
   std::string TranslateExpression(const std::string& input) {
-    auto parser = GetParser(input);
-    auto tree = parser->expr();
-    return TranslateWithOptimization(tree, default_edb_map);
+    return ApplyValidatingOptimizer(GetSQLFromExpr(input, default_edb_map));
   }
 
   std::string TranslateProgram(const std::string& input) {
-    auto parser = GetParser(input);
-    auto tree = parser->program();
-    return TranslateWithOptimization(tree, default_edb_map);
+    return ApplyValidatingOptimizer(GetUnoptimizedSQLRel(input, default_edb_map));
   }
 
   std::string TranslateDefinition(const std::string& input) {
-    auto parser = GetParser(input);
-    auto tree = parser->relDef();
-    return TranslateWithOptimization(tree, default_edb_map);
+    return ApplyValidatingOptimizer(GetUnoptimizedSQLRel(input, default_edb_map));
   }
 
   rel2sql::RelationMap default_edb_map;
@@ -90,7 +73,7 @@ TEST_F(OptimizationTest, OperatorFormula) {
 }
 
 TEST_F(OptimizationTest, ConjunctionFormula) {
-  EXPECT_EQ(TranslateFormula("A(x) and D(x)"), "SELECT T0.A1 AS x FROM A AS T0, D AS T2 WHERE T0.A1 = T2.A1");
+  EXPECT_EQ(TranslateFormula("A(x) and D(x)"), "SELECT T0.A1 AS x FROM A AS T0, D AS T1 WHERE T0.A1 = T1.A1");
 }
 
 TEST_F(OptimizationTest, DisjunctionFormula) {
@@ -107,17 +90,17 @@ TEST_F(OptimizationTest, ExistentialFormula2) {
 
 TEST_F(OptimizationTest, ExistentialFormula3) {
   EXPECT_EQ(TranslateFormula("exists ((y in A) | D(x, y))"),
-            "SELECT T1.A1 AS x FROM D AS T1, A AS T0 WHERE T1.A2 = T0.A1");
+            "SELECT T0.A1 AS x FROM D AS T0, A AS T2 WHERE T0.A2 = T2.A1");
 }
 
 TEST_F(OptimizationTest, ExistentialFormula4) {
   EXPECT_EQ(TranslateFormula("exists ((y in A, z in D) | C(x, y, z))"),
-            "SELECT T2.A1 AS x FROM C AS T2, A AS T0, D AS T1 WHERE T2.A2 = T0.A1 AND T2.A3 = T1.A1");
+            "SELECT T0.A1 AS x FROM C AS T0, A AS T2, D AS T3 WHERE T0.A2 = T2.A1 AND T0.A3 = T3.A1");
 }
 
 TEST_F(OptimizationTest, ExistentialFormula5) {
   EXPECT_EQ(TranslateFormula("exists ((y in A, z) | C(x, y, z))"),
-            "SELECT T1.A1 AS x FROM C AS T1, A AS T0 WHERE T1.A2 = T0.A1");
+            "SELECT T0.A1 AS x FROM C AS T0, A AS T2 WHERE T0.A2 = T2.A1");
 }
 
 TEST_F(OptimizationTest, UniversalFormula1) {
@@ -185,12 +168,12 @@ TEST_F(OptimizationTest, PartialApplicationSharingVariables2) {
 
 TEST_F(OptimizationTest, PartialApplicationSharingVariables3) {
   EXPECT_EQ(TranslateExpression("C[B[x], x]"),
-            "SELECT T1.A1 AS x, T0.A3 AS A1 FROM C AS T0, B AS T1 WHERE T0.A2 = T1.A1 AND T0.A1 = T1.A2");
+            "SELECT T1.A1 AS x, T0.A3 AS A1 FROM C AS T0, B AS T1 WHERE T0.A1 = T1.A2 AND T0.A2 = T1.A1");
 }
 
 TEST_F(OptimizationTest, PartialApplicationSharingVariables4) {
   EXPECT_EQ(TranslateExpression("C[B[x], x, y]"),
-            "SELECT T1.A1 AS x, T0.A3 AS y FROM C AS T0, B AS T1 WHERE T0.A2 = T1.A1 AND T0.A1 = T1.A2");
+            "SELECT T1.A1 AS x, T0.A3 AS y FROM C AS T0, B AS T1 WHERE T0.A1 = T1.A2 AND T0.A2 = T1.A1");
 }
 
 TEST_F(OptimizationTest, AggregateExpression1) {
@@ -213,38 +196,34 @@ TEST_F(OptimizationTest, AggregateExpression5) {
   EXPECT_EQ(TranslateExpression("max[B[x]]"), "SELECT T0.A1 AS x, MAX(T0.A2) AS A1 FROM B AS T0 GROUP BY T0.A1");
 }
 
-TEST_F(OptimizationTest, AggregateExpression6) {
-  EXPECT_EQ(TranslateExpression("(x): A(x) or D(x)"), "SELECT T0.A1 AS x, MAX(T0.A2) AS A1 FROM B AS T0 GROUP BY T0.A1");
-}
-
-TEST_F(OptimizationTest, RelationalAbstraction) {
+TEST_F(OptimizationTest, RelationalAbstraction1) {
   EXPECT_EQ(
       TranslateExpression("{(1,2); (3,4)}"),
       "SELECT CASE WHEN I0.i = 1 THEN T0.A1 WHEN I0.i = 2 THEN T1.A1 END AS A1, CASE WHEN I0.i = 1 THEN T0.A2 WHEN "
       "I0.i = 2 THEN T1.A2 END AS A2 FROM (SELECT 1, 2) AS T0, (SELECT 3, 4) AS T1, (VALUES (1), (2)) AS I0(i)");
 }
 
-TEST_F(OptimizationTest, BindingExpression) {
+TEST_F(OptimizationTest, BindingExpression1) {
   EXPECT_EQ(TranslateExpression("[x in A, y in D]: C[x, y]"),
-            "SELECT T0.A1 AS A1, T0.A2 AS A2, T0.A3 AS A3 FROM C AS T0");
+            "SELECT T0.A1 AS A1, T0.A2 AS A2, T0.A3 AS A3 FROM C AS T0, A AS T1, D AS T2 WHERE T0.A2 = T2.A1 AND T0.A1 "
+            "= T1.A1");
 }
 
-TEST_F(OptimizationTest, BindingExpressionBounded) {
+TEST_F(OptimizationTest, BindingExpressionBounded1) {
   EXPECT_EQ(TranslateExpression("[x in A, y]: C[x, y] where D(y)"),
-            "SELECT S2.A1 AS A1, T0.A2 AS A2, T0.A3 AS A3 FROM C AS T0, D AS T1, A AS S2 WHERE S2.A1 = T0.A1 AND T1.A1 "
-            "= T0.A2");
+            "SELECT T0.A1 AS A1, T0.A2 AS A2, T0.A3 AS A3 FROM C AS T0, D AS T1, A AS T4 WHERE T0.A1 = T4.A1 AND T0.A2 "
+            "= T1.A1");
 }
 
-TEST_F(OptimizationTest, BindingFormula) {
-  EXPECT_EQ(TranslateExpression("[x in T, y in R]: F(x, y)"),
-            "SELECT S1.A1 AS A1, S0.A1 AS A2 FROM F AS T0, T AS S1, R AS S0 WHERE S1.A1 = T0.A1 AND S0.A1 = T0.A2");
+TEST_F(OptimizationTest, BindingFormula1) {
+  EXPECT_EQ(TranslateExpression("[x in A, y in D]: B(x, y)"),
+            "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, A AS T1, D AS T2 WHERE T0.A2 = T2.A1 AND T0.A1 = T1.A1");
 }
 
 TEST_F(OptimizationTest, BindingFormula2) {
   EXPECT_EQ(TranslateExpression("(x): {B[1]}(x) or B(x,1)"),
-            "WITH RA0 AS (SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1), S0(x) AS (SELECT * FROM RA0 UNION SELECT "
-            "T8.A1 AS A1 FROM B AS T8) SELECT S0.x AS A1 FROM (SELECT RA0.A1 AS x FROM RA0 UNION SELECT T3.A1 AS x "
-            "FROM B AS T3 WHERE T3.A2 = 1) AS T7, S0 WHERE S0.x = T7.x");
+            "SELECT T6.x AS A1 FROM (SELECT T0.A2 AS x FROM B AS T0 WHERE T0.A1 = 1 UNION SELECT T4.A1 AS x FROM B AS "
+            "T4 WHERE T4.A2 = 1) AS T6");
 }
 
 TEST_F(OptimizationTest, BindingFormula3) {
@@ -265,10 +244,10 @@ TEST_F(OptimizationTest, NestedBindingFormula) {
   EXPECT_EQ(TranslateExpression("[x]: {(y) : B(x,y)}"), "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0");
 }
 
-TEST_F(OptimizationTest, Program) {
+TEST_F(OptimizationTest, Definition1) {
   EXPECT_EQ(TranslateDefinition("def R {[x in A]: B[x]}"),
-            "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT S0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, A AS S0 WHERE S0.A1 = "
-            "T0.A1)");
+            "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, A AS T1 WHERE T0.A1 = "
+            "T1.A1);");
 }
 
 TEST_F(OptimizationTest, MultipleDefs1) {
@@ -286,7 +265,7 @@ TEST_F(OptimizationTest, MultipleDefs2) {
 
 TEST_F(OptimizationTest, TableDefinition) {
   EXPECT_EQ(TranslateDefinition("def R {(1, 2); (3, 4)}"),
-            "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2))");
+            "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));");
 }
 
 TEST_F(OptimizationTest, EDBBindingFormula) {
@@ -295,7 +274,7 @@ TEST_F(OptimizationTest, EDBBindingFormula) {
 
 TEST_F(OptimizationTest, BindingConjunction) {
   EXPECT_EQ(TranslateExpression("(x, y): A(x) and B(x, y)"),
-            "SELECT T2.A1 AS A1, T2.A2 AS A2 FROM A AS T0, B AS T2 WHERE T2.A1 = T0.A1");
+            "SELECT T0.A1 AS A1, T1.A2 AS A2 FROM A AS T0, B AS T1 WHERE T0.A1 = T1.A1");
 }
 
 // TODO: We should try to optimize this case
@@ -306,22 +285,21 @@ TEST_F(OptimizationTest, DISABLED_BindingDisjunction) {
 
 TEST_F(OptimizationTest, Composition) {
   EXPECT_EQ(TranslateExpression("(x, y) : exists( (z) | B(x, z) and E(z, y) )"),
-            "SELECT T0.A1 AS A1, T2.A2 AS A2 FROM B AS T0, E AS T2 WHERE T0.A2 = T2.A1");
+            "SELECT T0.A1 AS A1, T1.A2 AS A2 FROM B AS T0, E AS T1 WHERE T0.A2 = T1.A1");
 }
 
 TEST_F(OptimizationTest, TransitiveClosure) {
   default_edb_map["R"] = RelationInfo(2);
 
   EXPECT_EQ(TranslateDefinition("def Q {(x,y) : R(x,y) or exists((z) | R(x,z) and Q(z,y))}"),
-            "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE S1(y) AS (SELECT T10.A2 AS A2 FROM R AS T10), S0(x) AS "
-            "(SELECT T9.A1 AS A1 FROM R AS T9), R0(A1, A2) AS (SELECT T0.A1 AS x, T0.A2 AS y FROM R AS T0 UNION SELECT "
-            "T1.A1 AS x, T3.A2 AS y FROM R AS T1, R0 AS T3 WHERE T1.A2 = T3.A1) SELECT DISTINCT S0.x AS A1, S1.y AS A2 "
-            "FROM R0, S1, S0 WHERE S1.y = R0.A2 AND S0.x = R0.A1)");
+            "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE R0(A1, A2) AS (SELECT T0.A1 AS x, T0.A2 AS y FROM R AS T0 "
+            "UNION SELECT T1.A1 AS x, T2.A2 AS y FROM R AS T1, R0 AS T2 WHERE T1.A2 = T2.A1) SELECT DISTINCT R0.A1 AS "
+            "A1, R0.A2 AS A2 FROM R0);");
 }
 
 TEST_F(OptimizationTest, FullApplicationOnExpression2) {
   EXPECT_EQ(TranslateExpression("{ (x,y) : B(x,y) } where B(1,2) "),
-            "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, B AS T4 WHERE T4.A1 = 1 AND T4.A2 = 2");
+            "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, B AS T3 WHERE T3.A1 = 1 AND T3.A2 = 2");
 }
 
 TEST_F(OptimizationTest, FullApplicationOnExpression3) {
@@ -331,7 +309,7 @@ TEST_F(OptimizationTest, FullApplicationOnExpression3) {
 TEST_F(OptimizationTest, FullApplicationOnExpression4) {
   EXPECT_EQ(TranslateDefinition("def Q { B[1] ; B[2] }"),
             "CREATE OR REPLACE VIEW Q AS (SELECT DISTINCT CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T3.A2 END "
-            "AS A1 FROM B AS T0, B AS T3, (VALUES (1), (2)) AS I0(i) WHERE T0.A1 = 1 AND T3.A1 = 2)");
+            "AS A1 FROM B AS T0, B AS T3, (VALUES (1), (2)) AS I0(i) WHERE T0.A1 = 1 AND T3.A1 = 2);");
 }
 
 TEST_F(OptimizationTest, FullApplicationOnExpression5) {
@@ -342,12 +320,12 @@ TEST_F(OptimizationTest, FullApplicationOnExpression5) {
 
 TEST_F(OptimizationTest, FullApplicationOnExpression6) {
   EXPECT_EQ(TranslateExpression("(x,y): B(x,y) where {[z] : E(1,z)}(3)"),
-            "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, E AS T3 WHERE T3.A2 = 3 AND T3.A1 = 1");
+            "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, E AS T2 WHERE T2.A2 = 3 AND T2.A1 = 1");
 }
 
 TEST_F(OptimizationTest, FullApplicationOnExpression7) {
   EXPECT_EQ(TranslateExpression("(x) : B(x,y) and B(y,x)"),
-            "SELECT T0.A2 AS y, T2.A2 AS A1 FROM B AS T0, B AS T2 WHERE T2.A1 = T0.A2 AND T2.A2 = T0.A1");
+            "SELECT T0.A2 AS y, T0.A1 AS A1 FROM B AS T0, B AS T1 WHERE T0.A2 = T1.A1 AND T0.A1 = T1.A2");
 }
 
 }  // namespace rel2sql

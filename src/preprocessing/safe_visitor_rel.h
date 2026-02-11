@@ -41,6 +41,10 @@ class SafeVisitorRel : public RelASTVisitor {
   Projection ExtractSingleVariableProjection(const Projection& proj,
                                              size_t variable_index) const;
 
+ protected:
+  RelASTContainer* GetContainer() const { return container_; }
+
+ private:
   RelASTContainer* container_;
   std::string current_relation_;
 };

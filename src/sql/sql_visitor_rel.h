@@ -57,9 +57,12 @@ class SQLVisitorRel : public RelASTVisitor {
 
  private:
   std::shared_ptr<sql::ast::Sourceable> TryGetTopLevelIDSelect(RelAbstraction* body);
+
   // Build a VALUES-based Select from a relation abstraction that has only literal/product exprs.
   std::shared_ptr<sql::ast::Expression> BuildLiteralRelationAbstractionRel(RelAbstraction& node);
+
   std::shared_ptr<sql::ast::Expression> GetExpressionFromID(RelNode& node, const std::string& id, bool is_top_level);
+
   // Resolve the base of an application (ID or relation abstraction) to a Sourceable. Shared by full and partial
   // application.
   std::shared_ptr<sql::ast::Sourceable> GetBaseSourceableFromApplBase(RelNode& node,
@@ -71,8 +74,13 @@ class SQLVisitorRel : public RelASTVisitor {
     std::vector<std::pair<size_t, std::shared_ptr<sql::ast::Source>>> relation_param_sources;
     std::vector<std::tuple<size_t, std::shared_ptr<sql::ast::Source>, RelNode*>> non_term_param_slots;
   };
+
   FullApplParamSlots CollectApplParams(RelNode& node, const std::vector<std::shared_ptr<RelApplParam>>& params);
-  FullApplParamSlots CollectFullApplParams(RelFullAppl& node);
+
+  // Build SQL term for a variable from a param slot column using term_linear_coeffs (column holds a*x+b, result is x).
+  std::shared_ptr<sql::ast::Term> MakeTermForVariableFromParamSlotRel(
+      RelNode* term_node, const std::string& column_name, const std::shared_ptr<sql::ast::Source>& ra_source) const;
+
   // Build FROM sources, WHERE condition, and SELECT list for an application (full or partial). Mirrors
   // ApplicationVariableConditions + SpecialAppliedVarList.
   struct FullApplSqlParts {
@@ -80,59 +88,97 @@ class SQLVisitorRel : public RelASTVisitor {
     std::shared_ptr<sql::ast::Condition> where;
     std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
   };
+
   FullApplSqlParts BuildFullApplSql(const FullApplParamSlots& slots, const std::shared_ptr<sql::ast::Source>& ra_source,
                                     const std::shared_ptr<sql::ast::Sourceable>& base_sourceable,
                                     const std::function<std::string(size_t)>& column_name_for_index);
+
   // Build SELECT with GROUP BY and aggregate (for partial application of aggregate functions, e.g. sum[A]).
   std::shared_ptr<sql::ast::Select> VisitAggregateRel(RelExpr& expr, sql::ast::AggregateFunction function);
+
   std::string GenerateTableAlias(const std::string& prefix = "T");
+
   // Return the column name for the idx-th column (1-based) of a sourceable (Table, Select, Union, etc.).
   std::string GetColumnNameForSourceable(const std::shared_ptr<sql::ast::Sourceable>& src, size_t idx) const;
+
   // Return the number of columns (arity) of a sourceable.
   size_t GetArityForSourceable(const std::shared_ptr<sql::ast::Sourceable>& src) const;
+
+  // Cast expr to Sourceable; throw TranslationException if the cast fails.
+  std::shared_ptr<sql::ast::Sourceable> ExpectSourceable(const std::shared_ptr<sql::ast::Expression>& expr) const;
+
   std::shared_ptr<sql::ast::Source> CreateTableSource(const std::string& table_name);
+
   void ApplyDistinctToDefinitionSelects(const std::shared_ptr<sql::ast::Sourceable>& sourceable);
+
   std::vector<std::shared_ptr<sql::ast::Selectable>> VarListShorthandRel(
       const std::vector<RelNode*>& nodes, const std::shared_ptr<sql::ast::Source>& source);
+
   std::vector<std::shared_ptr<sql::ast::Selectable>> VarListShorthandRel(
       const std::vector<std::pair<RelNode*, std::shared_ptr<sql::ast::Source>>>& node_source_pairs);
+
   std::shared_ptr<sql::ast::Condition> EqualityShorthandRel(const std::vector<RelNode*>& nodes);
+
   // Condition expr special case: RHS is (possibly parenthesized) conjunction of comparisons only.
   bool CollectComparatorOnlyConjunctsRel(const std::shared_ptr<RelFormula>& formula,
                                          std::vector<std::shared_ptr<RelNode>>& out);
+
   void BuildConditionExprComparatorOnlyRHSRel(RelConditionExpr& node,
-                                               const std::vector<std::shared_ptr<RelNode>>& comparator_conjuncts);
+                                              const std::vector<std::shared_ptr<RelNode>>& comparator_conjuncts);
+
   // For a full application, build chained equalities between columns corresponding
   // to repeated term parameters for the same variable (p1 = p2, p2 = p3, ...).
   std::vector<std::shared_ptr<sql::ast::Condition>> AddChainedEqualitiesForTermParams(
       const std::vector<std::pair<RelNode*, size_t>>& term_param_slots,
       const std::function<std::string(size_t)>& column_name_for_index,
       const std::shared_ptr<sql::ast::Source>& ra_source);
+
   // Generalized disjunction (OR) over two subformulas: translate both and union their results.
   std::shared_ptr<sql::ast::Expression> VisitGeneralizedDisjunctionRel(const std::shared_ptr<RelFormula>& lhs,
                                                                        const std::shared_ptr<RelFormula>& rhs);
+
   // Conjunction with separated comparator/non-comparator conjuncts, as produced by balancing.
   std::shared_ptr<sql::ast::Expression> VisitConjunctionWithComparatorsRel(
       const std::vector<std::shared_ptr<RelNode>>& other, const std::vector<std::shared_ptr<RelNode>>& comparators);
+
   // Simple binary conjunction without term/comparator splitting.
   std::shared_ptr<sql::ast::Expression> VisitSimpleBinaryRel(const std::shared_ptr<RelFormula>& lhs,
                                                              const std::shared_ptr<RelFormula>& rhs);
+
   // Conjunction with negated conjuncts: non_negated AND NOT negated_1 AND NOT negated_2 ... (NOT IN subqueries).
   std::shared_ptr<sql::ast::Expression> VisitConjunctionWithNegationsRel(
       const std::vector<std::shared_ptr<RelNode>>& non_negated, const std::vector<std::shared_ptr<RelNode>>& negated);
+
   // Existential quantification: exists bindings. formula
   std::shared_ptr<sql::ast::Expression> VisitExistentialRel(const std::vector<std::shared_ptr<RelBinding>>& bindings,
                                                             const std::shared_ptr<RelFormula>& formula,
                                                             const std::set<std::string>& free_vars);
+
   // Universal quantification: forall bindings. formula
   std::shared_ptr<sql::ast::Expression> VisitUniversalRel(const std::vector<std::shared_ptr<RelBinding>>& bindings,
                                                           const std::shared_ptr<RelFormula>& formula,
                                                           const std::set<std::string>& free_vars);
+
   std::shared_ptr<sql::ast::Expression> VisitGeneralizedConjunctionRel(
       const std::vector<std::shared_ptr<RelNode>>& subformulas);
+
   void SpecialAddSourceToFreeVariablesInTerm(
       const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources,
       std::shared_ptr<sql::ast::Term>& term);
+
+  // Create a recursive CTE from a formula (bindings formula with is_recursive). Returns (CTE source, any CTEs from
+  // the formula).
+  std::pair<std::shared_ptr<sql::ast::Source>, std::vector<std::shared_ptr<sql::ast::Source>>>
+  CreateRecursiveCTEFromFormula(const std::shared_ptr<sql::ast::Sourceable>& formula_sql,
+                                const std::string& recursive_definition_name, int arity);
+
+  // Build the formula source for a bindings formula: recursive CTE wrapped in a var-renaming subquery, or plain
+  // Source(formula_sql). When recursive, out_ctes and out_ctes_are_recursive are set so the caller can attach the
+  // CTE to the outer SELECT.
+  std::shared_ptr<sql::ast::Source> BuildBindingsFormulaSource(
+      const std::shared_ptr<sql::ast::Sourceable>& formula_sql, bool is_recursive,
+      const std::string& recursive_definition_name, const std::vector<std::shared_ptr<RelBinding>>& bindings,
+      std::vector<std::shared_ptr<sql::ast::Source>>* out_ctes = nullptr, bool* out_ctes_are_recursive = nullptr);
 
   RelASTContainer* container_;
   std::shared_ptr<sql::ast::Expression> result_;
