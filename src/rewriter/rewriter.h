@@ -8,17 +8,19 @@
 #include "rewriter/base_rewriter.h"
 #include "rewriter/binding_domain_rewriter.h"
 #include "rewriter/expression_as_term_rewriter.h"
+#include "rewriter/underscore_rewriter.h"
 
 namespace rel2sql {
 
 /**
  * Holds a sequence of rewriters and applies them to a Rel AST.
- * When given a root node, runs each rewriter in order; if a rewriter
- * replaces the root, the new node is used for the next rewriter.
+ * Used for standalone rewriting (e.g. in tests). The Preprocessor uses
+ * its own pipeline with visitors and rewriters interleaved.
  */
 class Rewriter {
  public:
   Rewriter() {
+    Add(std::make_unique<UnderscoreRewriter>());
     Add(std::make_unique<BindingDomainRewriter>());
     Add(std::make_unique<ExpressionAsTermRewriter>());
   }

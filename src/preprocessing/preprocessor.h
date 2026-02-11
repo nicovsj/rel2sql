@@ -3,6 +3,8 @@
 
 #include <antlr4-runtime.h>
 
+#include <memory>
+
 #include "preprocessing/arity_visitor.h"
 #include "preprocessing/balancing_visitor.h"
 #include "preprocessing/ids_visitor.h"
@@ -14,16 +16,17 @@
 #include "rel_ast/rel_ast_builder.h"
 #include "rel_ast/rel_ast_container.h"
 #include "rel_ast/relation_info.h"
-#include "rewriter/rewriter.h"
+#include "rewriter/binding_domain_rewriter.h"
+#include "rewriter/expression_as_term_rewriter.h"
+#include "rewriter/underscore_rewriter.h"
 
 namespace rel2sql {
 
 /**
- * Preprocessor that uses the RelAST pipeline: builds typed RelAST from ANTLR
- * and runs Rel-based visitors (IDs, Arity, Variables).
- *
- * This is the new pipeline per the Rel AST Migration Plan. Additional visitors
- * (Recursion, Literal, TermPolynomial, Balancing, Safe) will be migrated next.
+ * Preprocessor that builds typed RelAST from ANTLR and runs a unified pipeline
+ * of visitors and rewriters. Rewriters run after IDsVisitor and ArityVisitor
+ * (which populate the container) so that UnderscoreRewriter can use relation
+ * arities for partial application.
  */
 class Preprocessor {
  public:
@@ -34,39 +37,60 @@ class Preprocessor {
   RelASTContainer& Process(antlr4::ParserRuleContext* tree) {
     RelASTBuilder builder;
     auto program = builder.Build(tree);
-    Rewriter rewriter;
-    rewriter.Run(program);
     container_.SetRoot(program);
-    RunVisitorsOnRoot(program);
+    std::shared_ptr<RelNode> root = program;
+    root = RunPipeline(std::move(root));
+    container_.SetRoot(std::dynamic_pointer_cast<RelProgram>(root));
     return container_;
   }
 
   void ProcessFormula(antlr4::ParserRuleContext* tree, std::shared_ptr<RelFormula>& formula_out) {
     RelASTBuilder builder;
     formula_out = builder.BuildFromFormula(tree);
-    Rewriter rewriter;
-    formula_out = rewriter.Run(formula_out);
-    RunVisitorsOnRoot(formula_out);
+    std::shared_ptr<RelNode> root = RunPipeline(std::shared_ptr<RelNode>(formula_out));
+    formula_out = std::dynamic_pointer_cast<RelFormula>(root);
   }
 
   void ProcessExpr(antlr4::ParserRuleContext* tree, std::shared_ptr<RelExpr>& expr_out) {
     RelASTBuilder builder;
     expr_out = builder.BuildFromExpr(tree);
-    Rewriter rewriter;
-    expr_out = rewriter.Run(expr_out);
-    RunVisitorsOnRoot(expr_out);
+    std::shared_ptr<RelNode> root = RunPipeline(std::shared_ptr<RelNode>(expr_out));
+    expr_out = std::dynamic_pointer_cast<RelExpr>(root);
   }
 
   RelASTContainer* GetContainer() { return &container_; }
   const RelASTContainer* GetContainer() const { return &container_; }
 
  private:
-  void RunVisitorsOnRoot(std::shared_ptr<RelNode> root) {
+  std::shared_ptr<RelNode> RunPipeline(std::shared_ptr<RelNode> root) {
+    BindingDomainRewriter binding_domain_rewriter;
+    root->Accept(binding_domain_rewriter);
+    if (auto r = binding_domain_rewriter.TakeExprReplacement()) root = r;
+    if (auto r = binding_domain_rewriter.TakeFormulaReplacement()) root = r;
+
+    ExpressionAsTermRewriter expr_as_term_rewriter;
+    root->Accept(expr_as_term_rewriter);
+    if (auto r = expr_as_term_rewriter.TakeExprReplacement()) root = r;
+    if (auto r = expr_as_term_rewriter.TakeFormulaReplacement()) root = r;
+
+    // Populate container (IDs, arities) first so rewriters like UnderscoreRewriter
+    // can use GetArity for partial application.
     IDsVisitor ids_visitor(&container_);
     root->Accept(ids_visitor);
 
     ArityVisitor arity_visitor(&container_);
     root->Accept(arity_visitor);
+
+    UnderscoreRewriter underscore_rewriter(GetContainer());
+    root->Accept(underscore_rewriter);
+    if (auto r = underscore_rewriter.TakeExprReplacement()) root = r;
+    if (auto r = underscore_rewriter.TakeFormulaReplacement()) root = r;
+
+    IDsVisitor ids_visitor2(&container_);
+    root->Accept(ids_visitor2);
+
+    ArityVisitor arity_visitor2(&container_);
+    root->Accept(arity_visitor2);
 
     VariablesVisitor vars_visitor(&container_);
     root->Accept(vars_visitor);
@@ -85,6 +109,8 @@ class Preprocessor {
 
     SafetyVisitor safe_visitor(&container_);
     root->Accept(safe_visitor);
+
+    return root;
   }
 
   RelASTContainer container_;
