@@ -752,9 +752,8 @@ void SQLVisitorRel::Visit(RelBindingsExpr& node) {
 
   size_t expr_arity = node.expr->arity;
   size_t binding_count = node.bindings.size();
-  auto& inner_sql = expr_source->sourceable;
   for (size_t i = 1; i <= expr_arity; i++) {
-    std::string col_name = GetColumnNameForSourceable(inner_sql, i);
+    std::string col_name = std::format("A{}", i);
     auto column = std::make_shared<sql::ast::Column>(col_name, expr_source);
     select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, std::format("A{}", binding_count + i)));
   }
