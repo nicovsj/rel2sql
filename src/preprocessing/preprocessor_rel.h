@@ -4,16 +4,17 @@
 #include <antlr4-runtime.h>
 
 #include "preprocessing/arity_visitor_rel.h"
+#include "preprocessing/balancing_visitor_rel.h"
 #include "preprocessing/ids_visitor_rel.h"
 #include "preprocessing/lit_visitor_rel.h"
-#include "preprocessing/balancing_visitor_rel.h"
-#include "preprocessing/safe_visitor_rel.h"
 #include "preprocessing/recursion_visitor_rel.h"
+#include "preprocessing/safe_visitor_rel.h"
 #include "preprocessing/term_polynomial_visitor_rel.h"
 #include "preprocessing/vars_visitor_rel.h"
 #include "rel_ast/rel_ast_builder.h"
 #include "rel_ast/rel_ast_container.h"
 #include "rel_ast/relation_info.h"
+#include "rewriter/rewriter.h"
 
 namespace rel2sql {
 
@@ -33,28 +34,34 @@ class PreprocessorRel {
   RelASTContainer& Process(antlr4::ParserRuleContext* tree) {
     RelASTBuilder builder;
     auto program = builder.Build(tree);
+    Rewriter rewriter;
+    rewriter.Run(program);
     container_.SetRoot(program);
-    RunVisitorsOnRoot(program.get());
+    RunVisitorsOnRoot(program);
     return container_;
   }
 
   void ProcessFormula(antlr4::ParserRuleContext* tree, std::shared_ptr<RelFormula>& formula_out) {
     RelASTBuilder builder;
     formula_out = builder.BuildFromFormula(tree);
-    RunVisitorsOnRoot(formula_out.get());
+    Rewriter rewriter;
+    formula_out = rewriter.Run(formula_out);
+    RunVisitorsOnRoot(formula_out);
   }
 
   void ProcessExpr(antlr4::ParserRuleContext* tree, std::shared_ptr<RelExpr>& expr_out) {
     RelASTBuilder builder;
     expr_out = builder.BuildFromExpr(tree);
-    RunVisitorsOnRoot(expr_out.get());
+    Rewriter rewriter;
+    expr_out = rewriter.Run(expr_out);
+    RunVisitorsOnRoot(expr_out);
   }
 
   RelASTContainer* GetContainer() { return &container_; }
   const RelASTContainer* GetContainer() const { return &container_; }
 
  private:
-  void RunVisitorsOnRoot(RelNode* root) {
+  void RunVisitorsOnRoot(std::shared_ptr<RelNode> root) {
     IDsVisitorRel ids_visitor(&container_);
     root->Accept(ids_visitor);
 

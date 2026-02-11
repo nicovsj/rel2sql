@@ -41,6 +41,8 @@ cc_library(
         "src/preprocessing/*.h",
         "src/rel_ast/*.cc",
         "src/rel_ast/*.h",
+        "src/rewriter/*.cc",
+        "src/rewriter/*.h",
         "src/sql/*.cc",
         "src/sql/*.h",
         "src/sql_ast/*.cc",
