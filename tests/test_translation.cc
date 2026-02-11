@@ -130,6 +130,26 @@ TEST_F(TranslationTest, ArithmeticInComparisons6) {
             "T1.y + T1.z = 15");
 }
 
+TEST_F(TranslationTest, InferrableVariableConjunction1) {
+  EXPECT_EQ(TranslateExpression("x = y + 1 and A(y)"),
+            "SELECT T1.y, T1.y + 1 AS x FROM (SELECT T0.A1 AS y FROM A AS T0) AS T1");
+}
+
+TEST_F(TranslationTest, InferrableVariableConjunction2) {
+  EXPECT_EQ(TranslateExpression("z = x + 1 and A(x)"),
+            "SELECT T1.x, T1.x + 1 AS z FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1");
+}
+
+TEST_F(TranslationTest, InferrableVariableConjunction3) {
+  EXPECT_EQ(TranslateExpression("x = 2 * y - 3 and A(y)"),
+            "SELECT T1.y, 2 * T1.y - 3 AS x FROM (SELECT T0.A1 AS y FROM A AS T0) AS T1");
+}
+
+TEST_F(TranslationTest, InferrableVariableMultivariate) {
+  EXPECT_EQ(TranslateExpression("z = x + y + 1 and B(x, y)"),
+            "SELECT T1.x, T1.y, T1.x + T1.y + 1 AS z FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0) AS T1");
+}
+
 TEST_F(TranslationTest, NegativeLiteral1) {
   EXPECT_EQ(TranslateFormula("A(x) and x > -5"),
             "SELECT T1.x FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1 WHERE T1.x > -5");
@@ -555,24 +575,12 @@ TEST_F(TranslationTest, FailedParameterVariableTerms4) {
   EXPECT_THROW(TranslateExpression("A((1-1)*x)"), VariableException);
 }
 
-TEST_F(TranslationTest, DISABLED_ExpressionVariableTerms1) {
-  EXPECT_EQ(TranslateExpression("[x] : x where A(x)"),
-            "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1 AND T1.x < 5");
-}
-
-TEST_F(TranslationTest, DISABLED_ExpressionVariableTerms2) {
-  EXPECT_EQ(TranslateExpression("[x] : x+1 where A(x)"),
-            "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1 AND T1.x < 5");
-}
-
-TEST_F(TranslationTest, DISABLED_ExpressionVariableTerms3) {
-  EXPECT_EQ(TranslateExpression("[x,y] : x+y where B(x,y)"),
-            "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1 AND T1.x < 5");
-}
-
-TEST_F(TranslationTest, DISABLED_ExpressionVariableTerms4) {
-  EXPECT_EQ(TranslateExpression("[x,y] : x+y where A(x) where A(y)"),
-            "SELECT T1.x, T1.A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 WHERE T1.x > 1 AND T1.x < 5");
+TEST_F(TranslationTest, ExpressionAsTermRewriterBindingsBody) {
+  // [x in A, y in A]: x+y+1  ->  [x,y]: { (z): z = x+y+1 and A(x) and A(y) }
+  EXPECT_EQ(TranslateExpression("[x in A, y in A]: x+y+1"),
+            "SELECT T6.x AS A1, T6.y AS A2, T6.A1 AS A3 FROM (SELECT T4.x, T4.y, T4._x0 AS A1 FROM (SELECT T1.x, T3.y, "
+            "T1.x + T3.y + 1 AS _x0 FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1, (SELECT T2.A1 AS y FROM A AS T2) AS "
+            "T3) AS T4) AS T6");
 }
 
 TEST_F(TranslationTest, Program) {

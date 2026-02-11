@@ -163,6 +163,11 @@ class Translator : public RelASTVisitor {
       const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources,
       std::shared_ptr<sql::ast::Term>& term);
 
+  // For inferrable term equalities: build SQL term from a linear RelTerm given variable->source map.
+  std::shared_ptr<sql::ast::Term> BuildSqlTermFromLinearRelTerm(
+      const std::shared_ptr<RelTerm>& rel_term,
+      const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources) const;
+
   // Create a recursive CTE from a formula (bindings formula with is_recursive). Returns (CTE source, any CTEs from
   // the formula).
   std::pair<std::shared_ptr<sql::ast::Source>, std::vector<std::shared_ptr<sql::ast::Source>>>

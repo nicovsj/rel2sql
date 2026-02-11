@@ -53,11 +53,6 @@ void TermPolynomialVisitor::Visit(RelOpTerm& node) {
   if (node.lhs) node.lhs->Accept(*this);
   if (node.rhs) node.rhs->Accept(*this);
 
-  if (node.variables.size() > 1) {
-    MarkInvalid(&node);
-    return;
-  }
-
   if (!node.lhs || !node.rhs || !HasValidLinear(node.lhs.get()) || !HasValidLinear(node.rhs.get())) {
     MarkInvalid(&node);
     return;

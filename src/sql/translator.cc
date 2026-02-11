@@ -1176,6 +1176,21 @@ std::shared_ptr<sql::ast::Expression> Translator::VisitGeneralizedDisjunctionRel
   return std::make_shared<sql::ast::Union>(lhs_srcable, rhs_srcable);
 }
 
+namespace {
+
+bool IsInferrableTermEquality(RelComparison* comp,
+                              const std::set<std::string>& fv_non_comparator) {
+  if (!comp || comp->op != RelCompOp::EQ) return false;
+  if (!comp->lhs || !comp->rhs) return false;
+  std::set<std::string> missing;
+  for (const auto& var : comp->free_variables) {
+    if (fv_non_comparator.count(var) == 0) missing.insert(var);
+  }
+  return missing.size() == 1;
+}
+
+}  // namespace
+
 std::shared_ptr<sql::ast::Expression> Translator::VisitConjunctionWithComparatorsRel(
     const std::vector<std::shared_ptr<RelNode>>& other, const std::vector<std::shared_ptr<RelNode>>& comparators) {
   // First translate the non-comparator conjuncts as a generalized conjunction.
@@ -1193,6 +1208,7 @@ std::shared_ptr<sql::ast::Expression> Translator::VisitConjunctionWithComparator
 
   // Collect sources for free variables from the non-comparator conjuncts.
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> free_var_sources;
+  std::set<std::string> fv_non_comparator;
   for (const auto& f : other) {
     if (!f) continue;
     auto src = std::dynamic_pointer_cast<sql::ast::Source>(f->sql_expression);
@@ -1201,12 +1217,41 @@ std::shared_ptr<sql::ast::Expression> Translator::VisitConjunctionWithComparator
       if (free_var_sources.find(var) == free_var_sources.end()) {
         free_var_sources[var] = src;
       }
+      fv_non_comparator.insert(var);
     }
   }
 
-  // Translate comparator conjuncts and attach their conditions using the collected sources.
+  std::vector<std::shared_ptr<sql::ast::Selectable>> inferrable_select_cols;
+
   for (const auto& comp : comparators) {
     if (!comp) continue;
+    auto* comp_node = dynamic_cast<RelComparison*>(comp.get());
+    if (comp_node && IsInferrableTermEquality(comp_node, fv_non_comparator)) {
+      std::string inferrable_var;
+      for (const auto& var : comp_node->free_variables) {
+        if (fv_non_comparator.count(var) == 0) {
+          inferrable_var = var;
+          break;
+        }
+      }
+      if (inferrable_var.empty()) continue;
+      std::shared_ptr<RelTerm> defining_term;
+      if (auto* lhs_id = dynamic_cast<RelIDTerm*>(comp_node->lhs.get());
+          lhs_id && lhs_id->id == inferrable_var) {
+        defining_term = comp_node->rhs;
+      } else if (auto* rhs_id = dynamic_cast<RelIDTerm*>(comp_node->rhs.get());
+                 rhs_id && rhs_id->id == inferrable_var) {
+        defining_term = comp_node->lhs;
+      } else {
+        continue;
+      }
+      auto sql_term = BuildSqlTermFromLinearRelTerm(defining_term, free_var_sources);
+      if (!sql_term) continue;
+      inferrable_select_cols.push_back(
+          std::make_shared<sql::ast::TermSelectable>(sql_term, inferrable_var));
+      continue;
+    }
+
     comp->Accept(*this);
     auto comp_sql = std::dynamic_pointer_cast<sql::ast::ComparisonCondition>(comp->sql_expression);
     if (!comp_sql) continue;
@@ -1217,6 +1262,12 @@ std::shared_ptr<sql::ast::Expression> Translator::VisitConjunctionWithComparator
     SpecialAddSourceToFreeVariablesInTerm(free_var_sources, rhs);
     new_conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, comp_sql->op, rhs));
   }
+
+  auto select_cols = select_sql->columns;
+  for (auto& col : inferrable_select_cols) {
+    select_cols.push_back(std::move(col));
+  }
+  select_sql->columns = std::move(select_cols);
 
   std::shared_ptr<sql::ast::Condition> new_where;
   if (new_conditions.size() == 1) {
@@ -1517,6 +1568,43 @@ std::shared_ptr<sql::ast::Expression> Translator::VisitGeneralizedConjunctionRel
     from = std::make_shared<sql::ast::From>(subqueries);
   }
   return std::make_shared<sql::ast::Select>(select_cols, from);
+}
+
+std::shared_ptr<sql::ast::Term> Translator::BuildSqlTermFromLinearRelTerm(
+    const std::shared_ptr<RelTerm>& rel_term,
+    const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources) const {
+  if (!rel_term) return nullptr;
+
+  if (auto* num = dynamic_cast<RelNumTerm*>(rel_term.get())) {
+    return std::make_shared<sql::ast::Constant>(num->value);
+  }
+
+  if (auto* id = dynamic_cast<RelIDTerm*>(rel_term.get())) {
+    auto it = free_var_sources.find(id->id);
+    if (it == free_var_sources.end()) return nullptr;
+    return std::make_shared<sql::ast::Column>(id->id, it->second);
+  }
+
+  if (auto* paren = dynamic_cast<RelParenthesisTerm*>(rel_term.get())) {
+    return BuildSqlTermFromLinearRelTerm(paren->term, free_var_sources);
+  }
+
+  if (auto* op_term = dynamic_cast<RelOpTerm*>(rel_term.get())) {
+    if (!op_term->lhs || !op_term->rhs) return nullptr;
+    auto lhs_sql = BuildSqlTermFromLinearRelTerm(op_term->lhs, free_var_sources);
+    auto rhs_sql = BuildSqlTermFromLinearRelTerm(op_term->rhs, free_var_sources);
+    if (!lhs_sql || !rhs_sql) return nullptr;
+    const char* op_str = "+";
+    switch (op_term->op) {
+      case RelTermOp::ADD: op_str = "+"; break;
+      case RelTermOp::SUB: op_str = "-"; break;
+      case RelTermOp::MUL: op_str = "*"; break;
+      case RelTermOp::DIV: op_str = "/"; break;
+    }
+    return std::make_shared<sql::ast::Operation>(lhs_sql, rhs_sql, op_str);
+  }
+
+  return nullptr;
 }
 
 void Translator::SpecialAddSourceToFreeVariablesInTerm(

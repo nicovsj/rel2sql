@@ -41,6 +41,8 @@ class BalancingVisitor : public RelASTVisitor {
   std::expected<void, std::pair<std::string, SourceLocation>> ValidateFreeVariables(
       const std::vector<std::shared_ptr<RelNode>>& checked_conjuncts,
       const std::vector<std::shared_ptr<RelNode>>& reference_conjuncts);
+  bool IsInferrableTermEquality(RelComparison* comp,
+                               const std::set<std::string>& fv_non_comparator) const;
   void ValidateComparatorFreeVariables(
       const std::vector<std::shared_ptr<RelNode>>& comparator_conjuncts,
       const std::vector<std::shared_ptr<RelNode>>& non_comparator_conjuncts);

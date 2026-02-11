@@ -250,6 +250,11 @@ TEST_F(OptimizationTest, Definition1) {
             "T1.A1);");
 }
 
+TEST_F(OptimizationTest, Definition2) {
+  EXPECT_EQ(TranslateDefinition("def R {[x]: x+1 where A(x)}"),
+            "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A1 + 1 AS A2 FROM A AS T0);");
+}
+
 TEST_F(OptimizationTest, MultipleDefs1) {
   EXPECT_EQ(TranslateProgram("def R {(1, 2); (3, 4)} \n def S {(1, 4); (3, 4)}"),
             "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE OR "

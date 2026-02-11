@@ -175,10 +175,35 @@ BalancingVisitor::ValidateFreeVariables(
   return {};
 }
 
+bool BalancingVisitor::IsInferrableTermEquality(RelComparison* comp,
+                                                const std::set<std::string>& fv_non_comparator) const {
+  if (!comp || comp->op != RelCompOp::EQ) return false;
+  if (!comp->lhs || !comp->rhs) return false;
+  std::set<std::string> missing;
+  for (const auto& var : comp->free_variables) {
+    if (fv_non_comparator.count(var) == 0) missing.insert(var);
+  }
+  return missing.size() == 1;
+}
+
 void BalancingVisitor::ValidateComparatorFreeVariables(
     const std::vector<std::shared_ptr<RelNode>>& comparator_conjuncts,
     const std::vector<std::shared_ptr<RelNode>>& non_comparator_conjuncts) {
-  auto result = ValidateFreeVariables(comparator_conjuncts, non_comparator_conjuncts);
+  std::set<std::string> fv_non_comparator;
+  for (const auto& ref : non_comparator_conjuncts) {
+    fv_non_comparator.insert(ref->free_variables.begin(), ref->free_variables.end());
+  }
+
+  std::vector<std::shared_ptr<RelNode>> to_validate;
+  for (const auto& comp : comparator_conjuncts) {
+    auto* comp_node = dynamic_cast<RelComparison*>(comp.get());
+    if (comp_node && IsInferrableTermEquality(comp_node, fv_non_comparator)) {
+      continue;
+    }
+    to_validate.push_back(comp);
+  }
+
+  auto result = ValidateFreeVariables(to_validate, non_comparator_conjuncts);
   if (!result) {
     throw VariableException(
         "Free variable '" + result.error().first +
