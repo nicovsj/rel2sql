@@ -1,5 +1,5 @@
-load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -19,8 +19,8 @@ cc_test(
         "test_translation.cc",
     ],
     deps = [
-        "//:rel2sql",
         ":test_common",
+        "//:rel2sql",
         "@googletest//:gtest_main",
     ],
 )
@@ -31,8 +31,8 @@ cc_test(
         "test_sql_ast.cc",
     ],
     deps = [
-        "//:rel2sql",
         ":test_common",
+        "//:rel2sql",
         "@googletest//:gtest_main",
     ],
 )
@@ -43,8 +43,8 @@ cc_test(
         "test_optimization.cc",
     ],
     deps = [
-        "//:rel2sql",
         ":test_common",
+        "//:rel2sql",
         "@googletest//:gtest_main",
     ],
 )
@@ -66,8 +66,8 @@ cc_test(
         "test_exceptions.cc",
     ],
     deps = [
-        "//:rel2sql",
         ":test_common",
+        "//:rel2sql",
         "@googletest//:gtest_main",
     ],
 )
@@ -78,8 +78,8 @@ cc_test(
         "test_sql_parser.cc",
     ],
     deps = [
-        "//:rel2sql",
         ":test_common",
+        "//:rel2sql",
         "@googletest//:gtest_main",
     ],
 )
@@ -90,8 +90,8 @@ cc_test(
         "test_rel_ast.cc",
     ],
     deps = [
-        "//:rel2sql",
         ":test_common",
+        "//:rel2sql",
         "@googletest//:gtest_main",
     ],
 )
@@ -102,8 +102,19 @@ cc_test(
         "test_sql_parser_roundtrip.cc",
     ],
     deps = [
-        "//:rel2sql",
         ":test_common",
+        "//:rel2sql",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "test_rewriter",
+    srcs = [
+        "test_rewriter.cc",
+    ],
+    deps = [
+        "//:rel2sql",
         "@googletest//:gtest_main",
     ],
 )

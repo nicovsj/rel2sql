@@ -7,6 +7,7 @@
 #include "rel_ast/rel_ast.h"
 #include "rewriter/base_rewriter.h"
 #include "rewriter/binding_domain_rewriter.h"
+#include "rewriter/expression_as_term_rewriter.h"
 
 namespace rel2sql {
 
@@ -17,9 +18,15 @@ namespace rel2sql {
  */
 class Rewriter {
  public:
-  Rewriter() { Add(std::make_unique<BindingDomainRewriter>()); };
+  Rewriter() {
+    Add(std::make_unique<BindingDomainRewriter>());
+    Add(std::make_unique<ExpressionAsTermRewriter>());
+  }
 
   void Add(std::unique_ptr<BaseRelRewriter> rewriter) { rewriters_.push_back(std::move(rewriter)); }
+
+  /** Clears all rewriters. Useful for building a custom pipeline. */
+  void Clear() { rewriters_.clear(); }
 
   /** Runs all rewriters on the program (traverses defs and bodies). */
   void Run(std::shared_ptr<RelProgram> program);
