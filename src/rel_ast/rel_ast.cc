@@ -189,10 +189,12 @@ std::string RelTermExpr::ToStringImpl() const {
 void RelProductExpr::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
 std::string RelProductExpr::ToStringImpl() const {
   std::ostringstream out;
+  out << "(";
   for (size_t i = 0; i < exprs.size(); ++i) {
     if (i) out << ", ";
     if (exprs[i]) out << exprs[i]->ToString();
   }
+  out << ")";
   return out.str();
 }
 void RelConditionExpr::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
