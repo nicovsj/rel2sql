@@ -8,7 +8,7 @@ The CLI reads Rel from stdin or a file and prints the translated SQL:
 
 ```sh
 # From stdin
-echo "def output = A" | bazel run //:rel2sql_bin
+echo 'def output {"Hello World!"}' | bazel run //:rel2sql_bin
 
 # From file
 bazel run //:rel2sql_bin -- -f query.rl
