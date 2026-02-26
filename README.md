@@ -41,7 +41,7 @@ This project uses Bazel as its build system and Task as its task runner. Before 
   - We recommend using [Bazelisk](https://github.com/bazelbuild/bazelisk) to automatically use the correct Bazel version specified in the `.bazelversion` file.
 - [Task](https://taskfile.dev/) (version 3.0.0 or later)
 - A C++ compiler (e.g., `g++` or `clang++`)
-- Java Development Kit (JDK) 11 or later
+- [Java Development Kit (JDK)](https://www.oracle.com/java/technologies/downloads/) 11 or later (for ANTLR)
 
 ## Building the Project
 
