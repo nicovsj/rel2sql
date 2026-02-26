@@ -1,4 +1,4 @@
-# rel2sql
+# Rel2SQL
 
 A tool that translates RelationalAI's [Rel](https://rel.relational.ai/rel) queries to SQL. Implemented in C++ with ANTLR for parsing Rel queries.
 
