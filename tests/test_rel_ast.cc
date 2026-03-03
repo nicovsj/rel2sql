@@ -6,7 +6,7 @@
 #include "preprocessing/preprocessor.h"
 #include "preprocessing/vars_visitor.h"
 #include "rel_ast/rel_ast_builder.h"
-#include "rel_ast/rel_ast_container.h"
+#include "rel_ast/rel_context.h"
 #include "rel_ast/rel_ast_visitor.h"
 #include "rel_ast/relation_info.h"
 
@@ -55,7 +55,7 @@ TEST(RelASTBuilderTest, IDsVisitorPopulatesContainer) {
   RelASTBuilder builder;
   auto program = builder.Build(tree);
 
-  RelASTContainer container(edb_map);
+  RelContext container(edb_map);
   container.SetRoot(program);
 
   IDsVisitor ids_visitor(&container);
@@ -78,7 +78,7 @@ TEST(RelASTBuilderTest, ArityVisitorPopulatesArity) {
   RelASTBuilder builder;
   auto program = builder.Build(tree);
 
-  RelASTContainer container(edb_map);
+  RelContext container(edb_map);
   container.SetRoot(program);
 
   IDsVisitor ids_visitor(&container);
@@ -103,7 +103,7 @@ TEST(RelASTBuilderTest, VariablesVisitorPopulatesVars) {
   RelASTBuilder builder;
   auto program = builder.Build(tree);
 
-  RelASTContainer container(edb_map);
+  RelContext container(edb_map);
   container.SetRoot(program);
 
   IDsVisitor ids_visitor(&container);

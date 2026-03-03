@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "rel_ast/rel_ast.h"
-#include "rel_ast/rel_ast_container.h"
+#include "rel_ast/rel_context.h"
 #include "rel_ast/rel_ast_visitor.h"
 #include "rel_ast/relation_info.h"
 
@@ -14,7 +14,7 @@ namespace rel2sql {
 
 class RecursionVisitor : public RelASTVisitor {
  public:
-  explicit RecursionVisitor(RelASTContainer* container) : container_(container) {}
+  explicit RecursionVisitor(RelContext* container) : container_(container) {}
 
   void Visit(RelProgram& node) override;
   void Visit(RelDef& node) override;
@@ -37,7 +37,7 @@ class RecursionVisitor : public RelASTVisitor {
   };
 
   std::string current_q_;
-  RelASTContainer* container_;
+  RelContext* container_;
 
   bool IsRecursiveID(const std::string& id) const;
   std::unordered_set<std::string> CollectIDs(const std::shared_ptr<RelFormula>& formula) const;

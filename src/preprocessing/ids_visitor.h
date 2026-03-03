@@ -4,14 +4,14 @@
 #include <unordered_set>
 
 #include "rel_ast/rel_ast.h"
-#include "rel_ast/rel_ast_container.h"
+#include "rel_ast/rel_context.h"
 #include "rel_ast/rel_ast_visitor.h"
 
 namespace rel2sql {
 
 class IDsVisitor : public RelASTVisitor {
  public:
-  explicit IDsVisitor(RelASTContainer* container) : container_(container) {}
+  explicit IDsVisitor(RelContext* container) : container_(container) {}
 
   void Visit(RelProgram& node) override;
   void Visit(RelDef& node) override;
@@ -43,7 +43,7 @@ class IDsVisitor : public RelASTVisitor {
   void AddDepsFromParams(const std::vector<std::shared_ptr<RelApplParam>>& params);
   void AddDepsFromBindings(const std::vector<std::shared_ptr<RelBinding>>& bindings);
 
-  RelASTContainer* container_;
+  RelContext* container_;
   StringSet deps_;
   std::string current_def_id_;
 };

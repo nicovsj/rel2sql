@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "rel_ast/rel_ast.h"
-#include "rel_ast/rel_ast_container.h"
+#include "rel_ast/rel_context.h"
 
 namespace rel2sql {
 

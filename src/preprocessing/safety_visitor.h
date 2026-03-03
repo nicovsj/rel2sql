@@ -2,14 +2,14 @@
 #define PREPROCESSING_SAFE_VISITOR_REL_H
 
 #include "rel_ast/rel_ast.h"
-#include "rel_ast/rel_ast_container.h"
+#include "rel_ast/rel_context.h"
 #include "rel_ast/rel_ast_visitor.h"
 
 namespace rel2sql {
 
 class SafetyVisitor : public RelASTVisitor {
  public:
-  explicit SafetyVisitor(RelASTContainer* container) : container_(container) {}
+  explicit SafetyVisitor(RelContext* container) : container_(container) {}
 
   void Visit(RelProgram& node) override;
   void Visit(RelDef& node) override;
@@ -42,10 +42,10 @@ class SafetyVisitor : public RelASTVisitor {
                                              size_t variable_index) const;
 
  protected:
-  RelASTContainer* GetContainer() const { return container_; }
+  RelContext* GetContainer() const { return container_; }
 
  private:
-  RelASTContainer* container_;
+  RelContext* container_;
   std::string current_relation_;
 };
 

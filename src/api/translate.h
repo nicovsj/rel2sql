@@ -8,7 +8,7 @@
 #include "preprocessing/preprocessor.h"
 #include "rel_ast/rel_ast.h"
 #include "rel_ast/relation_info.h"
-#include "rel_ast/rel_ast_container.h"
+#include "rel_ast/rel_context.h"
 #include "sql/translator.h"
 
 namespace rel2sql {
@@ -27,7 +27,7 @@ inline std::unique_ptr<rel_parser::RelParser> GetParser(std::string_view input) 
   return parser;
 }
 
-inline std::shared_ptr<sql::ast::Expression> GetSQLFromRelContainer(RelASTContainer& container) {
+inline std::shared_ptr<sql::ast::Expression> GetSQLFromRelContainer(RelContext& container) {
   auto root = container.Root();
   if (!root) return nullptr;
   Translator visitor(&container);

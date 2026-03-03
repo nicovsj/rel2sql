@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "rel_ast/rel_ast.h"
-#include "rel_ast/rel_ast_container.h"
+#include "rel_ast/rel_context.h"
 #include "rel_ast/rel_ast_visitor.h"
 #include "sql_ast/sql_ast.h"
 
@@ -21,7 +21,7 @@ namespace rel2sql {
  */
 class Translator : public RelASTVisitor {
  public:
-  explicit Translator(RelASTContainer* container) : container_(container) {}
+  explicit Translator(RelContext* container) : container_(container) {}
 
   std::shared_ptr<sql::ast::Expression> Translate(RelProgram& program);
   std::shared_ptr<sql::ast::Expression> TranslateFormula(RelFormula& formula);
@@ -182,7 +182,7 @@ class Translator : public RelASTVisitor {
       const std::string& recursive_definition_name, const std::vector<std::shared_ptr<RelBinding>>& bindings,
       std::vector<std::shared_ptr<sql::ast::Source>>* out_ctes = nullptr, bool* out_ctes_are_recursive = nullptr);
 
-  RelASTContainer* container_;
+  RelContext* container_;
   std::shared_ptr<sql::ast::Expression> result_;
   std::unordered_map<std::string, int> table_alias_prefix_counter_;
 };

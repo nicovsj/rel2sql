@@ -2,14 +2,14 @@
 #define PREPROCESSING_VARS_VISITOR_REL_H
 
 #include "rel_ast/rel_ast.h"
-#include "rel_ast/rel_ast_container.h"
+#include "rel_ast/rel_context.h"
 #include "rel_ast/rel_ast_visitor.h"
 
 namespace rel2sql {
 
 class VariablesVisitor : public RelASTVisitor {
  public:
-  explicit VariablesVisitor(RelASTContainer* container) : container_(container) {}
+  explicit VariablesVisitor(RelContext* container) : container_(container) {}
 
   void Visit(RelProgram& node) override;
   void Visit(RelDef& node) override;
@@ -35,7 +35,7 @@ class VariablesVisitor : public RelASTVisitor {
   void Visit(RelComparison& node) override;
 
  private:
-  RelASTContainer* container_;
+  RelContext* container_;
 };
 
 }  // namespace rel2sql

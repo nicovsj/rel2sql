@@ -5,7 +5,7 @@
 
 namespace rel2sql {
 
-class RelASTContainer;
+class RelContext;
 
 /**
  * Rewrites underscore placeholders in applications:
@@ -19,7 +19,7 @@ class RelASTContainer;
 class UnderscoreRewriter : public BaseRelRewriter {
  public:
   UnderscoreRewriter() : container_(nullptr) {}
-  explicit UnderscoreRewriter(const RelASTContainer* container) : container_(container) {}
+  explicit UnderscoreRewriter(const RelContext* container) : container_(container) {}
 
   void Visit(RelFullAppl& node) override;
   void Visit(RelPartialAppl& node) override;
@@ -29,7 +29,7 @@ class UnderscoreRewriter : public BaseRelRewriter {
   std::shared_ptr<RelApplParam> MakeVarParam(const std::string& var);
   int GetRelationArity(const std::string& id) const;
 
-  const RelASTContainer* container_;
+  const RelContext* container_;
   int fresh_var_counter_ = 0;
 };
 

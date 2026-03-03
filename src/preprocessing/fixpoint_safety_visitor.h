@@ -16,7 +16,7 @@ namespace rel2sql {
  */
 class FixpointSafetyVisitor : public SafetyVisitor {
  public:
-  FixpointSafetyVisitor(RelASTContainer* container, const std::string& recursive_relation);
+  FixpointSafetyVisitor(RelContext* container, const std::string& recursive_relation);
 
   BoundSet ComputeFixpoint(RelBindingsFormula& node);
 

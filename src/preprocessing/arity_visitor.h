@@ -2,14 +2,14 @@
 #define PREPROCESSING_ARITY_VISITOR_REL_H
 
 #include "rel_ast/rel_ast.h"
-#include "rel_ast/rel_ast_container.h"
+#include "rel_ast/rel_context.h"
 #include "rel_ast/rel_ast_visitor.h"
 
 namespace rel2sql {
 
 class ArityVisitor : public RelASTVisitor {
  public:
-  explicit ArityVisitor(RelASTContainer* container) : container_(container) {}
+  explicit ArityVisitor(RelContext* container) : container_(container) {}
 
   void Visit(RelProgram& node) override;
   void Visit(RelDef& node) override;
@@ -33,7 +33,7 @@ class ArityVisitor : public RelASTVisitor {
   int GetArityFromBase(const std::shared_ptr<RelApplBase>& base);
   int GetArityFromParams(const std::vector<std::shared_ptr<RelApplParam>>& params);
 
-  RelASTContainer* container_;
+  RelContext* container_;
   std::unordered_map<std::string, std::vector<std::shared_ptr<RelDef>>> defs_by_id_;
 };
 

@@ -1,5 +1,5 @@
-#ifndef REL_AST_REL_AST_CONTAINER_H
-#define REL_AST_REL_AST_CONTAINER_H
+#ifndef REL_AST_REL_CONTEXT_H
+#define REL_AST_REL_CONTEXT_H
 
 #include <memory>
 #include <string>
@@ -13,10 +13,13 @@
 
 namespace rel2sql {
 
-class RelASTContainer {
+
+// Holds a Rel program AST and metadata inferred during preprocessing (relations, variables,
+// dependencies, recursion info). Serves as the query interface for translation and rewriting.
+class RelContext {
  public:
-  RelASTContainer();
-  explicit RelASTContainer(const RelationMap& edb_map);
+  RelContext();
+  explicit RelContext(const RelationMap& edb_map);
 
   void SetRoot(std::shared_ptr<RelProgram> root) { root_ = std::move(root); }
   std::shared_ptr<RelProgram> Root() const { return root_; }
@@ -62,4 +65,4 @@ class RelASTContainer {
 
 }  // namespace rel2sql
 
-#endif  // REL_AST_REL_AST_CONTAINER_H
+#endif  // REL_AST_REL_CONTEXT_H

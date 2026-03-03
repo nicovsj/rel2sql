@@ -7,7 +7,7 @@
 
 namespace rel2sql {
 
-FixpointSafetyVisitor::FixpointSafetyVisitor(RelASTContainer* container, const std::string& recursive_relation)
+FixpointSafetyVisitor::FixpointSafetyVisitor(RelContext* container, const std::string& recursive_relation)
     : SafetyVisitor(container), recursive_relation_(recursive_relation), iteration_count_(0) {
   current_placeholder_ = "R0";
 }

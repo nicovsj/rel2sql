@@ -14,7 +14,7 @@
 #include "preprocessing/term_polynomial_visitor.h"
 #include "preprocessing/vars_visitor.h"
 #include "rel_ast/rel_ast_builder.h"
-#include "rel_ast/rel_ast_container.h"
+#include "rel_ast/rel_context.h"
 #include "rel_ast/relation_info.h"
 #include "rewriter/binding_domain_rewriter.h"
 #include "rewriter/expression_as_term_rewriter.h"
@@ -34,7 +34,7 @@ class Preprocessor {
 
   explicit Preprocessor(const RelationMap& edb_map) : container_(edb_map) {}
 
-  RelASTContainer& Process(antlr4::ParserRuleContext* tree) {
+  RelContext& Process(antlr4::ParserRuleContext* tree) {
     RelASTBuilder builder;
     auto program = builder.Build(tree);
     container_.SetRoot(program);
@@ -58,8 +58,8 @@ class Preprocessor {
     expr_out = std::dynamic_pointer_cast<RelExpr>(root);
   }
 
-  RelASTContainer* GetContainer() { return &container_; }
-  const RelASTContainer* GetContainer() const { return &container_; }
+  RelContext* GetContainer() { return &container_; }
+  const RelContext* GetContainer() const { return &container_; }
 
  private:
   std::shared_ptr<RelNode> RunPipeline(std::shared_ptr<RelNode> root) {
@@ -113,7 +113,7 @@ class Preprocessor {
     return root;
   }
 
-  RelASTContainer container_;
+  RelContext container_;
 };
 
 }  // namespace rel2sql
