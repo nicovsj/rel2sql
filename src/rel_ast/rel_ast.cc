@@ -123,8 +123,8 @@ std::shared_ptr<RelNode> RelExprApplParam::DispatchVisit(BaseRelVisitor& visitor
   return visitor.Visit(std::dynamic_pointer_cast<RelExprApplParam>(self));
 }
 
-std::shared_ptr<RelNode> RelUnderscoreParam::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelUnderscoreParam>(self));
+std::shared_ptr<RelNode> RelWildcardParam::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelWildcardParam>(self));
 }
 
 std::string RelIDApplBase::ToString() const { return id; }
@@ -133,10 +133,10 @@ std::shared_ptr<RelNode> RelIDApplBase::DispatchVisit(BaseRelVisitor& visitor, s
   return visitor.Visit(std::dynamic_pointer_cast<RelIDApplBase>(self));
 }
 
-std::string RelAbstractionApplBase::ToString() const { return rel_abs ? rel_abs->ToString() : "{}"; }
+std::string RelExprApplBase::ToString() const { return expr ? expr->ToString() : "{}"; }
 
-std::shared_ptr<RelNode> RelAbstractionApplBase::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelAbstractionApplBase>(self));
+std::shared_ptr<RelNode> RelExprApplBase::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelExprApplBase>(self));
 }
 
 std::shared_ptr<RelNode> RelLiteralBinding::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {

@@ -54,8 +54,8 @@ std::shared_ptr<RelExpr> RecursionVisitor::Visit(const std::shared_ptr<RelFormul
 }
 
 std::shared_ptr<RelFormula> RecursionVisitor::Visit(const std::shared_ptr<RelFullApplication>& node) {
-  if (auto abs_base = std::dynamic_pointer_cast<RelAbstractionApplBase>(node->base)) {
-    if (abs_base->rel_abs) Visit(abs_base->rel_abs);
+  if (auto abs_base = std::dynamic_pointer_cast<RelExprApplBase>(node->base)) {
+    if (abs_base->expr) Visit(abs_base->expr);
   }
   for (const auto& param : node->params) {
     if (param && param->GetExpr()) Visit(param->GetExpr());

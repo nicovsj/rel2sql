@@ -306,9 +306,9 @@ std::shared_ptr<sql::ast::Sourceable> Translator::GetBaseSourceableFromApplBase(
     auto ra_expr = GetExpressionFromID(node, id_base->id, false);
     return ExpectSourceable(ra_expr);
   }
-  if (auto abs_base = dynamic_cast<RelAbstractionApplBase*>(base.get())) {
-    Visit(abs_base->rel_abs);
-    return ExpectSourceable(abs_base->rel_abs->sql_expression);
+  if (auto abs_base = dynamic_cast<RelExprApplBase*>(base.get())) {
+    Visit(abs_base->expr);
+    return ExpectSourceable(abs_base->expr->sql_expression);
   }
   throw NotImplementedException("SQLVisitorRel: unknown application base");
 }
@@ -319,7 +319,7 @@ Translator::FullApplParamSlots Translator::CollectApplParams(RelNode& node,
   size_t param_idx = 0;
 
   for (const auto& param : params) {
-    if (!param || param->IsUnderscore()) continue;
+    if (!param || param->IsWildcard()) continue;
 
     auto expr = param->GetExpr();
     if (!expr) continue;

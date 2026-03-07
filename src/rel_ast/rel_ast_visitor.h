@@ -38,10 +38,10 @@ struct RelIDTerm;
 struct RelNumTerm;
 struct RelOpTerm;
 struct RelParenthesisTerm;
-struct RelUnderscoreParam;
+struct RelWildcardParam;
 struct RelExprApplParam;
 struct RelIDApplBase;
-struct RelAbstractionApplBase;
+struct RelExprApplBase;
 /**
  * Visitor for the Rel AST. Every Visit returns shared_ptr<RelNode> (or derived).
  * - Analysis visitors: return nullptr (side effects only)
@@ -94,12 +94,12 @@ class BaseRelVisitor {
   virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelParenthesisTerm>& node);
 
   // Appl params
-  virtual std::shared_ptr<RelApplParam> Visit(const std::shared_ptr<RelUnderscoreParam>& node);
+  virtual std::shared_ptr<RelApplParam> Visit(const std::shared_ptr<RelWildcardParam>& node);
   virtual std::shared_ptr<RelApplParam> Visit(const std::shared_ptr<RelExprApplParam>& node);
 
   // Appl bases
   virtual std::shared_ptr<RelApplBase> Visit(const std::shared_ptr<RelIDApplBase>& node);
-  virtual std::shared_ptr<RelApplBase> Visit(const std::shared_ptr<RelAbstractionApplBase>& node);
+  virtual std::shared_ptr<RelApplBase> Visit(const std::shared_ptr<RelExprApplBase>& node);
 };
 
 }  // namespace rel2sql

@@ -99,8 +99,8 @@ std::shared_ptr<RelFormula> IDsVisitor::Visit(const std::shared_ptr<RelFullAppli
 void IDsVisitor::AddDepsFromBase(const std::shared_ptr<RelApplBase>& base) {
   if (auto* id_base = dynamic_cast<RelIDApplBase*>(base.get())) {
     deps_.insert(id_base->id);
-  } else if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(base.get())) {
-    if (abs_base->rel_abs) Visit(abs_base->rel_abs);
+  } else if (auto* abs_base = dynamic_cast<RelExprApplBase*>(base.get())) {
+    if (abs_base->expr) Visit(abs_base->expr);
   }
 }
 

@@ -65,8 +65,8 @@ std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelFormulaAb
 }
 
 std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelPartialApplication>& node) {
-  if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node->base.get())) {
-    if (abs_base->rel_abs) Visit(abs_base->rel_abs);
+  if (auto* abs_base = dynamic_cast<RelExprApplBase*>(node->base.get())) {
+    if (abs_base->expr) Visit(abs_base->expr);
   }
 
   if (auto* id_base = dynamic_cast<RelIDApplBase*>(node->base.get())) {
@@ -82,21 +82,21 @@ std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelPartialAp
       return node;
     }
     ComputeIDApplicationSafety(*node, node->params, id);
-  } else if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node->base.get())) {
-    if (abs_base->rel_abs) ComputeRelAbsApplicationSafety(*node, *abs_base->rel_abs, node->params);
+  } else if (auto* abs_base = dynamic_cast<RelExprApplBase*>(node->base.get())) {
+    if (abs_base->expr) ComputeRelAbsApplicationSafety(*node, *abs_base->expr, node->params);
   }
   return node;
 }
 
 std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelFullApplication>& node) {
-  if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node->base.get())) {
-    if (abs_base->rel_abs) Visit(abs_base->rel_abs);
+  if (auto* abs_base = dynamic_cast<RelExprApplBase*>(node->base.get())) {
+    if (abs_base->expr) Visit(abs_base->expr);
   }
 
   if (auto* id_base = dynamic_cast<RelIDApplBase*>(node->base.get())) {
     ComputeIDApplicationSafety(*node, node->params, id_base->id);
-  } else if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node->base.get())) {
-    if (abs_base->rel_abs) ComputeRelAbsApplicationSafety(*node, *abs_base->rel_abs, node->params);
+  } else if (auto* abs_base = dynamic_cast<RelExprApplBase*>(node->base.get())) {
+    if (abs_base->expr) ComputeRelAbsApplicationSafety(*node, *abs_base->expr, node->params);
   }
   return node;
 }

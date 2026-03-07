@@ -118,7 +118,7 @@ struct RelFormula : RelExpr {
 
 struct RelApplParam : RelNode {
   virtual ~RelApplParam() = default;
-  virtual bool IsUnderscore() const { return false; }
+  virtual bool IsWildcard() const { return false; }
   virtual std::shared_ptr<RelExpr> GetExpr() const { return nullptr; }
 };
 
@@ -212,9 +212,9 @@ struct RelParenthesisTerm : RelTerm {
 // Arguments
 // =============================================================================
 
-struct RelUnderscoreParam : RelApplParam {
+struct RelWildcardParam : RelApplParam {
   std::string ToString() const override { return "_"; }
-  bool IsUnderscore() const override { return true; }
+  bool IsWildcard() const override { return true; }
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };
 struct RelExprApplParam : RelApplParam {
@@ -236,9 +236,9 @@ struct RelIDApplBase : RelApplBase {
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };
 
-struct RelAbstractionApplBase : RelApplBase {
-  std::shared_ptr<RelUnion> rel_abs;
-  explicit RelAbstractionApplBase(std::shared_ptr<RelUnion> abs) : rel_abs(std::move(abs)) {}
+struct RelExprApplBase : RelApplBase {
+  std::shared_ptr<RelUnion> expr;
+  explicit RelExprApplBase(std::shared_ptr<RelUnion> expr) : expr(std::move(expr)) {}
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };

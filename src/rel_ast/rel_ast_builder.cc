@@ -456,7 +456,7 @@ std::any RelASTBuilder::visitApplBase(psr::ApplBaseContext* ctx) {
   }
   auto rel_abs_result = visit(ctx->relAbs());
   auto rel_abs = Cast<RelUnion>(rel_abs_result);
-  return std::shared_ptr<RelApplBase>(std::make_shared<RelAbstractionApplBase>(std::move(rel_abs)));
+  return std::shared_ptr<RelApplBase>(std::make_shared<RelExprApplBase>(std::move(rel_abs)));
 }
 
 std::any RelASTBuilder::visitApplParams(psr::ApplParamsContext* ctx) {
@@ -470,7 +470,7 @@ std::any RelASTBuilder::visitApplParams(psr::ApplParamsContext* ctx) {
 
 std::any RelASTBuilder::visitApplParam(psr::ApplParamContext* ctx) {
   if (ctx->underscore) {
-    return std::shared_ptr<RelApplParam>(std::make_shared<RelUnderscoreParam>());
+    return std::shared_ptr<RelApplParam>(std::make_shared<RelWildcardParam>());
   }
   auto expr_result = visit(ctx->expr());
   auto expr = Cast<RelExpr>(expr_result);

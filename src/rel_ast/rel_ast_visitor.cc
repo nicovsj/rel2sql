@@ -34,7 +34,7 @@ std::shared_ptr<RelApplBase> BaseRelVisitor::Visit(const std::shared_ptr<RelAppl
 // Concrete node visitors -> Implement the logic for the node. For identity, return itself.
 // =============================================================================
 
-std::shared_ptr<RelApplParam> BaseRelVisitor::Visit(const std::shared_ptr<RelUnderscoreParam>& node) { return node; }
+std::shared_ptr<RelApplParam> BaseRelVisitor::Visit(const std::shared_ptr<RelWildcardParam>& node) { return node; }
 
 std::shared_ptr<RelApplParam> BaseRelVisitor::Visit(const std::shared_ptr<RelExprApplParam>& node) {
   if (node->expr) Visit(node->expr);
@@ -158,8 +158,8 @@ std::shared_ptr<RelTerm> BaseRelVisitor::Visit(const std::shared_ptr<RelParenthe
 
 std::shared_ptr<RelApplBase> BaseRelVisitor::Visit(const std::shared_ptr<RelIDApplBase>& node) { return node; }
 
-std::shared_ptr<RelApplBase> BaseRelVisitor::Visit(const std::shared_ptr<RelAbstractionApplBase>& node) {
-  if (node->rel_abs) node->rel_abs = Visit(node->rel_abs);
+std::shared_ptr<RelApplBase> BaseRelVisitor::Visit(const std::shared_ptr<RelExprApplBase>& node) {
+  if (node->expr) node->expr = Visit(node->expr);
   return node;
 }
 

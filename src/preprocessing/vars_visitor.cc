@@ -117,11 +117,11 @@ std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelFormul
 
 std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelPartialApplication>& node) {
   std::set<std::string> base_vars, base_free;
-  if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node->base.get())) {
-    if (abs_base->rel_abs) {
-      Visit(abs_base->rel_abs);
-      base_vars = abs_base->rel_abs->variables;
-      base_free = abs_base->rel_abs->free_variables;
+  if (auto* abs_base = dynamic_cast<RelExprApplBase*>(node->base.get())) {
+    if (abs_base->expr) {
+      Visit(abs_base->expr);
+      base_vars = abs_base->expr->variables;
+      base_free = abs_base->expr->free_variables;
     }
   }
   node->variables = base_vars;
@@ -137,11 +137,11 @@ std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelPartia
 
 std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelFullApplication>& node) {
   std::set<std::string> base_vars, base_free;
-  if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node->base.get())) {
-    if (abs_base->rel_abs) {
-      Visit(abs_base->rel_abs);
-      base_vars = abs_base->rel_abs->variables;
-      base_free = abs_base->rel_abs->free_variables;
+  if (auto* abs_base = dynamic_cast<RelExprApplBase*>(node->base.get())) {
+    if (abs_base->expr) {
+      Visit(abs_base->expr);
+      base_vars = abs_base->expr->variables;
+      base_free = abs_base->expr->free_variables;
     }
   }
   node->variables = base_vars;

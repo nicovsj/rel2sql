@@ -170,9 +170,9 @@ int ArityVisitor::GetArityFromBase(const std::shared_ptr<RelApplBase>& base) {
     if (info) return info->arity;
     throw ArityException("Relation '" + id_base->id + "' is not defined", SourceLocation(0, 0));
   }
-  if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(base.get())) {
-    if (abs_base->rel_abs) Visit(abs_base->rel_abs);
-    return abs_base->rel_abs ? static_cast<int>(abs_base->rel_abs->arity) : 0;
+  if (auto* abs_base = dynamic_cast<RelExprApplBase*>(base.get())) {
+    if (abs_base->expr) Visit(abs_base->expr);
+    return abs_base->expr ? static_cast<int>(abs_base->expr->arity) : 0;
   }
   return 0;
 }

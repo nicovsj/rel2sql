@@ -26,7 +26,7 @@ std::shared_ptr<RelFormula> WildcardRewriter::Visit(const std::shared_ptr<RelFul
 
   std::vector<int> underscore_positions;
   for (size_t i = 0; i < result->params.size(); i++) {
-    if (result->params[i] && result->params[i]->IsUnderscore()) {
+    if (result->params[i] && result->params[i]->IsWildcard()) {
       underscore_positions.push_back(static_cast<int>(i));
     }
   }
@@ -40,7 +40,7 @@ std::shared_ptr<RelFormula> WildcardRewriter::Visit(const std::shared_ptr<RelFul
   std::vector<std::shared_ptr<RelApplParam>> new_params;
   int uv_idx = 0;
   for (size_t i = 0; i < result->params.size(); i++) {
-    if (result->params[i] && result->params[i]->IsUnderscore()) {
+    if (result->params[i] && result->params[i]->IsWildcard()) {
       new_params.push_back(MakeVarParam(fresh_vars[uv_idx++]));
     } else {
       new_params.push_back(result->params[i]);
@@ -62,7 +62,7 @@ std::shared_ptr<RelExpr> WildcardRewriter::Visit(const std::shared_ptr<RelPartia
 
   int underscore_pos = -1;
   for (size_t i = 0; i < result->params.size(); i++) {
-    if (result->params[i] && result->params[i]->IsUnderscore()) {
+    if (result->params[i] && result->params[i]->IsWildcard()) {
       if (underscore_pos >= 0) return result;
       underscore_pos = static_cast<int>(i);
     }
@@ -86,7 +86,7 @@ std::shared_ptr<RelExpr> WildcardRewriter::Visit(const std::shared_ptr<RelPartia
 
   std::vector<std::shared_ptr<RelApplParam>> full_params;
   for (size_t i = 0; i < result->params.size(); i++) {
-    if (result->params[i] && result->params[i]->IsUnderscore()) {
+    if (result->params[i] && result->params[i]->IsWildcard()) {
       full_params.push_back(MakeVarParam(z));
     } else {
       full_params.push_back(result->params[i]);
