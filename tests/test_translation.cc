@@ -186,6 +186,12 @@ TEST_F(TranslationTest, DisjunctionFormula2) {
             "T2.A1 AS x FROM G AS T2) AS T4 WHERE T3.x = T4.x");
 }
 
+TEST_F(TranslationTest, DisjunctionFormula3) {
+  EXPECT_EQ(TranslateFormula("A(x) or D(y)"),
+            "SELECT T0.A1 AS x FROM A AS T0 UNION SELECT T3.x FROM (SELECT T1.A1 AS x FROM D AS T1) AS T3, (SELECT "
+            "T2.A1 AS x FROM G AS T2) AS T4 WHERE T3.x = T4.x");
+}
+
 TEST_F(TranslationTest, NegationFormula1) {
   EXPECT_EQ(
       TranslateFormula("A(x) and not D(x)"),

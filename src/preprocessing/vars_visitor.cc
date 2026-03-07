@@ -1,4 +1,5 @@
 #include "preprocessing/vars_visitor.h"
+#include "support/exceptions.h"
 
 namespace rel2sql {
 
@@ -184,11 +185,19 @@ std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelFul
 std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelBinOp>& node) {
   if (node->lhs) Visit(node->lhs);
   if (node->rhs) Visit(node->rhs);
+
   if (node->lhs) {
     node->variables = node->lhs->variables;
     node->free_variables = node->lhs->free_variables;
   }
-  if (node->rhs) node->VariablesInplaceUnion(*node->rhs);
+  if (node->rhs) {
+    if (node->op == RelLogicalOp::OR && node->rhs->free_variables != node->lhs->free_variables) {
+      throw TranslationException("Disjunction formula with different free variables", ErrorCode::UNBALANCED_VARIABLE, SourceLocation(0, 0));
+    }
+    node->VariablesInplaceUnion(*node->rhs);
+  }
+
+
   return node;
 }
 
