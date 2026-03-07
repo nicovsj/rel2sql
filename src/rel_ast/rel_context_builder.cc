@@ -12,9 +12,9 @@
 #include "preprocessing/term_polynomial_visitor.h"
 #include "preprocessing/vars_visitor.h"
 #include "rel_ast/rel_context.h"
-#include "rewriter/binding_domain_rewriter.h"
-#include "rewriter/expression_as_term_rewriter.h"
-#include "rewriter/underscore_rewriter.h"
+#include "rewriter/binding_rewriter.h"
+#include "rewriter/term_rewriter.h"
+#include "rewriter/wildcard_rewriter.h"
 
 namespace rel2sql {
 
@@ -197,10 +197,10 @@ RelContext RelContextBuilder::Process(std::shared_ptr<RelNode> root) {
 }
 
 std::shared_ptr<RelNode> RelContextBuilder::RunPipeline(std::shared_ptr<RelNode> root) {
-  BindingDomainRewriter binding_domain_rewriter;
+  BindingRewriter binding_domain_rewriter;
   root = binding_domain_rewriter.Visit(root);
 
-  ExpressionAsTermRewriter expr_as_term_rewriter;
+  TermRewriter expr_as_term_rewriter;
   root = expr_as_term_rewriter.Visit(root);
 
   IDsVisitor ids_visitor(this);
@@ -209,7 +209,7 @@ std::shared_ptr<RelNode> RelContextBuilder::RunPipeline(std::shared_ptr<RelNode>
   ArityVisitor arity_visitor(this);
   arity_visitor.Visit(root);
 
-  UnderscoreRewriter underscore_rewriter(this);
+  WildcardRewriter underscore_rewriter(this);
   root = underscore_rewriter.Visit(root);
 
   IDsVisitor ids_visitor2(this);

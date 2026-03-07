@@ -1,4 +1,4 @@
-#include "rewriter/binding_domain_rewriter.h"
+#include "rewriter/binding_rewriter.h"
 
 #include <memory>
 
@@ -18,7 +18,7 @@ std::shared_ptr<RelFullAppl> MakeAtomFormula(const std::string& relation_id, con
 
 }  // namespace
 
-std::shared_ptr<RelExpr> BindingDomainRewriter::Visit(const std::shared_ptr<RelBindingsFormula>& node) {
+std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelBindingsFormula>& node) {
   auto new_formula = Visit(node->formula);
 
   std::vector<std::pair<std::string, std::string>> domain_bindings;
@@ -51,7 +51,7 @@ std::shared_ptr<RelExpr> BindingDomainRewriter::Visit(const std::shared_ptr<RelB
   return std::make_shared<RelBindingsFormula>(std::move(new_bindings), std::move(new_formula));
 }
 
-std::shared_ptr<RelExpr> BindingDomainRewriter::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
+std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
   auto new_expr = Visit(node->expr);
 
   std::vector<std::pair<std::string, std::string>> domain_bindings;

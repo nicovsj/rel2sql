@@ -9,9 +9,9 @@
 #include "rel_ast/rel_ast_builder.h"
 #include "rel_ast/rel_context_builder.h"
 #include "rel_ast/relation_info.h"
-#include "rewriter/binding_domain_rewriter.h"
-#include "rewriter/expression_as_term_rewriter.h"
-#include "rewriter/underscore_rewriter.h"
+#include "rewriter/binding_rewriter.h"
+#include "rewriter/term_rewriter.h"
+#include "rewriter/wildcard_rewriter.h"
 
 namespace rel2sql {
 
@@ -54,7 +54,7 @@ std::shared_ptr<RelProgram> ParseProgram(std::string_view input) {
 std::string RewriteExprWithBindingDomain(std::string_view input) {
   auto expr = ParseExpr(input);
   if (!expr) return "";
-  BindingDomainRewriter r;
+  BindingRewriter r;
   expr = r.Visit(expr);
   return expr ? expr->ToString() : "";
 }
@@ -62,7 +62,7 @@ std::string RewriteExprWithBindingDomain(std::string_view input) {
 std::string RewriteExprWithExpressionAsTerm(std::string_view input) {
   auto expr = ParseExpr(input);
   if (!expr) return "";
-  ExpressionAsTermRewriter r;
+  TermRewriter r;
   expr = r.Visit(expr);
   return expr ? expr->ToString() : "";
 }
@@ -70,9 +70,9 @@ std::string RewriteExprWithExpressionAsTerm(std::string_view input) {
 std::string RewriteExprAll(std::string_view input) {
   auto expr = ParseExpr(input);
   if (!expr) return "";
-  UnderscoreRewriter u;
-  BindingDomainRewriter b;
-  ExpressionAsTermRewriter e;
+  WildcardRewriter u;
+  BindingRewriter b;
+  TermRewriter e;
   expr = u.Visit(expr);
   expr = b.Visit(expr);
   expr = e.Visit(expr);
@@ -82,7 +82,7 @@ std::string RewriteExprAll(std::string_view input) {
 std::string RewriteProgramWithBindingDomain(std::string_view input) {
   auto program = ParseProgram(input);
   if (!program) return "";
-  BindingDomainRewriter r;
+  BindingRewriter r;
   program = std::dynamic_pointer_cast<RelProgram>(r.Visit(program));
   return program ? program->ToString() : "";
 }
@@ -90,7 +90,7 @@ std::string RewriteProgramWithBindingDomain(std::string_view input) {
 std::string RewriteProgramWithExpressionAsTerm(std::string_view input) {
   auto program = ParseProgram(input);
   if (!program) return "";
-  ExpressionAsTermRewriter r;
+  TermRewriter r;
   program = std::dynamic_pointer_cast<RelProgram>(r.Visit(program));
   return program ? program->ToString() : "";
 }
@@ -98,9 +98,9 @@ std::string RewriteProgramWithExpressionAsTerm(std::string_view input) {
 std::string RewriteProgramAll(std::string_view input) {
   auto program = ParseProgram(input);
   if (!program) return "";
-  UnderscoreRewriter u;
-  BindingDomainRewriter b;
-  ExpressionAsTermRewriter e;
+  WildcardRewriter u;
+  BindingRewriter b;
+  TermRewriter e;
   program = std::dynamic_pointer_cast<RelProgram>(u.Visit(program));
   program = std::dynamic_pointer_cast<RelProgram>(b.Visit(program));
   program = std::dynamic_pointer_cast<RelProgram>(e.Visit(program));
@@ -113,7 +113,7 @@ std::string RewriteProgramWithUnderscore(std::string_view input,
   if (!program) return "";
 
   RelContextBuilder context_builder(edb_map);
-  UnderscoreRewriter u(&context_builder);
+  WildcardRewriter u(&context_builder);
 
   program = std::dynamic_pointer_cast<RelProgram>(u.Visit(program));
   return program ? program->ToString() : "";

@@ -1,4 +1,4 @@
-#include "rewriter/underscore_rewriter.h"
+#include "rewriter/wildcard_rewriter.h"
 
 #include <memory>
 #include <vector>
@@ -8,20 +8,20 @@
 
 namespace rel2sql {
 
-std::string UnderscoreRewriter::FreshVarName() { return std::format("_z{}", fresh_var_counter_++); }
+std::string WildcardRewriter::FreshVarName() { return std::format("_z{}", fresh_var_counter_++); }
 
-std::shared_ptr<RelApplParam> UnderscoreRewriter::MakeVarParam(const std::string& var) {
+std::shared_ptr<RelApplParam> WildcardRewriter::MakeVarParam(const std::string& var) {
   auto id_term = std::make_shared<RelIDTerm>(var);
   auto term_expr = std::make_shared<RelTermExpr>(std::move(id_term));
   return std::make_shared<RelExprApplParam>(std::move(term_expr));
 }
 
-int UnderscoreRewriter::GetRelationArity(const std::string& id) const {
+int WildcardRewriter::GetRelationArity(const std::string& id) const {
   if (!container_) return 0;
   return container_->GetArity(id);
 }
 
-std::shared_ptr<RelFormula> UnderscoreRewriter::Visit(const std::shared_ptr<RelFullAppl>& node) {
+std::shared_ptr<RelFormula> WildcardRewriter::Visit(const std::shared_ptr<RelFullAppl>& node) {
   auto result = std::dynamic_pointer_cast<RelFullAppl>(BaseRelVisitor::Visit(node));
   if (!result) return result;
 
@@ -57,7 +57,7 @@ std::shared_ptr<RelFormula> UnderscoreRewriter::Visit(const std::shared_ptr<RelF
   return std::make_shared<RelExistential>(std::move(bindings), std::move(new_appl));
 }
 
-std::shared_ptr<RelExpr> UnderscoreRewriter::Visit(const std::shared_ptr<RelPartialAppl>& node) {
+std::shared_ptr<RelExpr> WildcardRewriter::Visit(const std::shared_ptr<RelPartialAppl>& node) {
   auto result = std::dynamic_pointer_cast<RelPartialAppl>(BaseRelVisitor::Visit(node));
   if (!result) return result;
 

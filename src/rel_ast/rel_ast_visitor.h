@@ -67,6 +67,8 @@ class BaseRelVisitor {
   // Program level
   virtual std::shared_ptr<RelProgram> Visit(const std::shared_ptr<RelProgram>& node);
   virtual std::shared_ptr<RelDef> Visit(const std::shared_ptr<RelDef>& node);
+
+  // Abstraction
   virtual std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node);
 
   // Expressions

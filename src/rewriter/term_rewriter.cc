@@ -1,4 +1,4 @@
-#include "rewriter/expression_as_term_rewriter.h"
+#include "rewriter/term_rewriter.h"
 
 #include <memory>
 #include <vector>
@@ -20,11 +20,11 @@ bool IsSimpleExpr(const std::shared_ptr<RelExpr>& expr) {
 
 }  // namespace
 
-std::string ExpressionAsTermRewriter::FreshVarName() {
+std::string TermRewriter::FreshVarName() {
   return std::format("_x{}", fresh_var_counter_++);
 }
 
-std::shared_ptr<RelExpr> ExpressionAsTermRewriter::WrapTermExpr(
+std::shared_ptr<RelExpr> TermRewriter::WrapTermExpr(
     std::shared_ptr<RelTermExpr> expr, bool wrap_in_abs) {
   std::string z = FreshVarName();
   auto bind = std::make_shared<RelVarBinding>(z, std::nullopt);
@@ -41,7 +41,7 @@ std::shared_ptr<RelExpr> ExpressionAsTermRewriter::WrapTermExpr(
   return std::make_shared<RelAbstractionExpr>(std::move(abs));
 }
 
-std::shared_ptr<RelExpr> ExpressionAsTermRewriter::WrapConditionExpr(
+std::shared_ptr<RelExpr> TermRewriter::WrapConditionExpr(
     std::shared_ptr<RelConditionExpr> expr) {
   auto* te = dynamic_cast<RelTermExpr*>(expr->lhs.get());
   if (!te) return nullptr;
@@ -59,7 +59,7 @@ std::shared_ptr<RelExpr> ExpressionAsTermRewriter::WrapConditionExpr(
   return std::make_shared<RelAbstractionExpr>(std::move(abs));
 }
 
-std::shared_ptr<RelExpr> ExpressionAsTermRewriter::WrapExpr(std::shared_ptr<RelExpr> expr,
+std::shared_ptr<RelExpr> TermRewriter::WrapExpr(std::shared_ptr<RelExpr> expr,
                                                             bool wrap_in_abs) {
   if (auto te = std::dynamic_pointer_cast<RelTermExpr>(expr)) {
     return WrapTermExpr(std::move(te), wrap_in_abs);
@@ -70,7 +70,7 @@ std::shared_ptr<RelExpr> ExpressionAsTermRewriter::WrapExpr(std::shared_ptr<RelE
   return nullptr;
 }
 
-std::shared_ptr<RelExpr> ExpressionAsTermRewriter::Visit(const std::shared_ptr<RelConditionExpr>& node) {
+std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelConditionExpr>& node) {
   auto result = std::dynamic_pointer_cast<RelConditionExpr>(BaseRelVisitor::Visit(node));
   if (!result) return result;
 
@@ -82,7 +82,7 @@ std::shared_ptr<RelExpr> ExpressionAsTermRewriter::Visit(const std::shared_ptr<R
   return result;
 }
 
-std::shared_ptr<RelExpr> ExpressionAsTermRewriter::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
+std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
   auto result = std::dynamic_pointer_cast<RelBindingsExpr>(BaseRelVisitor::Visit(node));
   if (!result) return result;
 
@@ -94,7 +94,7 @@ std::shared_ptr<RelExpr> ExpressionAsTermRewriter::Visit(const std::shared_ptr<R
   return result;
 }
 
-std::shared_ptr<RelAbstraction> ExpressionAsTermRewriter::Visit(
+std::shared_ptr<RelAbstraction> TermRewriter::Visit(
     const std::shared_ptr<RelAbstraction>& node) {
   auto result = std::dynamic_pointer_cast<RelAbstraction>(BaseRelVisitor::Visit(node));
   if (!result) return result;
@@ -117,7 +117,7 @@ std::shared_ptr<RelAbstraction> ExpressionAsTermRewriter::Visit(
   return result;
 }
 
-std::shared_ptr<RelExpr> ExpressionAsTermRewriter::Visit(const std::shared_ptr<RelProductExpr>& node) {
+std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelProductExpr>& node) {
   auto result = std::dynamic_pointer_cast<RelProductExpr>(BaseRelVisitor::Visit(node));
   if (!result) return result;
 

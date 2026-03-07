@@ -17,7 +17,7 @@ namespace rel2sql {
  * Applies in RelBindingsExpr body, RelProductExpr elements, and RelAbstraction
  * elements. Does NOT apply to expressions used as relation parameters.
  */
-class ExpressionAsTermRewriter : public BaseRelVisitor {
+class TermRewriter : public BaseRelVisitor {
  public:
   using BaseRelVisitor::Visit;
 
