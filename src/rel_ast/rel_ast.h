@@ -71,24 +71,26 @@ class RelNode {
   // Source location for error reporting (nullptr for synthetic nodes)
   antlr4::ParserRuleContext* ctx = nullptr;
 
-  // Variables bound in the current context
+  // Variables bound in the subexpression
   std::set<std::string> variables;
   std::set<std::string> free_variables;
 
+  // Arity of the subexpression
+  size_t arity = 0;
+
   // SQL expression (set during translation)
   std::shared_ptr<sql::ast::Expression> sql_expression;
+
+  // Safety analysis result
+  BoundSet safety;
 
   bool disabled = false;
   std::optional<sql::ast::constant_t> constant;
 
   bool has_only_literal_values = false;
-  std::vector<std::shared_ptr<RelAbstraction>> multiple_defs;
 
   bool is_recursive = false;
   std::string recursive_definition_name;
-
-  size_t arity = 0;
-  BoundSet safety;
 
   // Linear term analysis (for terms)
   std::optional<std::pair<double, double>> term_linear_coeffs;
@@ -439,6 +441,8 @@ struct RelPartialAppl : RelExpr {
 struct RelDef : RelNode {
   std::string name;
   std::shared_ptr<RelAbstraction> body;
+
+  std::vector<std::shared_ptr<RelAbstraction>> multiple_defs;
 
   RelDef(std::string name, std::shared_ptr<RelAbstraction> body) : name(std::move(name)), body(std::move(body)) {}
 

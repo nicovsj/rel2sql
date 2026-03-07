@@ -71,12 +71,6 @@ std::shared_ptr<sql::ast::Sourceable> Translator::TryGetTopLevelIDSelect(RelAbst
 
 std::shared_ptr<sql::ast::Expression> Translator::BuildLiteralRelationAbstractionRel(RelAbstraction& node) {
   std::vector<std::shared_ptr<RelExpr>> all_exprs = node.exprs;
-  for (auto& rel_abs : node.multiple_defs) {
-    if (!rel_abs) continue;
-    for (auto& e : rel_abs->exprs) {
-      all_exprs.push_back(e);
-    }
-  }
   if (all_exprs.empty()) {
     throw std::runtime_error("Relation abstraction with no member");
   }
