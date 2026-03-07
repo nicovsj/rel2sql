@@ -38,8 +38,7 @@ std::shared_ptr<RelExpr> RecursionVisitor::Visit(const std::shared_ptr<RelFormul
   if (current_q_.empty()) return node;
 
   for (const auto& g : match.base_disjuncts) {
-    auto formula_expr = std::make_shared<RelFormulaExpr>(g);
-    std::vector<std::shared_ptr<RelExpr>> exprs = {formula_expr};
+    std::vector<std::shared_ptr<RelExpr>> exprs = {g};
     auto rel_abs = std::make_shared<RelUnion>(std::move(exprs));
     container_->RegisterRecursiveBaseDisjunct(current_q_, rel_abs);
   }

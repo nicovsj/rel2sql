@@ -40,7 +40,6 @@ class Translator : public BaseRelVisitor {
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelCondition>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelExprAbstraction>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaAbstraction>& node) override;
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaExpr>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialApplication>& node) override;
 
   // Formulas

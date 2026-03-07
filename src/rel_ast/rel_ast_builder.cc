@@ -146,8 +146,7 @@ std::any RelASTBuilder::visitRelAbsExpr(psr::RelAbsExprContext* ctx) {
 
 std::any RelASTBuilder::visitFormulaExpr(psr::FormulaExprContext* ctx) {
   auto formula_result = visit(ctx->formula());
-  auto formula = Cast<RelFormula>(formula_result);
-  auto node = std::make_shared<RelFormulaExpr>(std::move(formula));
+  auto node = Cast<RelFormula>(formula_result);
   SetCtx(node.get(), ctx);
   return std::shared_ptr<RelExpr>(node);
 }

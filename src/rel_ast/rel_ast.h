@@ -381,15 +381,6 @@ struct RelCondition : RelExpr {
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };
 
-struct RelFormulaExpr : RelExpr {
-  std::shared_ptr<RelFormula> formula;
-
-  explicit RelFormulaExpr(std::shared_ptr<RelFormula> formula) : formula(std::move(formula)) {}
-
-  std::string ToString() const override;
-  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
-};
-
 struct RelExprAbstraction : RelExpr {
   std::vector<std::shared_ptr<RelBinding>> bindings;
   std::shared_ptr<RelExpr> expr;
