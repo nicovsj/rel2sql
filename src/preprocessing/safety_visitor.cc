@@ -138,7 +138,7 @@ std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelDisjun
 std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelNegation>& node) {
   if (node->formula) {
     Visit(node->formula);
-    node->safety = node->formula->safety;
+    // Negation formula is not safe, so we do nothing with the safety set.
   }
   return node;
 }
