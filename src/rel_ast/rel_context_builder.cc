@@ -89,7 +89,7 @@ void RelContextBuilder::AddDependency(const std::string& id, const std::string& 
 }
 
 void RelContextBuilder::RegisterRecursiveBaseDisjunct(const std::string& id,
-                                                       std::shared_ptr<RelAbstraction> node) {
+                                                       std::shared_ptr<RelUnion> node) {
   relation_info_[id].AddNonRecursiveDisjunct(std::move(node));
 }
 

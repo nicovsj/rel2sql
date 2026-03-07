@@ -37,7 +37,7 @@ std::shared_ptr<RelExpr> TermRewriter::WrapTermExpr(
     return bindings_formula;
   }
   auto abs =
-      std::make_shared<RelAbstraction>(std::vector<std::shared_ptr<RelExpr>>{std::move(bindings_formula)});
+      std::make_shared<RelUnion>(std::vector<std::shared_ptr<RelExpr>>{std::move(bindings_formula)});
   return std::make_shared<RelAbstractionExpr>(std::move(abs));
 }
 
@@ -55,7 +55,7 @@ std::shared_ptr<RelExpr> TermRewriter::WrapConditionExpr(
       std::make_shared<RelFormulaAbstraction>(std::vector<std::shared_ptr<RelBinding>>{bind},
                                            std::move(formula));
   auto abs =
-      std::make_shared<RelAbstraction>(std::vector<std::shared_ptr<RelExpr>>{std::move(bindings_formula)});
+      std::make_shared<RelUnion>(std::vector<std::shared_ptr<RelExpr>>{std::move(bindings_formula)});
   return std::make_shared<RelAbstractionExpr>(std::move(abs));
 }
 
@@ -94,9 +94,9 @@ std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelExprAbstra
   return result;
 }
 
-std::shared_ptr<RelAbstraction> TermRewriter::Visit(
-    const std::shared_ptr<RelAbstraction>& node) {
-  auto result = std::dynamic_pointer_cast<RelAbstraction>(BaseRelVisitor::Visit(node));
+std::shared_ptr<RelUnion> TermRewriter::Visit(
+    const std::shared_ptr<RelUnion>& node) {
+  auto result = std::dynamic_pointer_cast<RelUnion>(BaseRelVisitor::Visit(node));
   if (!result) return result;
 
   std::vector<std::shared_ptr<RelExpr>> new_exprs;
@@ -112,7 +112,7 @@ std::shared_ptr<RelAbstraction> TermRewriter::Visit(
     new_exprs.push_back(expr);
   }
   if (changed) {
-    return std::make_shared<RelAbstraction>(std::move(new_exprs));
+    return std::make_shared<RelUnion>(std::move(new_exprs));
   }
   return result;
 }

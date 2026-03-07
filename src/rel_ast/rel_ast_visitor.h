@@ -18,7 +18,7 @@ struct RelApplBase;
 // Concrete nodes
 struct RelProgram;
 struct RelDef;
-struct RelAbstraction;
+struct RelUnion;
 struct RelLiteral;
 struct RelProduct;
 struct RelCondition;
@@ -68,7 +68,7 @@ class BaseRelVisitor {
   virtual std::shared_ptr<RelDef> Visit(const std::shared_ptr<RelDef>& node);
 
   // Abstraction
-  virtual std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node);
+  virtual std::shared_ptr<RelUnion> Visit(const std::shared_ptr<RelUnion>& node);
 
   // Expressions
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelLiteral>& node);

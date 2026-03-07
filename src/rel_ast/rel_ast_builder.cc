@@ -79,7 +79,7 @@ std::any RelASTBuilder::visitProgram(psr::ProgramContext* ctx) {
 std::any RelASTBuilder::visitRelDef(psr::RelDefContext* ctx) {
   std::string name = ctx->name->getText();
   auto body_result = visit(ctx->relAbs());
-  auto body = Cast<RelAbstraction>(body_result);
+  auto body = Cast<RelUnion>(body_result);
   auto def = std::make_shared<RelDef>(std::move(name), std::move(body));
   SetCtx(def.get(), ctx);
   return def;
@@ -91,7 +91,7 @@ std::any RelASTBuilder::visitRelAbs(psr::RelAbsContext* ctx) {
     auto result = visit(expr_ctx);
     exprs.push_back(Cast<RelExpr>(result));
   }
-  auto rel_abs = std::make_shared<RelAbstraction>(exprs);
+  auto rel_abs = std::make_shared<RelUnion>(exprs);
   SetCtx(rel_abs.get(), ctx);
   return rel_abs;
 }
@@ -139,7 +139,7 @@ std::any RelASTBuilder::visitConditionExpr(psr::ConditionExprContext* ctx) {
 
 std::any RelASTBuilder::visitRelAbsExpr(psr::RelAbsExprContext* ctx) {
   auto rel_abs_result = visit(ctx->relAbs());
-  auto rel_abs = Cast<RelAbstraction>(rel_abs_result);
+  auto rel_abs = Cast<RelUnion>(rel_abs_result);
   auto node = std::make_shared<RelAbstractionExpr>(std::move(rel_abs));
   SetCtx(node.get(), ctx);
   return std::shared_ptr<RelExpr>(node);
@@ -457,7 +457,7 @@ std::any RelASTBuilder::visitApplBase(psr::ApplBaseContext* ctx) {
     return std::shared_ptr<RelApplBase>(std::make_shared<RelIDApplBase>(ctx->T_ID()->getText()));
   }
   auto rel_abs_result = visit(ctx->relAbs());
-  auto rel_abs = Cast<RelAbstraction>(rel_abs_result);
+  auto rel_abs = Cast<RelUnion>(rel_abs_result);
   return std::shared_ptr<RelApplBase>(std::make_shared<RelAbstractionApplBase>(std::move(rel_abs)));
 }
 

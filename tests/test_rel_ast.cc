@@ -16,7 +16,7 @@ TEST(RelASTBuilderTest, RelASTStructure) {
   auto literal = std::make_shared<RelLiteral>(RelLiteralValue(1));
   std::vector<std::shared_ptr<RelExpr>> exprs;
   exprs.push_back(literal);
-  auto rel_abs = std::make_shared<RelAbstraction>(exprs);
+  auto rel_abs = std::make_shared<RelUnion>(exprs);
   auto def = std::make_shared<RelDef>("output", rel_abs);
   std::vector<std::shared_ptr<RelDef>> defs;
   defs.push_back(def);

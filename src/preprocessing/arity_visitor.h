@@ -15,7 +15,7 @@ class ArityVisitor : public BaseRelVisitor {
   std::shared_ptr<RelProgram> Visit(const std::shared_ptr<RelProgram>& node) override;
   std::shared_ptr<RelDef> Visit(const std::shared_ptr<RelDef>& node) override;
 
-  std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node) override;
+  std::shared_ptr<RelUnion> Visit(const std::shared_ptr<RelUnion>& node) override;
 
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelLiteral>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProduct>& node) override;

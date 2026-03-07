@@ -9,7 +9,7 @@
 
 namespace rel2sql {
 
-struct RelAbstraction;
+struct RelUnion;
 class RelNode;
 
 struct RecursiveBranchInfoTyped {
@@ -19,7 +19,7 @@ struct RecursiveBranchInfoTyped {
 };
 
 struct RecursionInfoTyped {
-  std::vector<std::shared_ptr<RelAbstraction>> non_recursive_disjuncts;
+  std::vector<std::shared_ptr<RelUnion>> non_recursive_disjuncts;
   std::vector<RecursiveBranchInfoTyped> recursive_disjuncts;
 
   bool empty() const {
@@ -92,7 +92,7 @@ struct RelationInfoTyped {
 
   void AddDependency(const std::string& id) { dependencies.push_back(id); }
 
-  void AddNonRecursiveDisjunct(const std::shared_ptr<RelAbstraction>& node) {
+  void AddNonRecursiveDisjunct(const std::shared_ptr<RelUnion>& node) {
     recursion_metadata.non_recursive_disjuncts.push_back(node);
   }
 

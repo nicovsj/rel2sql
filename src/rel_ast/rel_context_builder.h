@@ -35,7 +35,7 @@ class RelContextBuilder {
   void AddEDB(const std::string& edb, const std::vector<std::string>& attribute_names);
   void AddVar(const std::string& var);
   void AddDependency(const std::string& id, const std::string& dep);
-  void RegisterRecursiveBaseDisjunct(const std::string& id, std::shared_ptr<RelAbstraction> node);
+  void RegisterRecursiveBaseDisjunct(const std::string& id, std::shared_ptr<RelUnion> node);
   void RegisterRecursiveBranch(const std::string& id, const RecursiveBranchInfoTyped& info);
   void AddVariableDomain(const std::string& var, const std::unordered_set<Projection>& domain);
   void RemoveVarsFromDependencyGraph();

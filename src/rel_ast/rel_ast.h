@@ -147,14 +147,14 @@ struct RelLiteral : RelExpr {
 };
 
 // =============================================================================
-// RelAbstraction - { expr ; expr ; ... }
+// RelUnion - { expr ; expr ; ... }
 // =============================================================================
 
-struct RelAbstraction : RelExpr {
+struct RelUnion : RelExpr {
   std::vector<std::shared_ptr<RelExpr>> exprs;
 
-  RelAbstraction() = default;
-  explicit RelAbstraction(std::vector<std::shared_ptr<RelExpr>> exprs) : exprs(std::move(exprs)) {}
+  RelUnion() = default;
+  explicit RelUnion(std::vector<std::shared_ptr<RelExpr>> exprs) : exprs(std::move(exprs)) {}
 
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 
@@ -237,8 +237,8 @@ struct RelIDApplBase : RelApplBase {
 };
 
 struct RelAbstractionApplBase : RelApplBase {
-  std::shared_ptr<RelAbstraction> rel_abs;
-  explicit RelAbstractionApplBase(std::shared_ptr<RelAbstraction> abs) : rel_abs(std::move(abs)) {}
+  std::shared_ptr<RelUnion> rel_abs;
+  explicit RelAbstractionApplBase(std::shared_ptr<RelUnion> abs) : rel_abs(std::move(abs)) {}
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };
@@ -382,9 +382,9 @@ struct RelCondition : RelExpr {
 };
 
 struct RelAbstractionExpr : RelExpr {
-  std::shared_ptr<RelAbstraction> rel_abs;
+  std::shared_ptr<RelUnion> rel_abs;
 
-  explicit RelAbstractionExpr(std::shared_ptr<RelAbstraction> rel_abs) : rel_abs(std::move(rel_abs)) {}
+  explicit RelAbstractionExpr(std::shared_ptr<RelUnion> rel_abs) : rel_abs(std::move(rel_abs)) {}
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
@@ -438,11 +438,11 @@ struct RelPartialApplication : RelExpr {
 
 struct RelDef : RelNode {
   std::string name;
-  std::shared_ptr<RelAbstraction> body;
+  std::shared_ptr<RelUnion> body;
 
-  std::vector<std::shared_ptr<RelAbstraction>> multiple_defs;
+  std::vector<std::shared_ptr<RelUnion>> multiple_defs;
 
-  RelDef(std::string name, std::shared_ptr<RelAbstraction> body) : name(std::move(name)), body(std::move(body)) {}
+  RelDef(std::string name, std::shared_ptr<RelUnion> body) : name(std::move(name)), body(std::move(body)) {}
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;

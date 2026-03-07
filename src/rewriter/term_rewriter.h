@@ -14,7 +14,7 @@ namespace rel2sql {
  * 3. {...; x+y+1; ...} →  {...; (z): z=x+y+1; ...}
  * 4. x+y+1 where F →   (z): z = x+y+1 and F
  *
- * Applies in RelBindingsExpr body, RelProductExpr elements, and RelAbstraction
+ * Applies in RelBindingsExpr body, RelProductExpr elements, and RelUnion
  * elements. Does NOT apply to expressions used as relation parameters.
  */
 class TermRewriter : public BaseRelVisitor {
@@ -23,7 +23,7 @@ class TermRewriter : public BaseRelVisitor {
 
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelExprAbstraction>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelCondition>& node) override;
-  std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node) override;
+  std::shared_ptr<RelUnion> Visit(const std::shared_ptr<RelUnion>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProduct>& node) override;
 
  private:

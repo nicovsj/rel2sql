@@ -53,7 +53,7 @@ std::shared_ptr<RelDef> BaseRelVisitor::Visit(const std::shared_ptr<RelDef>& nod
   return node;
 }
 
-std::shared_ptr<RelAbstraction> BaseRelVisitor::Visit(const std::shared_ptr<RelAbstraction>& node) {
+std::shared_ptr<RelUnion> BaseRelVisitor::Visit(const std::shared_ptr<RelUnion>& node) {
   for (auto& expr : node->exprs) {
     if (expr) expr = Visit(expr);
   }

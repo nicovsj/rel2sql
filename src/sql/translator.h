@@ -32,7 +32,7 @@ class Translator : public BaseRelVisitor {
   std::shared_ptr<RelDef> Visit(const std::shared_ptr<RelDef>& node) override;
 
   // Abstraction
-  std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node) override;
+  std::shared_ptr<RelUnion> Visit(const std::shared_ptr<RelUnion>& node) override;
 
   // Expressions
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelLiteral>& node) override;
@@ -61,10 +61,10 @@ class Translator : public BaseRelVisitor {
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelParenthesisTerm>& node) override;
 
  private:
-  std::shared_ptr<sql::ast::Sourceable> TryGetTopLevelIDSelect(RelAbstraction* body);
+  std::shared_ptr<sql::ast::Sourceable> TryGetTopLevelIDSelect(RelUnion* body);
 
   // Build a VALUES-based Select from a relation abstraction that has only literal/product exprs.
-  std::shared_ptr<sql::ast::Expression> BuildLiteralRelationAbstractionRel(const std::shared_ptr<RelAbstraction>& node);
+  std::shared_ptr<sql::ast::Expression> BuildLiteralRelationAbstractionRel(const std::shared_ptr<RelUnion>& node);
 
   std::shared_ptr<sql::ast::Expression> GetExpressionFromID(RelNode& node, const std::string& id, bool is_top_level);
 

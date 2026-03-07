@@ -61,7 +61,7 @@ std::shared_ptr<RelDef> IDsVisitor::Visit(const std::shared_ptr<RelDef>& node) {
   return node;
 }
 
-std::shared_ptr<RelAbstraction> IDsVisitor::Visit(const std::shared_ptr<RelAbstraction>& node) {
+std::shared_ptr<RelUnion> IDsVisitor::Visit(const std::shared_ptr<RelUnion>& node) {
   for (auto& expr : node->exprs) {
     if (expr) Visit(expr);
   }

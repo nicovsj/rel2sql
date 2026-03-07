@@ -21,7 +21,7 @@ std::shared_ptr<RelProgram> SafetyVisitor::Visit(const std::shared_ptr<RelProgra
   return node;
 }
 
-std::shared_ptr<RelAbstraction> SafetyVisitor::Visit(const std::shared_ptr<RelAbstraction>& node) {
+std::shared_ptr<RelUnion> SafetyVisitor::Visit(const std::shared_ptr<RelUnion>& node) {
   if (node->exprs.empty()) return node;
   Visit(node->exprs[0]);
   node->safety = node->exprs[0]->safety;

@@ -60,7 +60,7 @@ std::shared_ptr<RelDef> ArityVisitor::Visit(const std::shared_ptr<RelDef>& node)
   return node;
 }
 
-std::shared_ptr<RelAbstraction> ArityVisitor::Visit(const std::shared_ptr<RelAbstraction>& node) {
+std::shared_ptr<RelUnion> ArityVisitor::Visit(const std::shared_ptr<RelUnion>& node) {
   if (node->exprs.empty()) return node;
   Visit(node->exprs[0]);
   size_t common_arity = node->exprs[0]->arity;

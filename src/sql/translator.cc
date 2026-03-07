@@ -29,7 +29,7 @@ std::shared_ptr<RelProgram> Translator::Visit(const std::shared_ptr<RelProgram>&
   return node;
 }
 
-std::shared_ptr<sql::ast::Sourceable> TryGetTopLevelIDSelect(RelAbstraction* body, Translator* visitor);
+std::shared_ptr<sql::ast::Sourceable> TryGetTopLevelIDSelect(RelUnion* body, Translator* visitor);
 
 std::shared_ptr<RelDef> Translator::Visit(const std::shared_ptr<RelDef>& node) {
   if (!node->body) return node;
@@ -55,7 +55,7 @@ std::shared_ptr<RelDef> Translator::Visit(const std::shared_ptr<RelDef>& node) {
   return node;
 }
 
-std::shared_ptr<sql::ast::Sourceable> Translator::TryGetTopLevelIDSelect(RelAbstraction* body) {
+std::shared_ptr<sql::ast::Sourceable> Translator::TryGetTopLevelIDSelect(RelUnion* body) {
   if (!body || body->exprs.size() != 1) return nullptr;
 
   auto expr = body->exprs[0];
@@ -67,7 +67,7 @@ std::shared_ptr<sql::ast::Sourceable> Translator::TryGetTopLevelIDSelect(RelAbst
 }
 
 std::shared_ptr<sql::ast::Expression> Translator::BuildLiteralRelationAbstractionRel(
-    const std::shared_ptr<RelAbstraction>& node) {
+    const std::shared_ptr<RelUnion>& node) {
   std::vector<std::shared_ptr<RelExpr>> all_exprs = node->exprs;
   if (all_exprs.empty()) {
     throw std::runtime_error("Relation abstraction with no member");
@@ -111,7 +111,7 @@ std::shared_ptr<sql::ast::Expression> Translator::BuildLiteralRelationAbstractio
   return std::static_pointer_cast<sql::ast::Expression>(select);
 }
 
-std::shared_ptr<RelAbstraction> Translator::Visit(const std::shared_ptr<RelAbstraction>& node) {
+std::shared_ptr<RelUnion> Translator::Visit(const std::shared_ptr<RelUnion>& node) {
   if (node->has_only_literal_values) {
     node->sql_expression = BuildLiteralRelationAbstractionRel(node);
     return node;

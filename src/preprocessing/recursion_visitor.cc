@@ -16,7 +16,7 @@ std::shared_ptr<RelDef> RecursionVisitor::Visit(const std::shared_ptr<RelDef>& n
   return node;
 }
 
-std::shared_ptr<RelAbstraction> RecursionVisitor::Visit(const std::shared_ptr<RelAbstraction>& node) {
+std::shared_ptr<RelUnion> RecursionVisitor::Visit(const std::shared_ptr<RelUnion>& node) {
   if (node->exprs.size() != 1) return node;
   auto bf = std::dynamic_pointer_cast<RelFormulaAbstraction>(node->exprs[0]);
   if (!bf) return node;
@@ -40,7 +40,7 @@ std::shared_ptr<RelExpr> RecursionVisitor::Visit(const std::shared_ptr<RelFormul
   for (const auto& g : match.base_disjuncts) {
     auto formula_expr = std::make_shared<RelFormulaExpr>(g);
     std::vector<std::shared_ptr<RelExpr>> exprs = {formula_expr};
-    auto rel_abs = std::make_shared<RelAbstraction>(std::move(exprs));
+    auto rel_abs = std::make_shared<RelUnion>(std::move(exprs));
     container_->RegisterRecursiveBaseDisjunct(current_q_, rel_abs);
   }
 

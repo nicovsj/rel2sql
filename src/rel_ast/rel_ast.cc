@@ -78,11 +78,11 @@ std::shared_ptr<RelNode> RelLiteral::DispatchVisit(BaseRelVisitor& visitor, std:
 
 std::string RelLiteral::ToString() const { return LiteralValueToString(value); }
 
-std::shared_ptr<RelNode> RelAbstraction::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelAbstraction>(self));
+std::shared_ptr<RelNode> RelUnion::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelUnion>(self));
 }
 
-std::string RelAbstraction::ToString() const {
+std::string RelUnion::ToString() const {
   std::ostringstream out;
   out << "{";
   for (size_t i = 0; i < exprs.size(); ++i) {

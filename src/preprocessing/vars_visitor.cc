@@ -22,7 +22,7 @@ std::shared_ptr<RelDef> VariablesVisitor::Visit(const std::shared_ptr<RelDef>& n
   return node;
 }
 
-std::shared_ptr<RelAbstraction> VariablesVisitor::Visit(const std::shared_ptr<RelAbstraction>& node) {
+std::shared_ptr<RelUnion> VariablesVisitor::Visit(const std::shared_ptr<RelUnion>& node) {
   for (auto& expr : node->exprs) {
     if (expr) {
       Visit(expr);
