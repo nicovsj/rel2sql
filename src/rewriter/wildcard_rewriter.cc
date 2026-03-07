@@ -12,8 +12,7 @@ std::string WildcardRewriter::FreshVarName() { return std::format("_z{}", fresh_
 
 std::shared_ptr<RelApplParam> WildcardRewriter::MakeVarParam(const std::string& var) {
   auto id_term = std::make_shared<RelIDTerm>(var);
-  auto term_expr = std::make_shared<RelTermExpr>(std::move(id_term));
-  return std::make_shared<RelExprApplParam>(std::move(term_expr));
+  return std::make_shared<RelExprApplParam>(std::move(id_term));
 }
 
 int WildcardRewriter::GetRelationArity(const std::string& id) const {

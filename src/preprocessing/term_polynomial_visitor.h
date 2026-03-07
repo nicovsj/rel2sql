@@ -21,7 +21,6 @@ class TermPolynomialVisitor : public BaseRelVisitor {
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelIDTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelOpTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelParenthesisTerm>& node) override;
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelTermExpr>& node) override;
 };
 
 }  // namespace rel2sql

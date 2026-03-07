@@ -20,7 +20,6 @@ struct RelProgram;
 struct RelDef;
 struct RelAbstraction;
 struct RelLiteral;
-struct RelTermExpr;
 struct RelProductExpr;
 struct RelConditionExpr;
 struct RelAbstractionExpr;
@@ -73,7 +72,6 @@ class BaseRelVisitor {
 
   // Expressions
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelLiteral>& node);
-  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelTermExpr>& node);
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProductExpr>& node);
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelConditionExpr>& node);
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelAbstractionExpr>& node);

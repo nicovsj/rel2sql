@@ -247,11 +247,6 @@ std::string RelFullAppl::ToString() const {
   return out.str();
 }
 
-std::shared_ptr<RelNode> RelTermExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelTermExpr>(self));
-}
-std::string RelTermExpr::ToString() const { return term ? term->ToString() : "?"; }
-
 std::shared_ptr<RelNode> RelProductExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelProductExpr>(self));
 }

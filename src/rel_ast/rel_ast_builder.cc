@@ -123,9 +123,8 @@ std::any RelASTBuilder::visitProductInner(psr::ProductInnerContext* ctx) {
 std::any RelASTBuilder::visitTermExpr(psr::TermExprContext* ctx) {
   auto term_result = visit(ctx->term());
   auto term = Cast<RelTerm>(term_result);
-  auto node = std::make_shared<RelTermExpr>(std::move(term));
-  SetCtx(node.get(), ctx);
-  return std::shared_ptr<RelExpr>(node);
+  SetCtx(term.get(), ctx);
+  return std::shared_ptr<RelExpr>(term);
 }
 
 std::any RelASTBuilder::visitConditionExpr(psr::ConditionExprContext* ctx) {

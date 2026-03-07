@@ -11,8 +11,7 @@ namespace {
 std::shared_ptr<RelFullAppl> MakeAtomFormula(const std::string& relation_id, const std::string& var_id) {
   auto base = std::make_shared<RelIDApplBase>(relation_id);
   auto x_term = std::make_shared<RelIDTerm>(var_id);
-  auto x_expr = std::make_shared<RelTermExpr>(x_term);
-  auto param = std::make_shared<RelExprApplParam>(x_expr);
+  auto param = std::make_shared<RelExprApplParam>(x_term);
   return std::make_shared<RelFullAppl>(base, std::vector<std::shared_ptr<RelApplParam>>{param});
 }
 

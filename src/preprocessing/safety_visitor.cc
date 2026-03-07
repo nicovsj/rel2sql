@@ -32,12 +32,6 @@ std::shared_ptr<RelAbstraction> SafetyVisitor::Visit(const std::shared_ptr<RelAb
   return node;
 }
 
-std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelTermExpr>& node) {
-  if (node->term) Visit(node->term);
-  if (node->term) node->safety = node->term->safety;
-  return node;
-}
-
 std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelProductExpr>& node) {
   node->safety = BoundSet();
   for (auto& expr : node->exprs) {
@@ -240,16 +234,16 @@ void SafetyVisitor::ComputeIDApplicationSafety(RelNode& node, const std::vector<
     auto expr = params[i] ? params[i]->GetExpr() : nullptr;
     if (!expr) continue;
     Visit(expr);
-    auto term_expr = std::dynamic_pointer_cast<RelTermExpr>(expr);
-    if (!term_expr || !term_expr->term) continue;
+    auto term = std::dynamic_pointer_cast<RelTerm>(expr);
+    if (!term) continue;
     if (expr->variables.size() != 1) continue;
 
     std::string variable = *expr->variables.begin();
     variable_indices.push_back(i);
     variable_names.push_back(variable);
 
-    if (term_expr->term->term_linear_coeffs && !term_expr->term->IsInvalidTermExpression()) {
-      coeffs.push_back(term_expr->term->term_linear_coeffs);
+    if (term->term_linear_coeffs && !term->IsInvalidTermExpression()) {
+      coeffs.push_back(term->term_linear_coeffs);
     } else {
       coeffs.emplace_back(std::nullopt);
     }
@@ -275,14 +269,14 @@ void SafetyVisitor::ComputeRelAbsApplicationSafety(RelNode& node, RelNode& base_
     auto expr = params[i] ? params[i]->GetExpr() : nullptr;
     if (!expr) continue;
     Visit(expr);
-    auto term_expr = std::dynamic_pointer_cast<RelTermExpr>(expr);
-    if (!term_expr || !term_expr->term || expr->variables.size() != 1) continue;
+    auto term = std::dynamic_pointer_cast<RelTerm>(expr);
+    if (!term || expr->variables.size() != 1) continue;
 
     variable_names.push_back(*expr->variables.begin());
     variable_indices.push_back(i);
 
-    if (term_expr->term->term_linear_coeffs && !term_expr->term->IsInvalidTermExpression()) {
-      coeffs.push_back(term_expr->term->term_linear_coeffs);
+    if (term->term_linear_coeffs && !term->IsInvalidTermExpression()) {
+      coeffs.push_back(term->term_linear_coeffs);
     } else {
       coeffs.emplace_back(std::nullopt);
     }

@@ -108,11 +108,11 @@ struct RelExpr : RelNode {
   virtual ~RelExpr() = default;
 };
 
-struct RelTerm : RelNode {
+struct RelTerm : RelExpr {
   virtual ~RelTerm() = default;
 };
 
-struct RelFormula : RelNode {
+struct RelFormula : RelExpr {
   virtual ~RelFormula() = default;
 };
 
@@ -359,15 +359,6 @@ struct RelFullAppl : RelFormula {
 // =============================================================================
 // Expressions
 // =============================================================================
-
-struct RelTermExpr : RelExpr {
-  std::shared_ptr<RelTerm> term;
-
-  explicit RelTermExpr(std::shared_ptr<RelTerm> term) : term(std::move(term)) {}
-
-  std::string ToString() const override;
-  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
-};
 
 struct RelProductExpr : RelExpr {
   std::vector<std::shared_ptr<RelExpr>> exprs;

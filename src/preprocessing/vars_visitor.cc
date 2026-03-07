@@ -61,15 +61,6 @@ std::shared_ptr<RelTerm> VariablesVisitor::Visit(const std::shared_ptr<RelParent
   return node;
 }
 
-std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelTermExpr>& node) {
-  if (node->term) Visit(node->term);
-  if (node->term) {
-    node->variables = node->term->variables;
-    node->free_variables = node->term->free_variables;
-  }
-  return node;
-}
-
 std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelProductExpr>& node) {
   for (auto& expr : node->exprs) {
     if (expr) {

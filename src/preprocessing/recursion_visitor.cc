@@ -255,12 +255,9 @@ bool RecursionVisitor::CheckExistsPattern(const std::shared_ptr<RelExistential>&
   for (const auto& param : q_call->params) {
     auto expr = param ? param->GetExpr() : nullptr;
     if (expr) {
-      auto* term_expr = dynamic_cast<RelTermExpr*>(expr.get());
-      if (term_expr && term_expr->term) {
-        auto* id_term = dynamic_cast<RelIDTerm*>(term_expr->term.get());
-        if (id_term && container_->IsVar(id_term->id)) {
-          w_vars.insert(id_term->id);
-        }
+      auto* term = dynamic_cast<RelIDTerm*>(expr.get());
+      if (term && container_->IsVar(term->id)) {
+        w_vars.insert(term->id);
       }
     }
   }

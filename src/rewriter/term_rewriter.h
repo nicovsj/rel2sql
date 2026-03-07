@@ -28,7 +28,7 @@ class TermRewriter : public BaseRelVisitor {
 
  private:
   std::string FreshVarName();
-  std::shared_ptr<RelExpr> WrapTermExpr(std::shared_ptr<RelTermExpr> expr, bool wrap_in_abs);
+  std::shared_ptr<RelExpr> WrapTermExpr(std::shared_ptr<RelTerm> term, bool wrap_in_abs);
   std::shared_ptr<RelExpr> WrapConditionExpr(std::shared_ptr<RelConditionExpr> expr);
   std::shared_ptr<RelExpr> WrapExpr(std::shared_ptr<RelExpr> expr, bool wrap_in_abs);
 

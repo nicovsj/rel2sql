@@ -59,13 +59,10 @@ std::shared_ptr<sql::ast::Sourceable> Translator::TryGetTopLevelIDSelect(RelAbst
   if (!body || body->exprs.size() != 1) return nullptr;
 
   auto expr = body->exprs[0];
-  auto term_expr = std::dynamic_pointer_cast<RelTermExpr>(expr);
-  if (!term_expr) return nullptr;
-
-  auto id_term = dynamic_cast<RelIDTerm*>(term_expr->term.get());
+  auto id_term = std::dynamic_pointer_cast<RelIDTerm>(expr);
   if (!id_term) return nullptr;
 
-  auto expr_result = GetExpressionFromID(*term_expr, id_term->id, true);
+  auto expr_result = GetExpressionFromID(*expr, id_term->id, true);
   return std::dynamic_pointer_cast<sql::ast::Sourceable>(expr_result);
 }
 
@@ -271,30 +268,6 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelProductExpr>
   return node;
 }
 
-std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelTermExpr>& node) {
-  auto id_term = dynamic_cast<RelIDTerm*>(node->term.get());
-  if (id_term) {
-    if (node->variables.count(id_term->id)) {
-      throw NotImplementedException("Terms with variables are not yet supported in expressions");
-    }
-    if (context_.IsRelation(id_term->id)) {
-      node->sql_expression = GetExpressionFromID(*node, id_term->id, true);
-      return node;
-    }
-    throw InternalException("Identifier term in expression context is neither a variable nor a relation");
-  }
-  if (!node->free_variables.empty()) {
-    throw VariableException("Terms with variables are not yet supported in expressions");
-  }
-  Visit(node->term);
-  auto term_sql = std::dynamic_pointer_cast<sql::ast::Term>(node->term->sql_expression);
-  if (!term_sql) return node;
-  auto selectable = std::make_shared<sql::ast::TermSelectable>(term_sql, "A1");
-  node->sql_expression =
-      std::make_shared<sql::ast::Select>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable});
-  return node;
-}
-
 std::shared_ptr<sql::ast::Expression> Translator::GetExpressionFromID(RelNode& node, const std::string& id,
                                                                       bool is_top_level) {
   if (node.variables.count(id)) {
@@ -353,10 +326,10 @@ Translator::FullApplParamSlots Translator::CollectApplParams(RelNode& node,
 
     param_idx++;
 
-    auto term_expr = std::dynamic_pointer_cast<RelTermExpr>(expr);
+    auto term = std::dynamic_pointer_cast<RelTerm>(expr);
 
     // Non-term param: Accept and make a sourceable.
-    if (!term_expr) {
+    if (!term) {
       Visit(expr);
       auto expr_sql = ExpectSourceable(expr->sql_expression);
       auto param_source = std::make_shared<sql::ast::Source>(expr_sql, GenerateTableAlias());
@@ -365,7 +338,7 @@ Translator::FullApplParamSlots Translator::CollectApplParams(RelNode& node,
       continue;
     }
 
-    auto id_term = dynamic_cast<RelIDTerm*>(term_expr->term.get());
+    auto id_term = dynamic_cast<RelIDTerm*>(term.get());
 
     if (id_term) {
       // If the ID term is a relation, get the expression from the relation and make a sourceable.
@@ -383,7 +356,7 @@ Translator::FullApplParamSlots Translator::CollectApplParams(RelNode& node,
     }
 
     // Non-ID term: Check if it is a term of constants only.
-    if (term_expr->term->variables.empty()) {
+    if (term->variables.empty()) {
       Visit(expr);
       auto expr_sql = ExpectSourceable(expr->sql_expression);
 
@@ -393,16 +366,14 @@ Translator::FullApplParamSlots Translator::CollectApplParams(RelNode& node,
       continue;
     }
 
-    auto term_node = term_expr->term.get();
-
-    if (term_node->variables.size() != 1) {
+    if (term->variables.size() != 1) {
       throw VariableException("Term parameter must have exactly one variable for full application");
     }
-    if (term_node->IsInvalidTermExpression() || term_node->IsNullPolynomialTerm() ||
-        !term_node->term_linear_coeffs.has_value()) {
+    if (term->IsInvalidTermExpression() || term->IsNullPolynomialTerm() ||
+        !term->term_linear_coeffs.has_value()) {
       throw VariableException("Invalid or null polynomial term in parameter.");
     }
-    slots.term_param_slots.push_back({term_node, param_idx});
+    slots.term_param_slots.push_back({term.get(), param_idx});
   }
 
   return slots;
@@ -572,10 +543,9 @@ std::shared_ptr<sql::ast::Select> Translator::VisitAggregateRel(const std::share
   std::shared_ptr<sql::ast::Source> subquery;
 
   // Simple relation ID (e.g. sum[A]): use table directly so we get "FROM A AS T0" not an extra subquery.
-  if (auto* term_expr = dynamic_cast<RelTermExpr*>(expr.get())) {
-    auto id_term = dynamic_cast<RelIDTerm*>(term_expr->term.get());
-    if (id_term && context_.IsRelation(id_term->id)) {
-      auto ra_expr = GetExpressionFromID(*expr, id_term->id, false);
+  if (auto* term = dynamic_cast<RelIDTerm*>(expr.get())) {
+    if (context_.IsRelation(term->id)) {
+      auto ra_expr = GetExpressionFromID(*expr, term->id, false);
       expr_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(ra_expr);
       if (expr_sql) {
         subquery = std::make_shared<sql::ast::Source>(expr_sql, GenerateTableAlias());

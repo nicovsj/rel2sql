@@ -16,7 +16,6 @@ class SafetyVisitor : public BaseRelVisitor {
 
   std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node) override;
 
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelTermExpr>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProductExpr>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelConditionExpr>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelAbstractionExpr>& node) override;

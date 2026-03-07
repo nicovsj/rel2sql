@@ -10,9 +10,9 @@ namespace rel2sql {
 namespace {
 
 bool IsSimpleExpr(const std::shared_ptr<RelExpr>& expr) {
-  if (auto* te = dynamic_cast<RelTermExpr*>(expr.get())) {
-    return dynamic_cast<RelIDTerm*>(te->term.get()) != nullptr ||
-           dynamic_cast<RelNumTerm*>(te->term.get()) != nullptr;
+  if (auto* term = dynamic_cast<RelTerm*>(expr.get())) {
+    return dynamic_cast<RelIDTerm*>(term) != nullptr ||
+           dynamic_cast<RelNumTerm*>(term) != nullptr;
   }
   if (dynamic_cast<RelLiteral*>(expr.get())) return true;
   return false;
@@ -25,11 +25,11 @@ std::string TermRewriter::FreshVarName() {
 }
 
 std::shared_ptr<RelExpr> TermRewriter::WrapTermExpr(
-    std::shared_ptr<RelTermExpr> expr, bool wrap_in_abs) {
+    std::shared_ptr<RelTerm> term, bool wrap_in_abs) {
   std::string z = FreshVarName();
   auto bind = std::make_shared<RelVarBinding>(z, std::nullopt);
   auto lhs = std::make_shared<RelIDTerm>(z);
-  auto formula = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, expr->term);
+  auto formula = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, term);
   auto bindings_formula =
       std::make_shared<RelBindingsFormula>(std::vector<std::shared_ptr<RelBinding>>{bind},
                                            std::move(formula));
@@ -43,12 +43,12 @@ std::shared_ptr<RelExpr> TermRewriter::WrapTermExpr(
 
 std::shared_ptr<RelExpr> TermRewriter::WrapConditionExpr(
     std::shared_ptr<RelConditionExpr> expr) {
-  auto* te = dynamic_cast<RelTermExpr*>(expr->lhs.get());
-  if (!te) return nullptr;
+  auto term = std::dynamic_pointer_cast<RelTerm>(expr->lhs);
+  if (!term) return nullptr;
   std::string z = FreshVarName();
   auto bind = std::make_shared<RelVarBinding>(z, std::nullopt);
   auto lhs = std::make_shared<RelIDTerm>(z);
-  auto eq_formula = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, te->term);
+  auto eq_formula = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, term);
   auto formula =
       std::make_shared<RelConjunction>(std::move(eq_formula), expr->rhs);
   auto bindings_formula =
@@ -61,8 +61,8 @@ std::shared_ptr<RelExpr> TermRewriter::WrapConditionExpr(
 
 std::shared_ptr<RelExpr> TermRewriter::WrapExpr(std::shared_ptr<RelExpr> expr,
                                                             bool wrap_in_abs) {
-  if (auto te = std::dynamic_pointer_cast<RelTermExpr>(expr)) {
-    return WrapTermExpr(std::move(te), wrap_in_abs);
+  if (auto term = std::dynamic_pointer_cast<RelTerm>(expr)) {
+    return WrapTermExpr(std::move(term), wrap_in_abs);
   }
   if (auto ce = std::dynamic_pointer_cast<RelConditionExpr>(expr)) {
     return WrapConditionExpr(std::move(ce));

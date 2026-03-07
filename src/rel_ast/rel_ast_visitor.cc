@@ -62,11 +62,6 @@ std::shared_ptr<RelAbstraction> BaseRelVisitor::Visit(const std::shared_ptr<RelA
 
 std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelLiteral>& node) { return node; }
 
-std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelTermExpr>& node) {
-  if (node->term) node->term = Visit(node->term);
-  return node;
-}
-
 std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelProductExpr>& node) {
   for (auto& expr : node->exprs) {
     if (expr) expr = Visit(expr);

@@ -112,13 +112,4 @@ std::shared_ptr<RelTerm> TermPolynomialVisitor::Visit(const std::shared_ptr<RelP
   return node;
 }
 
-std::shared_ptr<RelExpr> TermPolynomialVisitor::Visit(const std::shared_ptr<RelTermExpr>& node) {
-  if (node->term) Visit(node->term);
-  if (node->term) {
-    node->term_linear_invalid = node->term->term_linear_invalid;
-    node->term_linear_coeffs = node->term->term_linear_coeffs;
-  }
-  return node;
-}
-
 }  // namespace rel2sql

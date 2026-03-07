@@ -81,12 +81,6 @@ std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelLiteral>& 
   return node;
 }
 
-std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelTermExpr>& node) {
-  if (node->term) Visit(node->term);
-  node->arity = node->term ? node->term->arity : 0;
-  return node;
-}
-
 std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelProductExpr>& node) {
   node->arity = 0;
   for (auto& expr : node->exprs) {
