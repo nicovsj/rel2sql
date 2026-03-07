@@ -79,7 +79,7 @@ std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelBinding
     condition_formula =
         std::make_shared<RelConjunction>(condition_formula, MakeAtomFormula(rel_id, var_id));
   }
-  std::shared_ptr<RelExpr> wrapped_expr = std::make_shared<RelConditionExpr>(new_expr, std::move(condition_formula));
+  std::shared_ptr<RelExpr> wrapped_expr = std::make_shared<RelCondition>(new_expr, std::move(condition_formula));
 
   return std::make_shared<RelBindingsExpr>(std::move(new_bindings), std::move(wrapped_expr));
 }

@@ -582,7 +582,7 @@ std::shared_ptr<sql::ast::Select> Translator::VisitAggregateRel(const std::share
   return std::make_shared<sql::ast::Select>(select_cols, from);
 }
 
-std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelConditionExpr>& node) {
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelCondition>& node) {
   if (!node->lhs || !node->rhs) return node;
 
   Visit(node->lhs);

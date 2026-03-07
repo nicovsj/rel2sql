@@ -22,14 +22,14 @@ class TermRewriter : public BaseRelVisitor {
   using BaseRelVisitor::Visit;
 
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsExpr>& node) override;
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelConditionExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelCondition>& node) override;
   std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProduct>& node) override;
 
  private:
   std::string FreshVarName();
   std::shared_ptr<RelExpr> WrapTermExpr(std::shared_ptr<RelTerm> term, bool wrap_in_abs);
-  std::shared_ptr<RelExpr> WrapConditionExpr(std::shared_ptr<RelConditionExpr> expr);
+  std::shared_ptr<RelExpr> WrapConditionExpr(std::shared_ptr<RelCondition> expr);
   std::shared_ptr<RelExpr> WrapExpr(std::shared_ptr<RelExpr> expr, bool wrap_in_abs);
 
   int fresh_var_counter_ = 0;

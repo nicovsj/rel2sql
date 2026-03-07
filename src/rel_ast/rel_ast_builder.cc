@@ -132,7 +132,7 @@ std::any RelASTBuilder::visitConditionExpr(psr::ConditionExprContext* ctx) {
   auto rhs_result = visit(ctx->rhs);
   auto lhs = Cast<RelExpr>(lhs_result);
   auto rhs = Cast<RelFormula>(rhs_result);
-  auto node = std::make_shared<RelConditionExpr>(std::move(lhs), std::move(rhs));
+  auto node = std::make_shared<RelCondition>(std::move(lhs), std::move(rhs));
   SetCtx(node.get(), ctx);
   return std::shared_ptr<RelExpr>(node);
 }

@@ -37,7 +37,7 @@ class Translator : public BaseRelVisitor {
   // Expressions
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelLiteral>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProduct>& node) override;
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelConditionExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelCondition>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelAbstractionExpr>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsExpr>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsFormula>& node) override;

@@ -370,11 +370,11 @@ struct RelProduct : RelExpr {
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };
 
-struct RelConditionExpr : RelExpr {
+struct RelCondition : RelExpr {
   std::shared_ptr<RelExpr> lhs;
   std::shared_ptr<RelFormula> rhs;
 
-  RelConditionExpr(std::shared_ptr<RelExpr> lhs, std::shared_ptr<RelFormula> rhs)
+  RelCondition(std::shared_ptr<RelExpr> lhs, std::shared_ptr<RelFormula> rhs)
       : lhs(std::move(lhs)), rhs(std::move(rhs)) {}
 
   std::string ToString() const override;

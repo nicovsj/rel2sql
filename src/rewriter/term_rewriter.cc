@@ -42,7 +42,7 @@ std::shared_ptr<RelExpr> TermRewriter::WrapTermExpr(
 }
 
 std::shared_ptr<RelExpr> TermRewriter::WrapConditionExpr(
-    std::shared_ptr<RelConditionExpr> expr) {
+    std::shared_ptr<RelCondition> expr) {
   auto term = std::dynamic_pointer_cast<RelTerm>(expr->lhs);
   if (!term) return nullptr;
   std::string z = FreshVarName();
@@ -64,14 +64,14 @@ std::shared_ptr<RelExpr> TermRewriter::WrapExpr(std::shared_ptr<RelExpr> expr,
   if (auto term = std::dynamic_pointer_cast<RelTerm>(expr)) {
     return WrapTermExpr(std::move(term), wrap_in_abs);
   }
-  if (auto ce = std::dynamic_pointer_cast<RelConditionExpr>(expr)) {
+  if (auto ce = std::dynamic_pointer_cast<RelCondition>(expr)) {
     return WrapConditionExpr(std::move(ce));
   }
   return nullptr;
 }
 
-std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelConditionExpr>& node) {
-  auto result = std::dynamic_pointer_cast<RelConditionExpr>(BaseRelVisitor::Visit(node));
+std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelCondition>& node) {
+  auto result = std::dynamic_pointer_cast<RelCondition>(BaseRelVisitor::Visit(node));
   if (!result) return result;
 
   if (!IsSimpleExpr(result->lhs)) {

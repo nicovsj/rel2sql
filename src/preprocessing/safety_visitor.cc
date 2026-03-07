@@ -43,7 +43,7 @@ std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelProduct>&
   return node;
 }
 
-std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelConditionExpr>& node) {
+std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelCondition>& node) {
   if (node->lhs) Visit(node->lhs);
   if (node->rhs) Visit(node->rhs);
   if (node->lhs && node->rhs) {

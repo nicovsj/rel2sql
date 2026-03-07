@@ -71,7 +71,7 @@ std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelProduc
   return node;
 }
 
-std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelConditionExpr>& node) {
+std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelCondition>& node) {
   if (node->lhs) Visit(node->lhs);
   if (node->rhs) Visit(node->rhs);
   if (node->lhs) node->VariablesInplaceUnion(*node->lhs);

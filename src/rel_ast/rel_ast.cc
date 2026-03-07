@@ -260,10 +260,10 @@ std::string RelProduct::ToString() const {
   out << ")";
   return out.str();
 }
-std::shared_ptr<RelNode> RelConditionExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelConditionExpr>(self));
+std::shared_ptr<RelNode> RelCondition::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelCondition>(self));
 }
-std::string RelConditionExpr::ToString() const {
+std::string RelCondition::ToString() const {
   std::string l = lhs ? lhs->ToString() : "?";
   std::string r = rhs ? rhs->ToString() : "?";
   return l + " where " + r;
