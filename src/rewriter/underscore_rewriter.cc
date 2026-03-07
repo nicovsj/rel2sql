@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "rel_ast/rel_ast.h"
-#include "rel_ast/rel_context.h"
+#include "rel_ast/rel_context_builder.h"
 
 namespace rel2sql {
 
@@ -23,16 +23,17 @@ int UnderscoreRewriter::GetRelationArity(const std::string& id) const {
   return container_->GetArity(id);
 }
 
-void UnderscoreRewriter::Visit(RelFullAppl& node) {
-  BaseRelRewriter::Visit(node);
+std::shared_ptr<RelFormula> UnderscoreRewriter::Visit(const std::shared_ptr<RelFullAppl>& node) {
+  auto result = std::dynamic_pointer_cast<RelFullAppl>(BaseRelVisitor::Visit(node));
+  if (!result) return result;
 
   std::vector<int> underscore_positions;
-  for (size_t i = 0; i < node.params.size(); i++) {
-    if (node.params[i] && node.params[i]->IsUnderscore()) {
+  for (size_t i = 0; i < result->params.size(); i++) {
+    if (result->params[i] && result->params[i]->IsUnderscore()) {
       underscore_positions.push_back(static_cast<int>(i));
     }
   }
-  if (underscore_positions.empty()) return;
+  if (underscore_positions.empty()) return result;
 
   std::vector<std::string> fresh_vars;
   for (size_t i = 0; i < underscore_positions.size(); i++) {
@@ -41,11 +42,11 @@ void UnderscoreRewriter::Visit(RelFullAppl& node) {
 
   std::vector<std::shared_ptr<RelApplParam>> new_params;
   int uv_idx = 0;
-  for (size_t i = 0; i < node.params.size(); i++) {
-    if (node.params[i] && node.params[i]->IsUnderscore()) {
+  for (size_t i = 0; i < result->params.size(); i++) {
+    if (result->params[i] && result->params[i]->IsUnderscore()) {
       new_params.push_back(MakeVarParam(fresh_vars[uv_idx++]));
     } else {
-      new_params.push_back(node.params[i]);
+      new_params.push_back(result->params[i]);
     }
   }
 
@@ -54,55 +55,52 @@ void UnderscoreRewriter::Visit(RelFullAppl& node) {
     bindings.push_back(std::make_shared<RelVarBinding>(v, std::nullopt));
   }
 
-  auto new_appl = std::make_shared<RelFullAppl>(node.base, std::move(new_params));
-  auto quant = std::make_shared<RelQuantification>(
+  auto new_appl = std::make_shared<RelFullAppl>(result->base, std::move(new_params));
+  return std::make_shared<RelQuantification>(
       RelQuantOp::EXISTS, std::move(bindings), std::move(new_appl));
-
-  SetFormulaReplacement(std::move(quant));
 }
 
-void UnderscoreRewriter::Visit(RelPartialAppl& node) {
-  BaseRelRewriter::Visit(node);
+std::shared_ptr<RelExpr> UnderscoreRewriter::Visit(const std::shared_ptr<RelPartialAppl>& node) {
+  auto result = std::dynamic_pointer_cast<RelPartialAppl>(BaseRelVisitor::Visit(node));
+  if (!result) return result;
 
   int underscore_pos = -1;
-  for (size_t i = 0; i < node.params.size(); i++) {
-    if (node.params[i] && node.params[i]->IsUnderscore()) {
-      if (underscore_pos >= 0) {
-        return;
-      }
+  for (size_t i = 0; i < result->params.size(); i++) {
+    if (result->params[i] && result->params[i]->IsUnderscore()) {
+      if (underscore_pos >= 0) return result;
       underscore_pos = static_cast<int>(i);
     }
   }
-  if (underscore_pos < 0) return;
+  if (underscore_pos < 0) return result;
 
-  auto* id_base = dynamic_cast<RelIDApplBase*>(node.base.get());
-  if (!id_base) return;
+  auto* id_base = dynamic_cast<RelIDApplBase*>(result->base.get());
+  if (!id_base) return result;
 
   int rel_arity = GetRelationArity(id_base->id);
-  if (rel_arity <= 0 || static_cast<size_t>(rel_arity) <= node.params.size()) {
-    return;
+  if (rel_arity <= 0 || static_cast<size_t>(rel_arity) <= result->params.size()) {
+    return result;
   }
 
   std::string z = FreshVarName();
   std::vector<std::string> rest_vars;
-  size_t rest_count = static_cast<size_t>(rel_arity) - node.params.size();
+  size_t rest_count = static_cast<size_t>(rel_arity) - result->params.size();
   for (size_t i = 0; i < rest_count; i++) {
     rest_vars.push_back(FreshVarName());
   }
 
   std::vector<std::shared_ptr<RelApplParam>> full_params;
-  for (size_t i = 0; i < node.params.size(); i++) {
-    if (node.params[i] && node.params[i]->IsUnderscore()) {
+  for (size_t i = 0; i < result->params.size(); i++) {
+    if (result->params[i] && result->params[i]->IsUnderscore()) {
       full_params.push_back(MakeVarParam(z));
     } else {
-      full_params.push_back(node.params[i]);
+      full_params.push_back(result->params[i]);
     }
   }
   for (const auto& v : rest_vars) {
     full_params.push_back(MakeVarParam(v));
   }
 
-  auto full_appl = std::make_shared<RelFullAppl>(node.base, std::move(full_params));
+  auto full_appl = std::make_shared<RelFullAppl>(result->base, std::move(full_params));
 
   std::vector<std::shared_ptr<RelBinding>> bindings;
   bindings.push_back(std::make_shared<RelVarBinding>(z, std::nullopt));
@@ -110,15 +108,11 @@ void UnderscoreRewriter::Visit(RelPartialAppl& node) {
   auto exists_formula = std::make_shared<RelQuantification>(
       RelQuantOp::EXISTS, std::move(bindings), std::move(full_appl));
 
-  // (zk+1, ..., z|A|) : exists((z) | A(...))  via RelBindingsFormula
   std::vector<std::shared_ptr<RelBinding>> output_bindings;
   for (const auto& v : rest_vars) {
     output_bindings.push_back(std::make_shared<RelVarBinding>(v, std::nullopt));
   }
-  auto bindings_formula =
-      std::make_shared<RelBindingsFormula>(std::move(output_bindings), std::move(exists_formula));
-
-  SetExprReplacement(std::move(bindings_formula));
+  return std::make_shared<RelBindingsFormula>(std::move(output_bindings), std::move(exists_formula));
 }
 
 }  // namespace rel2sql

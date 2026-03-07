@@ -38,11 +38,45 @@ std::string ConstantToString(const sql::ast::constant_t& c) {
       c);
 }
 
+std::string CompOpToString(RelCompOp op) {
+  switch (op) {
+    case RelCompOp::EQ:
+      return "=";
+    case RelCompOp::NEQ:
+      return "!=";
+    case RelCompOp::LT:
+      return "<";
+    case RelCompOp::GT:
+      return ">";
+    case RelCompOp::LTE:
+      return "<=";
+    case RelCompOp::GTE:
+      return ">=";
+  }
+  return "?";
+}
+
+std::string LogicalOpToString(RelLogicalOp op) { return op == RelLogicalOp::AND ? "and" : "or"; }
+
+std::string QuantOpToString(RelQuantOp op) { return op == RelQuantOp::EXISTS ? "exists" : "forall"; }
+
+std::string TermOpToString(RelTermOp op) {
+  switch (op) {
+    case RelTermOp::ADD:
+      return "+";
+    case RelTermOp::SUB:
+      return "-";
+    case RelTermOp::MUL:
+      return "*";
+    case RelTermOp::DIV:
+      return "/";
+  }
+  return "?";
+}
+
 }  // namespace
 
-std::string RelLiteralBinding::ToString() const {
-  return LiteralValueToString(value);
-}
+std::string RelLiteralBinding::ToString() const { return LiteralValueToString(value); }
 
 std::string RelVarBinding::ToString() const {
   std::string out = id;
@@ -50,55 +84,16 @@ std::string RelVarBinding::ToString() const {
   return out;
 }
 
-std::string RelIDApplBase::ToString() const { return id; }
-
-std::string RelAbstractionApplBase::ToString() const {
-  return rel_abs ? rel_abs->ToString() : "{}";
+std::shared_ptr<RelNode> RelLiteral::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelLiteral>(self));
 }
-
-std::string RelExprApplParam::ToString() const {
-  return expr ? expr->ToString() : "";
-}
-
-namespace {
-
-std::string CompOpToString(RelCompOp op) {
-  switch (op) {
-    case RelCompOp::EQ: return "=";
-    case RelCompOp::NEQ: return "!=";
-    case RelCompOp::LT: return "<";
-    case RelCompOp::GT: return ">";
-    case RelCompOp::LTE: return "<=";
-    case RelCompOp::GTE: return ">=";
-  }
-  return "?";
-}
-
-std::string LogicalOpToString(RelLogicalOp op) {
-  return op == RelLogicalOp::AND ? "and" : "or";
-}
-
-std::string QuantOpToString(RelQuantOp op) {
-  return op == RelQuantOp::EXISTS ? "exists" : "forall";
-}
-
-std::string TermOpToString(RelTermOp op) {
-  switch (op) {
-    case RelTermOp::ADD: return "+";
-    case RelTermOp::SUB: return "-";
-    case RelTermOp::MUL: return "*";
-    case RelTermOp::DIV: return "/";
-  }
-  return "?";
-}
-
-}  // namespace
-
-void RelLiteral::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
 
 std::string RelLiteral::ToString() const { return LiteralValueToString(value); }
 
-void RelAbstraction::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+std::shared_ptr<RelNode> RelAbstraction::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelAbstraction>(self));
+}
+
 std::string RelAbstraction::ToString() const {
   std::ostringstream out;
   out << "{";
@@ -109,50 +104,96 @@ std::string RelAbstraction::ToString() const {
   out << "}";
   return out.str();
 }
-void RelIDTerm::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+std::shared_ptr<RelNode> RelIDTerm::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelIDTerm>(self));
+}
 std::string RelIDTerm::ToStringImpl() const { return id; }
 
-void RelNumTerm::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+std::shared_ptr<RelNode> RelNumTerm::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelNumTerm>(self));
+}
+
 std::string RelNumTerm::ToStringImpl() const { return ConstantToString(value); }
 
-void RelOpTerm::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+std::shared_ptr<RelNode> RelOpTerm::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelOpTerm>(self));
+}
+
 std::string RelOpTerm::ToStringImpl() const {
   std::string l = lhs ? lhs->ToString() : "?";
   std::string r = rhs ? rhs->ToString() : "?";
   return l + " " + TermOpToString(op) + " " + r;
 }
-void RelParenthesisTerm::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
-std::string RelParenthesisTerm::ToStringImpl() const {
-  return term ? "(" + term->ToString() + ")" : "()";
+
+std::shared_ptr<RelNode> RelParenthesisTerm::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelParenthesisTerm>(self));
 }
-void RelFormulaBool::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+
+
+std::string RelExprApplParam::ToString() const { return expr ? expr->ToString() : ""; }
+
+std::shared_ptr<RelNode> RelExprApplParam::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelExprApplParam>(self));
+}
+
+std::shared_ptr<RelNode> RelUnderscoreParam::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelUnderscoreParam>(self));
+}
+
+std::string RelIDApplBase::ToString() const { return id; }
+
+std::shared_ptr<RelNode> RelIDApplBase::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelIDApplBase>(self));
+}
+
+std::string RelAbstractionApplBase::ToString() const { return rel_abs ? rel_abs->ToString() : "{}"; }
+
+std::shared_ptr<RelNode> RelAbstractionApplBase::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelAbstractionApplBase>(self));
+}
+
+std::string RelParenthesisTerm::ToStringImpl() const { return term ? "(" + term->ToString() + ")" : "()"; }
+
+std::shared_ptr<RelNode> RelFormulaBool::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelFormulaBool>(self));
+}
+
 
 std::string RelFormulaBool::ToStringImpl() const { return "true"; }
 
-void RelComparison::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+std::shared_ptr<RelNode> RelComparison::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelComparison>(self));
+}
 
 std::string RelComparison::ToStringImpl() const {
   std::string l = lhs ? lhs->ToString() : "?";
   std::string r = rhs ? rhs->ToString() : "?";
   return l + " " + CompOpToString(op) + " " + r;
 }
-void RelUnOp::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
-std::string RelUnOp::ToStringImpl() const {
-  return formula ? "not " + formula->ToString() : "not (?)";
+std::shared_ptr<RelNode> RelUnOp::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelUnOp>(self));
 }
-void RelBinOp::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+
+std::string RelUnOp::ToStringImpl() const { return formula ? "not " + formula->ToString() : "not (?)"; }
+
+std::shared_ptr<RelNode> RelBinOp::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelBinOp>(self));
+}
 std::string RelBinOp::ToStringImpl() const {
   std::string l = lhs ? lhs->ToString() : "?";
   std::string r = rhs ? rhs->ToString() : "?";
   return l + " " + LogicalOpToString(op) + " " + r;
 }
 
-void RelParen::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
-
-std::string RelParen::ToStringImpl() const {
-  return formula ? "(" + formula->ToString() + ")" : "()";
+std::shared_ptr<RelNode> RelParen::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelParen>(self));
 }
-void RelQuantification::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+
+std::string RelParen::ToStringImpl() const { return formula ? "(" + formula->ToString() + ")" : "()"; }
+
+std::shared_ptr<RelNode> RelQuantification::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelQuantification>(self));
+}
 std::string RelQuantification::ToStringImpl() const {
   std::ostringstream out;
   out << QuantOpToString(op) << "( (";
@@ -164,7 +205,9 @@ std::string RelQuantification::ToStringImpl() const {
   out << ")";
   return out.str();
 }
-void RelFullAppl::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+std::shared_ptr<RelNode> RelFullAppl::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelFullAppl>(self));
+}
 std::string RelFullAppl::ToStringImpl() const {
   std::ostringstream out;
   out << (base ? base->ToString() : "?");
@@ -178,15 +221,19 @@ std::string RelFullAppl::ToStringImpl() const {
   }
   return out.str();
 }
-void RelLitExpr::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
-std::string RelLitExpr::ToStringImpl() const {
-  return literal ? literal->ToString() : "?";
+std::shared_ptr<RelNode> RelLitExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelLitExpr>(self));
 }
-void RelTermExpr::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
-std::string RelTermExpr::ToStringImpl() const {
-  return term ? term->ToString() : "?";
+std::string RelLitExpr::ToStringImpl() const { return literal ? literal->ToString() : "?"; }
+
+std::shared_ptr<RelNode> RelTermExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelTermExpr>(self));
 }
-void RelProductExpr::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+std::string RelTermExpr::ToStringImpl() const { return term ? term->ToString() : "?"; }
+
+std::shared_ptr<RelNode> RelProductExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelProductExpr>(self));
+}
 std::string RelProductExpr::ToStringImpl() const {
   std::ostringstream out;
   out << "(";
@@ -197,21 +244,27 @@ std::string RelProductExpr::ToStringImpl() const {
   out << ")";
   return out.str();
 }
-void RelConditionExpr::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+std::shared_ptr<RelNode> RelConditionExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelConditionExpr>(self));
+}
 std::string RelConditionExpr::ToStringImpl() const {
   std::string l = lhs ? lhs->ToString() : "?";
   std::string r = rhs ? rhs->ToString() : "?";
   return l + " where " + r;
 }
-void RelAbstractionExpr::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
-std::string RelAbstractionExpr::ToStringImpl() const {
-  return rel_abs ? rel_abs->ToString() : "{}";
+std::shared_ptr<RelNode> RelAbstractionExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelAbstractionExpr>(self));
 }
-void RelFormulaExpr::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
-std::string RelFormulaExpr::ToStringImpl() const {
-  return formula ? formula->ToString() : "?";
+std::string RelAbstractionExpr::ToStringImpl() const { return rel_abs ? rel_abs->ToString() : "{}"; }
+
+std::shared_ptr<RelNode> RelFormulaExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelFormulaExpr>(self));
 }
-void RelBindingsExpr::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+std::string RelFormulaExpr::ToStringImpl() const { return formula ? formula->ToString() : "?"; }
+
+std::shared_ptr<RelNode> RelBindingsExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelBindingsExpr>(self));
+}
 std::string RelBindingsExpr::ToStringImpl() const {
   std::ostringstream out;
   out << "[";
@@ -223,7 +276,9 @@ std::string RelBindingsExpr::ToStringImpl() const {
   out << (expr ? expr->ToString() : "?");
   return out.str();
 }
-void RelBindingsFormula::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+std::shared_ptr<RelNode> RelBindingsFormula::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelBindingsFormula>(self));
+}
 std::string RelBindingsFormula::ToStringImpl() const {
   std::ostringstream out;
   out << "(";
@@ -235,7 +290,9 @@ std::string RelBindingsFormula::ToStringImpl() const {
   out << " : " << (formula ? formula->ToString() : "?");
   return out.str();
 }
-void RelPartialAppl::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+std::shared_ptr<RelNode> RelPartialAppl::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelPartialAppl>(self));
+}
 std::string RelPartialAppl::ToStringImpl() const {
   std::ostringstream out;
   out << (base ? base->ToString() : "?");
@@ -249,11 +306,14 @@ std::string RelPartialAppl::ToStringImpl() const {
   }
   return out.str();
 }
-void RelDef::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
-std::string RelDef::ToString() const {
-  return "def " + name + " " + (body ? body->ToString() : "{}");
+std::shared_ptr<RelNode> RelDef::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelDef>(self));
 }
-void RelProgram::Accept(RelASTVisitor& visitor) { visitor.Visit(*this); }
+std::string RelDef::ToString() const { return "def " + name + " " + (body ? body->ToString() : "{}"); }
+
+std::shared_ptr<RelNode> RelProgram::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelProgram>(self));
+}
 std::string RelProgram::ToString() const {
   std::ostringstream out;
   for (size_t i = 0; i < defs.size(); ++i) {

@@ -6,23 +6,27 @@
 #include <vector>
 
 #include "rel_ast/rel_ast.h"
-#include "rel_ast/rel_context.h"
 #include "rel_ast/rel_ast_visitor.h"
+#include "rel_ast/rel_context_builder.h"
 #include "rel_ast/relation_info.h"
 
 namespace rel2sql {
 
-class RecursionVisitor : public RelASTVisitor {
+class RecursionVisitor : public BaseRelVisitor {
  public:
-  explicit RecursionVisitor(RelContext* container) : container_(container) {}
+  using BaseRelVisitor::Visit;
+  explicit RecursionVisitor(RelContextBuilder* container) : container_(container) {}
 
-  void Visit(RelProgram& node) override;
-  void Visit(RelDef& node) override;
-  void Visit(RelAbstraction& node) override;
-  void Visit(RelBindingsFormula& node) override;
-  void Visit(RelBinOp& node) override;
-  void Visit(RelQuantification& node) override;
-  void Visit(RelFullAppl& node) override;
+  std::shared_ptr<RelProgram> Visit(const std::shared_ptr<RelProgram>& node) override;
+  std::shared_ptr<RelDef> Visit(const std::shared_ptr<RelDef>& node) override;
+
+  std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node) override;
+
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsFormula>& node) override;
+
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBinOp>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelQuantification>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullAppl>& node) override;
 
  private:
   struct RecursiveBranchMatch {
@@ -37,7 +41,7 @@ class RecursionVisitor : public RelASTVisitor {
   };
 
   std::string current_q_;
-  RelContext* container_;
+  RelContextBuilder* container_;
 
   bool IsRecursiveID(const std::string& id) const;
   std::unordered_set<std::string> CollectIDs(const std::shared_ptr<RelFormula>& formula) const;

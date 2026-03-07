@@ -219,6 +219,7 @@ class SourceReplacer : public ExpressionVisitor {
 
 class TableNameUpdater : public ExpressionVisitor {
  public:
+  using ExpressionVisitor::Visit;
   TableNameUpdater(const std::string& old_table_name, const std::string& new_table_name)
       : old_table_name_(old_table_name), new_table_name_(new_table_name) {}
 

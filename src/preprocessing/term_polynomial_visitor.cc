@@ -32,88 +32,93 @@ bool HasValidLinear(RelNode* node) {
 
 }  // namespace
 
-void TermPolynomialVisitor::Visit(RelNumTerm& node) {
-  auto maybe_value = ConstantToDouble(node.value);
+std::shared_ptr<RelTerm> TermPolynomialVisitor::Visit(const std::shared_ptr<RelNumTerm>& node) {
+  auto maybe_value = ConstantToDouble(node->value);
   if (!maybe_value.has_value()) {
-    MarkInvalid(&node);
-    return;
+    MarkInvalid(node.get());
+    return node;
   }
-  SetLinear(&node, 0.0, maybe_value.value());
+  SetLinear(node.get(), 0.0, maybe_value.value());
+  return node;
 }
 
-void TermPolynomialVisitor::Visit(RelIDTerm& node) {
-  if (node.variables.size() == 1) {
-    SetLinear(&node, 1.0, 0.0);
+std::shared_ptr<RelTerm> TermPolynomialVisitor::Visit(const std::shared_ptr<RelIDTerm>& node) {
+  if (node->variables.size() == 1) {
+    SetLinear(node.get(), 1.0, 0.0);
   } else {
-    MarkInvalid(&node);
+    MarkInvalid(node.get());
   }
+  return node;
 }
 
-void TermPolynomialVisitor::Visit(RelOpTerm& node) {
-  if (node.lhs) node.lhs->Accept(*this);
-  if (node.rhs) node.rhs->Accept(*this);
+std::shared_ptr<RelTerm> TermPolynomialVisitor::Visit(const std::shared_ptr<RelOpTerm>& node) {
+  if (node->lhs) Visit(node->lhs);
+  if (node->rhs) Visit(node->rhs);
 
-  if (!node.lhs || !node.rhs || !HasValidLinear(node.lhs.get()) || !HasValidLinear(node.rhs.get())) {
-    MarkInvalid(&node);
-    return;
+  if (!node->lhs || !node->rhs || !HasValidLinear(node->lhs.get()) || !HasValidLinear(node->rhs.get())) {
+    MarkInvalid(node.get());
+    return node;
   }
 
-  auto [a1, b1] = node.lhs->term_linear_coeffs.value();
-  auto [a2, b2] = node.rhs->term_linear_coeffs.value();
+  auto [a1, b1] = node->lhs->term_linear_coeffs.value();
+  auto [a2, b2] = node->rhs->term_linear_coeffs.value();
 
-  switch (node.op) {
+  switch (node->op) {
     case RelTermOp::ADD:
-      SetLinear(&node, a1 + a2, b1 + b2);
-      return;
+      SetLinear(node.get(), a1 + a2, b1 + b2);
+      return node;
     case RelTermOp::SUB:
-      SetLinear(&node, a1 - a2, b1 - b2);
-      return;
+      SetLinear(node.get(), a1 - a2, b1 - b2);
+      return node;
     case RelTermOp::MUL: {
-      bool lhs_has_var = !node.lhs->variables.empty();
-      bool rhs_has_var = !node.rhs->variables.empty();
+      bool lhs_has_var = !node->lhs->variables.empty();
+      bool rhs_has_var = !node->rhs->variables.empty();
 
       if (lhs_has_var && rhs_has_var) {
-        MarkInvalid(&node);
-        return;
+        MarkInvalid(node.get());
+        return node;
       }
       if (!lhs_has_var && !rhs_has_var) {
-        SetLinear(&node, 0.0, b1 * b2);
-        return;
+        SetLinear(node.get(), 0.0, b1 * b2);
+        return node;
       }
       if (lhs_has_var) {
-        SetLinear(&node, a1 * b2, b1 * b2);
+        SetLinear(node.get(), a1 * b2, b1 * b2);
       } else {
-        SetLinear(&node, a2 * b1, b2 * b1);
+        SetLinear(node.get(), a2 * b1, b2 * b1);
       }
-      return;
+      return node;
     }
     case RelTermOp::DIV: {
-      bool rhs_has_var = !node.rhs->variables.empty();
+      bool rhs_has_var = !node->rhs->variables.empty();
       if (rhs_has_var || a2 != 0.0 || b2 == 0.0) {
-        MarkInvalid(&node);
-        return;
+        MarkInvalid(node.get());
+        return node;
       }
       double inv = 1.0 / b2;
-      SetLinear(&node, a1 * inv, b1 * inv);
-      return;
+      SetLinear(node.get(), a1 * inv, b1 * inv);
+      return node;
     }
   }
+  return node;
 }
 
-void TermPolynomialVisitor::Visit(RelParenthesisTerm& node) {
-  if (node.term) node.term->Accept(*this);
-  if (node.term) {
-    node.term_linear_invalid = node.term->term_linear_invalid;
-    node.term_linear_coeffs = node.term->term_linear_coeffs;
+std::shared_ptr<RelTerm> TermPolynomialVisitor::Visit(const std::shared_ptr<RelParenthesisTerm>& node) {
+  if (node->term) Visit(node->term);
+  if (node->term) {
+    node->term_linear_invalid = node->term->term_linear_invalid;
+    node->term_linear_coeffs = node->term->term_linear_coeffs;
   }
+  return node;
 }
 
-void TermPolynomialVisitor::Visit(RelTermExpr& node) {
-  if (node.term) node.term->Accept(*this);
-  if (node.term) {
-    node.term_linear_invalid = node.term->term_linear_invalid;
-    node.term_linear_coeffs = node.term->term_linear_coeffs;
+std::shared_ptr<RelExpr> TermPolynomialVisitor::Visit(const std::shared_ptr<RelTermExpr>& node) {
+  if (node->term) Visit(node->term);
+  if (node->term) {
+    node->term_linear_invalid = node->term->term_linear_invalid;
+    node->term_linear_coeffs = node->term->term_linear_coeffs;
   }
+  return node;
 }
 
 }  // namespace rel2sql

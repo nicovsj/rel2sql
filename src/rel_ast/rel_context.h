@@ -13,30 +13,15 @@
 
 namespace rel2sql {
 
+class RelContextBuilder;
 
-// Holds a Rel program AST and metadata inferred during preprocessing (relations, variables,
-// dependencies, recursion info). Serves as the query interface for translation and rewriting.
+// Immutable result of preprocessing. Query-only. Produced via RelContextBuilder::Build() or Snapshot().
 class RelContext {
  public:
-  RelContext();
-  explicit RelContext(const RelationMap& edb_map);
-
-  void SetRoot(std::shared_ptr<RelProgram> root) { root_ = std::move(root); }
-  std::shared_ptr<RelProgram> Root() const { return root_; }
+  std::shared_ptr<RelNode> Root() const { return root_; }
 
   int GetArity(const std::string& id) const;
   std::optional<RelationInfoTyped> GetRelationInfo(const std::string& edb) const;
-
-  void MarkAsIDB(const std::string& id);
-  void AddIDB(const std::string& id, int arity);
-  void AddEDB(const std::string& edb, int arity);
-  void AddEDB(const std::string& edb, const std::vector<std::string>& attribute_names);
-  void AddVar(const std::string& var);
-  void AddDependency(const std::string& id, const std::string& dep);
-
-  void RegisterRecursiveBaseDisjunct(const std::string& id, std::shared_ptr<RelAbstraction> node);
-  void RegisterRecursiveBranch(const std::string& id, const RecursiveBranchInfoTyped& info);
-
   std::optional<RecursionInfoTyped> GetRecursionMetadata(const std::string& id) const;
 
   bool IsIDB(const std::string& id) const;
@@ -46,14 +31,14 @@ class RelContext {
   bool IsID(const std::string& id) const;
 
   const std::vector<std::string>& SortedIDs() const;
-  void RemoveVarsFromDependencyGraph();
-  void ComputeTopologicalSort();
-
   std::unordered_set<Projection> GetVariableDomain(const std::string& var) const;
-  void AddVariableDomain(const std::string& var, const std::unordered_set<Projection>& domain);
 
  private:
-  std::shared_ptr<RelProgram> root_;
+  RelContext() = default;
+  explicit RelContext(RelContextBuilder&& builder);
+  explicit RelContext(const RelContextBuilder& builder);
+  friend class RelContextBuilder;
+  std::shared_ptr<RelNode> root_;
   std::unordered_map<std::string, RelationInfoTyped> relation_info_;
   std::unordered_set<std::string> ids_;
   std::unordered_set<std::string> idb_;

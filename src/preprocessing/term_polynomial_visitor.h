@@ -12,15 +12,16 @@ namespace rel2sql {
  * or genuinely rational terms are marked as invalid by setting
  * RelNode::term_linear_invalid.
  */
-class TermPolynomialVisitor : public RelASTVisitor {
+class TermPolynomialVisitor : public BaseRelVisitor {
  public:
+  using BaseRelVisitor::Visit;
   TermPolynomialVisitor() = default;
 
-  void Visit(RelNumTerm& node) override;
-  void Visit(RelIDTerm& node) override;
-  void Visit(RelOpTerm& node) override;
-  void Visit(RelParenthesisTerm& node) override;
-  void Visit(RelTermExpr& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelNumTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelIDTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelOpTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelParenthesisTerm>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelTermExpr>& node) override;
 };
 
 }  // namespace rel2sql

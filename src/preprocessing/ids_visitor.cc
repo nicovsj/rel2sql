@@ -36,101 +36,77 @@ SourceLocation GetSourceLocationFromNode(RelNode* node) {
 
 }  // namespace
 
-void IDsVisitor::Visit(RelProgram& node) {
-  for (auto& def : node.defs) {
-    if (def) def->Accept(*this);
+std::shared_ptr<RelProgram> IDsVisitor::Visit(const std::shared_ptr<RelProgram>& node) {
+  for (auto& def : node->defs) {
+    if (def) Visit(def);
   }
-  container_->RemoveVarsFromDependencyGraph();
-  container_->ComputeTopologicalSort();
+  builder_->RemoveVarsFromDependencyGraph();
+  builder_->ComputeTopologicalSort();
+  return node;
 }
 
-void IDsVisitor::Visit(RelDef& node) {
-  std::string id = node.name;
+std::shared_ptr<RelDef> IDsVisitor::Visit(const std::shared_ptr<RelDef>& node) {
+  std::string id = node->name;
   if (IsSQLKeyword(id)) {
     throw SemanticException("Relation name '" + id + "' is a reserved SQL keyword", ErrorCode::RESERVED_RELATION_NAME,
-                            GetSourceLocationFromNode(&node));
+                            GetSourceLocationFromNode(node.get()));
   }
-  container_->MarkAsIDB(id);
+  builder_->MarkAsIDB(id);
   current_def_id_ = id;
   deps_.clear();
-  if (node.body) node.body->Accept(*this);
+  if (node->body) Visit(node->body);
   for (const auto& dep : deps_) {
-    container_->AddDependency(id, dep);
+    builder_->AddDependency(id, dep);
   }
+  return node;
 }
 
-void IDsVisitor::Visit(RelAbstraction& node) {
-  for (auto& expr : node.exprs) {
-    if (expr) expr->Accept(*this);
+std::shared_ptr<RelAbstraction> IDsVisitor::Visit(const std::shared_ptr<RelAbstraction>& node) {
+  for (auto& expr : node->exprs) {
+    if (expr) Visit(expr);
   }
+  return node;
 }
 
-void IDsVisitor::Visit(RelIDTerm& node) {
-  container_->AddVar(node.id);
-  deps_.insert(node.id);  // Collect for dependency graph; vars removed in RemoveVarsFromDependencyGraph
+std::shared_ptr<RelTerm> IDsVisitor::Visit(const std::shared_ptr<RelIDTerm>& node) {
+  builder_->AddVar(node->id);
+  deps_.insert(node->id);  // Collect for dependency graph; vars removed in RemoveVarsFromDependencyGraph
+  return node;
 }
 
-void IDsVisitor::Visit(RelNumTerm& node) { RelASTVisitor::Visit(node); }
-
-void IDsVisitor::Visit(RelOpTerm& node) { RelASTVisitor::Visit(node); }
-
-void IDsVisitor::Visit(RelParenthesisTerm& node) { RelASTVisitor::Visit(node); }
-
-void IDsVisitor::Visit(RelLitExpr& node) { RelASTVisitor::Visit(node); }
-
-void IDsVisitor::Visit(RelTermExpr& node) { RelASTVisitor::Visit(node); }
-
-void IDsVisitor::Visit(RelProductExpr& node) { RelASTVisitor::Visit(node); }
-
-void IDsVisitor::Visit(RelConditionExpr& node) { RelASTVisitor::Visit(node); }
-
-void IDsVisitor::Visit(RelAbstractionExpr& node) { RelASTVisitor::Visit(node); }
-
-void IDsVisitor::Visit(RelFormulaExpr& node) { RelASTVisitor::Visit(node); }
-
-void IDsVisitor::Visit(RelBindingsExpr& node) {
-  AddDepsFromBindings(node.bindings);
-  RelASTVisitor::Visit(node);
+std::shared_ptr<RelExpr> IDsVisitor::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
+  AddDepsFromBindings(node->bindings);
+  return BaseRelVisitor::Visit(node);
 }
 
-void IDsVisitor::Visit(RelBindingsFormula& node) {
-  AddDepsFromBindings(node.bindings);
-  RelASTVisitor::Visit(node);
+std::shared_ptr<RelExpr> IDsVisitor::Visit(const std::shared_ptr<RelBindingsFormula>& node) {
+  AddDepsFromBindings(node->bindings);
+  return BaseRelVisitor::Visit(node);
 }
 
-void IDsVisitor::Visit(RelPartialAppl& node) {
-  AddDepsFromBase(node.base);
-  AddDepsFromParams(node.params);
-  RelASTVisitor::Visit(node);
+std::shared_ptr<RelExpr> IDsVisitor::Visit(const std::shared_ptr<RelPartialAppl>& node) {
+  AddDepsFromBase(node->base);
+  AddDepsFromParams(node->params);
+  return node;
 }
 
-void IDsVisitor::Visit(RelFullAppl& node) {
-  AddDepsFromBase(node.base);
-  AddDepsFromParams(node.params);
-  RelASTVisitor::Visit(node);
+std::shared_ptr<RelFormula> IDsVisitor::Visit(const std::shared_ptr<RelFullAppl>& node) {
+  AddDepsFromBase(node->base);
+  AddDepsFromParams(node->params);
+  return BaseRelVisitor::Visit(node);
 }
-
-void IDsVisitor::Visit(RelBinOp& node) { RelASTVisitor::Visit(node); }
-
-void IDsVisitor::Visit(RelUnOp& node) { RelASTVisitor::Visit(node); }
-
-void IDsVisitor::Visit(RelQuantification& node) { RelASTVisitor::Visit(node); }
-
-void IDsVisitor::Visit(RelParen& node) { RelASTVisitor::Visit(node); }
-
-void IDsVisitor::Visit(RelComparison& node) { RelASTVisitor::Visit(node); }
 
 void IDsVisitor::AddDepsFromBase(const std::shared_ptr<RelApplBase>& base) {
   if (auto* id_base = dynamic_cast<RelIDApplBase*>(base.get())) {
     deps_.insert(id_base->id);
   } else if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(base.get())) {
-    if (abs_base->rel_abs) abs_base->rel_abs->Accept(*this);
+    if (abs_base->rel_abs) Visit(abs_base->rel_abs);
   }
 }
 
 void IDsVisitor::AddDepsFromParams(const std::vector<std::shared_ptr<RelApplParam>>& params) {
   for (const auto& param : params) {
-    if (param && param->GetExpr()) param->GetExpr()->Accept(*this);
+    if (param && param->GetExpr()) Visit(param->GetExpr());
   }
 }
 
@@ -138,7 +114,7 @@ void IDsVisitor::AddDepsFromBindings(const std::vector<std::shared_ptr<RelBindin
   for (const auto& binding : bindings) {
     if (auto* vb = dynamic_cast<RelVarBinding*>(binding.get())) {
       if (vb->domain) deps_.insert(*vb->domain);
-      container_->AddVar(vb->id);
+      builder_->AddVar(vb->id);
     }
   }
 }

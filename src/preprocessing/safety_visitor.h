@@ -2,32 +2,35 @@
 #define PREPROCESSING_SAFE_VISITOR_REL_H
 
 #include "rel_ast/rel_ast.h"
-#include "rel_ast/rel_context.h"
 #include "rel_ast/rel_ast_visitor.h"
+#include "rel_ast/rel_context_builder.h"
 
 namespace rel2sql {
 
-class SafetyVisitor : public RelASTVisitor {
+class SafetyVisitor : public BaseRelVisitor {
  public:
-  explicit SafetyVisitor(RelContext* container) : container_(container) {}
+  using BaseRelVisitor::Visit;
+  explicit SafetyVisitor(RelContextBuilder* container) : container_(container) {}
 
-  void Visit(RelProgram& node) override;
-  void Visit(RelDef& node) override;
-  void Visit(RelAbstraction& node) override;
-  void Visit(RelTermExpr& node) override;
-  void Visit(RelProductExpr& node) override;
-  void Visit(RelConditionExpr& node) override;
-  void Visit(RelAbstractionExpr& node) override;
-  void Visit(RelFormulaExpr& node) override;
-  void Visit(RelBindingsExpr& node) override;
-  void Visit(RelBindingsFormula& node) override;
-  void Visit(RelPartialAppl& node) override;
-  void Visit(RelFullAppl& node) override;
-  void Visit(RelBinOp& node) override;
-  void Visit(RelUnOp& node) override;
-  void Visit(RelQuantification& node) override;
-  void Visit(RelParen& node) override;
-  void Visit(RelComparison& node) override;
+  std::shared_ptr<RelProgram> Visit(const std::shared_ptr<RelProgram>& node) override;
+
+  std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node) override;
+
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelTermExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProductExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelConditionExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelAbstractionExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsFormula>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialAppl>& node) override;
+
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullAppl>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBinOp>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelUnOp>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelQuantification>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelParen>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelComparison>& node) override;
 
  private:
   void ComputeBindingsSafety(RelNode& current, RelNode& child,
@@ -42,11 +45,10 @@ class SafetyVisitor : public RelASTVisitor {
                                              size_t variable_index) const;
 
  protected:
-  RelContext* GetContainer() const { return container_; }
+  RelContextBuilder* GetContainer() const { return container_; }
 
  private:
-  RelContext* container_;
-  std::string current_relation_;
+  RelContextBuilder* container_;
 };
 
 }  // namespace rel2sql

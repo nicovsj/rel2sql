@@ -2,37 +2,40 @@
 
 namespace rel2sql {
 
-void RecursionVisitor::Visit(RelProgram& node) {
-  for (auto& def : node.defs) {
-    if (def) def->Accept(*this);
+std::shared_ptr<RelProgram> RecursionVisitor::Visit(const std::shared_ptr<RelProgram>& node) {
+  for (auto& def : node->defs) {
+    if (def) Visit(def);
   }
+  return node;
 }
 
-void RecursionVisitor::Visit(RelDef& node) {
-  current_q_ = node.name;
-  if (node.body) node.body->Accept(*this);
+std::shared_ptr<RelDef> RecursionVisitor::Visit(const std::shared_ptr<RelDef>& node) {
+  current_q_ = node->name;
+  if (node->body) Visit(node->body);
   current_q_.clear();
+  return node;
 }
 
-void RecursionVisitor::Visit(RelAbstraction& node) {
-  if (node.exprs.size() != 1) return;
-  auto* bf = dynamic_cast<RelBindingsFormula*>(node.exprs[0].get());
-  if (!bf) return;
-  bf->Accept(*this);
+std::shared_ptr<RelAbstraction> RecursionVisitor::Visit(const std::shared_ptr<RelAbstraction>& node) {
+  if (node->exprs.size() != 1) return node;
+  auto bf = std::dynamic_pointer_cast<RelBindingsFormula>(node->exprs[0]);
+  if (!bf) return node;
+  Visit(bf);
   if (bf->is_recursive) {
-    node.is_recursive = true;
-    node.recursive_definition_name = current_q_;
+    node->is_recursive = true;
+    node->recursive_definition_name = current_q_;
   }
+  return node;
 }
 
-void RecursionVisitor::Visit(RelBindingsFormula& node) {
+std::shared_ptr<RelExpr> RecursionVisitor::Visit(const std::shared_ptr<RelBindingsFormula>& node) {
   RecursionPatternMatch match;
-  if (!CheckRecursionPattern(node.formula, node.bindings, match)) return;
+  if (!CheckRecursionPattern(node->formula, node->bindings, match)) return node;
 
-  node.is_recursive = true;
-  node.recursive_definition_name = current_q_;
+  node->is_recursive = true;
+  node->recursive_definition_name = current_q_;
 
-  if (current_q_.empty()) return;
+  if (current_q_.empty()) return node;
 
   for (const auto& g : match.base_disjuncts) {
     auto formula_expr = std::make_shared<RelFormulaExpr>(g);
@@ -48,24 +51,28 @@ void RecursionVisitor::Visit(RelBindingsFormula& node) {
     info.residual_formula = branch.residual_formula;
     container_->RegisterRecursiveBranch(current_q_, info);
   }
+  return node;
 }
 
-void RecursionVisitor::Visit(RelBinOp& node) {
-  if (node.lhs) node.lhs->Accept(*this);
-  if (node.rhs) node.rhs->Accept(*this);
+std::shared_ptr<RelFormula> RecursionVisitor::Visit(const std::shared_ptr<RelBinOp>& node) {
+  if (node->lhs) Visit(node->lhs);
+  if (node->rhs) Visit(node->rhs);
+  return node;
 }
 
-void RecursionVisitor::Visit(RelQuantification& node) {
-  if (node.formula) node.formula->Accept(*this);
+std::shared_ptr<RelFormula> RecursionVisitor::Visit(const std::shared_ptr<RelQuantification>& node) {
+  if (node->formula) Visit(node->formula);
+  return node;
 }
 
-void RecursionVisitor::Visit(RelFullAppl& node) {
-  if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node.base.get())) {
-    if (abs_base->rel_abs) abs_base->rel_abs->Accept(*this);
+std::shared_ptr<RelFormula> RecursionVisitor::Visit(const std::shared_ptr<RelFullAppl>& node) {
+  if (auto abs_base = std::dynamic_pointer_cast<RelAbstractionApplBase>(node->base)) {
+    if (abs_base->rel_abs) Visit(abs_base->rel_abs);
   }
-  for (const auto& param : node.params) {
-    if (param && param->GetExpr()) param->GetExpr()->Accept(*this);
+  for (const auto& param : node->params) {
+    if (param && param->GetExpr()) Visit(param->GetExpr());
   }
+  return node;
 }
 
 bool RecursionVisitor::IsRecursiveID(const std::string& id) const {

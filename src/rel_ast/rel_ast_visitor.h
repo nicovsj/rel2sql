@@ -1,9 +1,21 @@
 #ifndef REL_AST_REL_AST_VISITOR_H
 #define REL_AST_REL_AST_VISITOR_H
 
+#include <memory>
+
 namespace rel2sql {
 
 // Forward declarations
+
+// Abstract nodes
+struct RelNode;
+struct RelExpr;
+struct RelFormula;
+struct RelTerm;
+struct RelApplParam;
+struct RelApplBase;
+
+// Concrete nodes
 struct RelProgram;
 struct RelDef;
 struct RelAbstraction;
@@ -28,44 +40,70 @@ struct RelIDTerm;
 struct RelNumTerm;
 struct RelOpTerm;
 struct RelParenthesisTerm;
-
-class RelASTVisitor {
+struct RelUnderscoreParam;
+struct RelExprApplParam;
+struct RelIDApplBase;
+struct RelAbstractionApplBase;
+/**
+ * Visitor for the Rel AST. Every Visit returns shared_ptr<RelNode> (or derived).
+ * - Analysis visitors: return nullptr (side effects only)
+ * - Rewriters: return the (possibly replaced) node, or nullptr for identity
+ *
+ * Default implementation traverses the AST and returns nullptr.
+ * Override Visit() for node types you want to customize.
+ */
+class BaseRelVisitor {
  public:
-  virtual ~RelASTVisitor() = default;
+  virtual ~BaseRelVisitor() = default;
 
-  // Program level - default implementations traverse children
-  virtual void Visit(RelProgram& node);
-  virtual void Visit(RelDef& node);
-  virtual void Visit(RelAbstraction& node);
+  virtual std::shared_ptr<RelNode> Visit(const std::shared_ptr<RelNode>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelExpr>& node);
+  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFormula>& node);
+  virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelTerm>& node);
+  virtual std::shared_ptr<RelApplParam> Visit(const std::shared_ptr<RelApplParam>& node);
+  virtual std::shared_ptr<RelApplBase> Visit(const std::shared_ptr<RelApplBase>& node);
+
+  // Program level
+  virtual std::shared_ptr<RelProgram> Visit(const std::shared_ptr<RelProgram>& node);
+  virtual std::shared_ptr<RelDef> Visit(const std::shared_ptr<RelDef>& node);
+  virtual std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node);
 
   // Literals
-  virtual void Visit(RelLiteral& node);
+  virtual std::shared_ptr<RelLiteral> Visit(const std::shared_ptr<RelLiteral>& node);
 
   // Expressions
-  virtual void Visit(RelLitExpr& node);
-  virtual void Visit(RelTermExpr& node);
-  virtual void Visit(RelProductExpr& node);
-  virtual void Visit(RelConditionExpr& node);
-  virtual void Visit(RelAbstractionExpr& node);
-  virtual void Visit(RelFormulaExpr& node);
-  virtual void Visit(RelBindingsExpr& node);
-  virtual void Visit(RelBindingsFormula& node);
-  virtual void Visit(RelPartialAppl& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelLitExpr>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelTermExpr>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProductExpr>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelConditionExpr>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelAbstractionExpr>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaExpr>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsExpr>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsFormula>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialAppl>& node);
 
   // Formulas
-  virtual void Visit(RelFormulaBool& node);
-  virtual void Visit(RelFullAppl& node);
-  virtual void Visit(RelQuantification& node);
-  virtual void Visit(RelParen& node);
-  virtual void Visit(RelComparison& node);
-  virtual void Visit(RelUnOp& node);
-  virtual void Visit(RelBinOp& node);
+  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFormulaBool>& node);
+  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullAppl>& node);
+  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelQuantification>& node);
+  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelParen>& node);
+  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelComparison>& node);
+  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelUnOp>& node);
+  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBinOp>& node);
 
   // Terms
-  virtual void Visit(RelIDTerm& node);
-  virtual void Visit(RelNumTerm& node);
-  virtual void Visit(RelOpTerm& node);
-  virtual void Visit(RelParenthesisTerm& node);
+  virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelIDTerm>& node);
+  virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelNumTerm>& node);
+  virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelOpTerm>& node);
+  virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelParenthesisTerm>& node);
+
+  // Appl params
+  virtual std::shared_ptr<RelApplParam> Visit(const std::shared_ptr<RelUnderscoreParam>& node);
+  virtual std::shared_ptr<RelApplParam> Visit(const std::shared_ptr<RelExprApplParam>& node);
+
+  // Appl bases
+  virtual std::shared_ptr<RelApplBase> Visit(const std::shared_ptr<RelIDApplBase>& node);
+  virtual std::shared_ptr<RelApplBase> Visit(const std::shared_ptr<RelAbstractionApplBase>& node);
 };
 
 }  // namespace rel2sql

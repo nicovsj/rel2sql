@@ -1,7 +1,7 @@
 #ifndef REWRITER_EXPRESSION_AS_TERM_REWRITER_H
 #define REWRITER_EXPRESSION_AS_TERM_REWRITER_H
 
-#include "rewriter/base_rewriter.h"
+#include "rel_ast/rel_ast_visitor.h"
 
 namespace rel2sql {
 
@@ -17,12 +17,14 @@ namespace rel2sql {
  * Applies in RelBindingsExpr body, RelProductExpr elements, and RelAbstraction
  * elements. Does NOT apply to expressions used as relation parameters.
  */
-class ExpressionAsTermRewriter : public BaseRelRewriter {
+class ExpressionAsTermRewriter : public BaseRelVisitor {
  public:
-  void Visit(RelBindingsExpr& node) override;
-  void Visit(RelConditionExpr& node) override;
-  void Visit(RelAbstraction& node) override;
-  void Visit(RelProductExpr& node) override;
+  using BaseRelVisitor::Visit;
+
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelConditionExpr>& node) override;
+  std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProductExpr>& node) override;
 
  private:
   std::string FreshVarName();

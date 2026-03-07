@@ -1,154 +1,141 @@
 #include "preprocessing/safety_visitor.h"
 
-#include "preprocessing/fixpoint_safety_visitor.h"
 #include "sql/aggregate_map.h"
 #include "support/exceptions.h"
 
 namespace rel2sql {
 
-void SafetyVisitor::Visit(RelProgram& node) {
+std::shared_ptr<RelProgram> SafetyVisitor::Visit(const std::shared_ptr<RelProgram>& node) {
   std::unordered_set<std::string> visited;
   for (const auto& id : container_->SortedIDs()) {
-    for (auto& def : node.defs) {
+    for (auto& def : node->defs) {
       if (!def || def->name != id) continue;
-      def->Accept(*this);
+      Visit(def);
       visited.insert(id);
     }
   }
-  for (auto& def : node.defs) {
+  for (auto& def : node->defs) {
     if (!def || visited.count(def->name)) continue;
-    def->Accept(*this);
+    Visit(def);
   }
+  return node;
 }
 
-void SafetyVisitor::Visit(RelDef& node) {
-  current_relation_ = node.name;
-
-  auto info = container_->GetRelationInfo(current_relation_);
-  if (info && !info->recursion_metadata.empty()) {
-    if (node.body && node.body->exprs.size() == 1) {
-      auto* bf = dynamic_cast<RelBindingsFormula*>(node.body->exprs[0].get());
-      if (bf) {
-        FixpointSafetyVisitor fixpoint_visitor(container_, node.name);
-        BoundSet fixpoint_safety = fixpoint_visitor.ComputeFixpoint(*bf);
-        if (bf->formula) bf->formula->safety = fixpoint_safety;
-        fixpoint_visitor.ComputeBindingsSafety(*bf, *bf->formula, bf->bindings);
-        node.body->safety = bf->safety;
-        current_relation_.clear();
-        return;
-      }
-    }
+std::shared_ptr<RelAbstraction> SafetyVisitor::Visit(const std::shared_ptr<RelAbstraction>& node) {
+  if (node->exprs.empty()) return node;
+  Visit(node->exprs[0]);
+  node->safety = node->exprs[0]->safety;
+  for (size_t i = 1; i < node->exprs.size(); ++i) {
+    Visit(node->exprs[i]);
+    node->safety = node->safety.IntersectWith(node->exprs[i]->safety);
   }
-
-  if (node.body) node.body->Accept(*this);
-  current_relation_.clear();
+  return node;
 }
 
-void SafetyVisitor::Visit(RelAbstraction& node) {
-  if (node.exprs.empty()) return;
-  node.exprs[0]->Accept(*this);
-  node.safety = node.exprs[0]->safety;
-  for (size_t i = 1; i < node.exprs.size(); ++i) {
-    node.exprs[i]->Accept(*this);
-    node.safety = node.safety.IntersectWith(node.exprs[i]->safety);
-  }
+std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelTermExpr>& node) {
+  if (node->term) Visit(node->term);
+  if (node->term) node->safety = node->term->safety;
+  return node;
 }
 
-void SafetyVisitor::Visit(RelTermExpr& node) {
-  if (node.term) node.term->Accept(*this);
-  if (node.term) node.safety = node.term->safety;
-}
-
-void SafetyVisitor::Visit(RelProductExpr& node) {
-  node.safety = BoundSet();
-  for (auto& expr : node.exprs) {
+std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelProductExpr>& node) {
+  node->safety = BoundSet();
+  for (auto& expr : node->exprs) {
     if (expr) {
-      expr->Accept(*this);
-      node.safety = node.safety.UnionWith(expr->safety);
+      Visit(expr);
+      node->safety = node->safety.UnionWith(expr->safety);
     }
   }
+  return node;
 }
 
-void SafetyVisitor::Visit(RelConditionExpr& node) {
-  if (node.lhs) node.lhs->Accept(*this);
-  if (node.rhs) node.rhs->Accept(*this);
-  if (node.lhs && node.rhs) {
-    node.safety = node.rhs->safety.UnionWith(node.lhs->safety);
+std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelConditionExpr>& node) {
+  if (node->lhs) Visit(node->lhs);
+  if (node->rhs) Visit(node->rhs);
+  if (node->lhs && node->rhs) {
+    node->safety = node->rhs->safety.UnionWith(node->lhs->safety);
   }
+  return node;
 }
 
-void SafetyVisitor::Visit(RelAbstractionExpr& node) {
-  if (node.rel_abs) {
-    node.rel_abs->Accept(*this);
-    node.safety = node.rel_abs->safety;
+std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelAbstractionExpr>& node) {
+  if (node->rel_abs) {
+    Visit(node->rel_abs);
+    node->safety = node->rel_abs->safety;
   }
+  return node;
 }
 
-void SafetyVisitor::Visit(RelFormulaExpr& node) {
-  if (node.formula) {
-    node.formula->Accept(*this);
-    node.safety = node.formula->safety;
+std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelFormulaExpr>& node) {
+  if (node->formula) {
+    Visit(node->formula);
+    node->safety = node->formula->safety;
   }
+  return node;
 }
 
-void SafetyVisitor::Visit(RelBindingsExpr& node) {
-  if (node.expr) node.expr->Accept(*this);
-  if (node.expr) ComputeBindingsSafety(node, *node.expr, node.bindings);
+std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
+  if (node->expr) Visit(node->expr);
+  if (node->expr) ComputeBindingsSafety(*node, *node->expr, node->bindings);
+  return node;
 }
 
-void SafetyVisitor::Visit(RelBindingsFormula& node) {
-  if (node.formula) node.formula->Accept(*this);
-  if (node.formula) ComputeBindingsSafety(node, *node.formula, node.bindings);
+std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelBindingsFormula>& node) {
+  if (node->formula) Visit(node->formula);
+  if (node->formula) ComputeBindingsSafety(*node, *node->formula, node->bindings);
+  return node;
 }
 
-void SafetyVisitor::Visit(RelPartialAppl& node) {
-  if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node.base.get())) {
-    if (abs_base->rel_abs) abs_base->rel_abs->Accept(*this);
+std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelPartialAppl>& node) {
+  if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node->base.get())) {
+    if (abs_base->rel_abs) Visit(abs_base->rel_abs);
   }
 
-  if (auto* id_base = dynamic_cast<RelIDApplBase*>(node.base.get())) {
+  if (auto* id_base = dynamic_cast<RelIDApplBase*>(node->base.get())) {
     std::string id = id_base->id;
     if (GetAggregateMap().find(id) != GetAggregateMap().end()) {
-      if (!node.params.empty()) {
-        auto expr = node.params[0]->GetExpr();
+      if (!node->params.empty()) {
+        auto expr = node->params[0]->GetExpr();
         if (expr) {
-          expr->Accept(*this);
-          node.safety = expr->safety;
+          Visit(expr);
+          node->safety = expr->safety;
         }
       }
-      return;
+      return node;
     }
-    ComputeIDApplicationSafety(node, node.params, id);
-  } else if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node.base.get())) {
-    if (abs_base->rel_abs) ComputeRelAbsApplicationSafety(node, *abs_base->rel_abs, node.params);
+    ComputeIDApplicationSafety(*node, node->params, id);
+  } else if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node->base.get())) {
+    if (abs_base->rel_abs) ComputeRelAbsApplicationSafety(*node, *abs_base->rel_abs, node->params);
   }
+  return node;
 }
 
-void SafetyVisitor::Visit(RelFullAppl& node) {
-  if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node.base.get())) {
-    if (abs_base->rel_abs) abs_base->rel_abs->Accept(*this);
+std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelFullAppl>& node) {
+  if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node->base.get())) {
+    if (abs_base->rel_abs) Visit(abs_base->rel_abs);
   }
 
-  if (auto* id_base = dynamic_cast<RelIDApplBase*>(node.base.get())) {
-    ComputeIDApplicationSafety(node, node.params, id_base->id);
-  } else if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node.base.get())) {
-    if (abs_base->rel_abs) ComputeRelAbsApplicationSafety(node, *abs_base->rel_abs, node.params);
+  if (auto* id_base = dynamic_cast<RelIDApplBase*>(node->base.get())) {
+    ComputeIDApplicationSafety(*node, node->params, id_base->id);
+  } else if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node->base.get())) {
+    if (abs_base->rel_abs) ComputeRelAbsApplicationSafety(*node, *abs_base->rel_abs, node->params);
   }
+  return node;
 }
 
-void SafetyVisitor::Visit(RelBinOp& node) {
-  if (node.op == RelLogicalOp::AND) {
-    if (node.lhs) node.lhs->Accept(*this);
-    if (node.rhs) node.rhs->Accept(*this);
-    if (node.lhs && node.rhs) {
-      node.safety = node.lhs->safety.UnionWith(node.rhs->safety);
+std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelBinOp>& node) {
+  if (node->op == RelLogicalOp::AND) {
+    if (node->lhs) Visit(node->lhs);
+    if (node->rhs) Visit(node->rhs);
+    if (node->lhs && node->rhs) {
+      node->safety = node->lhs->safety.UnionWith(node->rhs->safety);
     }
-    return;
+    return node;
   }
-  if (node.op == RelLogicalOp::OR) {
-    if (node.lhs) node.lhs->Accept(*this);
-    if (node.rhs) node.rhs->Accept(*this);
-    if (node.lhs && node.rhs) {
+  if (node->op == RelLogicalOp::OR) {
+    if (node->lhs) Visit(node->lhs);
+    if (node->rhs) Visit(node->rhs);
+    if (node->lhs && node->rhs) {
       auto has_non_trivial_affine = [](const BoundSet& s) {
         for (const auto& bound : s.bounds) {
           for (const auto& coeff_opt : bound.coeffs) {
@@ -159,67 +146,71 @@ void SafetyVisitor::Visit(RelBinOp& node) {
         }
         return false;
       };
-      if (has_non_trivial_affine(node.lhs->safety) || has_non_trivial_affine(node.rhs->safety)) {
+      if (has_non_trivial_affine(node->lhs->safety) || has_non_trivial_affine(node->rhs->safety)) {
         throw NotImplementedException(
             "Safety analysis for disjunctions with linear term parameters (a*x + b) "
             "is not supported yet when (a,b) != (1,0).",
             SourceLocation(0, 0));
       }
-      node.safety = node.lhs->safety.MergeWith(node.rhs->safety);
+      node->safety = node->lhs->safety.MergeWith(node->rhs->safety);
     }
-    return;
+    return node;
   }
-  throw TranslationException("Unknown binary operator", ErrorCode::UNKNOWN_BINARY_OPERATOR,
-                             SourceLocation(0, 0));
+  throw TranslationException("Unknown binary operator", ErrorCode::UNKNOWN_BINARY_OPERATOR, SourceLocation(0, 0));
+  return node;
 }
 
-void SafetyVisitor::Visit(RelUnOp& node) {
-  if (node.formula) {
-    node.formula->Accept(*this);
-    node.safety = node.formula->safety;
+std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelUnOp>& node) {
+  if (node->formula) {
+    Visit(node->formula);
+    node->safety = node->formula->safety;
   }
+  return node;
 }
 
-void SafetyVisitor::Visit(RelQuantification& node) {
-  if (node.formula) node.formula->Accept(*this);
-  if (node.formula) ComputeBindingsSafety(node, *node.formula, node.bindings);
+std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelQuantification>& node) {
+  if (node->formula) Visit(node->formula);
+  if (node->formula) ComputeBindingsSafety(*node, *node->formula, node->bindings);
+  return node;
 }
 
-void SafetyVisitor::Visit(RelParen& node) {
-  if (node.formula) {
-    node.formula->Accept(*this);
-    node.safety = node.formula->safety;
+std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelParen>& node) {
+  if (node->formula) {
+    Visit(node->formula);
+    node->safety = node->formula->safety;
   }
+  return node;
 }
 
-void SafetyVisitor::Visit(RelComparison& node) {
-  if (node.lhs) node.lhs->Accept(*this);
-  if (node.rhs) node.rhs->Accept(*this);
+std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelComparison>& node) {
+  if (node->lhs) Visit(node->lhs);
+  if (node->rhs) Visit(node->rhs);
 
-  if (node.op != RelCompOp::EQ && node.op != RelCompOp::NEQ) return;
-  if (node.op == RelCompOp::NEQ) return;
+  if (node->op != RelCompOp::EQ && node->op != RelCompOp::NEQ) return node;
+  if (node->op == RelCompOp::NEQ) return node;
 
-  auto* lhs_id = dynamic_cast<RelIDTerm*>(node.lhs.get());
-  auto* rhs_id = dynamic_cast<RelIDTerm*>(node.rhs.get());
+  auto* lhs_id = dynamic_cast<RelIDTerm*>(node->lhs.get());
+  auto* rhs_id = dynamic_cast<RelIDTerm*>(node->rhs.get());
 
   std::string variable_name;
   sql::ast::constant_t constant;
 
-  if (lhs_id && node.rhs && node.rhs->constant) {
+  if (lhs_id && node->rhs && node->rhs->constant) {
     variable_name = lhs_id->id;
-    constant = *node.rhs->constant;
-  } else if (rhs_id && node.lhs && node.lhs->constant) {
+    constant = *node->rhs->constant;
+  } else if (rhs_id && node->lhs && node->lhs->constant) {
     variable_name = rhs_id->id;
-    constant = *node.lhs->constant;
+    constant = *node->lhs->constant;
   } else {
-    return;
+    return node;
   }
 
-  node.safety = BoundSet({Bound({variable_name}, {Projection(ConstantSource(constant))})});
+  node->safety = BoundSet({Bound({variable_name}, {Projection(ConstantSource(constant))})});
+  return node;
 }
 
 void SafetyVisitor::ComputeBindingsSafety(RelNode& current, RelNode& child,
-                                           const std::vector<std::shared_ptr<RelBinding>>& bindings) {
+                                          const std::vector<std::shared_ptr<RelBinding>>& bindings) {
   std::vector<std::string> variables;
   for (const auto& b : bindings) {
     if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) {
@@ -236,9 +227,8 @@ void SafetyVisitor::ComputeBindingsSafety(RelNode& current, RelNode& child,
   ExtractAndStoreVariableDomains(child.safety);
 }
 
-void SafetyVisitor::ComputeIDApplicationSafety(RelNode& node,
-                                                const std::vector<std::shared_ptr<RelApplParam>>& params,
-                                                const std::string& id) {
+void SafetyVisitor::ComputeIDApplicationSafety(RelNode& node, const std::vector<std::shared_ptr<RelApplParam>>& params,
+                                               const std::string& id) {
   std::vector<std::string> variable_names;
   std::vector<size_t> variable_indices;
   std::vector<std::optional<std::pair<double, double>>> coeffs;
@@ -246,8 +236,8 @@ void SafetyVisitor::ComputeIDApplicationSafety(RelNode& node,
   for (size_t i = 0; i < params.size(); ++i) {
     auto expr = params[i] ? params[i]->GetExpr() : nullptr;
     if (!expr) continue;
-    expr->Accept(*this);
-    auto* term_expr = dynamic_cast<RelTermExpr*>(expr.get());
+    Visit(expr);
+    auto term_expr = std::dynamic_pointer_cast<RelTermExpr>(expr);
     if (!term_expr || !term_expr->term) continue;
     if (expr->variables.size() != 1) continue;
 
@@ -255,8 +245,7 @@ void SafetyVisitor::ComputeIDApplicationSafety(RelNode& node,
     variable_indices.push_back(i);
     variable_names.push_back(variable);
 
-    if (term_expr->term->term_linear_coeffs &&
-        !term_expr->term->IsInvalidTermExpression()) {
+    if (term_expr->term->term_linear_coeffs && !term_expr->term->IsInvalidTermExpression()) {
       coeffs.push_back(term_expr->term->term_linear_coeffs);
     } else {
       coeffs.emplace_back(std::nullopt);
@@ -274,7 +263,7 @@ void SafetyVisitor::ComputeIDApplicationSafety(RelNode& node,
 }
 
 void SafetyVisitor::ComputeRelAbsApplicationSafety(RelNode& node, RelNode& base_node,
-                                                    const std::vector<std::shared_ptr<RelApplParam>>& params) {
+                                                   const std::vector<std::shared_ptr<RelApplParam>>& params) {
   std::vector<std::string> variable_names;
   std::vector<size_t> variable_indices;
   std::vector<std::optional<std::pair<double, double>>> coeffs;
@@ -282,15 +271,14 @@ void SafetyVisitor::ComputeRelAbsApplicationSafety(RelNode& node, RelNode& base_
   for (size_t i = 0; i < params.size(); ++i) {
     auto expr = params[i] ? params[i]->GetExpr() : nullptr;
     if (!expr) continue;
-    expr->Accept(*this);
-    auto* term_expr = dynamic_cast<RelTermExpr*>(expr.get());
+    Visit(expr);
+    auto term_expr = std::dynamic_pointer_cast<RelTermExpr>(expr);
     if (!term_expr || !term_expr->term || expr->variables.size() != 1) continue;
 
     variable_names.push_back(*expr->variables.begin());
     variable_indices.push_back(i);
 
-    if (term_expr->term->term_linear_coeffs &&
-        !term_expr->term->IsInvalidTermExpression()) {
+    if (term_expr->term->term_linear_coeffs && !term_expr->term->IsInvalidTermExpression()) {
       coeffs.push_back(term_expr->term->term_linear_coeffs);
     } else {
       coeffs.emplace_back(std::nullopt);
@@ -305,8 +293,7 @@ void SafetyVisitor::ComputeRelAbsApplicationSafety(RelNode& node, RelNode& base_
   node.safety = BoundSet({bound});
 }
 
-Projection SafetyVisitor::ExtractSingleVariableProjection(const Projection& proj,
-                                                           size_t variable_index) const {
+Projection SafetyVisitor::ExtractSingleVariableProjection(const Projection& proj, size_t variable_index) const {
   if (variable_index >= proj.projected_indices.size()) {
     throw std::runtime_error("Variable index out of bounds");
   }

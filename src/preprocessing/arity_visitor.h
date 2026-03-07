@@ -2,38 +2,43 @@
 #define PREPROCESSING_ARITY_VISITOR_REL_H
 
 #include "rel_ast/rel_ast.h"
-#include "rel_ast/rel_context.h"
 #include "rel_ast/rel_ast_visitor.h"
+#include "rel_ast/rel_context_builder.h"
 
 namespace rel2sql {
 
-class ArityVisitor : public RelASTVisitor {
+class ArityVisitor : public BaseRelVisitor {
  public:
-  explicit ArityVisitor(RelContext* container) : container_(container) {}
+  using BaseRelVisitor::Visit;
+  explicit ArityVisitor(RelContextBuilder* container) : container_(container) {}
 
-  void Visit(RelProgram& node) override;
-  void Visit(RelDef& node) override;
-  void Visit(RelAbstraction& node) override;
-  void Visit(RelLitExpr& node) override;
-  void Visit(RelTermExpr& node) override;
-  void Visit(RelProductExpr& node) override;
-  void Visit(RelConditionExpr& node) override;
-  void Visit(RelAbstractionExpr& node) override;
-  void Visit(RelFormulaExpr& node) override;
-  void Visit(RelBindingsExpr& node) override;
-  void Visit(RelBindingsFormula& node) override;
-  void Visit(RelPartialAppl& node) override;
-  void Visit(RelFullAppl& node) override;
-  void Visit(RelIDTerm& node) override;
-  void Visit(RelNumTerm& node) override;
-  void Visit(RelOpTerm& node) override;
-  void Visit(RelParenthesisTerm& node) override;
+  std::shared_ptr<RelProgram> Visit(const std::shared_ptr<RelProgram>& node) override;
+  std::shared_ptr<RelDef> Visit(const std::shared_ptr<RelDef>& node) override;
+
+  std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node) override;
+
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelLitExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelTermExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProductExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelConditionExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelAbstractionExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsFormula>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialAppl>& node) override;
+
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullAppl>& node) override;
+
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelIDTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelNumTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelOpTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelParenthesisTerm>& node) override;
 
  private:
   int GetArityFromBase(const std::shared_ptr<RelApplBase>& base);
   int GetArityFromParams(const std::vector<std::shared_ptr<RelApplParam>>& params);
 
-  RelContext* container_;
+  RelContextBuilder* container_;
   std::unordered_map<std::string, std::vector<std::shared_ptr<RelDef>>> defs_by_id_;
 };
 

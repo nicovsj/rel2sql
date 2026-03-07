@@ -71,7 +71,7 @@ std::any RelASTBuilder::visitProgram(psr::ProgramContext* ctx) {
     auto result = visit(def_ctx);
     defs.push_back(Cast<RelDef>(result));
   }
-  auto program = std::make_shared<RelProgram>(std::move(defs));
+  auto program = std::make_shared<RelProgram>(defs);
   SetCtx(program.get(), ctx);
   return program;
 }
@@ -91,7 +91,7 @@ std::any RelASTBuilder::visitRelAbs(psr::RelAbsContext* ctx) {
     auto result = visit(expr_ctx);
     exprs.push_back(Cast<RelExpr>(result));
   }
-  auto rel_abs = std::make_shared<RelAbstraction>(std::move(exprs));
+  auto rel_abs = std::make_shared<RelAbstraction>(exprs);
   SetCtx(rel_abs.get(), ctx);
   return rel_abs;
 }

@@ -4,37 +4,28 @@
 #include <unordered_set>
 
 #include "rel_ast/rel_ast.h"
-#include "rel_ast/rel_context.h"
 #include "rel_ast/rel_ast_visitor.h"
+#include "rel_ast/rel_context_builder.h"
 
 namespace rel2sql {
 
-class IDsVisitor : public RelASTVisitor {
+class IDsVisitor : public BaseRelVisitor {
  public:
-  explicit IDsVisitor(RelContext* container) : container_(container) {}
+  using BaseRelVisitor::Visit;
+  explicit IDsVisitor(RelContextBuilder* builder) : builder_(builder) {}
 
-  void Visit(RelProgram& node) override;
-  void Visit(RelDef& node) override;
-  void Visit(RelAbstraction& node) override;
-  void Visit(RelIDTerm& node) override;
-  void Visit(RelNumTerm& node) override;
-  void Visit(RelOpTerm& node) override;
-  void Visit(RelParenthesisTerm& node) override;
-  void Visit(RelLitExpr& node) override;
-  void Visit(RelTermExpr& node) override;
-  void Visit(RelProductExpr& node) override;
-  void Visit(RelConditionExpr& node) override;
-  void Visit(RelAbstractionExpr& node) override;
-  void Visit(RelFormulaExpr& node) override;
-  void Visit(RelBindingsExpr& node) override;
-  void Visit(RelBindingsFormula& node) override;
-  void Visit(RelPartialAppl& node) override;
-  void Visit(RelFullAppl& node) override;
-  void Visit(RelBinOp& node) override;
-  void Visit(RelUnOp& node) override;
-  void Visit(RelQuantification& node) override;
-  void Visit(RelParen& node) override;
-  void Visit(RelComparison& node) override;
+  std::shared_ptr<RelProgram> Visit(const std::shared_ptr<RelProgram>& node) override;
+  std::shared_ptr<RelDef> Visit(const std::shared_ptr<RelDef>& node) override;
+
+  std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node) override;
+
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelIDTerm>& node) override;
+
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsFormula>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialAppl>& node) override;
+
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullAppl>& node) override;
 
  private:
   using StringSet = std::unordered_set<std::string>;
@@ -43,7 +34,7 @@ class IDsVisitor : public RelASTVisitor {
   void AddDepsFromParams(const std::vector<std::shared_ptr<RelApplParam>>& params);
   void AddDepsFromBindings(const std::vector<std::shared_ptr<RelBinding>>& bindings);
 
-  RelContext* container_;
+  RelContextBuilder* builder_;
   StringSet deps_;
   std::string current_def_id_;
 };

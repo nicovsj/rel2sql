@@ -1,7 +1,7 @@
 #ifndef REWRITER_BINDING_DOMAIN_REWRITER_H
 #define REWRITER_BINDING_DOMAIN_REWRITER_H
 
-#include "rewriter/base_rewriter.h"
+#include "rel_ast/rel_ast_visitor.h"
 
 namespace rel2sql {
 
@@ -15,10 +15,12 @@ namespace rel2sql {
  *    Bindings expression: drop "in A" and "in B" from the binding and add A(x) and B(y) as conditions
  *    in the condition expression.
  */
-class BindingDomainRewriter : public BaseRelRewriter {
+class BindingDomainRewriter : public BaseRelVisitor {
  public:
-  void Visit(RelBindingsFormula& node) override;
-  void Visit(RelBindingsExpr& node) override;
+  using BaseRelVisitor::Visit;
+
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsFormula>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsExpr>& node) override;
 };
 
 }  // namespace rel2sql

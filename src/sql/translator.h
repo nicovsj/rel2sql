@@ -9,48 +9,55 @@
 #include <vector>
 
 #include "rel_ast/rel_ast.h"
-#include "rel_ast/rel_context.h"
 #include "rel_ast/rel_ast_visitor.h"
+#include "rel_ast/rel_context.h"
 #include "sql_ast/sql_ast.h"
 
 namespace rel2sql {
 
 /**
  * Translator that translates RelAST nodes to sql::ast::Expression.
- * Produces sql::ast::Expression from RelProgram, RelFormula, and RelExpr.
+ * Produces sql::ast::Expression from RelNode.
  */
-class Translator : public RelASTVisitor {
+class Translator : public BaseRelVisitor {
  public:
-  explicit Translator(RelContext* container) : container_(container) {}
+  using BaseRelVisitor::Visit;  // Avoid name shadowing
 
-  std::shared_ptr<sql::ast::Expression> Translate(RelProgram& program);
-  std::shared_ptr<sql::ast::Expression> TranslateFormula(RelFormula& formula);
-  std::shared_ptr<sql::ast::Expression> TranslateExpr(RelExpr& expr);
+  explicit Translator(const RelContext& context) : context_(context) {}
 
-  void Visit(RelProgram& node) override;
-  void Visit(RelDef& node) override;
-  void Visit(RelAbstraction& node) override;
-  void Visit(RelLitExpr& node) override;
-  void Visit(RelProductExpr& node) override;
-  void Visit(RelTermExpr& node) override;
-  void Visit(RelConditionExpr& node) override;
-  void Visit(RelAbstractionExpr& node) override;
-  void Visit(RelFormulaExpr& node) override;
-  void Visit(RelBindingsExpr& node) override;
-  void Visit(RelBindingsFormula& node) override;
-  void Visit(RelPartialAppl& node) override;
-  void Visit(RelFullAppl& node) override;
-  void Visit(RelBinOp& node) override;
-  void Visit(RelUnOp& node) override;
-  void Visit(RelQuantification& node) override;
-  void Visit(RelParen& node) override;
-  void Visit(RelComparison& node) override;
-  void Visit(RelLiteral& node) override;
-  void Visit(RelFormulaBool& node) override;
-  void Visit(RelIDTerm& node) override;
-  void Visit(RelNumTerm& node) override;
-  void Visit(RelOpTerm& node) override;
-  void Visit(RelParenthesisTerm& node) override;
+  std::shared_ptr<sql::ast::Expression> Translate();
+
+  // Rules
+  std::shared_ptr<RelProgram> Visit(const std::shared_ptr<RelProgram>& node) override;
+  std::shared_ptr<RelDef> Visit(const std::shared_ptr<RelDef>& node) override;
+
+  // Abstraction
+  std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node) override;
+
+  // Expressions
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelLitExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProductExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelTermExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelConditionExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelAbstractionExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsFormula>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialAppl>& node) override;
+
+  // Formulas
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullAppl>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBinOp>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelUnOp>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelQuantification>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelParen>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelComparison>& node) override;
+
+  // Terms
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelIDTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelNumTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelOpTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelParenthesisTerm>& node) override;
 
  private:
   std::shared_ptr<sql::ast::Sourceable> TryGetTopLevelIDSelect(RelAbstraction* body);
@@ -91,7 +98,7 @@ class Translator : public RelASTVisitor {
                                     const std::function<std::string(size_t)>& column_name_for_index);
 
   // Build SELECT with GROUP BY and aggregate (for partial application of aggregate functions, e.g. sum[A]).
-  std::shared_ptr<sql::ast::Select> VisitAggregateRel(RelExpr& expr, sql::ast::AggregateFunction function);
+  std::shared_ptr<sql::ast::Select> VisitAggregateRel(const std::shared_ptr<RelExpr>& expr, sql::ast::AggregateFunction function);
 
   std::string GenerateTableAlias(const std::string& prefix = "T");
 
@@ -116,12 +123,7 @@ class Translator : public RelASTVisitor {
 
   std::shared_ptr<sql::ast::Condition> EqualityShorthandRel(const std::vector<RelNode*>& nodes);
 
-  // Condition expr special case: RHS is (possibly parenthesized) conjunction of comparisons only.
-  bool CollectComparatorOnlyConjunctsRel(const std::shared_ptr<RelFormula>& formula,
-                                         std::vector<std::shared_ptr<RelNode>>& out);
 
-  void BuildConditionExprComparatorOnlyRHSRel(RelConditionExpr& node,
-                                              const std::vector<std::shared_ptr<RelNode>>& comparator_conjuncts);
 
   // For a full application, build chained equalities between columns corresponding
   // to repeated term parameters for the same variable (p1 = p2, p2 = p3, ...).
@@ -134,17 +136,9 @@ class Translator : public RelASTVisitor {
   std::shared_ptr<sql::ast::Expression> VisitGeneralizedDisjunctionRel(const std::shared_ptr<RelFormula>& lhs,
                                                                        const std::shared_ptr<RelFormula>& rhs);
 
-  // Conjunction with separated comparator/non-comparator conjuncts, as produced by balancing.
-  std::shared_ptr<sql::ast::Expression> VisitConjunctionWithComparatorsRel(
-      const std::vector<std::shared_ptr<RelNode>>& other, const std::vector<std::shared_ptr<RelNode>>& comparators);
-
   // Simple binary conjunction without term/comparator splitting.
   std::shared_ptr<sql::ast::Expression> VisitSimpleBinaryRel(const std::shared_ptr<RelFormula>& lhs,
                                                              const std::shared_ptr<RelFormula>& rhs);
-
-  // Conjunction with negated conjuncts: non_negated AND NOT negated_1 AND NOT negated_2 ... (NOT IN subqueries).
-  std::shared_ptr<sql::ast::Expression> VisitConjunctionWithNegationsRel(
-      const std::vector<std::shared_ptr<RelNode>>& non_negated, const std::vector<std::shared_ptr<RelNode>>& negated);
 
   // Existential quantification: exists bindings. formula
   std::shared_ptr<sql::ast::Expression> VisitExistentialRel(const std::vector<std::shared_ptr<RelBinding>>& bindings,
@@ -182,8 +176,7 @@ class Translator : public RelASTVisitor {
       const std::string& recursive_definition_name, const std::vector<std::shared_ptr<RelBinding>>& bindings,
       std::vector<std::shared_ptr<sql::ast::Source>>* out_ctes = nullptr, bool* out_ctes_are_recursive = nullptr);
 
-  RelContext* container_;
-  std::shared_ptr<sql::ast::Expression> result_;
+  const RelContext& context_;
   std::unordered_map<std::string, int> table_alias_prefix_counter_;
 };
 

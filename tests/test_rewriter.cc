@@ -1,13 +1,17 @@
 #include <gtest/gtest.h>
 
 #include <cctype>
+#include <memory>
 #include <string>
 
 #include "api/translate.h"
+#include "rel_ast/rel_ast.h"
 #include "rel_ast/rel_ast_builder.h"
+#include "rel_ast/rel_context_builder.h"
+#include "rel_ast/relation_info.h"
 #include "rewriter/binding_domain_rewriter.h"
 #include "rewriter/expression_as_term_rewriter.h"
-#include "rewriter/rewriter.h"
+#include "rewriter/underscore_rewriter.h"
 
 namespace rel2sql {
 
@@ -50,57 +54,87 @@ std::shared_ptr<RelProgram> ParseProgram(std::string_view input) {
 std::string RewriteExprWithBindingDomain(std::string_view input) {
   auto expr = ParseExpr(input);
   if (!expr) return "";
-  Rewriter r;
-  r.Clear();
-  r.Add(std::make_unique<BindingDomainRewriter>());
-  expr = r.Run(expr);
+  BindingDomainRewriter r;
+  expr = r.Visit(expr);
   return expr ? expr->ToString() : "";
 }
 
 std::string RewriteExprWithExpressionAsTerm(std::string_view input) {
   auto expr = ParseExpr(input);
   if (!expr) return "";
-  Rewriter r;
-  r.Clear();
-  r.Add(std::make_unique<ExpressionAsTermRewriter>());
-  expr = r.Run(expr);
+  ExpressionAsTermRewriter r;
+  expr = r.Visit(expr);
   return expr ? expr->ToString() : "";
 }
 
 std::string RewriteExprAll(std::string_view input) {
   auto expr = ParseExpr(input);
   if (!expr) return "";
-  Rewriter r;
-  expr = r.Run(expr);
+  UnderscoreRewriter u;
+  BindingDomainRewriter b;
+  ExpressionAsTermRewriter e;
+  expr = u.Visit(expr);
+  expr = b.Visit(expr);
+  expr = e.Visit(expr);
   return expr ? expr->ToString() : "";
 }
 
 std::string RewriteProgramWithBindingDomain(std::string_view input) {
   auto program = ParseProgram(input);
   if (!program) return "";
-  Rewriter r;
-  r.Clear();
-  r.Add(std::make_unique<BindingDomainRewriter>());
-  r.Run(program);
+  BindingDomainRewriter r;
+  program = std::dynamic_pointer_cast<RelProgram>(r.Visit(program));
   return program ? program->ToString() : "";
 }
 
 std::string RewriteProgramWithExpressionAsTerm(std::string_view input) {
   auto program = ParseProgram(input);
   if (!program) return "";
-  Rewriter r;
-  r.Clear();
-  r.Add(std::make_unique<ExpressionAsTermRewriter>());
-  r.Run(program);
+  ExpressionAsTermRewriter r;
+  program = std::dynamic_pointer_cast<RelProgram>(r.Visit(program));
   return program ? program->ToString() : "";
 }
 
 std::string RewriteProgramAll(std::string_view input) {
   auto program = ParseProgram(input);
   if (!program) return "";
-  Rewriter r;
-  r.Run(program);
+  UnderscoreRewriter u;
+  BindingDomainRewriter b;
+  ExpressionAsTermRewriter e;
+  program = std::dynamic_pointer_cast<RelProgram>(u.Visit(program));
+  program = std::dynamic_pointer_cast<RelProgram>(b.Visit(program));
+  program = std::dynamic_pointer_cast<RelProgram>(e.Visit(program));
   return program ? program->ToString() : "";
+}
+
+std::string RewriteProgramWithUnderscore(std::string_view input,
+                                         const RelationMap& edb_map = {}) {
+  auto program = ParseProgram(input);
+  if (!program) return "";
+
+  RelContextBuilder context_builder(edb_map);
+  UnderscoreRewriter u(&context_builder);
+
+  program = std::dynamic_pointer_cast<RelProgram>(u.Visit(program));
+  return program ? program->ToString() : "";
+}
+
+TEST(RewriterTest, UnderscoreFullApplication) {
+  auto result = RewriteProgramWithUnderscore("def R { A(_, x) }");
+  EXPECT_EQ(NormalizeWhitespace(RewriteProgramWithUnderscore("def R { A(_, x) }")),
+            NormalizeWhitespace("def R {exists( (_z0) | A(_z0, x))}"));
+}
+
+TEST(RewriterTest, UnderscoreFullApplicationMultiple) {
+  EXPECT_EQ(NormalizeWhitespace(RewriteProgramWithUnderscore("def R { B(_, _, x) }")),
+            NormalizeWhitespace("def R {exists( (_z0, _z1) | B(_z0, _z1, x))}"));
+}
+
+TEST(RewriterTest, UnderscorePartialApplication) {
+  RelationMap edb;
+  edb["A"] = RelationInfo(4);  // A has 4 columns; A[x, _, y] leaves 1 for rest
+  EXPECT_EQ(NormalizeWhitespace(RewriteProgramWithUnderscore("def R { A[x, _, y] }", edb)),
+            NormalizeWhitespace("def R {(_z1) : exists( (_z0) | A(x, _z0, y, _z1))}"));
 }
 
 TEST(RewriterTest, BindingDomainExpr) {

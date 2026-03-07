@@ -4,112 +4,172 @@
 
 namespace rel2sql {
 
-void RelASTVisitor::Visit(RelProgram& node) {
-  for (auto& def : node.defs) {
-    if (def) def->Accept(*this);
+// =============================================================================
+// Abstract node visitors -> Call DispatchVisit on the node
+// =============================================================================
+
+std::shared_ptr<RelNode> BaseRelVisitor::Visit(const std::shared_ptr<RelNode>& node) { return node->DispatchVisit(*this, node); }
+
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelExpr>& node) {
+  return std::dynamic_pointer_cast<RelExpr>(node->DispatchVisit(*this, node));
+}
+
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelFormula>& node) {
+  return std::dynamic_pointer_cast<RelFormula>(node->DispatchVisit(*this, node));
+}
+
+std::shared_ptr<RelTerm> BaseRelVisitor::Visit(const std::shared_ptr<RelTerm>& node) {
+  return std::dynamic_pointer_cast<RelTerm>(node->DispatchVisit(*this, node));
+}
+
+std::shared_ptr<RelApplParam> BaseRelVisitor::Visit(const std::shared_ptr<RelApplParam>& node) {
+  return std::dynamic_pointer_cast<RelApplParam>(node->DispatchVisit(*this, node));
+}
+
+std::shared_ptr<RelApplBase> BaseRelVisitor::Visit(const std::shared_ptr<RelApplBase>& node) {
+  return std::dynamic_pointer_cast<RelApplBase>(node->DispatchVisit(*this, node));
+}
+
+// =============================================================================
+// Concrete node visitors -> Implement the logic for the node. For identity, return itself.
+// =============================================================================
+
+std::shared_ptr<RelApplParam> BaseRelVisitor::Visit(const std::shared_ptr<RelUnderscoreParam>& node) { return node; }
+
+std::shared_ptr<RelApplParam> BaseRelVisitor::Visit(const std::shared_ptr<RelExprApplParam>& node) {
+  if (node->expr) Visit(node->expr);
+  return node;
+}
+
+std::shared_ptr<RelProgram> BaseRelVisitor::Visit(const std::shared_ptr<RelProgram>& node) {
+  for (auto& def : node->defs) {
+    if (def) def = Visit(def);
   }
+  return node;
 }
 
-void RelASTVisitor::Visit(RelDef& node) {
-  if (node.body) node.body->Accept(*this);
+std::shared_ptr<RelDef> BaseRelVisitor::Visit(const std::shared_ptr<RelDef>& node) {
+  if (node->body) node->body = Visit(node->body);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelAbstraction& node) {
-  for (auto& expr : node.exprs) {
-    if (expr) expr->Accept(*this);
+std::shared_ptr<RelAbstraction> BaseRelVisitor::Visit(const std::shared_ptr<RelAbstraction>& node) {
+  for (auto& expr : node->exprs) {
+    if (expr) expr = Visit(expr);
   }
+  return node;
 }
 
-void RelASTVisitor::Visit(RelLiteral&) {}
+std::shared_ptr<RelLiteral> BaseRelVisitor::Visit(const std::shared_ptr<RelLiteral>& node) { return node; }
 
-void RelASTVisitor::Visit(RelLitExpr& node) {
-  if (node.literal) node.literal->Accept(*this);
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelLitExpr>& node) {
+  if (node->literal) node->literal = Visit(node->literal);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelTermExpr& node) {
-  if (node.term) node.term->Accept(*this);
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelTermExpr>& node) {
+  if (node->term) node->term = Visit(node->term);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelProductExpr& node) {
-  for (auto& expr : node.exprs) {
-    if (expr) expr->Accept(*this);
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelProductExpr>& node) {
+  for (auto& expr : node->exprs) {
+    if (expr) expr = Visit(expr);
   }
+  return node;
 }
 
-void RelASTVisitor::Visit(RelConditionExpr& node) {
-  if (node.lhs) node.lhs->Accept(*this);
-  if (node.rhs) node.rhs->Accept(*this);
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelConditionExpr>& node) {
+  if (node->lhs) node->lhs = Visit(node->lhs);
+  if (node->rhs) node->rhs = Visit(node->rhs);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelAbstractionExpr& node) {
-  if (node.rel_abs) node.rel_abs->Accept(*this);
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelAbstractionExpr>& node) {
+  if (node->rel_abs) node->rel_abs = Visit(node->rel_abs);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelFormulaExpr& node) {
-  if (node.formula) node.formula->Accept(*this);
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelFormulaExpr>& node) {
+  if (node->formula) node->formula = Visit(node->formula);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelBindingsExpr& node) {
-  if (node.expr) node.expr->Accept(*this);
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
+  if (node->expr) node->expr = Visit(node->expr);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelBindingsFormula& node) {
-  if (node.formula) node.formula->Accept(*this);
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelBindingsFormula>& node) {
+  if (node->formula) node->formula = Visit(node->formula);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelPartialAppl& node) {
-  if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node.base.get())) {
-    if (abs_base->rel_abs) abs_base->rel_abs->Accept(*this);
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelPartialAppl>& node) {
+  node->base = Visit(node->base);
+  for (auto& param : node->params) {
+    if (param) param = Visit(param);
   }
-  for (auto& param : node.params) {
-    if (param && param->GetExpr()) param->GetExpr()->Accept(*this);
+  return node;
+}
+
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelFormulaBool>& node) { return node; }
+
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelFullAppl>& node) {
+  node->base = Visit(node->base);
+  for (auto& param : node->params) {
+    if (param) param = Visit(param);
   }
+  return node;
 }
 
-void RelASTVisitor::Visit(RelFormulaBool&) {}
-
-void RelASTVisitor::Visit(RelFullAppl& node) {
-  if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node.base.get())) {
-    if (abs_base->rel_abs) abs_base->rel_abs->Accept(*this);
-  }
-  for (auto& param : node.params) {
-    if (param && param->GetExpr()) param->GetExpr()->Accept(*this);
-  }
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelQuantification>& node) {
+  if (node->formula) node->formula = Visit(node->formula);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelQuantification& node) {
-  if (node.formula) node.formula->Accept(*this);
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelParen>& node) {
+  if (node->formula) node->formula = Visit(node->formula);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelParen& node) {
-  if (node.formula) node.formula->Accept(*this);
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelComparison>& node) {
+  if (node->lhs) node->lhs = Visit(node->lhs);
+  if (node->rhs) node->rhs = Visit(node->rhs);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelComparison& node) {
-  if (node.lhs) node.lhs->Accept(*this);
-  if (node.rhs) node.rhs->Accept(*this);
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelUnOp>& node) {
+  if (node->formula) node->formula = Visit(node->formula);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelUnOp& node) {
-  if (node.formula) node.formula->Accept(*this);
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelBinOp>& node) {
+  if (node->lhs) node->lhs = Visit(node->lhs);
+  if (node->rhs) node->rhs = Visit(node->rhs);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelBinOp& node) {
-  if (node.lhs) node.lhs->Accept(*this);
-  if (node.rhs) node.rhs->Accept(*this);
+std::shared_ptr<RelTerm> BaseRelVisitor::Visit(const std::shared_ptr<RelIDTerm>& node) { return node; }
+
+std::shared_ptr<RelTerm> BaseRelVisitor::Visit(const std::shared_ptr<RelNumTerm>& node) { return node; }
+
+std::shared_ptr<RelTerm> BaseRelVisitor::Visit(const std::shared_ptr<RelOpTerm>& node) {
+  if (node->lhs) node->lhs = Visit(node->lhs);
+  if (node->rhs) node->rhs = Visit(node->rhs);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelIDTerm&) {}
-
-void RelASTVisitor::Visit(RelNumTerm&) {}
-
-void RelASTVisitor::Visit(RelOpTerm& node) {
-  if (node.lhs) node.lhs->Accept(*this);
-  if (node.rhs) node.rhs->Accept(*this);
+std::shared_ptr<RelTerm> BaseRelVisitor::Visit(const std::shared_ptr<RelParenthesisTerm>& node) {
+  if (node->term) node->term = Visit(node->term);
+  return node;
 }
 
-void RelASTVisitor::Visit(RelParenthesisTerm& node) {
-  if (node.term) node.term->Accept(*this);
+std::shared_ptr<RelApplBase> BaseRelVisitor::Visit(const std::shared_ptr<RelIDApplBase>& node) { return node; }
+
+std::shared_ptr<RelApplBase> BaseRelVisitor::Visit(const std::shared_ptr<RelAbstractionApplBase>& node) {
+  if (node->rel_abs) node->rel_abs = Visit(node->rel_abs);
+  return node;
 }
 
 }  // namespace rel2sql

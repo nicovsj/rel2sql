@@ -6,18 +6,19 @@
 
 namespace rel2sql {
 
-class LiteralVisitor : public RelASTVisitor {
+class LiteralVisitor : public BaseRelVisitor {
  public:
+  using BaseRelVisitor::Visit;
   LiteralVisitor() = default;
 
-  void Visit(RelProgram& node) override;
-  void Visit(RelDef& node) override;
-  void Visit(RelAbstraction& node) override;
-  void Visit(RelLiteral& node) override;
-  void Visit(RelLitExpr& node) override;
-  void Visit(RelProductExpr& node) override;
-  void Visit(RelAbstractionExpr& node) override;
-  void Visit(RelNumTerm& node) override;
+  std::shared_ptr<RelDef> Visit(const std::shared_ptr<RelDef>& node) override;
+
+  std::shared_ptr<RelLiteral> Visit(const std::shared_ptr<RelLiteral>& node) override;
+
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelLitExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProductExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelAbstractionExpr>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelNumTerm>& node) override;
 };
 
 }  // namespace rel2sql
