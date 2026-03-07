@@ -52,14 +52,6 @@ std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelCondition
   return node;
 }
 
-std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelAbstractionExpr>& node) {
-  if (node->rel_abs) {
-    Visit(node->rel_abs);
-    node->safety = node->rel_abs->safety;
-  }
-  return node;
-}
-
 std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelFormulaExpr>& node) {
   if (node->formula) {
     Visit(node->formula);

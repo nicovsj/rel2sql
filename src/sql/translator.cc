@@ -625,14 +625,6 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelCondition>& 
   return node;
 }
 
-std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelAbstractionExpr>& node) {
-  if (node->rel_abs) Visit(node->rel_abs);
-  if (node->rel_abs && node->rel_abs->sql_expression) {
-    node->sql_expression = node->rel_abs->sql_expression;
-  }
-  return node;
-}
-
 std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelFormulaExpr>& node) {
   if (node->formula) {
     Visit(node->formula);

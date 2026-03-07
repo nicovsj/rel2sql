@@ -75,11 +75,6 @@ std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelConditio
   return node;
 }
 
-std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelAbstractionExpr>& node) {
-  if (node->rel_abs) node->rel_abs = Visit(node->rel_abs);
-  return node;
-}
-
 std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelFormulaExpr>& node) {
   if (node->formula) node->formula = Visit(node->formula);
   return node;

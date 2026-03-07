@@ -11,8 +11,7 @@ namespace {
 
 bool IsSimpleExpr(const std::shared_ptr<RelExpr>& expr) {
   if (auto* term = dynamic_cast<RelTerm*>(expr.get())) {
-    return dynamic_cast<RelIDTerm*>(term) != nullptr ||
-           dynamic_cast<RelNumTerm*>(term) != nullptr;
+    return dynamic_cast<RelIDTerm*>(term) != nullptr || dynamic_cast<RelNumTerm*>(term) != nullptr;
   }
   if (dynamic_cast<RelLiteral*>(expr.get())) return true;
   return false;
@@ -20,47 +19,35 @@ bool IsSimpleExpr(const std::shared_ptr<RelExpr>& expr) {
 
 }  // namespace
 
-std::string TermRewriter::FreshVarName() {
-  return std::format("_x{}", fresh_var_counter_++);
-}
+std::string TermRewriter::FreshVarName() { return std::format("_x{}", fresh_var_counter_++); }
 
-std::shared_ptr<RelExpr> TermRewriter::WrapTermExpr(
-    std::shared_ptr<RelTerm> term, bool wrap_in_abs) {
+std::shared_ptr<RelExpr> TermRewriter::WrapTermExpr(std::shared_ptr<RelTerm> term, bool wrap_in_abs) {
   std::string z = FreshVarName();
   auto bind = std::make_shared<RelVarBinding>(z, std::nullopt);
   auto lhs = std::make_shared<RelIDTerm>(z);
   auto formula = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, term);
   auto bindings_formula =
-      std::make_shared<RelFormulaAbstraction>(std::vector<std::shared_ptr<RelBinding>>{bind},
-                                           std::move(formula));
+      std::make_shared<RelFormulaAbstraction>(std::vector<std::shared_ptr<RelBinding>>{bind}, std::move(formula));
   if (!wrap_in_abs) {
     return bindings_formula;
   }
-  auto abs =
-      std::make_shared<RelUnion>(std::vector<std::shared_ptr<RelExpr>>{std::move(bindings_formula)});
-  return std::make_shared<RelAbstractionExpr>(std::move(abs));
+  return std::make_shared<RelUnion>(std::vector<std::shared_ptr<RelExpr>>{std::move(bindings_formula)});
 }
 
-std::shared_ptr<RelExpr> TermRewriter::WrapConditionExpr(
-    std::shared_ptr<RelCondition> expr) {
+std::shared_ptr<RelExpr> TermRewriter::WrapConditionExpr(std::shared_ptr<RelCondition> expr) {
   auto term = std::dynamic_pointer_cast<RelTerm>(expr->lhs);
   if (!term) return nullptr;
   std::string z = FreshVarName();
   auto bind = std::make_shared<RelVarBinding>(z, std::nullopt);
   auto lhs = std::make_shared<RelIDTerm>(z);
   auto eq_formula = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, term);
-  auto formula =
-      std::make_shared<RelConjunction>(std::move(eq_formula), expr->rhs);
+  auto formula = std::make_shared<RelConjunction>(std::move(eq_formula), expr->rhs);
   auto bindings_formula =
-      std::make_shared<RelFormulaAbstraction>(std::vector<std::shared_ptr<RelBinding>>{bind},
-                                           std::move(formula));
-  auto abs =
-      std::make_shared<RelUnion>(std::vector<std::shared_ptr<RelExpr>>{std::move(bindings_formula)});
-  return std::make_shared<RelAbstractionExpr>(std::move(abs));
+      std::make_shared<RelFormulaAbstraction>(std::vector<std::shared_ptr<RelBinding>>{bind}, std::move(formula));
+  return std::make_shared<RelUnion>(std::vector<std::shared_ptr<RelExpr>>{std::move(bindings_formula)});
 }
 
-std::shared_ptr<RelExpr> TermRewriter::WrapExpr(std::shared_ptr<RelExpr> expr,
-                                                            bool wrap_in_abs) {
+std::shared_ptr<RelExpr> TermRewriter::WrapExpr(std::shared_ptr<RelExpr> expr, bool wrap_in_abs) {
   if (auto term = std::dynamic_pointer_cast<RelTerm>(expr)) {
     return WrapTermExpr(std::move(term), wrap_in_abs);
   }
@@ -94,8 +81,7 @@ std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelExprAbstra
   return result;
 }
 
-std::shared_ptr<RelUnion> TermRewriter::Visit(
-    const std::shared_ptr<RelUnion>& node) {
+std::shared_ptr<RelUnion> TermRewriter::Visit(const std::shared_ptr<RelUnion>& node) {
   auto result = std::dynamic_pointer_cast<RelUnion>(BaseRelVisitor::Visit(node));
   if (!result) return result;
 

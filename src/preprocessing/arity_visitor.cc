@@ -99,12 +99,6 @@ std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelCondition>
   return node;
 }
 
-std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelAbstractionExpr>& node) {
-  if (node->rel_abs) Visit(node->rel_abs);
-  node->arity = node->rel_abs ? node->rel_abs->arity : 0;
-  return node;
-}
-
 std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelFormulaExpr>& node) {
   if (node->formula) Visit(node->formula);
   node->arity = 0;

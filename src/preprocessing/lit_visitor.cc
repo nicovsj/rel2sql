@@ -45,14 +45,6 @@ std::shared_ptr<RelExpr> LiteralVisitor::Visit(const std::shared_ptr<RelProduct>
   return node;
 }
 
-std::shared_ptr<RelExpr> LiteralVisitor::Visit(const std::shared_ptr<RelAbstractionExpr>& node) {
-  if (node->rel_abs) {
-    Visit(node->rel_abs);
-    node->has_only_literal_values = node->rel_abs->has_only_literal_values;
-  }
-  return node;
-}
-
 std::shared_ptr<RelTerm> LiteralVisitor::Visit(const std::shared_ptr<RelNumTerm>& node) {
   node->constant = node->value;
   return node;

@@ -268,10 +268,6 @@ std::string RelCondition::ToString() const {
   std::string r = rhs ? rhs->ToString() : "?";
   return l + " where " + r;
 }
-std::shared_ptr<RelNode> RelAbstractionExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelAbstractionExpr>(self));
-}
-std::string RelAbstractionExpr::ToString() const { return rel_abs ? rel_abs->ToString() : "{}"; }
 
 std::shared_ptr<RelNode> RelFormulaExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelFormulaExpr>(self));

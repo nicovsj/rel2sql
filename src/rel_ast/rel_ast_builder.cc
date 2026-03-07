@@ -139,8 +139,7 @@ std::any RelASTBuilder::visitConditionExpr(psr::ConditionExprContext* ctx) {
 
 std::any RelASTBuilder::visitRelAbsExpr(psr::RelAbsExprContext* ctx) {
   auto rel_abs_result = visit(ctx->relAbs());
-  auto rel_abs = Cast<RelUnion>(rel_abs_result);
-  auto node = std::make_shared<RelAbstractionExpr>(std::move(rel_abs));
+  auto node = Cast<RelUnion>(rel_abs_result);
   SetCtx(node.get(), ctx);
   return std::shared_ptr<RelExpr>(node);
 }
