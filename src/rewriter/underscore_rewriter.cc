@@ -8,9 +8,7 @@
 
 namespace rel2sql {
 
-std::string UnderscoreRewriter::FreshVarName() {
-  return std::format("_z{}", fresh_var_counter_++);
-}
+std::string UnderscoreRewriter::FreshVarName() { return std::format("_z{}", fresh_var_counter_++); }
 
 std::shared_ptr<RelApplParam> UnderscoreRewriter::MakeVarParam(const std::string& var) {
   auto id_term = std::make_shared<RelIDTerm>(var);
@@ -56,8 +54,7 @@ std::shared_ptr<RelFormula> UnderscoreRewriter::Visit(const std::shared_ptr<RelF
   }
 
   auto new_appl = std::make_shared<RelFullAppl>(result->base, std::move(new_params));
-  return std::make_shared<RelQuantification>(
-      RelQuantOp::EXISTS, std::move(bindings), std::move(new_appl));
+  return std::make_shared<RelExistential>(std::move(bindings), std::move(new_appl));
 }
 
 std::shared_ptr<RelExpr> UnderscoreRewriter::Visit(const std::shared_ptr<RelPartialAppl>& node) {
@@ -105,8 +102,7 @@ std::shared_ptr<RelExpr> UnderscoreRewriter::Visit(const std::shared_ptr<RelPart
   std::vector<std::shared_ptr<RelBinding>> bindings;
   bindings.push_back(std::make_shared<RelVarBinding>(z, std::nullopt));
 
-  auto exists_formula = std::make_shared<RelQuantification>(
-      RelQuantOp::EXISTS, std::move(bindings), std::move(full_appl));
+  auto exists_formula = std::make_shared<RelExistential>(std::move(bindings), std::move(full_appl));
 
   std::vector<std::shared_ptr<RelBinding>> output_bindings;
   for (const auto& v : rest_vars) {

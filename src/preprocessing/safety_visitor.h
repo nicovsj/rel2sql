@@ -29,7 +29,8 @@ class SafetyVisitor : public BaseRelVisitor {
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelConjunction>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelDisjunction>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelNegation>& node) override;
-  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelQuantification>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelExistential>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelUniversal>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelParen>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelComparison>& node) override;
 

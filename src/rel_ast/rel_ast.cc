@@ -56,8 +56,6 @@ std::string CompOpToString(RelCompOp op) {
   return "?";
 }
 
-std::string QuantOpToString(RelQuantOp op) { return op == RelQuantOp::EXISTS ? "exists" : "forall"; }
-
 std::string TermOpToString(RelTermOp op) {
   switch (op) {
     case RelTermOp::ADD:
@@ -202,12 +200,12 @@ std::shared_ptr<RelNode> RelParen::DispatchVisit(BaseRelVisitor& visitor, std::s
 
 std::string RelParen::ToString() const { return formula ? "(" + formula->ToString() + ")" : "()"; }
 
-std::shared_ptr<RelNode> RelQuantification::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelQuantification>(self));
+std::shared_ptr<RelNode> RelExistential::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelExistential>(self));
 }
-std::string RelQuantification::ToString() const {
+std::string RelExistential::ToString() const {
   std::ostringstream out;
-  out << QuantOpToString(op) << "( (";
+  out << "exists" << "( (";
   for (size_t i = 0; i < bindings.size(); ++i) {
     if (i) out << ", ";
     out << (bindings[i] ? bindings[i]->ToString() : "?");
@@ -216,6 +214,22 @@ std::string RelQuantification::ToString() const {
   out << ")";
   return out.str();
 }
+
+std::shared_ptr<RelNode> RelUniversal::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelUniversal>(self));
+}
+std::string RelUniversal::ToString() const {
+  std::ostringstream out;
+  out << "forall" << "( (";
+  for (size_t i = 0; i < bindings.size(); ++i) {
+    if (i) out << ", ";
+    out << (bindings[i] ? bindings[i]->ToString() : "?");
+  }
+  out << ") | " << (formula ? formula->ToString() : "?");
+  out << ")";
+  return out.str();
+}
+
 std::shared_ptr<RelNode> RelFullAppl::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelFullAppl>(self));
 }

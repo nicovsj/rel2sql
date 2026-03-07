@@ -28,7 +28,7 @@ class RecursionVisitor : public BaseRelVisitor {
 
  private:
   struct RecursiveBranchMatch {
-    std::shared_ptr<RelQuantification> exists_clause;
+    std::shared_ptr<RelExistential> exists_clause;
     std::shared_ptr<RelFullAppl> recursive_call;
     std::shared_ptr<RelFormula> residual_formula;
   };
@@ -52,7 +52,7 @@ class RecursionVisitor : public BaseRelVisitor {
   bool CheckRecursionPattern(const std::shared_ptr<RelFormula>& formula,
                              const std::vector<std::shared_ptr<RelBinding>>& bindings,
                              RecursionPatternMatch& match);
-  bool CheckExistsPattern(const std::shared_ptr<RelQuantification>& quant,
+  bool CheckExistsPattern(const std::shared_ptr<RelExistential>& exists,
                           const std::string& q,
                           const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
                           RecursiveBranchMatch& match);

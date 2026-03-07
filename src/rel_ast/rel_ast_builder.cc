@@ -209,9 +209,17 @@ std::any RelASTBuilder::visitQuantification(psr::QuantificationContext* ctx) {
   auto bindings = std::any_cast<std::vector<std::shared_ptr<RelBinding>>>(bindings_result);
   auto formula_result = visit(ctx->formula());
   auto formula = Cast<RelFormula>(formula_result);
-  auto node = std::make_shared<RelQuantification>(op, std::move(bindings), std::move(formula));
-  SetCtx(node.get(), ctx);
-  return std::shared_ptr<RelFormula>(node);
+  if (op == RelQuantOp::EXISTS) {
+    auto node = std::make_shared<RelExistential>(std::move(bindings), std::move(formula));
+    SetCtx(node.get(), ctx);
+    return std::shared_ptr<RelFormula>(node);
+  }
+  if (op == RelQuantOp::FORALL) {
+    auto node = std::make_shared<RelUniversal>(std::move(bindings), std::move(formula));
+    SetCtx(node.get(), ctx);
+    return std::shared_ptr<RelFormula>(node);
+  }
+  throw std::runtime_error("Unknown quantification operator: " + ctx->op->getText());
 }
 
 std::any RelASTBuilder::visitParen(psr::ParenContext* ctx) {

@@ -118,7 +118,12 @@ std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelFullA
   return node;
 }
 
-std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelQuantification>& node) {
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelExistential>& node) {
+  if (node->formula) node->formula = Visit(node->formula);
+  return node;
+}
+
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelUniversal>& node) {
   if (node->formula) node->formula = Visit(node->formula);
   return node;
 }

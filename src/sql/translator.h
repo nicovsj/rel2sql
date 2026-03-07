@@ -50,7 +50,8 @@ class Translator : public BaseRelVisitor {
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelConjunction>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelDisjunction>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelNegation>& node) override;
-  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelQuantification>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelExistential>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelUniversal>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelParen>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelComparison>& node) override;
 
@@ -131,16 +132,6 @@ class Translator : public BaseRelVisitor {
       const std::vector<std::pair<RelNode*, size_t>>& term_param_slots,
       const std::function<std::string(size_t)>& column_name_for_index,
       const std::shared_ptr<sql::ast::Source>& ra_source);
-
-  // Existential quantification: exists bindings. formula
-  std::shared_ptr<sql::ast::Expression> VisitExistentialRel(const std::vector<std::shared_ptr<RelBinding>>& bindings,
-                                                            const std::shared_ptr<RelFormula>& formula,
-                                                            const std::set<std::string>& free_vars);
-
-  // Universal quantification: forall bindings. formula
-  std::shared_ptr<sql::ast::Expression> VisitUniversalRel(const std::vector<std::shared_ptr<RelBinding>>& bindings,
-                                                          const std::shared_ptr<RelFormula>& formula,
-                                                          const std::set<std::string>& free_vars);
 
   std::shared_ptr<sql::ast::Expression> VisitGeneralizedConjunctionRel(
       const std::vector<std::shared_ptr<RelNode>>& subformulas);

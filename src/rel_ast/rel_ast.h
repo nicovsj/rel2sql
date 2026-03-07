@@ -323,14 +323,23 @@ struct RelParen : RelFormula {
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };
 
-struct RelQuantification : RelFormula {
-  RelQuantOp op;
+struct RelExistential : RelFormula {
   std::vector<std::shared_ptr<RelBinding>> bindings;
   std::shared_ptr<RelFormula> formula;
 
-  RelQuantification(RelQuantOp op, std::vector<std::shared_ptr<RelBinding>> bindings,
-                    std::shared_ptr<RelFormula> formula)
-      : op(op), bindings(std::move(bindings)), formula(std::move(formula)) {}
+  RelExistential(std::vector<std::shared_ptr<RelBinding>> bindings, std::shared_ptr<RelFormula> formula)
+      : bindings(std::move(bindings)), formula(std::move(formula)) {}
+
+  std::string ToString() const override;
+  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+};
+
+struct RelUniversal : RelFormula {
+  std::vector<std::shared_ptr<RelBinding>> bindings;
+  std::shared_ptr<RelFormula> formula;
+
+  RelUniversal(std::vector<std::shared_ptr<RelBinding>> bindings, std::shared_ptr<RelFormula> formula)
+      : bindings(std::move(bindings)), formula(std::move(formula)) {}
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
@@ -350,7 +359,6 @@ struct RelFullAppl : RelFormula {
 // =============================================================================
 // Expressions
 // =============================================================================
-
 
 struct RelTermExpr : RelExpr {
   std::shared_ptr<RelTerm> term;

@@ -165,7 +165,13 @@ std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelNegati
   return node;
 }
 
-std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelQuantification>& node) {
+std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelExistential>& node) {
+  if (node->formula) Visit(node->formula);
+  if (node->formula) ComputeBindingsSafety(*node, *node->formula, node->bindings);
+  return node;
+}
+
+std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelUniversal>& node) {
   if (node->formula) Visit(node->formula);
   if (node->formula) ComputeBindingsSafety(*node, *node->formula, node->bindings);
   return node;

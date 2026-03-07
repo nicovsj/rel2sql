@@ -30,12 +30,13 @@ struct RelBindingsFormula;
 struct RelPartialAppl;
 struct RelFormulaBool;
 struct RelFullAppl;
-struct RelQuantification;
 struct RelParen;
 struct RelComparison;
 struct RelNegation;
 struct RelConjunction;
 struct RelDisjunction;
+struct RelExistential;
+struct RelUniversal;
 struct RelIDTerm;
 struct RelNumTerm;
 struct RelOpTerm;
@@ -82,7 +83,8 @@ class BaseRelVisitor {
   // Formulas
   virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFormulaBool>& node);
   virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullAppl>& node);
-  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelQuantification>& node);
+  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelExistential>& node);
+  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelUniversal>& node);
   virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelParen>& node);
   virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelComparison>& node);
   virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelNegation>& node);

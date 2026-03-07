@@ -215,7 +215,26 @@ std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelNeg
   return node;
 }
 
-std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelQuantification>& node) {
+std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelExistential>& node) {
+  if (node->formula) Visit(node->formula);
+  if (node->formula) {
+    node->variables = node->formula->variables;
+    node->free_variables = node->formula->free_variables;
+  }
+  std::set<std::string> bindings_vars, bindings_free;
+  for (const auto& b : node->bindings) {
+    if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) {
+      bindings_vars.insert(vb->id);
+      bindings_free.insert(vb->id);
+    }
+  }
+  node->variables.insert(bindings_vars.begin(), bindings_vars.end());
+  for (const auto& var : bindings_free) node->free_variables.erase(var);
+  return node;
+}
+
+
+std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelUniversal>& node) {
   if (node->formula) Visit(node->formula);
   if (node->formula) {
     node->variables = node->formula->variables;

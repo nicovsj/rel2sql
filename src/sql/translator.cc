@@ -913,21 +913,6 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelNegation>
   return node;
 }
 
-std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelQuantification>& node) {
-  if (node->op == RelQuantOp::EXISTS) {
-    auto expr = VisitExistentialRel(node->bindings, node->formula, node->free_variables);
-    node->sql_expression = expr;
-    return node;
-  }
-
-  if (node->op == RelQuantOp::FORALL) {
-    auto expr = VisitUniversalRel(node->bindings, node->formula, node->free_variables);
-    node->sql_expression = expr;
-    return node;
-  }
-  return node;
-}
-
 std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelParen>& node) {
   if (node->formula) {
     Visit(node->formula);
@@ -1119,22 +1104,20 @@ std::vector<std::shared_ptr<sql::ast::Condition>> Translator::AddChainedEqualiti
   return conditions;
 }
 
-std::shared_ptr<sql::ast::Expression> Translator::VisitExistentialRel(
-    const std::vector<std::shared_ptr<RelBinding>>& bindings, const std::shared_ptr<RelFormula>& formula,
-    const std::set<std::string>& free_vars) {
-  if (!formula) return nullptr;
+std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelExistential>& node) {
+  if (!node->formula) return nullptr;
 
   // Translate inner formula to a Sourceable subquery.
-  Visit(formula);
+  Visit(node->formula);
 
-  auto inner_expr = formula->sql_expression;
+  auto inner_expr = node->formula->sql_expression;
   auto inner_srcable = ExpectSourceable(inner_expr);
 
   auto subquery = std::make_shared<sql::ast::Source>(inner_srcable, GenerateTableAlias());
 
   // SELECT free variables from the subquery.
   std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
-  for (const auto& var : free_vars) {
+  for (const auto& var : node->free_variables) {
     auto col = std::make_shared<sql::ast::Column>(var, subquery);
     select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(col));
   }
@@ -1145,7 +1128,7 @@ std::shared_ptr<sql::ast::Expression> Translator::VisitExistentialRel(
 
   std::vector<std::shared_ptr<sql::ast::Condition>> conditions;
 
-  for (const auto& b : bindings) {
+  for (const auto& b : node->bindings) {
     auto* vb = dynamic_cast<RelVarBinding*>(b.get());
     if (!vb) {
       throw NotImplementedException("SQLVisitorRel: literal bindings in quantification not yet supported");
@@ -1184,19 +1167,18 @@ std::shared_ptr<sql::ast::Expression> Translator::VisitExistentialRel(
   auto from =
       condition ? std::make_shared<sql::ast::From>(sources, condition) : std::make_shared<sql::ast::From>(sources);
 
-  return std::make_shared<sql::ast::Select>(select_columns, from);
+  node->sql_expression = std::make_shared<sql::ast::Select>(select_columns, from);
+  return node;
 }
 
-std::shared_ptr<sql::ast::Expression> Translator::VisitUniversalRel(
-    const std::vector<std::shared_ptr<RelBinding>>& bindings, const std::shared_ptr<RelFormula>& formula,
-    const std::set<std::string>& free_vars) {
-  if (!formula) return nullptr;
+std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelUniversal>& node) {
+  if (!node->formula) return nullptr;
 
   // Universal quantification requires domains for all bindings.
   std::vector<std::shared_ptr<sql::ast::Source>> bound_domain_sources;
   std::vector<std::string> bound_var_names;
 
-  for (const auto& b : bindings) {
+  for (const auto& b : node->bindings) {
     auto* vb = dynamic_cast<RelVarBinding*>(b.get());
     if (!vb) {
       throw NotImplementedException("SQLVisitorRel: literal bindings in universal quantification not yet supported");
@@ -1212,8 +1194,8 @@ std::shared_ptr<sql::ast::Expression> Translator::VisitUniversalRel(
   }
 
   // Translate inner formula to a Sourceable subquery.
-  Visit(formula);
-  auto inner_expr = formula->sql_expression;
+  Visit(node->formula);
+  auto inner_expr = node->formula->sql_expression;
   auto inner_srcable = ExpectSourceable(inner_expr);
 
   auto subquery = std::make_shared<sql::ast::Source>(inner_srcable, GenerateTableAlias());
@@ -1221,7 +1203,7 @@ std::shared_ptr<sql::ast::Expression> Translator::VisitUniversalRel(
   // Build columns for free variables from the subquery.
   std::vector<std::shared_ptr<sql::ast::Column>> free_var_columns;
   std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
-  for (const auto& var : free_vars) {
+  for (const auto& var : node->free_variables) {
     auto col = std::make_shared<sql::ast::Column>(var, subquery);
     free_var_columns.push_back(col);
     select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(col));
@@ -1265,7 +1247,8 @@ std::shared_ptr<sql::ast::Expression> Translator::VisitUniversalRel(
   // Build outer select: SELECT free_vars FROM subquery WHERE NOT EXISTS (...)
   auto outer_from =
       std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{subquery}, not_exists);
-  return std::make_shared<sql::ast::Select>(select_columns, outer_from);
+  node->sql_expression = std::make_shared<sql::ast::Select>(select_columns, outer_from);
+  return node;
 }
 
 std::shared_ptr<sql::ast::Expression> Translator::VisitGeneralizedConjunctionRel(

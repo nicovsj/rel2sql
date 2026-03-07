@@ -126,9 +126,9 @@ std::unordered_set<std::string> RecursionVisitor::CollectIDs(const std::shared_p
     ids.insert(rhs_ids.begin(), rhs_ids.end());
   }
 
-  auto* quant = dynamic_cast<RelQuantification*>(formula.get());
-  if (quant && quant->formula) {
-    auto inner = CollectIDs(quant->formula);
+  auto* exists = dynamic_cast<RelExistential*>(formula.get());
+  if (exists) {
+    auto inner = CollectIDs(exists->formula);
     ids.insert(inner.begin(), inner.end());
   }
 
@@ -191,10 +191,10 @@ bool RecursionVisitor::CheckRecursionPattern(const std::shared_ptr<RelFormula>& 
 
   auto* disj = dynamic_cast<RelDisjunction*>(formula.get());
   if (!disj) {
-    auto quant = std::dynamic_pointer_cast<RelQuantification>(formula);
-    if (quant && quant->op == RelQuantOp::EXISTS) {
+    auto exists = std::dynamic_pointer_cast<RelExistential>(formula);
+    if (exists) {
       RecursiveBranchMatch branch;
-      if (CheckExistsPattern(quant, current_q_, bindings, branch)) {
+      if (CheckExistsPattern(exists, current_q_, bindings, branch)) {
         match.recursive_disjuncts.push_back(branch);
         return true;
       }
@@ -206,12 +206,12 @@ bool RecursionVisitor::CheckRecursionPattern(const std::shared_ptr<RelFormula>& 
   CollectOrDisjuncts(formula, disjuncts);
 
   std::vector<std::shared_ptr<RelFormula>> g_parts;
-  std::vector<std::shared_ptr<RelQuantification>> exists_parts;
+  std::vector<std::shared_ptr<RelExistential>> exists_parts;
 
   for (const auto& d : disjuncts) {
-    auto q = std::dynamic_pointer_cast<RelQuantification>(d);
-    if (q && q->op == RelQuantOp::EXISTS) {
-      exists_parts.push_back(q);
+    auto exists = std::dynamic_pointer_cast<RelExistential>(d);
+    if (exists) {
+      exists_parts.push_back(exists);
     } else {
       g_parts.push_back(d);
     }
@@ -236,14 +236,14 @@ bool RecursionVisitor::CheckRecursionPattern(const std::shared_ptr<RelFormula>& 
   return true;
 }
 
-bool RecursionVisitor::CheckExistsPattern(const std::shared_ptr<RelQuantification>& quant, const std::string& q,
+bool RecursionVisitor::CheckExistsPattern(const std::shared_ptr<RelExistential>& exists, const std::string& q,
                                           const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
                                           RecursiveBranchMatch& match) {
-  if (!quant || !quant->formula) return false;
+  if (!exists || !exists->formula) return false;
 
   std::shared_ptr<RelFullAppl> q_call;
   std::shared_ptr<RelFormula> f_part;
-  FindAndPatternParts(quant->formula, q, q_call, f_part);
+  FindAndPatternParts(exists->formula, q, q_call, f_part);
 
   if (!q_call || !f_part) return false;
 
@@ -264,16 +264,16 @@ bool RecursionVisitor::CheckExistsPattern(const std::shared_ptr<RelQuantificatio
       }
     }
   }
-  if (!VariablesFromBindingOrQuantification(w_vars, outer_bindings, quant->bindings)) {
+  if (!VariablesFromBindingOrQuantification(w_vars, outer_bindings, exists->bindings)) {
     return false;
   }
 
   std::set<std::string> v_vars = f_part->free_variables;
-  if (!VariablesFromBindingOrQuantification(v_vars, outer_bindings, quant->bindings)) {
+  if (!VariablesFromBindingOrQuantification(v_vars, outer_bindings, exists->bindings)) {
     return false;
   }
 
-  match.exists_clause = quant;
+  match.exists_clause = exists;
   match.recursive_call = q_call;
   match.residual_formula = f_part;
   return true;
