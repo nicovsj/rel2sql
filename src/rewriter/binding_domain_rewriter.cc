@@ -45,7 +45,7 @@ std::shared_ptr<RelExpr> BindingDomainRewriter::Visit(const std::shared_ptr<RelB
 
 
   for (const auto& [var_id, rel_id] : domain_bindings) {
-    new_formula = std::make_shared<RelBinOp>(new_formula, RelLogicalOp::AND, MakeAtomFormula(rel_id, var_id));
+    new_formula = std::make_shared<RelConjunction>(new_formula, MakeAtomFormula(rel_id, var_id));
   }
 
   return std::make_shared<RelBindingsFormula>(std::move(new_bindings), std::move(new_formula));
@@ -78,7 +78,7 @@ std::shared_ptr<RelExpr> BindingDomainRewriter::Visit(const std::shared_ptr<RelB
   for (size_t i = 1; i < domain_bindings.size(); ++i) {
     const auto& [var_id, rel_id] = domain_bindings[i];
     condition_formula =
-        std::make_shared<RelBinOp>(condition_formula, RelLogicalOp::AND, MakeAtomFormula(rel_id, var_id));
+        std::make_shared<RelConjunction>(condition_formula, MakeAtomFormula(rel_id, var_id));
   }
   std::shared_ptr<RelExpr> wrapped_expr = std::make_shared<RelConditionExpr>(new_expr, std::move(condition_formula));
 

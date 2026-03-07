@@ -123,16 +123,16 @@ std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelFullAp
   return node;
 }
 
-std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelBinOp>& node) {
-  if (node->op == RelLogicalOp::AND) {
-    if (node->lhs) Visit(node->lhs);
-    if (node->rhs) Visit(node->rhs);
-    if (node->lhs && node->rhs) {
-      node->safety = node->lhs->safety.UnionWith(node->rhs->safety);
-    }
-    return node;
+std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelConjunction>& node) {
+  if (node->lhs) Visit(node->lhs);
+  if (node->rhs) Visit(node->rhs);
+  if (node->lhs && node->rhs) {
+    node->safety = node->lhs->safety.UnionWith(node->rhs->safety);
   }
-  if (node->op == RelLogicalOp::OR) {
+  return node;
+}
+
+std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelDisjunction>& node) {
     if (node->lhs) Visit(node->lhs);
     if (node->rhs) Visit(node->rhs);
     if (node->lhs && node->rhs) {
@@ -154,9 +154,6 @@ std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelBinOp>
       }
       node->safety = node->lhs->safety.MergeWith(node->rhs->safety);
     }
-    return node;
-  }
-  throw TranslationException("Unknown binary operator", ErrorCode::UNKNOWN_BINARY_OPERATOR, SourceLocation(0, 0));
   return node;
 }
 

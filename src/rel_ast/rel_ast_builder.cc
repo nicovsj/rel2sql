@@ -248,9 +248,17 @@ std::any RelASTBuilder::visitBinOp(psr::BinOpContext* ctx) {
   auto lhs = Cast<RelFormula>(lhs_result);
   auto rhs = Cast<RelFormula>(rhs_result);
   RelLogicalOp op = ctx->op->getText() == "and" ? RelLogicalOp::AND : RelLogicalOp::OR;
-  auto node = std::make_shared<RelBinOp>(std::move(lhs), op, std::move(rhs));
-  SetCtx(node.get(), ctx);
-  return std::shared_ptr<RelFormula>(node);
+  if (op == RelLogicalOp::AND) {
+    auto node = std::make_shared<RelConjunction>(std::move(lhs), std::move(rhs));
+    SetCtx(node.get(), ctx);
+    return std::shared_ptr<RelFormula>(node);
+  }
+  if (op == RelLogicalOp::OR) {
+    auto node = std::make_shared<RelDisjunction>(std::move(lhs), std::move(rhs));
+    SetCtx(node.get(), ctx);
+    return std::shared_ptr<RelFormula>(node);
+  }
+  throw std::runtime_error("Unknown binary operator: " + ctx->op->getText());
 }
 
 std::any RelASTBuilder::visitIDTerm(psr::IDTermContext* ctx) {

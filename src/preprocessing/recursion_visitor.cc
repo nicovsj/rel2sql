@@ -54,17 +54,6 @@ std::shared_ptr<RelExpr> RecursionVisitor::Visit(const std::shared_ptr<RelBindin
   return node;
 }
 
-std::shared_ptr<RelFormula> RecursionVisitor::Visit(const std::shared_ptr<RelBinOp>& node) {
-  if (node->lhs) Visit(node->lhs);
-  if (node->rhs) Visit(node->rhs);
-  return node;
-}
-
-std::shared_ptr<RelFormula> RecursionVisitor::Visit(const std::shared_ptr<RelQuantification>& node) {
-  if (node->formula) Visit(node->formula);
-  return node;
-}
-
 std::shared_ptr<RelFormula> RecursionVisitor::Visit(const std::shared_ptr<RelFullAppl>& node) {
   if (auto abs_base = std::dynamic_pointer_cast<RelAbstractionApplBase>(node->base)) {
     if (abs_base->rel_abs) Visit(abs_base->rel_abs);
@@ -121,10 +110,18 @@ std::unordered_set<std::string> RecursionVisitor::CollectIDs(const std::shared_p
     (void)partial;
   }
 
-  auto* bin = dynamic_cast<RelBinOp*>(formula.get());
-  if (bin) {
-    auto lhs_ids = CollectIDs(bin->lhs);
-    auto rhs_ids = CollectIDs(bin->rhs);
+  auto* conj = dynamic_cast<RelConjunction*>(formula.get());
+  if (conj) {
+    auto lhs_ids = CollectIDs(conj->lhs);
+    auto rhs_ids = CollectIDs(conj->rhs);
+    ids.insert(lhs_ids.begin(), lhs_ids.end());
+    ids.insert(rhs_ids.begin(), rhs_ids.end());
+  }
+
+  auto* disj = dynamic_cast<RelDisjunction*>(formula.get());
+  if (disj) {
+    auto lhs_ids = CollectIDs(disj->lhs);
+    auto rhs_ids = CollectIDs(disj->rhs);
     ids.insert(lhs_ids.begin(), lhs_ids.end());
     ids.insert(rhs_ids.begin(), rhs_ids.end());
   }
@@ -192,8 +189,8 @@ bool RecursionVisitor::CheckRecursionPattern(const std::shared_ptr<RelFormula>& 
   match.recursive_disjuncts.clear();
   if (!formula) return false;
 
-  auto* bin = dynamic_cast<RelBinOp*>(formula.get());
-  if (!bin || bin->op != RelLogicalOp::OR) {
+  auto* disj = dynamic_cast<RelDisjunction*>(formula.get());
+  if (!disj) {
     auto quant = std::dynamic_pointer_cast<RelQuantification>(formula);
     if (quant && quant->op == RelQuantOp::EXISTS) {
       RecursiveBranchMatch branch;
@@ -290,10 +287,10 @@ bool RecursionVisitor::IsCallToQ(const RelFullAppl& appl, const std::string& q) 
 void RecursionVisitor::CollectOrDisjuncts(const std::shared_ptr<RelFormula>& formula,
                                           std::vector<std::shared_ptr<RelFormula>>& disjuncts) const {
   if (!formula) return;
-  auto* bin = dynamic_cast<RelBinOp*>(formula.get());
-  if (bin && bin->op == RelLogicalOp::OR) {
-    CollectOrDisjuncts(bin->lhs, disjuncts);
-    CollectOrDisjuncts(bin->rhs, disjuncts);
+  auto* disj = dynamic_cast<RelDisjunction*>(formula.get());
+  if (disj) {
+    CollectOrDisjuncts(disj->lhs, disjuncts);
+    CollectOrDisjuncts(disj->rhs, disjuncts);
     return;
   }
   disjuncts.push_back(formula);
@@ -303,10 +300,10 @@ void RecursionVisitor::FindAndPatternParts(const std::shared_ptr<RelFormula>& fo
                                            std::shared_ptr<RelFullAppl>& q_call,
                                            std::shared_ptr<RelFormula>& f_part) const {
   if (!formula) return;
-  auto* bin = dynamic_cast<RelBinOp*>(formula.get());
-  if (bin && bin->op == RelLogicalOp::AND) {
-    FindAndPatternParts(bin->lhs, q, q_call, f_part);
-    FindAndPatternParts(bin->rhs, q, q_call, f_part);
+  auto* conj = dynamic_cast<RelConjunction*>(formula.get());
+  if (conj) {
+    FindAndPatternParts(conj->lhs, q, q_call, f_part);
+    FindAndPatternParts(conj->rhs, q, q_call, f_part);
     return;
   }
   auto* full = dynamic_cast<RelFullAppl*>(formula.get());

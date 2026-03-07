@@ -182,22 +182,27 @@ std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelFul
   return node;
 }
 
-std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelBinOp>& node) {
+std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelConjunction>& node) {
   if (node->lhs) Visit(node->lhs);
   if (node->rhs) Visit(node->rhs);
 
-  if (node->lhs) {
-    node->variables = node->lhs->variables;
-    node->free_variables = node->lhs->free_variables;
-  }
-  if (node->rhs) {
-    if (node->op == RelLogicalOp::OR && node->rhs->free_variables != node->lhs->free_variables) {
+  if (node->lhs) node->VariablesInplaceUnion(*node->lhs);
+  if (node->rhs) node->VariablesInplaceUnion(*node->rhs);
+  return node;
+}
+
+std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelDisjunction>& node) {
+  if (node->lhs) Visit(node->lhs);
+  if (node->rhs) Visit(node->rhs);
+
+  if (node->lhs && node->rhs) {
+    if (node->lhs->free_variables != node->rhs->free_variables) {
       throw TranslationException("Disjunction formula with different free variables", ErrorCode::UNBALANCED_VARIABLE, SourceLocation(0, 0));
     }
-    node->VariablesInplaceUnion(*node->rhs);
   }
 
-
+  if (node->lhs) node->VariablesInplaceUnion(*node->lhs);
+  if (node->rhs) node->VariablesInplaceUnion(*node->rhs);
   return node;
 }
 

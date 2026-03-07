@@ -24,8 +24,6 @@ class RecursionVisitor : public BaseRelVisitor {
 
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsFormula>& node) override;
 
-  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBinOp>& node) override;
-  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelQuantification>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullAppl>& node) override;
 
  private:

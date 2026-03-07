@@ -47,7 +47,8 @@ class Translator : public BaseRelVisitor {
 
   // Formulas
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullAppl>& node) override;
-  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBinOp>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelConjunction>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelDisjunction>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelUnOp>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelQuantification>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelParen>& node) override;
@@ -98,7 +99,8 @@ class Translator : public BaseRelVisitor {
                                     const std::function<std::string(size_t)>& column_name_for_index);
 
   // Build SELECT with GROUP BY and aggregate (for partial application of aggregate functions, e.g. sum[A]).
-  std::shared_ptr<sql::ast::Select> VisitAggregateRel(const std::shared_ptr<RelExpr>& expr, sql::ast::AggregateFunction function);
+  std::shared_ptr<sql::ast::Select> VisitAggregateRel(const std::shared_ptr<RelExpr>& expr,
+                                                      sql::ast::AggregateFunction function);
 
   std::string GenerateTableAlias(const std::string& prefix = "T");
 
@@ -123,22 +125,12 @@ class Translator : public BaseRelVisitor {
 
   std::shared_ptr<sql::ast::Condition> EqualityShorthandRel(const std::vector<RelNode*>& nodes);
 
-
-
   // For a full application, build chained equalities between columns corresponding
   // to repeated term parameters for the same variable (p1 = p2, p2 = p3, ...).
   std::vector<std::shared_ptr<sql::ast::Condition>> AddChainedEqualitiesForTermParams(
       const std::vector<std::pair<RelNode*, size_t>>& term_param_slots,
       const std::function<std::string(size_t)>& column_name_for_index,
       const std::shared_ptr<sql::ast::Source>& ra_source);
-
-  // Generalized disjunction (OR) over two subformulas: translate both and union their results.
-  std::shared_ptr<sql::ast::Expression> VisitGeneralizedDisjunctionRel(const std::shared_ptr<RelFormula>& lhs,
-                                                                       const std::shared_ptr<RelFormula>& rhs);
-
-  // Simple binary conjunction without term/comparator splitting.
-  std::shared_ptr<sql::ast::Expression> VisitSimpleBinaryRel(const std::shared_ptr<RelFormula>& lhs,
-                                                             const std::shared_ptr<RelFormula>& rhs);
 
   // Existential quantification: exists bindings. formula
   std::shared_ptr<sql::ast::Expression> VisitExistentialRel(const std::vector<std::shared_ptr<RelBinding>>& bindings,

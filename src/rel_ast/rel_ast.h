@@ -292,13 +292,23 @@ struct RelUnOp : RelFormula {
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };
 
-struct RelBinOp : RelFormula {
+struct RelConjunction : RelFormula {
   std::shared_ptr<RelFormula> lhs;
-  RelLogicalOp op;
   std::shared_ptr<RelFormula> rhs;
 
-  RelBinOp(std::shared_ptr<RelFormula> lhs, RelLogicalOp op, std::shared_ptr<RelFormula> rhs)
-      : lhs(std::move(lhs)), op(op), rhs(std::move(rhs)) {}
+  RelConjunction(std::shared_ptr<RelFormula> lhs, std::shared_ptr<RelFormula> rhs)
+      : lhs(std::move(lhs)), rhs(std::move(rhs)) {}
+
+  std::string ToString() const override;
+  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+};
+
+struct RelDisjunction : RelFormula {
+  std::shared_ptr<RelFormula> lhs;
+  std::shared_ptr<RelFormula> rhs;
+
+  RelDisjunction(std::shared_ptr<RelFormula> lhs, std::shared_ptr<RelFormula> rhs)
+      : lhs(std::move(lhs)), rhs(std::move(rhs)) {}
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;

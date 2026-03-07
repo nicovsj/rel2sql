@@ -56,8 +56,6 @@ std::string CompOpToString(RelCompOp op) {
   return "?";
 }
 
-std::string LogicalOpToString(RelLogicalOp op) { return op == RelLogicalOp::AND ? "and" : "or"; }
-
 std::string QuantOpToString(RelQuantOp op) { return op == RelQuantOp::EXISTS ? "exists" : "forall"; }
 
 std::string TermOpToString(RelTermOp op) {
@@ -121,7 +119,6 @@ std::shared_ptr<RelNode> RelParenthesisTerm::DispatchVisit(BaseRelVisitor& visit
   return visitor.Visit(std::dynamic_pointer_cast<RelParenthesisTerm>(self));
 }
 
-
 std::string RelExprApplParam::ToString() const { return expr ? expr->ToString() : ""; }
 
 std::shared_ptr<RelNode> RelExprApplParam::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
@@ -162,7 +159,6 @@ std::shared_ptr<RelNode> RelFormulaBool::DispatchVisit(BaseRelVisitor& visitor, 
   return visitor.Visit(std::dynamic_pointer_cast<RelFormulaBool>(self));
 }
 
-
 std::string RelFormulaBool::ToString() const { return "true"; }
 
 std::shared_ptr<RelNode> RelComparison::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
@@ -180,13 +176,24 @@ std::shared_ptr<RelNode> RelUnOp::DispatchVisit(BaseRelVisitor& visitor, std::sh
 
 std::string RelUnOp::ToString() const { return formula ? "not " + formula->ToString() : "not (?)"; }
 
-std::shared_ptr<RelNode> RelBinOp::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelBinOp>(self));
+std::shared_ptr<RelNode> RelDisjunction::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelDisjunction>(self));
 }
-std::string RelBinOp::ToString() const {
+
+std::string RelDisjunction::ToString() const {
   std::string l = lhs ? lhs->ToString() : "?";
   std::string r = rhs ? rhs->ToString() : "?";
-  return l + " " + LogicalOpToString(op) + " " + r;
+  return l + " or " + r;
+}
+
+std::shared_ptr<RelNode> RelConjunction::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelConjunction>(self));
+}
+
+std::string RelConjunction::ToString() const {
+  std::string l = lhs ? lhs->ToString() : "?";
+  std::string r = rhs ? rhs->ToString() : "?";
+  return l + " and " + r;
 }
 
 std::shared_ptr<RelNode> RelParen::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {

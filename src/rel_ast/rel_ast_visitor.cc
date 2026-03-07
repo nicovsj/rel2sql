@@ -139,7 +139,13 @@ std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelUnOp>
   return node;
 }
 
-std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelBinOp>& node) {
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelConjunction>& node) {
+  if (node->lhs) node->lhs = Visit(node->lhs);
+  if (node->rhs) node->rhs = Visit(node->rhs);
+  return node;
+}
+
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelDisjunction>& node) {
   if (node->lhs) node->lhs = Visit(node->lhs);
   if (node->rhs) node->rhs = Visit(node->rhs);
   return node;

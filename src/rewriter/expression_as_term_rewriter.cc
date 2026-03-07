@@ -50,7 +50,7 @@ std::shared_ptr<RelExpr> ExpressionAsTermRewriter::WrapConditionExpr(
   auto lhs = std::make_shared<RelIDTerm>(z);
   auto eq_formula = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, te->term);
   auto formula =
-      std::make_shared<RelBinOp>(std::move(eq_formula), RelLogicalOp::AND, expr->rhs);
+      std::make_shared<RelConjunction>(std::move(eq_formula), expr->rhs);
   auto bindings_formula =
       std::make_shared<RelBindingsFormula>(std::vector<std::shared_ptr<RelBinding>>{bind},
                                            std::move(formula));
