@@ -76,7 +76,7 @@ std::shared_ptr<RelAbstraction> ArityVisitor::Visit(const std::shared_ptr<RelAbs
   return node;
 }
 
-std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelLitExpr>& node) {
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelLiteral>& node) {
   node->arity = 1;
   return node;
 }

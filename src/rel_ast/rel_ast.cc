@@ -76,14 +76,6 @@ std::string TermOpToString(RelTermOp op) {
 
 }  // namespace
 
-std::string RelLiteralBinding::ToString() const { return LiteralValueToString(value); }
-
-std::string RelVarBinding::ToString() const {
-  std::string out = id;
-  if (domain) out += " in " + *domain;
-  return out;
-}
-
 std::shared_ptr<RelNode> RelLiteral::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelLiteral>(self));
 }
@@ -107,19 +99,19 @@ std::string RelAbstraction::ToString() const {
 std::shared_ptr<RelNode> RelIDTerm::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelIDTerm>(self));
 }
-std::string RelIDTerm::ToStringImpl() const { return id; }
+std::string RelIDTerm::ToString() const { return id; }
 
 std::shared_ptr<RelNode> RelNumTerm::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelNumTerm>(self));
 }
 
-std::string RelNumTerm::ToStringImpl() const { return ConstantToString(value); }
+std::string RelNumTerm::ToString() const { return ConstantToString(value); }
 
 std::shared_ptr<RelNode> RelOpTerm::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelOpTerm>(self));
 }
 
-std::string RelOpTerm::ToStringImpl() const {
+std::string RelOpTerm::ToString() const {
   std::string l = lhs ? lhs->ToString() : "?";
   std::string r = rhs ? rhs->ToString() : "?";
   return l + " " + TermOpToString(op) + " " + r;
@@ -152,20 +144,32 @@ std::shared_ptr<RelNode> RelAbstractionApplBase::DispatchVisit(BaseRelVisitor& v
   return visitor.Visit(std::dynamic_pointer_cast<RelAbstractionApplBase>(self));
 }
 
-std::string RelParenthesisTerm::ToStringImpl() const { return term ? "(" + term->ToString() + ")" : "()"; }
+std::shared_ptr<RelNode> RelLiteralBinding::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelLiteralBinding>(self));
+}
+
+std::string RelLiteralBinding::ToString() const { return LiteralValueToString(value); }
+
+std::shared_ptr<RelNode> RelVarBinding::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelVarBinding>(self));
+}
+
+std::string RelVarBinding::ToString() const { return id; }
+
+std::string RelParenthesisTerm::ToString() const { return term ? "(" + term->ToString() + ")" : "()"; }
 
 std::shared_ptr<RelNode> RelFormulaBool::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelFormulaBool>(self));
 }
 
 
-std::string RelFormulaBool::ToStringImpl() const { return "true"; }
+std::string RelFormulaBool::ToString() const { return "true"; }
 
 std::shared_ptr<RelNode> RelComparison::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelComparison>(self));
 }
 
-std::string RelComparison::ToStringImpl() const {
+std::string RelComparison::ToString() const {
   std::string l = lhs ? lhs->ToString() : "?";
   std::string r = rhs ? rhs->ToString() : "?";
   return l + " " + CompOpToString(op) + " " + r;
@@ -174,12 +178,12 @@ std::shared_ptr<RelNode> RelUnOp::DispatchVisit(BaseRelVisitor& visitor, std::sh
   return visitor.Visit(std::dynamic_pointer_cast<RelUnOp>(self));
 }
 
-std::string RelUnOp::ToStringImpl() const { return formula ? "not " + formula->ToString() : "not (?)"; }
+std::string RelUnOp::ToString() const { return formula ? "not " + formula->ToString() : "not (?)"; }
 
 std::shared_ptr<RelNode> RelBinOp::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelBinOp>(self));
 }
-std::string RelBinOp::ToStringImpl() const {
+std::string RelBinOp::ToString() const {
   std::string l = lhs ? lhs->ToString() : "?";
   std::string r = rhs ? rhs->ToString() : "?";
   return l + " " + LogicalOpToString(op) + " " + r;
@@ -189,12 +193,12 @@ std::shared_ptr<RelNode> RelParen::DispatchVisit(BaseRelVisitor& visitor, std::s
   return visitor.Visit(std::dynamic_pointer_cast<RelParen>(self));
 }
 
-std::string RelParen::ToStringImpl() const { return formula ? "(" + formula->ToString() + ")" : "()"; }
+std::string RelParen::ToString() const { return formula ? "(" + formula->ToString() + ")" : "()"; }
 
 std::shared_ptr<RelNode> RelQuantification::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelQuantification>(self));
 }
-std::string RelQuantification::ToStringImpl() const {
+std::string RelQuantification::ToString() const {
   std::ostringstream out;
   out << QuantOpToString(op) << "( (";
   for (size_t i = 0; i < bindings.size(); ++i) {
@@ -208,7 +212,7 @@ std::string RelQuantification::ToStringImpl() const {
 std::shared_ptr<RelNode> RelFullAppl::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelFullAppl>(self));
 }
-std::string RelFullAppl::ToStringImpl() const {
+std::string RelFullAppl::ToString() const {
   std::ostringstream out;
   out << (base ? base->ToString() : "?");
   if (!params.empty()) {
@@ -221,20 +225,16 @@ std::string RelFullAppl::ToStringImpl() const {
   }
   return out.str();
 }
-std::shared_ptr<RelNode> RelLitExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelLitExpr>(self));
-}
-std::string RelLitExpr::ToStringImpl() const { return literal ? literal->ToString() : "?"; }
 
 std::shared_ptr<RelNode> RelTermExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelTermExpr>(self));
 }
-std::string RelTermExpr::ToStringImpl() const { return term ? term->ToString() : "?"; }
+std::string RelTermExpr::ToString() const { return term ? term->ToString() : "?"; }
 
 std::shared_ptr<RelNode> RelProductExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelProductExpr>(self));
 }
-std::string RelProductExpr::ToStringImpl() const {
+std::string RelProductExpr::ToString() const {
   std::ostringstream out;
   out << "(";
   for (size_t i = 0; i < exprs.size(); ++i) {
@@ -247,7 +247,7 @@ std::string RelProductExpr::ToStringImpl() const {
 std::shared_ptr<RelNode> RelConditionExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelConditionExpr>(self));
 }
-std::string RelConditionExpr::ToStringImpl() const {
+std::string RelConditionExpr::ToString() const {
   std::string l = lhs ? lhs->ToString() : "?";
   std::string r = rhs ? rhs->ToString() : "?";
   return l + " where " + r;
@@ -255,17 +255,17 @@ std::string RelConditionExpr::ToStringImpl() const {
 std::shared_ptr<RelNode> RelAbstractionExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelAbstractionExpr>(self));
 }
-std::string RelAbstractionExpr::ToStringImpl() const { return rel_abs ? rel_abs->ToString() : "{}"; }
+std::string RelAbstractionExpr::ToString() const { return rel_abs ? rel_abs->ToString() : "{}"; }
 
 std::shared_ptr<RelNode> RelFormulaExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelFormulaExpr>(self));
 }
-std::string RelFormulaExpr::ToStringImpl() const { return formula ? formula->ToString() : "?"; }
+std::string RelFormulaExpr::ToString() const { return formula ? formula->ToString() : "?"; }
 
 std::shared_ptr<RelNode> RelBindingsExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelBindingsExpr>(self));
 }
-std::string RelBindingsExpr::ToStringImpl() const {
+std::string RelBindingsExpr::ToString() const {
   std::ostringstream out;
   out << "[";
   for (size_t i = 0; i < bindings.size(); ++i) {
@@ -279,7 +279,7 @@ std::string RelBindingsExpr::ToStringImpl() const {
 std::shared_ptr<RelNode> RelBindingsFormula::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelBindingsFormula>(self));
 }
-std::string RelBindingsFormula::ToStringImpl() const {
+std::string RelBindingsFormula::ToString() const {
   std::ostringstream out;
   out << "(";
   for (size_t i = 0; i < bindings.size(); ++i) {
@@ -293,7 +293,7 @@ std::string RelBindingsFormula::ToStringImpl() const {
 std::shared_ptr<RelNode> RelPartialAppl::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelPartialAppl>(self));
 }
-std::string RelPartialAppl::ToStringImpl() const {
+std::string RelPartialAppl::ToString() const {
   std::ostringstream out;
   out << (base ? base->ToString() : "?");
   if (!params.empty()) {

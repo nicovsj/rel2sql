@@ -14,9 +14,8 @@ namespace rel2sql {
 TEST(RelASTBuilderTest, RelASTStructure) {
   // Manually create a minimal RelProgram to verify the structure
   auto literal = std::make_shared<RelLiteral>(RelLiteralValue(1));
-  auto lit_expr = std::make_shared<RelLitExpr>(literal);
   std::vector<std::shared_ptr<RelExpr>> exprs;
-  exprs.push_back(lit_expr);
+  exprs.push_back(literal);
   auto rel_abs = std::make_shared<RelAbstraction>(exprs);
   auto def = std::make_shared<RelDef>("output", rel_abs);
   std::vector<std::shared_ptr<RelDef>> defs;

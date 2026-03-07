@@ -98,8 +98,7 @@ std::any RelASTBuilder::visitRelAbs(psr::RelAbsContext* ctx) {
 
 std::any RelASTBuilder::visitLitExpr(psr::LitExprContext* ctx) {
   auto lit_result = visit(ctx->literal());
-  auto literal = Cast<RelLiteral>(lit_result);
-  auto node = std::make_shared<RelLitExpr>(std::move(literal));
+  auto node = Cast<RelLiteral>(lit_result);
   SetCtx(node.get(), ctx);
   return std::shared_ptr<RelExpr>(node);
 }

@@ -14,7 +14,7 @@ bool IsSimpleExpr(const std::shared_ptr<RelExpr>& expr) {
     return dynamic_cast<RelIDTerm*>(te->term.get()) != nullptr ||
            dynamic_cast<RelNumTerm*>(te->term.get()) != nullptr;
   }
-  if (dynamic_cast<RelLitExpr*>(expr.get())) return true;
+  if (dynamic_cast<RelLiteral*>(expr.get())) return true;
   return false;
 }
 

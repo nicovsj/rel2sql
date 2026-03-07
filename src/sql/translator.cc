@@ -69,8 +69,8 @@ std::shared_ptr<sql::ast::Sourceable> Translator::TryGetTopLevelIDSelect(RelAbst
   return std::dynamic_pointer_cast<sql::ast::Sourceable>(expr_result);
 }
 
-std::shared_ptr<sql::ast::Expression> Translator::BuildLiteralRelationAbstractionRel(RelAbstraction& node) {
-  std::vector<std::shared_ptr<RelExpr>> all_exprs = node.exprs;
+std::shared_ptr<sql::ast::Expression> Translator::BuildLiteralRelationAbstractionRel(const std::shared_ptr<RelAbstraction>& node) {
+  std::vector<std::shared_ptr<RelExpr>> all_exprs = node->exprs;
   if (all_exprs.empty()) {
     throw std::runtime_error("Relation abstraction with no member");
   }
@@ -91,7 +91,7 @@ std::shared_ptr<sql::ast::Expression> Translator::BuildLiteralRelationAbstractio
       }
       values.push_back(std::move(row));
     } else {
-      auto lit = std::dynamic_pointer_cast<RelLitExpr>(expr);
+      auto lit = std::dynamic_pointer_cast<RelLiteral>(expr);
       if (lit && lit->constant.has_value()) {
         values.push_back({lit->constant.value()});
       } else {
@@ -115,7 +115,7 @@ std::shared_ptr<sql::ast::Expression> Translator::BuildLiteralRelationAbstractio
 
 std::shared_ptr<RelAbstraction> Translator::Visit(const std::shared_ptr<RelAbstraction>& node) {
   if (node->has_only_literal_values) {
-    node->sql_expression = BuildLiteralRelationAbstractionRel(*node);
+    node->sql_expression = BuildLiteralRelationAbstractionRel(node);
     return node;
   }
 
@@ -197,7 +197,7 @@ std::shared_ptr<RelAbstraction> Translator::Visit(const std::shared_ptr<RelAbstr
   return node;
 }
 
-std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelLitExpr>& node) {
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelLiteral>& node) {
   if (!node->constant.has_value()) {
     throw std::runtime_error("Literal expression without constant value");
   }

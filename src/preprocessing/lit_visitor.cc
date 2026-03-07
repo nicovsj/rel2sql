@@ -28,15 +28,8 @@ std::shared_ptr<RelDef> LiteralVisitor::Visit(const std::shared_ptr<RelDef>& nod
   return node;
 }
 
-std::shared_ptr<RelLiteral> LiteralVisitor::Visit(const std::shared_ptr<RelLiteral>& node) {
+std::shared_ptr<RelExpr> LiteralVisitor::Visit(const std::shared_ptr<RelLiteral>& node) {
   node->constant = node->value;
-  return node;
-}
-
-std::shared_ptr<RelExpr> LiteralVisitor::Visit(const std::shared_ptr<RelLitExpr>& node) {
-  if (node->literal) Visit(node->literal);
-  node->has_only_literal_values = true;
-  if (node->literal) node->constant = node->literal->constant;
   return node;
 }
 
