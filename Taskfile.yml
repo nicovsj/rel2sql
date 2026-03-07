@@ -12,17 +12,16 @@ tasks:
     cmds:
       - bazel build --config=default //:rel2sql_shared
 
-  # Test subcommands
   test:
-    desc: Run all tests
-    cmds:
-      - task: test:lib
-      - task: test:wasm
-
-  test:lib:
     desc: Run library tests
     cmds:
       - bazel test --config=default //...
+
+  test:all:
+    desc: Run all tests
+    cmds:
+      - task: test
+      - task: test:wasm
 
   test:wasm:
     desc: Run WASM tests
