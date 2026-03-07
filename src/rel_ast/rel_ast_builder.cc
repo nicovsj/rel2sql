@@ -237,7 +237,7 @@ std::any RelASTBuilder::visitComparison(psr::ComparisonContext* ctx) {
 std::any RelASTBuilder::visitUnOp(psr::UnOpContext* ctx) {
   auto formula_result = visit(ctx->formula());
   auto formula = Cast<RelFormula>(formula_result);
-  auto node = std::make_shared<RelUnOp>(std::move(formula));
+  auto node = std::make_shared<RelNegation>(std::move(formula));
   SetCtx(node.get(), ctx);
   return std::shared_ptr<RelFormula>(node);
 }

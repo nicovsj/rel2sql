@@ -903,7 +903,7 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelDisjuncti
   return node;
 }
 
-std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelUnOp>& node) {
+std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelNegation>& node) {
   throw TranslationException("Translation for negation not available", ErrorCode::UNKNOWN_UNARY_OPERATOR,
                              SourceLocation(0, 0));
   if (node->formula) {

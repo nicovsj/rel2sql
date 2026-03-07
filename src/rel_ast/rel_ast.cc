@@ -170,11 +170,11 @@ std::string RelComparison::ToString() const {
   std::string r = rhs ? rhs->ToString() : "?";
   return l + " " + CompOpToString(op) + " " + r;
 }
-std::shared_ptr<RelNode> RelUnOp::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelUnOp>(self));
+std::shared_ptr<RelNode> RelNegation::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelNegation>(self));
 }
 
-std::string RelUnOp::ToString() const { return formula ? "not " + formula->ToString() : "not (?)"; }
+std::string RelNegation::ToString() const { return formula ? "not " + formula->ToString() : "not (?)"; }
 
 std::shared_ptr<RelNode> RelDisjunction::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelDisjunction>(self));

@@ -157,7 +157,7 @@ std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelDisjun
   return node;
 }
 
-std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelUnOp>& node) {
+std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelNegation>& node) {
   if (node->formula) {
     Visit(node->formula);
     node->safety = node->formula->safety;

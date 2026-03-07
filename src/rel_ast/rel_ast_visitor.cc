@@ -134,7 +134,7 @@ std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelCompa
   return node;
 }
 
-std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelUnOp>& node) {
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelNegation>& node) {
   if (node->formula) node->formula = Visit(node->formula);
   return node;
 }

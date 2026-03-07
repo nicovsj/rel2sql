@@ -283,10 +283,10 @@ struct RelComparison : RelFormula {
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };
 
-struct RelUnOp : RelFormula {
+struct RelNegation : RelFormula {
   std::shared_ptr<RelFormula> formula;
 
-  explicit RelUnOp(std::shared_ptr<RelFormula> formula) : formula(std::move(formula)) {}
+  explicit RelNegation(std::shared_ptr<RelFormula> formula) : formula(std::move(formula)) {}
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;

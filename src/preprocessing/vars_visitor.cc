@@ -206,7 +206,7 @@ std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelDis
   return node;
 }
 
-std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelUnOp>& node) {
+std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelNegation>& node) {
   if (node->formula) {
     Visit(node->formula);
     node->variables = node->formula->variables;

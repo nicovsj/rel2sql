@@ -132,7 +132,7 @@ std::unordered_set<std::string> RecursionVisitor::CollectIDs(const std::shared_p
     ids.insert(inner.begin(), inner.end());
   }
 
-  auto* unop = dynamic_cast<RelUnOp*>(formula.get());
+  auto* unop = dynamic_cast<RelNegation*>(formula.get());
   if (unop && unop->formula) {
     auto inner = CollectIDs(unop->formula);
     ids.insert(inner.begin(), inner.end());
