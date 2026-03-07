@@ -74,23 +74,23 @@ std::shared_ptr<RelTerm> IDsVisitor::Visit(const std::shared_ptr<RelIDTerm>& nod
   return node;
 }
 
-std::shared_ptr<RelExpr> IDsVisitor::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
+std::shared_ptr<RelExpr> IDsVisitor::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
   AddDepsFromBindings(node->bindings);
   return BaseRelVisitor::Visit(node);
 }
 
-std::shared_ptr<RelExpr> IDsVisitor::Visit(const std::shared_ptr<RelBindingsFormula>& node) {
+std::shared_ptr<RelExpr> IDsVisitor::Visit(const std::shared_ptr<RelFormulaAbstraction>& node) {
   AddDepsFromBindings(node->bindings);
   return BaseRelVisitor::Visit(node);
 }
 
-std::shared_ptr<RelExpr> IDsVisitor::Visit(const std::shared_ptr<RelPartialAppl>& node) {
+std::shared_ptr<RelExpr> IDsVisitor::Visit(const std::shared_ptr<RelPartialApplication>& node) {
   AddDepsFromBase(node->base);
   AddDepsFromParams(node->params);
   return node;
 }
 
-std::shared_ptr<RelFormula> IDsVisitor::Visit(const std::shared_ptr<RelFullAppl>& node) {
+std::shared_ptr<RelFormula> IDsVisitor::Visit(const std::shared_ptr<RelFullApplication>& node) {
   AddDepsFromBase(node->base);
   AddDepsFromParams(node->params);
   return BaseRelVisitor::Visit(node);

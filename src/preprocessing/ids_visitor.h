@@ -21,11 +21,11 @@ class IDsVisitor : public BaseRelVisitor {
 
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelIDTerm>& node) override;
 
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsExpr>& node) override;
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsFormula>& node) override;
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialAppl>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelExpressionAbstraction>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaAbstraction>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialApplication>& node) override;
 
-  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullAppl>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullApplication>& node) override;
 
  private:
   using StringSet = std::unordered_set<std::string>;

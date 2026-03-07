@@ -111,19 +111,19 @@ std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelFormulaExp
   return node;
 }
 
-std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
   if (node->expr) Visit(node->expr);
   node->arity = (node->expr ? node->expr->arity : 0) + static_cast<size_t>(node->bindings.size());
   return node;
 }
 
-std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelBindingsFormula>& node) {
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelFormulaAbstraction>& node) {
   if (node->formula) Visit(node->formula);
   node->arity = node->bindings.size();
   return node;
 }
 
-std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelPartialAppl>& node) {
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelPartialApplication>& node) {
   int base_arity = GetArityFromBase(node->base);
   int params_arity = GetArityFromParams(node->params);
   int result = base_arity - params_arity;
@@ -142,7 +142,7 @@ std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelPartialApp
   return node;
 }
 
-std::shared_ptr<RelFormula> ArityVisitor::Visit(const std::shared_ptr<RelFullAppl>& node) {
+std::shared_ptr<RelFormula> ArityVisitor::Visit(const std::shared_ptr<RelFullApplication>& node) {
   GetArityFromBase(node->base);
   GetArityFromParams(node->params);
   node->arity = 0;

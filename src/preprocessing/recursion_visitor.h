@@ -22,14 +22,14 @@ class RecursionVisitor : public BaseRelVisitor {
 
   std::shared_ptr<RelAbstraction> Visit(const std::shared_ptr<RelAbstraction>& node) override;
 
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsFormula>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaAbstraction>& node) override;
 
-  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullAppl>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullApplication>& node) override;
 
  private:
   struct RecursiveBranchMatch {
     std::shared_ptr<RelExistential> exists_clause;
-    std::shared_ptr<RelFullAppl> recursive_call;
+    std::shared_ptr<RelFullApplication> recursive_call;
     std::shared_ptr<RelFormula> residual_formula;
   };
 
@@ -56,12 +56,12 @@ class RecursionVisitor : public BaseRelVisitor {
                           const std::string& q,
                           const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
                           RecursiveBranchMatch& match);
-  bool IsCallToQ(const RelFullAppl& appl, const std::string& q) const;
+  bool IsCallToQ(const RelFullApplication& appl, const std::string& q) const;
   void CollectOrDisjuncts(const std::shared_ptr<RelFormula>& formula,
                           std::vector<std::shared_ptr<RelFormula>>& disjuncts) const;
   void FindAndPatternParts(const std::shared_ptr<RelFormula>& formula,
                            const std::string& q,
-                           std::shared_ptr<RelFullAppl>& q_call,
+                           std::shared_ptr<RelFullApplication>& q_call,
                            std::shared_ptr<RelFormula>& f_part) const;
 };
 

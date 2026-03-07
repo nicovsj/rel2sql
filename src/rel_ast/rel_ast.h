@@ -150,7 +150,7 @@ struct RelLiteral : RelExpr {
 // RelAbstraction - { expr ; expr ; ... }
 // =============================================================================
 
-struct RelAbstraction : RelNode {
+struct RelAbstraction : RelExpr {
   std::vector<std::shared_ptr<RelExpr>> exprs;
 
   RelAbstraction() = default;
@@ -266,7 +266,7 @@ struct RelVarBinding : RelBinding {
 // Formulas
 // =============================================================================
 
-struct RelFormulaBool : RelFormula {
+struct RelBoolean : RelFormula {
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };
@@ -345,11 +345,11 @@ struct RelUniversal : RelFormula {
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };
 
-struct RelFullAppl : RelFormula {
+struct RelFullApplication : RelFormula {
   std::shared_ptr<RelApplBase> base;
   std::vector<std::shared_ptr<RelApplParam>> params;
 
-  RelFullAppl(std::shared_ptr<RelApplBase> base, std::vector<std::shared_ptr<RelApplParam>> params)
+  RelFullApplication(std::shared_ptr<RelApplBase> base, std::vector<std::shared_ptr<RelApplParam>> params)
       : base(std::move(base)), params(std::move(params)) {}
 
   std::string ToString() const override;
@@ -399,33 +399,33 @@ struct RelFormulaExpr : RelExpr {
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };
 
-struct RelBindingsExpr : RelExpr {
+struct RelExpressionAbstraction : RelExpr {
   std::vector<std::shared_ptr<RelBinding>> bindings;
   std::shared_ptr<RelExpr> expr;
 
-  RelBindingsExpr(std::vector<std::shared_ptr<RelBinding>> bindings, std::shared_ptr<RelExpr> expr)
+  RelExpressionAbstraction(std::vector<std::shared_ptr<RelBinding>> bindings, std::shared_ptr<RelExpr> expr)
       : bindings(std::move(bindings)), expr(std::move(expr)) {}
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };
 
-struct RelBindingsFormula : RelExpr {
+struct RelFormulaAbstraction : RelExpr {
   std::vector<std::shared_ptr<RelBinding>> bindings;
   std::shared_ptr<RelFormula> formula;
 
-  RelBindingsFormula(std::vector<std::shared_ptr<RelBinding>> bindings, std::shared_ptr<RelFormula> formula)
+  RelFormulaAbstraction(std::vector<std::shared_ptr<RelBinding>> bindings, std::shared_ptr<RelFormula> formula)
       : bindings(std::move(bindings)), formula(std::move(formula)) {}
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };
 
-struct RelPartialAppl : RelExpr {
+struct RelPartialApplication : RelExpr {
   std::shared_ptr<RelApplBase> base;
   std::vector<std::shared_ptr<RelApplParam>> params;
 
-  RelPartialAppl(std::shared_ptr<RelApplBase> base, std::vector<std::shared_ptr<RelApplParam>> params)
+  RelPartialApplication(std::shared_ptr<RelApplBase> base, std::vector<std::shared_ptr<RelApplParam>> params)
       : base(std::move(base)), params(std::move(params)) {}
 
   std::string ToString() const override;

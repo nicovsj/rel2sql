@@ -85,17 +85,17 @@ std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelFormulaE
   return node;
 }
 
-std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
   if (node->expr) node->expr = Visit(node->expr);
   return node;
 }
 
-std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelBindingsFormula>& node) {
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelFormulaAbstraction>& node) {
   if (node->formula) node->formula = Visit(node->formula);
   return node;
 }
 
-std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelPartialAppl>& node) {
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelPartialApplication>& node) {
   node->base = Visit(node->base);
   for (auto& param : node->params) {
     if (param) param = Visit(param);
@@ -103,9 +103,9 @@ std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelPartialA
   return node;
 }
 
-std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelFormulaBool>& node) { return node; }
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelBoolean>& node) { return node; }
 
-std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelFullAppl>& node) {
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelFullApplication>& node) {
   node->base = Visit(node->base);
   for (auto& param : node->params) {
     if (param) param = Visit(param);

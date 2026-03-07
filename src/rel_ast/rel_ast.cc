@@ -153,11 +153,11 @@ std::string RelVarBinding::ToString() const { return id; }
 
 std::string RelParenthesisTerm::ToString() const { return term ? "(" + term->ToString() + ")" : "()"; }
 
-std::shared_ptr<RelNode> RelFormulaBool::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelFormulaBool>(self));
+std::shared_ptr<RelNode> RelBoolean::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelBoolean>(self));
 }
 
-std::string RelFormulaBool::ToString() const { return "true"; }
+std::string RelBoolean::ToString() const { return "true"; }
 
 std::shared_ptr<RelNode> RelComparison::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelComparison>(self));
@@ -230,10 +230,10 @@ std::string RelUniversal::ToString() const {
   return out.str();
 }
 
-std::shared_ptr<RelNode> RelFullAppl::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelFullAppl>(self));
+std::shared_ptr<RelNode> RelFullApplication::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelFullApplication>(self));
 }
-std::string RelFullAppl::ToString() const {
+std::string RelFullApplication::ToString() const {
   std::ostringstream out;
   out << (base ? base->ToString() : "?");
   if (!params.empty()) {
@@ -278,10 +278,10 @@ std::shared_ptr<RelNode> RelFormulaExpr::DispatchVisit(BaseRelVisitor& visitor, 
 }
 std::string RelFormulaExpr::ToString() const { return formula ? formula->ToString() : "?"; }
 
-std::shared_ptr<RelNode> RelBindingsExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelBindingsExpr>(self));
+std::shared_ptr<RelNode> RelExpressionAbstraction::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelExpressionAbstraction>(self));
 }
-std::string RelBindingsExpr::ToString() const {
+std::string RelExpressionAbstraction::ToString() const {
   std::ostringstream out;
   out << "[";
   for (size_t i = 0; i < bindings.size(); ++i) {
@@ -292,10 +292,10 @@ std::string RelBindingsExpr::ToString() const {
   out << (expr ? expr->ToString() : "?");
   return out.str();
 }
-std::shared_ptr<RelNode> RelBindingsFormula::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelBindingsFormula>(self));
+std::shared_ptr<RelNode> RelFormulaAbstraction::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelFormulaAbstraction>(self));
 }
-std::string RelBindingsFormula::ToString() const {
+std::string RelFormulaAbstraction::ToString() const {
   std::ostringstream out;
   out << "(";
   for (size_t i = 0; i < bindings.size(); ++i) {
@@ -306,10 +306,10 @@ std::string RelBindingsFormula::ToString() const {
   out << " : " << (formula ? formula->ToString() : "?");
   return out.str();
 }
-std::shared_ptr<RelNode> RelPartialAppl::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelPartialAppl>(self));
+std::shared_ptr<RelNode> RelPartialApplication::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelPartialApplication>(self));
 }
-std::string RelPartialAppl::ToString() const {
+std::string RelPartialApplication::ToString() const {
   std::ostringstream out;
   out << (base ? base->ToString() : "?");
   if (!params.empty()) {

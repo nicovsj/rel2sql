@@ -641,7 +641,7 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelFormulaExpr>
   return node;
 }
 
-std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
   if (!node->expr) return node;
 
   Visit(node->expr);
@@ -742,7 +742,7 @@ std::shared_ptr<sql::ast::Source> Translator::BuildBindingsFormulaSource(
   return std::make_shared<sql::ast::Source>(subquery, GenerateTableAlias());
 }
 
-std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBindingsFormula>& node) {
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelFormulaAbstraction>& node) {
   if (!node->formula) return node;
 
   Visit(node->formula);
@@ -782,7 +782,7 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBindingsForm
   return node;
 }
 
-std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelPartialAppl>& node) {
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelPartialApplication>& node) {
   // Aggregate special case: sum[expr], max[expr], etc. (single param, base is aggregate ID)
   if (auto* id_base = dynamic_cast<RelIDApplBase*>(node->base.get())) {
     auto it = GetAggregateMap().find(id_base->id);
@@ -811,7 +811,7 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelPartialAppl>
   return node;
 }
 
-std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelFullAppl>& node) {
+std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelFullApplication>& node) {
   auto base_sourceable = GetBaseSourceableFromApplBase(*node, node->base);
   auto column_name_for_index = [this, &base_sourceable](size_t idx) {
     return GetColumnNameForSourceable(base_sourceable, idx);

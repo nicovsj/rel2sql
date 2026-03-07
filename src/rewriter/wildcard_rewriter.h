@@ -23,8 +23,8 @@ class WildcardRewriter : public BaseRelVisitor {
   WildcardRewriter() : container_(nullptr) {}
   explicit WildcardRewriter(const RelContextBuilder* container) : container_(container) {}
 
-  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullAppl>& node) override;
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialAppl>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullApplication>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialApplication>& node) override;
 
  private:
   std::string FreshVarName();

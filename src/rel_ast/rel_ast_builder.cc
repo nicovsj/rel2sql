@@ -158,7 +158,7 @@ std::any RelASTBuilder::visitBindingsExpr(psr::BindingsExprContext* ctx) {
   auto bindings = std::any_cast<std::vector<std::shared_ptr<RelBinding>>>(bindings_result);
   auto expr_result = visit(ctx->expr());
   auto expr = Cast<RelExpr>(expr_result);
-  auto node = std::make_shared<RelBindingsExpr>(std::move(bindings), std::move(expr));
+  auto node = std::make_shared<RelExpressionAbstraction>(std::move(bindings), std::move(expr));
   SetCtx(node.get(), ctx);
   return std::shared_ptr<RelExpr>(node);
 }
@@ -168,7 +168,7 @@ std::any RelASTBuilder::visitBindingsFormula(psr::BindingsFormulaContext* ctx) {
   auto bindings = std::any_cast<std::vector<std::shared_ptr<RelBinding>>>(bindings_result);
   auto formula_result = visit(ctx->formula());
   auto formula = Cast<RelFormula>(formula_result);
-  auto node = std::make_shared<RelBindingsFormula>(std::move(bindings), std::move(formula));
+  auto node = std::make_shared<RelFormulaAbstraction>(std::move(bindings), std::move(formula));
   SetCtx(node.get(), ctx);
   return std::shared_ptr<RelExpr>(node);
 }
@@ -178,13 +178,13 @@ std::any RelASTBuilder::visitPartialAppl(psr::PartialApplContext* ctx) {
   auto base = std::any_cast<std::shared_ptr<RelApplBase>>(base_result);
   auto params_result = visit(ctx->applParams());
   auto params = std::any_cast<std::vector<std::shared_ptr<RelApplParam>>>(params_result);
-  auto node = std::make_shared<RelPartialAppl>(std::move(base), std::move(params));
+  auto node = std::make_shared<RelPartialApplication>(std::move(base), std::move(params));
   SetCtx(node.get(), ctx);
   return std::shared_ptr<RelExpr>(node);
 }
 
 std::any RelASTBuilder::visitFormulaBool(psr::FormulaBoolContext* ctx) {
-  auto node = std::make_shared<RelFormulaBool>();
+  auto node = std::make_shared<RelBoolean>();
   SetCtx(node.get(), ctx);
   return std::shared_ptr<RelFormula>(node);
 }
@@ -197,7 +197,7 @@ std::any RelASTBuilder::visitFullAppl(psr::FullApplContext* ctx) {
     auto params_result = visit(ctx->applParams());
     params = std::any_cast<std::vector<std::shared_ptr<RelApplParam>>>(params_result);
   }
-  auto node = std::make_shared<RelFullAppl>(std::move(base), std::move(params));
+  auto node = std::make_shared<RelFullApplication>(std::move(base), std::move(params));
   SetCtx(node.get(), ctx);
   return std::shared_ptr<RelFormula>(node);
 }

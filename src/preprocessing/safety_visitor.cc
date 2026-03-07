@@ -68,19 +68,19 @@ std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelFormulaEx
   return node;
 }
 
-std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
+std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
   if (node->expr) Visit(node->expr);
   if (node->expr) ComputeBindingsSafety(*node, *node->expr, node->bindings);
   return node;
 }
 
-std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelBindingsFormula>& node) {
+std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelFormulaAbstraction>& node) {
   if (node->formula) Visit(node->formula);
   if (node->formula) ComputeBindingsSafety(*node, *node->formula, node->bindings);
   return node;
 }
 
-std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelPartialAppl>& node) {
+std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelPartialApplication>& node) {
   if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node->base.get())) {
     if (abs_base->rel_abs) Visit(abs_base->rel_abs);
   }
@@ -104,7 +104,7 @@ std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelPartialAp
   return node;
 }
 
-std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelFullAppl>& node) {
+std::shared_ptr<RelFormula> SafetyVisitor::Visit(const std::shared_ptr<RelFullApplication>& node) {
   if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node->base.get())) {
     if (abs_base->rel_abs) Visit(abs_base->rel_abs);
   }

@@ -8,16 +8,16 @@ namespace rel2sql {
 
 namespace {
 
-std::shared_ptr<RelFullAppl> MakeAtomFormula(const std::string& relation_id, const std::string& var_id) {
+std::shared_ptr<RelFullApplication> MakeAtomFormula(const std::string& relation_id, const std::string& var_id) {
   auto base = std::make_shared<RelIDApplBase>(relation_id);
   auto x_term = std::make_shared<RelIDTerm>(var_id);
   auto param = std::make_shared<RelExprApplParam>(x_term);
-  return std::make_shared<RelFullAppl>(base, std::vector<std::shared_ptr<RelApplParam>>{param});
+  return std::make_shared<RelFullApplication>(base, std::vector<std::shared_ptr<RelApplParam>>{param});
 }
 
 }  // namespace
 
-std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelBindingsFormula>& node) {
+std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelFormulaAbstraction>& node) {
   auto new_formula = Visit(node->formula);
 
   std::vector<std::pair<std::string, std::string>> domain_bindings;
@@ -29,7 +29,7 @@ std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelBinding
     }
   }
 
-  if (domain_bindings.empty()) return std::make_shared<RelBindingsFormula>(node->bindings, new_formula);
+  if (domain_bindings.empty()) return std::make_shared<RelFormulaAbstraction>(node->bindings, new_formula);
 
   std::vector<std::shared_ptr<RelBinding>> new_bindings;
   new_bindings.reserve(node->bindings.size());
@@ -47,10 +47,10 @@ std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelBinding
     new_formula = std::make_shared<RelConjunction>(new_formula, MakeAtomFormula(rel_id, var_id));
   }
 
-  return std::make_shared<RelBindingsFormula>(std::move(new_bindings), std::move(new_formula));
+  return std::make_shared<RelFormulaAbstraction>(std::move(new_bindings), std::move(new_formula));
 }
 
-std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
+std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
   auto new_expr = Visit(node->expr);
 
   std::vector<std::pair<std::string, std::string>> domain_bindings;
@@ -60,7 +60,7 @@ std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelBinding
       domain_bindings.emplace_back(vb->id, *vb->domain);
     }
   }
-  if (domain_bindings.empty()) return std::make_shared<RelBindingsExpr>(node->bindings, new_expr);
+  if (domain_bindings.empty()) return std::make_shared<RelExpressionAbstraction>(node->bindings, new_expr);
 
   std::vector<std::shared_ptr<RelBinding>> new_bindings;
   new_bindings.reserve(node->bindings.size());
@@ -81,7 +81,7 @@ std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelBinding
   }
   std::shared_ptr<RelExpr> wrapped_expr = std::make_shared<RelCondition>(new_expr, std::move(condition_formula));
 
-  return std::make_shared<RelBindingsExpr>(std::move(new_bindings), std::move(wrapped_expr));
+  return std::make_shared<RelExpressionAbstraction>(std::move(new_bindings), std::move(wrapped_expr));
 }
 
 }  // namespace rel2sql

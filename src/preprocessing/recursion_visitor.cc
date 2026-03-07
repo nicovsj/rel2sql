@@ -18,7 +18,7 @@ std::shared_ptr<RelDef> RecursionVisitor::Visit(const std::shared_ptr<RelDef>& n
 
 std::shared_ptr<RelAbstraction> RecursionVisitor::Visit(const std::shared_ptr<RelAbstraction>& node) {
   if (node->exprs.size() != 1) return node;
-  auto bf = std::dynamic_pointer_cast<RelBindingsFormula>(node->exprs[0]);
+  auto bf = std::dynamic_pointer_cast<RelFormulaAbstraction>(node->exprs[0]);
   if (!bf) return node;
   Visit(bf);
   if (bf->is_recursive) {
@@ -28,7 +28,7 @@ std::shared_ptr<RelAbstraction> RecursionVisitor::Visit(const std::shared_ptr<Re
   return node;
 }
 
-std::shared_ptr<RelExpr> RecursionVisitor::Visit(const std::shared_ptr<RelBindingsFormula>& node) {
+std::shared_ptr<RelExpr> RecursionVisitor::Visit(const std::shared_ptr<RelFormulaAbstraction>& node) {
   RecursionPatternMatch match;
   if (!CheckRecursionPattern(node->formula, node->bindings, match)) return node;
 
@@ -54,7 +54,7 @@ std::shared_ptr<RelExpr> RecursionVisitor::Visit(const std::shared_ptr<RelBindin
   return node;
 }
 
-std::shared_ptr<RelFormula> RecursionVisitor::Visit(const std::shared_ptr<RelFullAppl>& node) {
+std::shared_ptr<RelFormula> RecursionVisitor::Visit(const std::shared_ptr<RelFullApplication>& node) {
   if (auto abs_base = std::dynamic_pointer_cast<RelAbstractionApplBase>(node->base)) {
     if (abs_base->rel_abs) Visit(abs_base->rel_abs);
   }
@@ -97,7 +97,7 @@ std::unordered_set<std::string> RecursionVisitor::CollectIDs(const std::shared_p
   std::unordered_set<std::string> ids;
   if (!formula) return ids;
 
-  auto* full = dynamic_cast<RelFullAppl*>(formula.get());
+  auto* full = dynamic_cast<RelFullApplication*>(formula.get());
   if (full) {
     if (auto* id_base = dynamic_cast<RelIDApplBase*>(full->base.get())) {
       std::string id = id_base->id;
@@ -105,7 +105,7 @@ std::unordered_set<std::string> RecursionVisitor::CollectIDs(const std::shared_p
     }
   }
 
-  auto* partial = dynamic_cast<RelPartialAppl*>(formula.get());
+  auto* partial = dynamic_cast<RelPartialApplication*>(formula.get());
   if (partial) {
     (void)partial;
   }
@@ -241,7 +241,7 @@ bool RecursionVisitor::CheckExistsPattern(const std::shared_ptr<RelExistential>&
                                           RecursiveBranchMatch& match) {
   if (!exists || !exists->formula) return false;
 
-  std::shared_ptr<RelFullAppl> q_call;
+  std::shared_ptr<RelFullApplication> q_call;
   std::shared_ptr<RelFormula> f_part;
   FindAndPatternParts(exists->formula, q, q_call, f_part);
 
@@ -276,7 +276,7 @@ bool RecursionVisitor::CheckExistsPattern(const std::shared_ptr<RelExistential>&
   return true;
 }
 
-bool RecursionVisitor::IsCallToQ(const RelFullAppl& appl, const std::string& q) const {
+bool RecursionVisitor::IsCallToQ(const RelFullApplication& appl, const std::string& q) const {
   auto* id_base = dynamic_cast<RelIDApplBase*>(appl.base.get());
   return id_base && id_base->id == q;
 }
@@ -294,7 +294,7 @@ void RecursionVisitor::CollectOrDisjuncts(const std::shared_ptr<RelFormula>& for
 }
 
 void RecursionVisitor::FindAndPatternParts(const std::shared_ptr<RelFormula>& formula, const std::string& q,
-                                           std::shared_ptr<RelFullAppl>& q_call,
+                                           std::shared_ptr<RelFullApplication>& q_call,
                                            std::shared_ptr<RelFormula>& f_part) const {
   if (!formula) return;
   auto* conj = dynamic_cast<RelConjunction*>(formula.get());
@@ -303,9 +303,9 @@ void RecursionVisitor::FindAndPatternParts(const std::shared_ptr<RelFormula>& fo
     FindAndPatternParts(conj->rhs, q, q_call, f_part);
     return;
   }
-  auto* full = dynamic_cast<RelFullAppl*>(formula.get());
+  auto* full = dynamic_cast<RelFullApplication*>(formula.get());
   if (full && IsCallToQ(*full, q)) {
-    if (!q_call) q_call = std::dynamic_pointer_cast<RelFullAppl>(formula);
+    if (!q_call) q_call = std::dynamic_pointer_cast<RelFullApplication>(formula);
     return;
   }
   if (!f_part) f_part = formula;

@@ -97,7 +97,7 @@ std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelFormul
   return node;
 }
 
-std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
+std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
   if (node->expr) Visit(node->expr);
   if (node->expr) {
     node->variables = node->expr->variables;
@@ -115,7 +115,7 @@ std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelBindin
   return node;
 }
 
-std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelBindingsFormula>& node) {
+std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelFormulaAbstraction>& node) {
   if (node->formula) {
     Visit(node->formula);
     node->variables = node->formula->variables;
@@ -133,7 +133,7 @@ std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelBindin
   return node;
 }
 
-std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelPartialAppl>& node) {
+std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelPartialApplication>& node) {
   std::set<std::string> base_vars, base_free;
   if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node->base.get())) {
     if (abs_base->rel_abs) {
@@ -153,7 +153,7 @@ std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelPartia
   return node;
 }
 
-std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelFullAppl>& node) {
+std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelFullApplication>& node) {
   std::set<std::string> base_vars, base_free;
   if (auto* abs_base = dynamic_cast<RelAbstractionApplBase*>(node->base.get())) {
     if (abs_base->rel_abs) {

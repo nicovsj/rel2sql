@@ -19,8 +19,8 @@ class BindingRewriter : public BaseRelVisitor {
  public:
   using BaseRelVisitor::Visit;
 
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsFormula>& node) override;
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaAbstraction>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelExpressionAbstraction>& node) override;
 };
 
 }  // namespace rel2sql

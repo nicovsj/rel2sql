@@ -24,11 +24,11 @@ struct RelProduct;
 struct RelCondition;
 struct RelAbstractionExpr;
 struct RelFormulaExpr;
-struct RelBindingsExpr;
-struct RelBindingsFormula;
-struct RelPartialAppl;
-struct RelFormulaBool;
-struct RelFullAppl;
+struct RelExpressionAbstraction;
+struct RelFormulaAbstraction;
+struct RelPartialApplication;
+struct RelBoolean;
+struct RelFullApplication;
 struct RelParen;
 struct RelComparison;
 struct RelNegation;
@@ -76,13 +76,13 @@ class BaseRelVisitor {
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelCondition>& node);
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelAbstractionExpr>& node);
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaExpr>& node);
-  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsExpr>& node);
-  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsFormula>& node);
-  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialAppl>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelExpressionAbstraction>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaAbstraction>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialApplication>& node);
 
   // Formulas
-  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFormulaBool>& node);
-  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullAppl>& node);
+  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBoolean>& node);
+  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullApplication>& node);
   virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelExistential>& node);
   virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelUniversal>& node);
   virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelParen>& node);

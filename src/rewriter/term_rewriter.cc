@@ -31,7 +31,7 @@ std::shared_ptr<RelExpr> TermRewriter::WrapTermExpr(
   auto lhs = std::make_shared<RelIDTerm>(z);
   auto formula = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, term);
   auto bindings_formula =
-      std::make_shared<RelBindingsFormula>(std::vector<std::shared_ptr<RelBinding>>{bind},
+      std::make_shared<RelFormulaAbstraction>(std::vector<std::shared_ptr<RelBinding>>{bind},
                                            std::move(formula));
   if (!wrap_in_abs) {
     return bindings_formula;
@@ -52,7 +52,7 @@ std::shared_ptr<RelExpr> TermRewriter::WrapConditionExpr(
   auto formula =
       std::make_shared<RelConjunction>(std::move(eq_formula), expr->rhs);
   auto bindings_formula =
-      std::make_shared<RelBindingsFormula>(std::vector<std::shared_ptr<RelBinding>>{bind},
+      std::make_shared<RelFormulaAbstraction>(std::vector<std::shared_ptr<RelBinding>>{bind},
                                            std::move(formula));
   auto abs =
       std::make_shared<RelAbstraction>(std::vector<std::shared_ptr<RelExpr>>{std::move(bindings_formula)});
@@ -82,13 +82,13 @@ std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelCondition>
   return result;
 }
 
-std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelBindingsExpr>& node) {
-  auto result = std::dynamic_pointer_cast<RelBindingsExpr>(BaseRelVisitor::Visit(node));
+std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
+  auto result = std::dynamic_pointer_cast<RelExpressionAbstraction>(BaseRelVisitor::Visit(node));
   if (!result) return result;
 
   if (!IsSimpleExpr(result->expr)) {
     if (auto wrapped = WrapExpr(result->expr, /*wrap_in_abs=*/true)) {
-      return std::make_shared<RelBindingsExpr>(result->bindings, std::move(wrapped));
+      return std::make_shared<RelExpressionAbstraction>(result->bindings, std::move(wrapped));
     }
   }
   return result;

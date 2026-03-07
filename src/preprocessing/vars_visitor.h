@@ -25,11 +25,11 @@ class VariablesVisitor : public BaseRelVisitor {
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelCondition>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelAbstractionExpr>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaExpr>& node) override;
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsExpr>& node) override;
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBindingsFormula>& node) override;
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialAppl>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelExpressionAbstraction>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaAbstraction>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialApplication>& node) override;
 
-  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullAppl>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullApplication>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelConjunction>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelDisjunction>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelNegation>& node) override;
