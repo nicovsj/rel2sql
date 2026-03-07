@@ -50,9 +50,6 @@ struct BoundSet {
   // May merge compatible bindings that can form a complete table after variable removal.
   BoundSet WithRemovedVariables(const std::vector<std::string>& variables) const;
 
-  // Returns the intersection of this set and another set, including merged compatible domains.
-  BoundSet IntersectWith(const BoundSet& other) const;
-
   // Returns a copy of this set with its variables renamed according to the provided map.
   BoundSet Renamed(const std::unordered_map<std::string, std::string>& rename_map) const;
 

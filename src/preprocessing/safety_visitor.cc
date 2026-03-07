@@ -27,7 +27,7 @@ std::shared_ptr<RelUnion> SafetyVisitor::Visit(const std::shared_ptr<RelUnion>& 
   node->safety = node->exprs[0]->safety;
   for (size_t i = 1; i < node->exprs.size(); ++i) {
     Visit(node->exprs[i]);
-    node->safety = node->safety.IntersectWith(node->exprs[i]->safety);
+    node->safety = node->safety.MergeWith(node->exprs[i]->safety);
   }
   return node;
 }

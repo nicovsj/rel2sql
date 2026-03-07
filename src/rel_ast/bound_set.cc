@@ -232,29 +232,6 @@ BoundSet BoundSet::WithRemovedVariables(const std::vector<std::string>& variable
   return return_set;
 }
 
-BoundSet BoundSet::IntersectWith(const BoundSet& other) const {
-  std::unordered_set<Bound> result;
-  std::set<std::string> result_variables;
-  // Start with normal intersection
-  for (const auto& bound : bounds) {
-    if (other.bounds.contains(bound)) {
-      result.insert(bound);
-      result_variables.insert(bound.variables.begin(), bound.variables.end());
-    }
-  }
-
-  // Then union compatible domains
-  for (const auto& bound : bounds) {
-    for (const auto& other_bound : other.bounds) {
-      if (bound.variables == other_bound.variables) {
-        result.insert(bound.MergeWith(other_bound));
-      }
-    }
-  }
-
-  return BoundSet(result, result_variables);
-}
-
 BoundSet BoundSet::Renamed(const std::unordered_map<std::string, std::string>& rename_map) const {
   std::unordered_set<Bound> renamed;
   renamed.reserve(bounds.size());
