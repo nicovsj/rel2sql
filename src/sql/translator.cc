@@ -641,7 +641,7 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelFormulaExpr>
   return node;
 }
 
-std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelExprAbstraction>& node) {
   if (!node->expr) return node;
 
   Visit(node->expr);

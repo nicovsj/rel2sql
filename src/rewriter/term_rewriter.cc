@@ -82,13 +82,13 @@ std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelCondition>
   return result;
 }
 
-std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
-  auto result = std::dynamic_pointer_cast<RelExpressionAbstraction>(BaseRelVisitor::Visit(node));
+std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelExprAbstraction>& node) {
+  auto result = std::dynamic_pointer_cast<RelExprAbstraction>(BaseRelVisitor::Visit(node));
   if (!result) return result;
 
   if (!IsSimpleExpr(result->expr)) {
     if (auto wrapped = WrapExpr(result->expr, /*wrap_in_abs=*/true)) {
-      return std::make_shared<RelExpressionAbstraction>(result->bindings, std::move(wrapped));
+      return std::make_shared<RelExprAbstraction>(result->bindings, std::move(wrapped));
     }
   }
   return result;

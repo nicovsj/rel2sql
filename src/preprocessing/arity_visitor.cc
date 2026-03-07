@@ -111,7 +111,7 @@ std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelFormulaExp
   return node;
 }
 
-std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelExprAbstraction>& node) {
   if (node->expr) Visit(node->expr);
   node->arity = (node->expr ? node->expr->arity : 0) + static_cast<size_t>(node->bindings.size());
   return node;

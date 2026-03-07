@@ -399,11 +399,11 @@ struct RelFormulaExpr : RelExpr {
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 };
 
-struct RelExpressionAbstraction : RelExpr {
+struct RelExprAbstraction : RelExpr {
   std::vector<std::shared_ptr<RelBinding>> bindings;
   std::shared_ptr<RelExpr> expr;
 
-  RelExpressionAbstraction(std::vector<std::shared_ptr<RelBinding>> bindings, std::shared_ptr<RelExpr> expr)
+  RelExprAbstraction(std::vector<std::shared_ptr<RelBinding>> bindings, std::shared_ptr<RelExpr> expr)
       : bindings(std::move(bindings)), expr(std::move(expr)) {}
 
   std::string ToString() const override;

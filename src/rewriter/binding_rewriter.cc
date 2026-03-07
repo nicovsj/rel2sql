@@ -50,7 +50,7 @@ std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelFormula
   return std::make_shared<RelFormulaAbstraction>(std::move(new_bindings), std::move(new_formula));
 }
 
-std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
+std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelExprAbstraction>& node) {
   auto new_expr = Visit(node->expr);
 
   std::vector<std::pair<std::string, std::string>> domain_bindings;
@@ -60,7 +60,7 @@ std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelExpress
       domain_bindings.emplace_back(vb->id, *vb->domain);
     }
   }
-  if (domain_bindings.empty()) return std::make_shared<RelExpressionAbstraction>(node->bindings, new_expr);
+  if (domain_bindings.empty()) return std::make_shared<RelExprAbstraction>(node->bindings, new_expr);
 
   std::vector<std::shared_ptr<RelBinding>> new_bindings;
   new_bindings.reserve(node->bindings.size());
@@ -81,7 +81,7 @@ std::shared_ptr<RelExpr> BindingRewriter::Visit(const std::shared_ptr<RelExpress
   }
   std::shared_ptr<RelExpr> wrapped_expr = std::make_shared<RelCondition>(new_expr, std::move(condition_formula));
 
-  return std::make_shared<RelExpressionAbstraction>(std::move(new_bindings), std::move(wrapped_expr));
+  return std::make_shared<RelExprAbstraction>(std::move(new_bindings), std::move(wrapped_expr));
 }
 
 }  // namespace rel2sql

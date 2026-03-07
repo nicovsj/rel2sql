@@ -68,7 +68,7 @@ std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelFormulaEx
   return node;
 }
 
-std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
+std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelExprAbstraction>& node) {
   if (node->expr) Visit(node->expr);
   if (node->expr) ComputeBindingsSafety(*node, *node->expr, node->bindings);
   return node;

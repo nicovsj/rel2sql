@@ -158,7 +158,7 @@ std::any RelASTBuilder::visitBindingsExpr(psr::BindingsExprContext* ctx) {
   auto bindings = std::any_cast<std::vector<std::shared_ptr<RelBinding>>>(bindings_result);
   auto expr_result = visit(ctx->expr());
   auto expr = Cast<RelExpr>(expr_result);
-  auto node = std::make_shared<RelExpressionAbstraction>(std::move(bindings), std::move(expr));
+  auto node = std::make_shared<RelExprAbstraction>(std::move(bindings), std::move(expr));
   SetCtx(node.get(), ctx);
   return std::shared_ptr<RelExpr>(node);
 }

@@ -74,7 +74,7 @@ std::shared_ptr<RelTerm> IDsVisitor::Visit(const std::shared_ptr<RelIDTerm>& nod
   return node;
 }
 
-std::shared_ptr<RelExpr> IDsVisitor::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
+std::shared_ptr<RelExpr> IDsVisitor::Visit(const std::shared_ptr<RelExprAbstraction>& node) {
   AddDepsFromBindings(node->bindings);
   return BaseRelVisitor::Visit(node);
 }

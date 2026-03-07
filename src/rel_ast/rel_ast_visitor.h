@@ -24,7 +24,7 @@ struct RelProduct;
 struct RelCondition;
 struct RelAbstractionExpr;
 struct RelFormulaExpr;
-struct RelExpressionAbstraction;
+struct RelExprAbstraction;
 struct RelFormulaAbstraction;
 struct RelPartialApplication;
 struct RelBoolean;
@@ -76,7 +76,7 @@ class BaseRelVisitor {
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelCondition>& node);
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelAbstractionExpr>& node);
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaExpr>& node);
-  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelExpressionAbstraction>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelExprAbstraction>& node);
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaAbstraction>& node);
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialApplication>& node);
 

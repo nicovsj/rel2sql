@@ -278,10 +278,10 @@ std::shared_ptr<RelNode> RelFormulaExpr::DispatchVisit(BaseRelVisitor& visitor, 
 }
 std::string RelFormulaExpr::ToString() const { return formula ? formula->ToString() : "?"; }
 
-std::shared_ptr<RelNode> RelExpressionAbstraction::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelExpressionAbstraction>(self));
+std::shared_ptr<RelNode> RelExprAbstraction::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelExprAbstraction>(self));
 }
-std::string RelExpressionAbstraction::ToString() const {
+std::string RelExprAbstraction::ToString() const {
   std::ostringstream out;
   out << "[";
   for (size_t i = 0; i < bindings.size(); ++i) {

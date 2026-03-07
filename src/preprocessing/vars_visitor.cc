@@ -97,7 +97,7 @@ std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelFormul
   return node;
 }
 
-std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelExpressionAbstraction>& node) {
+std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelExprAbstraction>& node) {
   if (node->expr) Visit(node->expr);
   if (node->expr) {
     node->variables = node->expr->variables;
