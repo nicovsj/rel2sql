@@ -360,11 +360,11 @@ struct RelFullAppl : RelFormula {
 // Expressions
 // =============================================================================
 
-struct RelProductExpr : RelExpr {
+struct RelProduct : RelExpr {
   std::vector<std::shared_ptr<RelExpr>> exprs;
 
-  RelProductExpr() = default;
-  explicit RelProductExpr(std::vector<std::shared_ptr<RelExpr>> exprs) : exprs(std::move(exprs)) {}
+  RelProduct() = default;
+  explicit RelProduct(std::vector<std::shared_ptr<RelExpr>> exprs) : exprs(std::move(exprs)) {}
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;

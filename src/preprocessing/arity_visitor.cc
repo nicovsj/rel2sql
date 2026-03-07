@@ -81,7 +81,7 @@ std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelLiteral>& 
   return node;
 }
 
-std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelProductExpr>& node) {
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelProduct>& node) {
   node->arity = 0;
   for (auto& expr : node->exprs) {
     if (expr) {

@@ -15,7 +15,7 @@ class LiteralVisitor : public BaseRelVisitor {
 
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelLiteral>& node) override;
 
-  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProductExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProduct>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelAbstractionExpr>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelNumTerm>& node) override;
 };

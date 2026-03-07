@@ -33,7 +33,7 @@ std::shared_ptr<RelExpr> LiteralVisitor::Visit(const std::shared_ptr<RelLiteral>
   return node;
 }
 
-std::shared_ptr<RelExpr> LiteralVisitor::Visit(const std::shared_ptr<RelProductExpr>& node) {
+std::shared_ptr<RelExpr> LiteralVisitor::Visit(const std::shared_ptr<RelProduct>& node) {
   bool all_literal = true;
   for (auto& expr : node->exprs) {
     if (expr) {

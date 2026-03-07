@@ -117,8 +117,8 @@ std::shared_ptr<RelAbstraction> TermRewriter::Visit(
   return result;
 }
 
-std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelProductExpr>& node) {
-  auto result = std::dynamic_pointer_cast<RelProductExpr>(BaseRelVisitor::Visit(node));
+std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelProduct>& node) {
+  auto result = std::dynamic_pointer_cast<RelProduct>(BaseRelVisitor::Visit(node));
   if (!result) return result;
 
   std::vector<std::shared_ptr<RelExpr>> new_exprs;
@@ -134,7 +134,7 @@ std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelProductExp
     new_exprs.push_back(expr);
   }
   if (changed) {
-    return std::make_shared<RelProductExpr>(std::move(new_exprs));
+    return std::make_shared<RelProduct>(std::move(new_exprs));
   }
   return result;
 }

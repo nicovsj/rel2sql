@@ -106,7 +106,7 @@ std::any RelASTBuilder::visitLitExpr(psr::LitExprContext* ctx) {
 std::any RelASTBuilder::visitProductExpr(psr::ProductExprContext* ctx) {
   auto inner_result = visit(ctx->productInner());
   auto exprs = std::any_cast<std::vector<std::shared_ptr<RelExpr>>>(inner_result);
-  auto node = std::make_shared<RelProductExpr>(std::move(exprs));
+  auto node = std::make_shared<RelProduct>(std::move(exprs));
   SetCtx(node.get(), ctx);
   return std::shared_ptr<RelExpr>(node);
 }

@@ -32,7 +32,7 @@ std::shared_ptr<RelAbstraction> SafetyVisitor::Visit(const std::shared_ptr<RelAb
   return node;
 }
 
-std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelProductExpr>& node) {
+std::shared_ptr<RelExpr> SafetyVisitor::Visit(const std::shared_ptr<RelProduct>& node) {
   node->safety = BoundSet();
   for (auto& expr : node->exprs) {
     if (expr) {

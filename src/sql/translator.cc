@@ -78,7 +78,7 @@ std::shared_ptr<sql::ast::Expression> Translator::BuildLiteralRelationAbstractio
     if (expr->arity != static_cast<size_t>(arity)) {
       throw std::runtime_error("Inconsistent arity in relation abstraction");
     }
-    auto product = std::dynamic_pointer_cast<RelProductExpr>(expr);
+    auto product = std::dynamic_pointer_cast<RelProduct>(expr);
     if (product) {
       std::vector<sql::ast::constant_t> row;
       for (auto& child : product->exprs) {
@@ -206,7 +206,7 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelLiteral>& no
   return node;
 }
 
-std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelProductExpr>& node) {
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelProduct>& node) {
   if (node->has_only_literal_values) {
     std::vector<std::shared_ptr<sql::ast::Selectable>> selects;
     for (auto& expr : node->exprs) {

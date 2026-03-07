@@ -247,10 +247,10 @@ std::string RelFullAppl::ToString() const {
   return out.str();
 }
 
-std::shared_ptr<RelNode> RelProductExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
-  return visitor.Visit(std::dynamic_pointer_cast<RelProductExpr>(self));
+std::shared_ptr<RelNode> RelProduct::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelProduct>(self));
 }
-std::string RelProductExpr::ToString() const {
+std::string RelProduct::ToString() const {
   std::ostringstream out;
   out << "(";
   for (size_t i = 0; i < exprs.size(); ++i) {
