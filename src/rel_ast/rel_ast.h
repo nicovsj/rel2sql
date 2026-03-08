@@ -102,6 +102,9 @@ class RelNode {
     if (a == 0.0) return std::nullopt;
     return -b / a;
   }
+
+  // Returns direct structural children for traversal.
+  virtual std::vector<std::shared_ptr<RelNode>> Children() const = 0;
 };
 
 struct RelExpr : RelNode {
@@ -144,6 +147,7 @@ struct RelLiteral : RelExpr {
   explicit RelLiteral(RelLiteralValue v) : value(std::move(v)) {}
 
   std::string ToString() const override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 // =============================================================================
@@ -159,6 +163,7 @@ struct RelUnion : RelExpr {
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 
   std::string ToString() const override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 // =============================================================================
@@ -173,6 +178,7 @@ struct RelIDTerm : RelTerm {
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 
   std::string ToString() const override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelNumTerm : RelTerm {
@@ -183,6 +189,7 @@ struct RelNumTerm : RelTerm {
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 
   std::string ToString() const override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelOpTerm : RelTerm {
@@ -196,6 +203,7 @@ struct RelOpTerm : RelTerm {
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 
   std::string ToString() const override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelParenthesisTerm : RelTerm {
@@ -206,6 +214,7 @@ struct RelParenthesisTerm : RelTerm {
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
 
   std::string ToString() const override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 // =============================================================================
@@ -216,6 +225,7 @@ struct RelWildcardParam : RelApplParam {
   std::string ToString() const override { return "_"; }
   bool IsWildcard() const override { return true; }
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 struct RelExprApplParam : RelApplParam {
   std::shared_ptr<RelExpr> expr;
@@ -223,6 +233,7 @@ struct RelExprApplParam : RelApplParam {
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
   std::shared_ptr<RelExpr> GetExpr() const override { return expr; }
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 // =============================================================================
@@ -234,6 +245,7 @@ struct RelIDApplBase : RelApplBase {
   explicit RelIDApplBase(std::string id) : id(id) {}
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelExprApplBase : RelApplBase {
@@ -241,6 +253,7 @@ struct RelExprApplBase : RelApplBase {
   explicit RelExprApplBase(std::shared_ptr<RelUnion> expr) : expr(std::move(expr)) {}
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 // =============================================================================
@@ -252,6 +265,7 @@ struct RelLiteralBinding : RelBinding {
   explicit RelLiteralBinding(RelLiteralValue v) : value(std::move(v)) {}
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelVarBinding : RelBinding {
@@ -260,6 +274,7 @@ struct RelVarBinding : RelBinding {
   RelVarBinding(std::string id, std::optional<std::string> domain) : id(std::move(id)), domain(std::move(domain)) {}
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 // =============================================================================
@@ -269,6 +284,7 @@ struct RelVarBinding : RelBinding {
 struct RelBoolean : RelFormula {
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelComparison : RelFormula {
@@ -281,6 +297,7 @@ struct RelComparison : RelFormula {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelNegation : RelFormula {
@@ -290,6 +307,7 @@ struct RelNegation : RelFormula {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelConjunction : RelFormula {
@@ -301,6 +319,7 @@ struct RelConjunction : RelFormula {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelDisjunction : RelFormula {
@@ -312,6 +331,7 @@ struct RelDisjunction : RelFormula {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelParen : RelFormula {
@@ -321,6 +341,7 @@ struct RelParen : RelFormula {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelExistential : RelFormula {
@@ -332,6 +353,7 @@ struct RelExistential : RelFormula {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelUniversal : RelFormula {
@@ -343,6 +365,7 @@ struct RelUniversal : RelFormula {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelFullApplication : RelFormula {
@@ -354,6 +377,7 @@ struct RelFullApplication : RelFormula {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 // =============================================================================
@@ -368,6 +392,7 @@ struct RelProduct : RelExpr {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelCondition : RelExpr {
@@ -379,6 +404,7 @@ struct RelCondition : RelExpr {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelExprAbstraction : RelExpr {
@@ -390,6 +416,7 @@ struct RelExprAbstraction : RelExpr {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelFormulaAbstraction : RelExpr {
@@ -401,6 +428,7 @@ struct RelFormulaAbstraction : RelExpr {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelPartialApplication : RelExpr {
@@ -412,6 +440,7 @@ struct RelPartialApplication : RelExpr {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 // =============================================================================
@@ -428,6 +457,7 @@ struct RelDef : RelNode {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 struct RelProgram : RelNode {
@@ -438,6 +468,7 @@ struct RelProgram : RelNode {
 
   std::string ToString() const override;
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
 }  // namespace rel2sql

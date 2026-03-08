@@ -50,9 +50,9 @@ cc_test(
 )
 
 cc_test(
-    name = "test_bound_set",
+    name = "test_safety",
     srcs = [
-        "test_bound_set.cc",
+        "test_safety.cc",
     ],
     deps = [
         "//:rel2sql",

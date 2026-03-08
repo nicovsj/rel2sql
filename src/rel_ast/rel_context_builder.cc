@@ -8,7 +8,7 @@
 #include "preprocessing/ids_visitor.h"
 #include "preprocessing/lit_visitor.h"
 #include "preprocessing/recursion_visitor.h"
-#include "preprocessing/safety_visitor.h"
+#include "preprocessing/safety_inferrer.h"
 #include "preprocessing/term_polynomial_visitor.h"
 #include "preprocessing/vars_visitor.h"
 #include "rel_ast/rel_context.h"
@@ -230,8 +230,8 @@ std::shared_ptr<RelNode> RelContextBuilder::RunPipeline(std::shared_ptr<RelNode>
   RecursionVisitor recursion_visitor(this);
   recursion_visitor.Visit(root);
 
-  SafetyVisitor safe_visitor(this);
-  safe_visitor.Visit(root);
+  SafetyInferrer safety_inferrer(this);
+  safety_inferrer.Run(root);
 
   return root;
 }

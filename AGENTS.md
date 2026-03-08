@@ -44,7 +44,7 @@ Rel2SQL translates RelationalAI's [Rel](https://rel.relational.ai/rel) queries t
 
 - **Adding a new Rel construct:** Grammar → `RelASTBuilder` → `RelContextBuilder` → `Translator`
 - **Adding an optimizer:** Extend `sql::ast::Optimizer` or `base_optimizer`
-- **Adding a visitor:** Follow patterns in `src/preprocessing/` (e.g. `arity_visitor`, `safety_visitor`)
+- **Adding a visitor:** Follow patterns in `src/preprocessing/` (e.g. `arity_visitor`, `safety_inferrer`)
 
 ## Testing
 
