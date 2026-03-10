@@ -7,7 +7,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "rel_ast/projection.h"
 #include "rel_ast/relation_info.h"
 #include "rel_ast/rel_ast.h"
 #include "rel_ast/rel_context.h"
@@ -37,7 +36,6 @@ class RelContextBuilder {
   void AddDependency(const std::string& id, const std::string& dep);
   void RegisterRecursiveBaseDisjunct(const std::string& id, std::shared_ptr<RelUnion> node);
   void RegisterRecursiveBranch(const std::string& id, const RecursiveBranchInfoTyped& info);
-  void AddVariableDomain(const std::string& var, const std::unordered_set<Projection>& domain);
   void RemoveVarsFromDependencyGraph();
   void ComputeTopologicalSort();
 
@@ -52,7 +50,6 @@ class RelContextBuilder {
   bool IsVar(const std::string& var) const;
   bool IsID(const std::string& id) const;
   const std::vector<std::string>& SortedIDs() const;
-  std::unordered_set<Projection> GetVariableDomain(const std::string& var) const;
 
   // Produce RelContext: Build() consumes, Snapshot() copies (for testing)
   RelContext Build();
@@ -69,7 +66,6 @@ class RelContextBuilder {
   std::unordered_set<std::string> edb_;
   std::unordered_set<std::string> vars_;
   std::vector<std::string> sorted_ids_;
-  std::unordered_map<std::string, std::unordered_set<Projection>> variable_domains_;
 };
 
 }  // namespace rel2sql

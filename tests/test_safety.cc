@@ -1,5 +1,3 @@
-#include <unordered_set>
-
 #include "api/translate.h"
 #include "gtest/gtest.h"
 #include "rel_ast/bound.h"
@@ -18,47 +16,28 @@ namespace {
 // BoundSet helpers (from original test_bound_set.cc)
 // =============================================================================
 
-Bound MakeSingleProjectionBound(const std::string& var, const std::string& table_name, size_t arity = 1) {
-  std::unordered_set<Projection> domain;
-  domain.insert(Projection({0}, TableSource(table_name, arity)));
-  return Bound({var}, domain);
-}
-
-Bound MakeUnionProjectionBound(const std::string& var, const std::string& table1, const std::string& table2,
-                               size_t arity = 1) {
-  std::unordered_set<Projection> domain;
-  domain.insert(Projection({0}, TableSource(table1, arity)));
-  domain.insert(Projection({0}, TableSource(table2, arity)));
-  return Bound({var}, domain);
-}
-
-bool BoundContainsVariable(const Bound& b, const std::string& var) {
-  return std::find(b.variables.begin(), b.variables.end(), var) != b.variables.end();
-}
-
-bool ResultCoversAllVariables(const BoundSet& result) {
-  for (const auto& var : result.bound_variables) {
-    bool covered = false;
-    for (const auto& bound : result.bounds) {
-      if (BoundContainsVariable(bound, var)) {
-        covered = true;
-        break;
-      }
-    }
-    if (!covered) return false;
+// Returns true if the given Domain (or any domain in its tree) references the table.
+bool DomainContainsTable(const Domain* d, const std::string& table_name) {
+  if (!d) return false;
+  if (auto* defined = dynamic_cast<const DefinedDomain*>(d)) {
+    return defined->table_name == table_name;
   }
-  return true;
+  if (auto* proj = dynamic_cast<const Projection*>(d)) {
+    return DomainContainsTable(proj->domain.get(), table_name);
+  }
+  if (auto* un = dynamic_cast<const DomainUnion*>(d)) {
+    return DomainContainsTable(un->lhs.get(), table_name) || DomainContainsTable(un->rhs.get(), table_name);
+  }
+  if (auto* op = dynamic_cast<const DomainOperation*>(d)) {
+    return DomainContainsTable(op->lhs.get(), table_name) || DomainContainsTable(op->rhs.get(), table_name);
+  }
+  return false;
 }
 
-// Returns true if the BoundSet contains a bound whose domain has a projection from the given table.
+// Returns true if the BoundSet contains a bound whose domain references the given table.
 bool BoundSetHasTable(const BoundSet& safety, const std::string& table_name) {
   for (const auto& bound : safety.bounds) {
-    for (const auto& proj : bound.domain) {
-      auto resolved = ResolvePromisedSource(proj.source);
-      if (auto ts = std::dynamic_pointer_cast<TableSource>(resolved)) {
-        if (ts->table_name == table_name) return true;
-      }
-    }
+    if (DomainContainsTable(bound.domain.get(), table_name)) return true;
   }
   return false;
 }
@@ -80,89 +59,6 @@ RelContext ProcessFormula(const std::string& rel_formula, const RelationMap& edb
 }
 
 }  // namespace
-
-// =============================================================================
-// BoundSet / SmallCover tests (moved from test_bound_set.cc)
-// =============================================================================
-
-TEST(SafetyTest, SmallCoverEmptyBounds) {
-  BoundSet empty_set(std::unordered_set<Bound>{}, std::set<std::string>{});
-  auto result = empty_set.SmallCover();
-  EXPECT_TRUE(result.bounds.empty());
-  EXPECT_TRUE(result.bound_variables.empty());
-}
-
-TEST(SafetyTest, SmallCoverPreferPOverS) {
-  Bound P_x = MakeSingleProjectionBound("x", "R");
-  Bound S_x = MakeUnionProjectionBound("x", "A", "B");
-  Bound P_y = MakeSingleProjectionBound("y", "T");
-
-  std::unordered_set<Bound> bounds;
-  bounds.insert(P_x);
-  bounds.insert(S_x);
-  bounds.insert(P_y);
-  std::set<std::string> vars = {"x", "y"};
-  BoundSet set(bounds, vars);
-
-  auto result = set.SmallCover();
-
-  EXPECT_TRUE(ResultCoversAllVariables(result)) << "Result must cover all variables";
-  EXPECT_EQ(result.bound_variables.size(), 2u);
-  EXPECT_EQ(result.bounds.size(), 2u) << "Should select exactly P_x and P_y, not S_x";
-  for (const auto& b : result.bounds) {
-    EXPECT_EQ(b.domain.size(), 1u) << "Selected bounds should be single-projection (P) only";
-  }
-}
-
-TEST(SafetyTest, SmallCoverSingleVariableCoveredByPAndS) {
-  Bound P = MakeSingleProjectionBound("x", "R");
-  Bound S = MakeUnionProjectionBound("x", "A", "B");
-  std::unordered_set<Bound> bounds = {P, S};
-  BoundSet set(bounds, {"x"});
-
-  auto result = set.SmallCover();
-
-  EXPECT_TRUE(ResultCoversAllVariables(result));
-  EXPECT_EQ(result.bounds.size(), 1u) << "Should pick one bound (the P)";
-  EXPECT_EQ(result.bound_variables.size(), 1u);
-  EXPECT_EQ((*result.bounds.begin()).domain.size(), 1u);
-}
-
-TEST(SafetyTest, SmallCoverOnlySCanCover) {
-  Bound S = MakeUnionProjectionBound("x", "A", "B");
-  std::unordered_set<Bound> bounds = {S};
-  BoundSet set(bounds, {"x"});
-
-  auto result = set.SmallCover();
-
-  EXPECT_TRUE(ResultCoversAllVariables(result));
-  EXPECT_EQ(result.bounds.size(), 1u);
-  EXPECT_EQ((*result.bounds.begin()).domain.size(), 2u);
-}
-
-TEST(SafetyTest, SmallCoverTwoVariablesTwoP) {
-  Bound P_x = MakeSingleProjectionBound("x", "R");
-  Bound P_y = MakeSingleProjectionBound("y", "T");
-  std::unordered_set<Bound> bounds = {P_x, P_y};
-  BoundSet set(bounds, {"x", "y"});
-
-  auto result = set.SmallCover();
-
-  EXPECT_TRUE(ResultCoversAllVariables(result));
-  EXPECT_EQ(result.bounds.size(), 2u);
-}
-
-TEST(SafetyTest, SmallCoverEmptyBoundVariablesReturnsFullSet) {
-  Bound P = MakeSingleProjectionBound("x", "R");
-  std::unordered_set<Bound> bounds = {P};
-  std::set<std::string> empty_vars;
-  BoundSet set(bounds, empty_vars);
-
-  auto result = set.SmallCover();
-
-  EXPECT_EQ(result.bounds.size(), 1u);
-  EXPECT_TRUE(result.bound_variables.empty());
-}
 
 // =============================================================================
 // SafetyInferrer tests - bottom-up and parent-to-child inheritance
@@ -208,8 +104,7 @@ TEST(SafetyTest, Existential) {
   auto* exists = dynamic_cast<RelExistential*>(context.Root().get());
   ASSERT_NE(exists, nullptr);
 
-  EXPECT_FALSE(exists->safety.bound_variables.count("x"))
-      << "Existential should not bind x";
+  EXPECT_FALSE(exists->safety.bound_variables.count("x")) << "Existential should not bind x";
 }
 
 TEST(SafetyTest, FullApplication) {
@@ -263,9 +158,5 @@ TEST(SafetyTest, ConditionInheritance) {
   EXPECT_TRUE(BoundSetHasTable(cond->lhs->safety, "A"));
   EXPECT_TRUE(BoundSetHasTable(cond->lhs->safety, "B")) << "LHS should inherit B's bound from condition (parent)";
 }
-
-
-
-
 
 }  // namespace rel2sql

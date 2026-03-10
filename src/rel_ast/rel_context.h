@@ -7,7 +7,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "rel_ast/projection.h"
 #include "rel_ast/relation_info.h"
 #include "rel_ast/rel_ast.h"
 
@@ -31,7 +30,6 @@ class RelContext {
   bool IsID(const std::string& id) const;
 
   const std::vector<std::string>& SortedIDs() const;
-  std::unordered_set<Projection> GetVariableDomain(const std::string& var) const;
 
  private:
   RelContext() = default;
@@ -45,7 +43,6 @@ class RelContext {
   std::unordered_set<std::string> edb_;
   std::unordered_set<std::string> vars_;
   std::vector<std::string> sorted_ids_;
-  std::unordered_map<std::string, std::unordered_set<Projection>> variable_domains_;
 };
 
 }  // namespace rel2sql

@@ -11,8 +11,7 @@ RelContext::RelContext(RelContextBuilder&& builder)
       idb_(std::move(builder.idb_)),
       edb_(std::move(builder.edb_)),
       vars_(std::move(builder.vars_)),
-      sorted_ids_(std::move(builder.sorted_ids_)),
-      variable_domains_(std::move(builder.variable_domains_)) {}
+      sorted_ids_(std::move(builder.sorted_ids_)) {}
 
 RelContext::RelContext(const RelContextBuilder& builder)
     : root_(builder.Root()),
@@ -21,8 +20,7 @@ RelContext::RelContext(const RelContextBuilder& builder)
       idb_(builder.idb_),
       edb_(builder.edb_),
       vars_(builder.vars_),
-      sorted_ids_(builder.sorted_ids_),
-      variable_domains_(builder.variable_domains_) {}
+      sorted_ids_(builder.sorted_ids_) {}
 
 int RelContext::GetArity(const std::string& id) const {
   auto rel_info = GetRelationInfo(id);
@@ -53,11 +51,5 @@ bool RelContext::IsVar(const std::string& var) const { return vars_.count(var) !
 bool RelContext::IsID(const std::string& id) const { return ids_.count(id) != 0; }
 
 const std::vector<std::string>& RelContext::SortedIDs() const { return sorted_ids_; }
-
-std::unordered_set<Projection> RelContext::GetVariableDomain(const std::string& var) const {
-  auto it = variable_domains_.find(var);
-  if (it != variable_domains_.end()) return it->second;
-  return {};
-}
 
 }  // namespace rel2sql

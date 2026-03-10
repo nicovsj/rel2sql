@@ -1,186 +1,168 @@
 #ifndef BINDING_SOURCE_H
 #define BINDING_SOURCE_H
 
-#include <cstdint>
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "sql_ast/sql_ast.h"
-#include "support/utils.h"
 
 namespace rel2sql {
 
-// Base class representing a source of bindings (e.g., a table or constant value).
-struct BoundSource {
-  virtual ~BoundSource() = default;
+class RelExpr;
+
+// Base class representing a domain of bounds.
+struct Domain {
+  virtual ~Domain() = default;
 
   // Returns the arity (number of attributes) of this source.
   virtual size_t Arity() const = 0;
 
   // Checks if this source is equal to another source.
-  virtual bool operator==(const BoundSource& other) const = 0;
+  virtual bool operator==(const Domain& other) const = 0;
+
+  // Returns a deep copy of this domain.
+  virtual std::unique_ptr<Domain> Clone() const = 0;
+
+  // Needed for hashing a Bound
+  virtual std::size_t Hash() const = 0;
+
+  virtual std::string ToString() const = 0;
 };
 
-// Represents a source that will be provided later (e.g., during SQL translation).
-// Acts as a placeholder that must be fulfilled with an actual sql::ast::Sourceable
-// before usage that requires concrete details (e.g., arity).
-struct GenericSource : public BoundSource {
-  std::shared_ptr<sql::ast::Sourceable> source;
-  size_t arity;
-
-  GenericSource(std::shared_ptr<sql::ast::Sourceable> source, size_t arity) : source(std::move(source)), arity(arity) {}
-
-  size_t Arity() const override { return arity; }
-
-  bool operator==(const BoundSource& other) const override;
-};
-
-struct PromisedSource : public BoundSource {
-  explicit PromisedSource(size_t arity) : arity_(arity) {}
-
-  size_t Arity() const override { return arity_; }
-
-  bool operator==(const BoundSource& other) const override;
-
-  // Returns true if the promise has been fulfilled/resolved.
-  bool IsFulfilled() const { return static_cast<bool>(resolved_); }
-
-  // Returns the resolved SQL sourceable; throws if not fulfilled.
-  std::shared_ptr<sql::ast::Sourceable> Resolve() const;
-
-  // Manually fulfill the promise with a concrete SQL source.
-  void Fulfill(std::shared_ptr<sql::ast::Sourceable> source);
-
- private:
-  std::shared_ptr<sql::ast::Sourceable> resolved_;
-  size_t arity_;
-};
-
-// Resolves a promised source to a BoundSource-compatible representation when possible.
-// If the promise resolves to a table, a temporary TableSource is materialized.
-// Otherwise the original pointer is returned.
-std::shared_ptr<BoundSource> ResolvePromisedSource(const std::shared_ptr<BoundSource>& source);
-
-// Represents a constant value source (always has arity 1).
-struct ConstantSource : public BoundSource {
+// Represents a constant value domain (always has arity 1).
+struct ConstantDomain : public Domain {
   sql::ast::constant_t value;
 
-  ConstantSource(sql::ast::constant_t value) : value(value) {}
+  ConstantDomain(sql::ast::constant_t value) : value(value) {}
 
   // Always returns 1 for constant sources.
   size_t Arity() const override { return 1; }
 
-  // Checks if this constant source equals another (by value).
-  bool operator==(const BoundSource& other) const override;
+  bool operator==(const Domain& other) const override;
+
+  std::unique_ptr<Domain> Clone() const override { return std::make_unique<ConstantDomain>(value); }
+
+  std::size_t Hash() const override;
+
+  std::string ToString() const override;
 };
 
-// Represents a table source with a given name and arity.
-struct TableSource : public BoundSource {
+struct IntensionalDomain : public Domain {
+  std::shared_ptr<RelExpr> node;
+
+  IntensionalDomain(std::shared_ptr<RelExpr> node) : node(node) {}
+
+  size_t Arity() const override;
+
+  bool operator==(const Domain& other) const override;
+
+  std::unique_ptr<Domain> Clone() const override;
+
+  std::size_t Hash() const override;
+
+  std::string ToString() const override;
+};
+
+// Represents a domain defined by an EDB or IDB.
+struct DefinedDomain : public Domain {
   std::string table_name;
   size_t table_arity;
 
-  TableSource(std::string table_name, size_t table_arity) : table_name(table_name), table_arity(table_arity) {}
+  DefinedDomain(std::string table_name, size_t table_arity) : table_name(table_name), table_arity(table_arity) {}
 
   // Returns the arity (number of columns) of this table.
   size_t Arity() const override { return table_arity; }
 
   // Checks if this table source equals another (by table name).
-  bool operator==(const BoundSource& other) const override;
+  bool operator==(const Domain& other) const override;
+
+  std::unique_ptr<Domain> Clone() const override { return std::make_unique<DefinedDomain>(table_name, table_arity); }
+
+  std::size_t Hash() const override;
+
+  std::string ToString() const override;
+};
+
+// Represents a union of two domains.
+struct DomainUnion : public Domain {
+  std::unique_ptr<Domain> lhs;
+  std::unique_ptr<Domain> rhs;
+
+  DomainUnion(std::unique_ptr<Domain> lhs, std::unique_ptr<Domain> rhs) : lhs(std::move(lhs)), rhs(std::move(rhs)) {}
+
+  size_t Arity() const override { return lhs->Arity(); }
+
+  bool operator==(const Domain& other) const override;
+
+  std::unique_ptr<Domain> Clone() const override { return std::make_unique<DomainUnion>(lhs->Clone(), rhs->Clone()); }
+
+  std::size_t Hash() const override;
+
+  std::string ToString() const override;
+};
+
+// Represents a operation on two domains.
+struct DomainOperation : public Domain {
+  // Represents the operation to be performed on the left and right sources.
+  enum class Operation { ADD, SUBTRACT, MULTIPLY, DIVIDE };
+
+  std::unique_ptr<Domain> lhs;
+  std::unique_ptr<Domain> rhs;
+  Operation op;
+
+  DomainOperation(std::unique_ptr<Domain> lhs, std::unique_ptr<Domain> rhs, Operation op)
+      : lhs(std::move(lhs)), rhs(std::move(rhs)), op(op) {}
+
+  size_t Arity() const override { return lhs->Arity(); }
+
+  bool operator==(const Domain& other) const override;
+
+  std::unique_ptr<Domain> Clone() const override {
+    return std::make_unique<DomainOperation>(lhs->Clone(), rhs->Clone(), op);
+  }
+
+  std::size_t Hash() const override;
+
+  std::string ToString() const override;
 };
 
 // Represents a projection of a source, specifying which attributes are projected.
 // The projected attributes are defined by the indices vector.
-struct Projection {
+struct Projection : public Domain {
   std::vector<size_t> projected_indices;
-  std::shared_ptr<BoundSource> source;
+  std::unique_ptr<Domain> domain;
 
-  Projection(std::vector<size_t> projection_indices, std::shared_ptr<BoundSource> source)
-      : projected_indices(projection_indices), source(source) {}
-
-  Projection(std::vector<size_t> projection_indices, TableSource source)
-    : projected_indices(projection_indices), source(std::make_shared<TableSource>(source)) {}
-
-  Projection(std::vector<size_t> projection_indices, GenericSource source)
-    : projected_indices(projection_indices), source(std::make_shared<GenericSource>(source)) {}
-
-  Projection(std::vector<size_t> projection_indices, PromisedSource source)
-    : projected_indices(projection_indices), source(std::make_shared<PromisedSource>(source)) {}
-
-  // Creates a projection that projects all attributes of the given table.
-  Projection(TableSource source);
-
-  // Creates a projection for a constant source (projects index 0).
-  Projection(ConstantSource source);
-
-  // Creates a projection for a promised source.
-  Projection(PromisedSource source);
-
-  // Creates a projection for a generic source.
-  Projection(GenericSource source);
+  Projection(std::vector<size_t> projection_indices, std::unique_ptr<Domain> domain)
+      : projected_indices(projection_indices), domain(std::move(domain)) {}
 
   // Returns the number of projected attributes (size of projected_indices).
-  size_t Arity() const { return projected_indices.size(); }
+  size_t Arity() const override { return projected_indices.size(); }
+
+  bool operator==(const Domain& other) const override {
+    auto* p = dynamic_cast<const Projection*>(&other);
+    return p && *this == *p;
+  }
+  bool operator==(const Projection& other) const;
 
   // Returns true if no attributes are projected.
   bool IsEmpty() const { return projected_indices.empty(); }
 
+  // True if projection projects all attributes.
+  bool IsTrivial() const { return projected_indices.size() == domain->Arity(); }
+
   // Returns a copy of this projection with the specified indices removed.
   Projection WithRemovedProjectionIndices(const std::vector<size_t>& indices) const;
 
-  // Checks if this projection equals another (by indices and source).
-  bool operator==(const Projection& other) const;
+  std::unique_ptr<Domain> Clone() const override {
+    return std::make_unique<Projection>(projected_indices, domain ? domain->Clone() : nullptr);
+  }
+
+  std::size_t Hash() const override;
+
+  std::string ToString() const override;
 };
 
 }  // namespace rel2sql
-
-namespace std {
-
-template <>
-struct hash<rel2sql::TableSource> {
-  std::size_t operator()(const rel2sql::TableSource& ts) const { return std::hash<std::string>()(ts.table_name); }
-};
-
-template <>
-struct hash<rel2sql::ConstantSource> {
-  std::size_t operator()(const rel2sql::ConstantSource& cs) const {
-    return std::hash<rel2sql::sql::ast::constant_t>()(cs.value);
-  }
-};
-
-template <>
-struct hash<rel2sql::Projection> {
-  std::size_t operator()(const rel2sql::Projection& pt) const {
-    std::size_t seed = 0;
-    utl::hash_range(seed, pt.projected_indices.begin(), pt.projected_indices.end());
-    if (auto promised_source = std::dynamic_pointer_cast<const rel2sql::PromisedSource>(pt.source)) {
-      if (!promised_source->IsFulfilled()) {
-        // Use the promise identity to keep hashes stable before resolution
-        utl::hash_combine(seed, reinterpret_cast<std::uintptr_t>(promised_source.get()));
-        return seed;
-      }
-    }
-
-    auto resolved_source = rel2sql::ResolvePromisedSource(pt.source);
-    if (auto table_source = std::dynamic_pointer_cast<const rel2sql::TableSource>(resolved_source)) {
-      utl::hash_combine(seed, *table_source);
-    } else if (auto constant_source = std::dynamic_pointer_cast<const rel2sql::ConstantSource>(resolved_source)) {
-      utl::hash_combine(seed, *constant_source);
-    } else if (auto generic_source = std::dynamic_pointer_cast<const rel2sql::GenericSource>(resolved_source)) {
-      utl::hash_combine(seed, generic_source->arity);
-      utl::hash_combine(seed, generic_source->source->ToString());
-    } else if (auto promised_source = std::dynamic_pointer_cast<const rel2sql::PromisedSource>(resolved_source)) {
-      utl::hash_combine(seed, reinterpret_cast<std::uintptr_t>(promised_source.get()));
-    } else {
-      throw std::runtime_error("Unknown projection source type");
-    }
-    return seed;
-  }
-};
-
-// Intentionally no std::hash<rel2sql::BindingSource> specialization
-
-}  // namespace std
 
 #endif  // BINDING_SOURCE_H

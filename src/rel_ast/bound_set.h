@@ -8,7 +8,6 @@
 #include <vector>
 
 #include "rel_ast/bound.h"
-#include "rel_ast/projection.h"
 
 namespace rel2sql {
 
@@ -30,6 +29,8 @@ struct BoundSet {
 
   BoundSet(std::unordered_set<Bound> bounds, std::set<std::string> bound_variables)
       : bounds(std::move(bounds)), bound_variables(std::move(bound_variables)) {}
+
+  std::string ToString() const;
 
   // Returns the number of bindings in this set.
   size_t Size() const;
@@ -64,54 +65,61 @@ struct BoundSet {
     std::unordered_set<Bound> cleaned_bounds;
 
     for (const auto& bound : bounds) {
-      // Filter out projections that match the predicate
-      std::unordered_set<Projection> cleaned_domain;
-      for (const auto& projection : bound.domain) {
-        if (!should_remove(projection)) {
-          cleaned_domain.insert(projection);
-        }
-      }
+      if (!bound.domain) continue;
 
-      // Only keep bounds that have at least one projection remaining
-      if (!cleaned_domain.empty()) {
-        Bound cleaned(bound.variables, cleaned_domain);
+      std::unique_ptr<Domain> filtered =
+          FilterProjections(bound.domain.get(), std::forward<Predicate>(should_remove));
+
+      if (filtered) {
+        Bound cleaned(bound.variables, std::move(filtered));
         cleaned.coeffs = bound.coeffs;
         cleaned_bounds.insert(std::move(cleaned));
       }
     }
 
-    // Create a BoundSet with cleaned bounds and merge compatible bounds
     BoundSet result(cleaned_bounds);
-    // result.MergeCompatibleSingleSourceProjections();
-
     return result;
   }
 
  private:
+  // Recursively filters out Projections that match the predicate. Returns nullptr if
+  // the entire domain is removed. Non-Projection domains (ConstantDomain, DefinedDomain,
+  // etc.) are kept. DomainUnion is filtered recursively.
+  template <typename Predicate>
+  static std::unique_ptr<Domain> FilterProjections(const Domain* d, Predicate&& should_remove) {
+    if (auto* proj = dynamic_cast<const Projection*>(d)) {
+      if (should_remove(*proj)) return nullptr;
+      return proj->Clone();
+    }
+    if (auto* un = dynamic_cast<const DomainUnion*>(d)) {
+      auto lhs = FilterProjections(un->lhs.get(), std::forward<Predicate>(should_remove));
+      auto rhs = FilterProjections(un->rhs.get(), std::forward<Predicate>(should_remove));
+      if (!lhs && !rhs) return nullptr;
+      if (!lhs) return rhs;
+      if (!rhs) return lhs;
+      return std::make_unique<DomainUnion>(std::move(lhs), std::move(rhs));
+    }
+    // ConstantDomain, DefinedDomain, DomainOperation, IntensionalDomain: keep as-is
+    return d->Clone();
+  }
+
   // Maximum number of bounds (P + S) for which we enumerate all 2^(k+r) solutions in SmallCover.
   static constexpr size_t kSmallCoverExactThreshold = 20;
 
   // SmallCover helpers: see SmallCover() docstring for the ILP formulation.
-  static bool CoversAllVariables(
-      const std::set<std::string>& bound_variables,
-      const std::unordered_map<std::string, std::vector<size_t>>& P_indices_for_var,
-      const std::unordered_map<std::string, std::vector<size_t>>& S_indices_for_var, size_t k, uint64_t mask);
+  static bool CoversAllVariables(const std::set<std::string>& bound_variables,
+                                 const std::unordered_map<std::string, std::vector<size_t>>& P_indices_for_var,
+                                 const std::unordered_map<std::string, std::vector<size_t>>& S_indices_for_var,
+                                 size_t k, uint64_t mask);
   static uint64_t SmallCoverObjective(size_t k, size_t r, uint64_t mask);
-  static uint64_t SolveSmallCoverExact(
-      const std::set<std::string>& bound_variables,
-      const std::unordered_map<std::string, std::vector<size_t>>& P_indices_for_var,
-      const std::unordered_map<std::string, std::vector<size_t>>& S_indices_for_var, size_t k, size_t r);
+  static uint64_t SolveSmallCoverExact(const std::set<std::string>& bound_variables,
+                                       const std::unordered_map<std::string, std::vector<size_t>>& P_indices_for_var,
+                                       const std::unordered_map<std::string, std::vector<size_t>>& S_indices_for_var,
+                                       size_t k, size_t r);
   static std::pair<std::vector<size_t>, std::vector<size_t>> GreedySmallCover(
-      const std::vector<Bound>& P_bounds, const std::vector<Bound>& S_bounds, size_t k,
+      const std::vector<std::reference_wrapper<const Bound>>& P_bounds,
+      const std::vector<std::reference_wrapper<const Bound>>& S_bounds, size_t k,
       const std::set<std::string>& bound_variables);
-
-  // Merges compatible Bound objects that can form a full table in-place.
-  // Two or more Bound objects are mergeable if:
-  // - Each has exactly one SourceProjection in its domain (restriction: only single source projections)
-  // - The source projections share the same source, and this is a table source
-  // - The disjoint union of projected_indices forms a complete set [0, 1, ..., arity-1] for the source
-  // The variables are reconstructed based on the projection indices positions
-  void MergeCompatibleSingleSourceProjections();
 };
 
 }  // namespace rel2sql

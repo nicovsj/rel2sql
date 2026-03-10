@@ -1,11 +1,11 @@
 #include "preprocessing/safety_inferrer.h"
 
+#include <functional>
+#include <unordered_map>
+
 #include "rel_ast/rel_ast_visitor.h"
 #include "sql/aggregate_map.h"
 #include "support/exceptions.h"
-
-#include <functional>
-#include <unordered_map>
 
 namespace rel2sql {
 
@@ -92,7 +92,7 @@ class SafetyComputeVisitor : public BaseRelVisitor {
       }
       ComputeIDApplicationSafety(*node, node->params, id);
     } else if (auto* abs_base = dynamic_cast<RelExprApplBase*>(node->base.get())) {
-      if (abs_base->expr) ComputeRelAbsApplicationSafety(*node, *abs_base->expr, node->params);
+      if (abs_base->expr) ComputeRelAbsApplicationSafety(node, abs_base->expr, node->params);
     }
     return node;
   }
@@ -101,7 +101,7 @@ class SafetyComputeVisitor : public BaseRelVisitor {
     if (auto* id_base = dynamic_cast<RelIDApplBase*>(node->base.get())) {
       ComputeIDApplicationSafety(*node, node->params, id_base->id);
     } else if (auto* abs_base = dynamic_cast<RelExprApplBase*>(node->base.get())) {
-      if (abs_base->expr) ComputeRelAbsApplicationSafety(*node, *abs_base->expr, node->params);
+      if (abs_base->expr) ComputeRelAbsApplicationSafety(node, abs_base->expr, node->params);
     }
     return node;
   }
@@ -178,7 +178,7 @@ class SafetyComputeVisitor : public BaseRelVisitor {
       return node;
     }
 
-    node->safety = BoundSet({Bound({variable_name}, {Projection(ConstantSource(constant))})});
+    node->safety = BoundSet({Bound({variable_name}, std::make_unique<ConstantDomain>(constant))});
     return node;
   }
 
@@ -189,20 +189,12 @@ class SafetyComputeVisitor : public BaseRelVisitor {
     for (const auto& b : bindings) {
       if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) {
         variables.push_back(vb->id);
-        if (vb->domain) {
-          int domain_arity = container_->GetArity(*vb->domain);
-          auto table_source = TableSource(*vb->domain, domain_arity);
-          auto projection = Projection(table_source);
-          container_->AddVariableDomain(vb->id, {projection});
-        }
       }
     }
     current.safety = child.safety.WithRemovedVariables(variables);
-    ExtractAndStoreVariableDomains(child.safety);
   }
 
-  void ComputeIDApplicationSafety(RelNode& node,
-                                  const std::vector<std::shared_ptr<RelApplParam>>& params,
+  void ComputeIDApplicationSafety(RelNode& node, const std::vector<std::shared_ptr<RelApplParam>>& params,
                                   const std::string& id) {
     std::vector<std::string> variable_names;
     std::vector<size_t> variable_indices;
@@ -226,17 +218,17 @@ class SafetyComputeVisitor : public BaseRelVisitor {
       }
     }
 
-    Bound bound{variable_names};
-    bound.coeffs = std::move(coeffs);
     int arity = container_->GetArity(id);
-    auto table_source = TableSource(id, arity);
-    auto projection = Projection(variable_indices, table_source);
-    bound.Add(projection);
+    auto table_source = std::make_unique<DefinedDomain>(id, arity);
+    auto projection = std::make_unique<Projection>(variable_indices, std::move(table_source));
+    auto bound = Bound(std::move(variable_names), std::move(projection));
+    bound.coeffs = std::move(coeffs);
 
-    node.safety = BoundSet({bound});
+    node.safety = BoundSet({std::move(bound)});
   }
 
-  void ComputeRelAbsApplicationSafety(RelNode& node, RelNode& base_node,
+  void ComputeRelAbsApplicationSafety(const std::shared_ptr<RelExpr>& application_node,
+                                      const std::shared_ptr<RelExpr>& expr,
                                       const std::vector<std::shared_ptr<RelApplParam>>& params) {
     std::vector<std::string> variable_names;
     std::vector<size_t> variable_indices;
@@ -258,32 +250,12 @@ class SafetyComputeVisitor : public BaseRelVisitor {
       }
     }
 
-    auto promised_source = PromisedSource(base_node.arity);
-    auto projection = Projection(variable_indices, promised_source);
-    Bound bound(variable_names, {projection});
+    auto promised_source = std::make_unique<IntensionalDomain>(expr);
+    auto projection = std::make_unique<Projection>(variable_indices, std::move(promised_source));
+    auto bound = Bound(std::move(variable_names), std::move(projection));
     bound.coeffs = std::move(coeffs);
 
-    node.safety = BoundSet({bound});
-  }
-
-  Projection ExtractSingleVariableProjection(const Projection& proj, size_t variable_index) const {
-    if (variable_index >= proj.projected_indices.size()) {
-      throw std::runtime_error("Variable index out of bounds");
-    }
-    return Projection({proj.projected_indices[variable_index]}, proj.source);
-  }
-
-  void ExtractAndStoreVariableDomains(const BoundSet& safety) {
-    for (const auto& bound : safety.bounds) {
-      for (size_t var_index = 0; var_index < bound.variables.size(); ++var_index) {
-        const std::string& var = bound.variables[var_index];
-        std::unordered_set<Projection> var_domain;
-        for (const auto& proj : bound.domain) {
-          var_domain.insert(ExtractSingleVariableProjection(proj, var_index));
-        }
-        container_->AddVariableDomain(var, var_domain);
-      }
-    }
+    application_node->safety = BoundSet({bound});
   }
 
   RelContextBuilder* container_;
@@ -337,12 +309,10 @@ void SafetyInferrer::InheritSafetyToChildren(RelNode* node) {
   }
 }
 
-std::vector<std::shared_ptr<RelNode>> SafetyInferrer::CollectNodesPostOrder(
-    std::shared_ptr<RelNode> root) {
+std::vector<std::shared_ptr<RelNode>> SafetyInferrer::CollectNodesPostOrder(std::shared_ptr<RelNode> root) {
   std::vector<std::shared_ptr<RelNode>> result;
 
-  std::function<void(std::shared_ptr<RelNode>)> collect = [&result, &collect](
-                                                             std::shared_ptr<RelNode> node) {
+  std::function<void(std::shared_ptr<RelNode>)> collect = [&result, &collect](std::shared_ptr<RelNode> node) {
     if (!node) return;
     for (const auto& child : node->Children()) {
       collect(child);

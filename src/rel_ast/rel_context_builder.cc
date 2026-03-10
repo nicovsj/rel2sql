@@ -98,12 +98,6 @@ void RelContextBuilder::RegisterRecursiveBranch(const std::string& id,
   relation_info_[id].AddRecursiveDisjunct(info);
 }
 
-void RelContextBuilder::AddVariableDomain(const std::string& var,
-                                           const std::unordered_set<Projection>& domain) {
-  auto& existing = variable_domains_[var];
-  existing.insert(domain.begin(), domain.end());
-}
-
 void RelContextBuilder::RemoveVarsFromDependencyGraph() {
   for (const auto& id : ids_) {
     if (IsVar(id)) {
@@ -182,13 +176,6 @@ bool RelContextBuilder::IsVar(const std::string& var) const { return vars_.count
 bool RelContextBuilder::IsID(const std::string& id) const { return ids_.count(id) != 0; }
 
 const std::vector<std::string>& RelContextBuilder::SortedIDs() const { return sorted_ids_; }
-
-std::unordered_set<Projection> RelContextBuilder::GetVariableDomain(
-    const std::string& var) const {
-  auto it = variable_domains_.find(var);
-  if (it != variable_domains_.end()) return it->second;
-  return {};
-}
 
 RelContext RelContextBuilder::Process(std::shared_ptr<RelNode> root) {
   root = RunPipeline(std::move(root));

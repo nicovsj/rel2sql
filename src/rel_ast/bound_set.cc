@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <set>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -10,71 +11,6 @@
 namespace rel2sql {
 
 namespace {
-
-// Checks if the union of projection indices from a set of bindings forms a complete table.
-// Returns true if union of projected_indices = [0, 1, ..., table_arity-1] with no clashes.
-std::vector<std::string> FormsCompleteTableByProjections(const std::vector<Bound>& bindings, size_t table_arity) {
-  std::unordered_set<size_t> all_indices;
-  std::vector<std::string> variables(table_arity);
-
-  for (const auto& binding : bindings) {
-    if (binding.domain.size() != 1) return {};
-    const Projection& projection = *binding.domain.begin();
-
-    for (size_t i = 0; i < projection.projected_indices.size(); i++) {
-      size_t index = projection.projected_indices[i];
-      if (index >= table_arity) return {};
-      if (all_indices.contains(index)) return {};  // Clash found
-
-      all_indices.insert(index);
-      variables[index] = binding.variables[i];
-    }
-  }
-
-  // Check if we have exactly all indices [0..arity-1]
-  if (all_indices.size() != table_arity) return {};
-
-  return variables;
-}
-
-// Merges bindings that form a complete table into a single BindingBound.
-// Precondition: FormsCompleteTableByProjections(bindings, table_arity) && HaveSameVariables(bindings)
-Bound MergeBindingsToCompleteTable(const std::vector<Bound>& bindings, const std::vector<std::string>& variables) {
-  size_t table_arity = variables.size();
-  // Get the table source from the first binding
-  const Projection& first_projection = *bindings[0].domain.begin();
-  auto resolved_source = ResolvePromisedSource(first_projection.source);
-  std::shared_ptr<TableSource> table_source = std::dynamic_pointer_cast<TableSource>(resolved_source);
-
-  // Create full projection [0, 1, ..., arity-1]
-  std::vector<size_t> all_indices;
-  all_indices.reserve(table_arity);
-  for (size_t i = 0; i < table_arity; i++) {
-    all_indices.push_back(i);
-  }
-
-  Projection full_projection(all_indices, table_source);
-  std::unordered_set<Projection> merged_domain;
-  merged_domain.insert(full_projection);
-
-  Bound result(variables, merged_domain);
-  // When collapsing to a full-table bound, only retain affine coefficients if
-  // they are compatible across all contributing bindings (identical or all default).
-  if (!bindings.empty()) {
-    const auto& base_coeffs = bindings[0].coeffs;
-    bool compatible = true;
-    for (const auto& b : bindings) {
-      if (b.coeffs != base_coeffs) {
-        compatible = false;
-        break;
-      }
-    }
-    if (compatible) {
-      result.coeffs = base_coeffs;
-    }
-  }
-  return result;
-}
 
 // Finds the common variables between two variable vectors and returns:
 // 1. The common variables in order (maximal shared tuple)
@@ -105,51 +41,21 @@ std::tuple<std::vector<std::string>, std::vector<size_t>, std::vector<size_t>> F
   return std::make_tuple(common_vars, indices1, indices2);
 }
 
-// Projects a bound to only the specified variable indices
-Bound ProjectBoundToIndices(const Bound& bound, const std::vector<size_t>& indices) {
-  if (indices.empty()) {
-    return Bound({}, {});
-  }
-
-  std::vector<std::string> projected_vars;
-  projected_vars.reserve(indices.size());
-  for (size_t idx : indices) {
-    if (idx < bound.variables.size()) {
-      projected_vars.push_back(bound.variables[idx]);
-    }
-  }
-
-  std::unordered_set<Projection> projected_domain;
-  for (const auto& projection : bound.domain) {
-    // Project the projection to only the specified indices
-    std::vector<size_t> new_projected_indices;
-    new_projected_indices.reserve(indices.size());
-    for (size_t var_idx : indices) {
-      if (var_idx < projection.projected_indices.size()) {
-        new_projected_indices.push_back(projection.projected_indices[var_idx]);
-      }
-    }
-    projected_domain.insert(Projection(new_projected_indices, projection.source));
-  }
-
-  Bound result(projected_vars, projected_domain);
-  // Project affine coefficients alongside variables when present.
-  if (!bound.coeffs.empty()) {
-    std::vector<std::optional<std::pair<double, double>>> projected_coeffs;
-    projected_coeffs.reserve(indices.size());
-    for (size_t idx : indices) {
-      if (idx < bound.coeffs.size()) {
-        projected_coeffs.push_back(bound.coeffs[idx]);
-      }
-    }
-    result.coeffs = std::move(projected_coeffs);
-  }
-  return result;
-}
-
 }  // namespace
 
-// BindingBoundSet methods
+std::string BoundSet::ToString() const {
+  std::ostringstream oss;
+  oss << "{ ";
+  bool first = true;
+  for (const auto& bound : bounds) {
+    if (!first) oss << " ; ";
+    oss << bound.ToString();
+    first = false;
+  }
+  oss << " }";
+  return oss.str();
+}
+
 size_t BoundSet::Size() const { return bounds.size(); }
 
 bool BoundSet::IsEmpty() const { return bounds.empty(); }
@@ -171,11 +77,11 @@ BoundSet BoundSet::MergeWith(const BoundSet& other) const {
       if (common_vars.empty()) continue;
 
       // Project both bounds to the common variables
-      Bound projected_bound = ProjectBoundToIndices(bound, indices1);
-      Bound projected_other = ProjectBoundToIndices(other_bound, indices2);
+      auto projected_bound = bound.WithProjectedIndices(indices1);
+      auto projected_other = other_bound.WithProjectedIndices(indices2);
 
-      // Merge the projected bounds
-      merged.insert(projected_bound.MergeWith(projected_other));
+      auto merged_bound = projected_bound.MergeWith(projected_other);
+      merged.insert(merged_bound);
 
       // Store the common variables
       merged_variables.insert(common_vars.begin(), common_vars.end());
@@ -223,13 +129,7 @@ BoundSet BoundSet::WithRemovedVariables(const std::vector<std::string>& variable
     result_variables.erase(variable);
   }
 
-  auto return_set = BoundSet(result, result_variables);
-
-  // Merge compatible bindings that can form a full table, as the removal
-  // of variables may have created new compatible bindings that can form a full table
-  return_set.MergeCompatibleSingleSourceProjections();
-
-  return return_set;
+  return BoundSet(result, result_variables);
 }
 
 BoundSet BoundSet::Renamed(const std::unordered_map<std::string, std::string>& rename_map) const {
@@ -307,7 +207,8 @@ uint64_t BoundSet::SolveSmallCoverExact(const std::set<std::string>& bound_varia
 }
 
 std::pair<std::vector<size_t>, std::vector<size_t>> BoundSet::GreedySmallCover(
-    const std::vector<Bound>& P_bounds, const std::vector<Bound>& S_bounds, size_t k,
+    const std::vector<std::reference_wrapper<const Bound>>& P_bounds,
+    const std::vector<std::reference_wrapper<const Bound>>& S_bounds, size_t k,
     const std::set<std::string>& bound_variables) {
   std::set<std::string> covered;
   std::vector<size_t> selected_P;
@@ -324,7 +225,7 @@ std::pair<std::vector<size_t>, std::vector<size_t>> BoundSet::GreedySmallCover(
     for (size_t j = 0; j < k; j++) {
       if (used_P[j]) continue;
       int new_covered = 0;
-      for (const std::string& var : P_bounds[j].variables) {
+      for (const std::string& var : P_bounds[j].get().variables) {
         if (bound_variables.count(var) && !covered.count(var)) new_covered++;
       }
       if (new_covered > 0) {
@@ -340,7 +241,7 @@ std::pair<std::vector<size_t>, std::vector<size_t>> BoundSet::GreedySmallCover(
     for (size_t j = 0; j < S_bounds.size(); j++) {
       if (used_S[j]) continue;
       int new_covered = 0;
-      for (const std::string& var : S_bounds[j].variables) {
+      for (const std::string& var : S_bounds[j].get().variables) {
         if (bound_variables.count(var) && !covered.count(var)) new_covered++;
       }
       if (new_covered > 0) {
@@ -359,12 +260,12 @@ std::pair<std::vector<size_t>, std::vector<size_t>> BoundSet::GreedySmallCover(
     if (best_is_P) {
       used_P[best_j] = true;
       selected_P.push_back(best_j);
-      for (const std::string& var : P_bounds[best_j].variables)
+      for (const std::string& var : P_bounds[best_j].get().variables)
         if (bound_variables.count(var)) covered.insert(var);
     } else {
       used_S[best_j] = true;
       selected_S.push_back(best_j);
-      for (const std::string& var : S_bounds[best_j].variables)
+      for (const std::string& var : S_bounds[best_j].get().variables)
         if (bound_variables.count(var)) covered.insert(var);
     }
   }
@@ -393,12 +294,12 @@ BoundSet BoundSet::SmallCover() const {
     return BoundSet(std::unordered_set<Bound>{}, bound_variables);
   }
 
-  std::vector<Bound> P_bounds;
-  std::vector<Bound> S_bounds;
+  std::vector<std::reference_wrapper<const Bound>> P_bounds;
+  std::vector<std::reference_wrapper<const Bound>> S_bounds;
   P_bounds.reserve(bounds.size());
   S_bounds.reserve(bounds.size());
   for (const auto& bound : bounds) {
-    if (bound.domain.size() == 1)
+    if (dynamic_cast<const Projection*>(bound.domain.get()) != nullptr)
       P_bounds.push_back(bound);
     else
       S_bounds.push_back(bound);
@@ -415,12 +316,14 @@ BoundSet BoundSet::SmallCover() const {
   std::unordered_map<std::string, std::vector<size_t>> S_indices_for_var;
   for (const auto& var : bound_variables) {
     for (size_t j = 0; j < k; j++) {
-      if (std::find(P_bounds[j].variables.begin(), P_bounds[j].variables.end(), var) != P_bounds[j].variables.end()) {
+      if (std::find(P_bounds[j].get().variables.begin(), P_bounds[j].get().variables.end(), var) !=
+          P_bounds[j].get().variables.end()) {
         P_indices_for_var[var].push_back(j);
       }
     }
     for (size_t j = 0; j < r; j++) {
-      if (std::find(S_bounds[j].variables.begin(), S_bounds[j].variables.end(), var) != S_bounds[j].variables.end()) {
+      if (std::find(S_bounds[j].get().variables.begin(), S_bounds[j].get().variables.end(), var) !=
+          S_bounds[j].get().variables.end()) {
         S_indices_for_var[var].push_back(j);
       }
     }
@@ -469,57 +372,5 @@ BoundSet BoundSet::SmallCover() const {
   return BoundSet(small_cover, bound_variables);
 }
 
-void BoundSet::MergeCompatibleSingleSourceProjections() {
-  std::unordered_set<Bound> result;
-
-  // Group by TableSource - focus on projection indices compatibility first
-  std::unordered_map<TableSource, std::vector<Bound>> bounds_by_source;
-
-  // Separate bindings with single projections from others
-  for (const auto& bound : bounds) {
-    if (bound.domain.size() != 1) {
-      // Multi-projection bindings are not mergeable, add as-is
-      result.insert(bound);
-      continue;
-    }
-
-    const Projection& projection = *bound.domain.begin();
-    auto table_source = std::dynamic_pointer_cast<TableSource>(ResolvePromisedSource(projection.source));
-
-    if (!table_source) {
-      // Non-TableSource (e.g., ConstantSource) are not mergeable, add as-is
-      result.insert(bound);
-      continue;
-    }
-
-    bounds_by_source[*table_source].push_back(bound);
-  }
-
-  // Process each TableSource group to find mergeable bindings based on projection indices
-  for (auto& [table_source, source_bindings] : bounds_by_source) {
-    size_t table_arity = static_cast<size_t>(table_source.Arity());
-
-    // If only one binding with this source, add it as-is
-    if (source_bindings.size() == 1) {
-      result.insert(source_bindings[0]);
-      continue;
-    }
-
-    // Check if all bindings together form a complete table based on projection indices
-    auto variables = FormsCompleteTableByProjections(source_bindings, table_arity);
-
-    if (!variables.empty()) {
-      result.insert(MergeBindingsToCompleteTable(source_bindings, variables));
-    } else {
-      // Projections don't form complete table - cannot merge
-      for (const auto& binding : source_bindings) {
-        result.insert(binding);
-      }
-    }
-  }
-
-  // Replace bounds with the merged result
-  bounds = std::move(result);
-}
 
 }  // namespace rel2sql
