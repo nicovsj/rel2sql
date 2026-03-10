@@ -1,5 +1,5 @@
-#ifndef BINDING_SOURCE_H
-#define BINDING_SOURCE_H
+#ifndef REL_AST_DOMAIN_H
+#define REL_AST_DOMAIN_H
 
 #include <memory>
 #include <string>
@@ -165,4 +165,4 @@ struct Projection : public Domain {
 
 }  // namespace rel2sql
 
-#endif  // BINDING_SOURCE_H
+#endif  // REL_AST_DOMAIN_H

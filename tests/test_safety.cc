@@ -2,7 +2,7 @@
 #include "gtest/gtest.h"
 #include "rel_ast/bound.h"
 #include "rel_ast/bound_set.h"
-#include "rel_ast/projection.h"
+#include "rel_ast/domain.h"
 #include "rel_ast/rel_ast.h"
 #include "rel_ast/rel_context.h"
 #include "rel_ast/rel_context_builder.h"

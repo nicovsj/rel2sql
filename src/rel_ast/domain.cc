@@ -1,4 +1,4 @@
-#include "rel_ast/projection.h"
+#include "rel_ast/domain.h"
 #include "rel_ast/rel_ast.h"
 
 #include <algorithm>

@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-#include "rel_ast/projection.h"
+#include "rel_ast/domain.h"
 
 namespace rel2sql {
 
