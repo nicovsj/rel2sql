@@ -5,6 +5,8 @@
 #include <string>
 
 #include "api/translate.h"
+#include "preprocessing/arity_visitor.h"
+#include "preprocessing/ids_visitor.h"
 #include "rel_ast/rel_ast.h"
 #include "rel_ast/rel_ast_builder.h"
 #include "rel_ast/rel_context_builder.h"
@@ -155,6 +157,36 @@ TEST(RewriterTest, ExpressionAsTermProduct) {
 TEST(RewriterTest, ExpressionAsTermAbstraction) {
   EXPECT_EQ(NormalizeWhitespace(RewriteExprWithExpressionAsTerm("{x; y + 1}")),
             NormalizeWhitespace("{x; (_x0) : _x0 = y + 1}"));
+}
+
+TEST(RewriterTest, ExpressionAsTermFullApplication) {
+  // Case 5: A(..., x+y+1, ...) -> exists((z) | A(..., z, ...) and z = x+y+1)
+  auto program = ParseProgram("def R { A(x, y + z) }");
+  ASSERT_TRUE(program);
+  TermRewriter r;
+  program = std::dynamic_pointer_cast<RelProgram>(r.Visit(program));
+  ASSERT_TRUE(program);
+  EXPECT_EQ(NormalizeWhitespace(program->ToString()),
+            NormalizeWhitespace("def R {exists( (_x0) | A(x, _x0) and _x0 = y + z)}"));
+}
+
+TEST(RewriterTest, ExpressionAsTermPartialApplication) {
+  // Case 6: A[a1,..., ai-1, x+y+1, ai+1,..., ak] -> (zk+1,...,z|A|) : exists((z) | ...)
+  RelationMap edb;
+  edb["A"] = RelationInfo(4);  // A has 4 columns
+  auto program = ParseProgram("def R { A[x, y + z, w] }");
+  ASSERT_TRUE(program);
+  RelContextBuilder context_builder(edb);
+  context_builder.SetRoot(program);
+  IDsVisitor ids_visitor(&context_builder);
+  ids_visitor.Visit(program);
+  ArityVisitor arity_visitor(&context_builder);
+  arity_visitor.Visit(program);
+  TermRewriter r(&context_builder);
+  program = std::dynamic_pointer_cast<RelProgram>(r.Visit(program));
+  ASSERT_TRUE(program);
+  EXPECT_EQ(NormalizeWhitespace(program->ToString()),
+            NormalizeWhitespace("def R {(_x1) : exists( (_x0) | A(x, _x0, w, _x1) and _x0 = y + z)}"));
 }
 
 TEST(RewriterTest, AllRewritersExpr) {

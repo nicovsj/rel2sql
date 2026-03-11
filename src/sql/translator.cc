@@ -382,11 +382,13 @@ std::shared_ptr<sql::ast::Term> Translator::MakeTermForVariableFromParamSlotRel(
     RelNode* term_node, const std::string& column_name, const std::shared_ptr<sql::ast::Source>& ra_source) const {
   auto column = std::make_shared<sql::ast::Column>(column_name, ra_source);
   std::shared_ptr<sql::ast::Term> term = column;
-  if (!term_node->term_linear_coeffs.has_value() || term_node->IsInvalidTermExpression() ||
-      term_node->IsNullPolynomialTerm()) {
+  auto* rel_term = dynamic_cast<RelTerm*>(term_node);
+  if (!rel_term) return term;
+  auto opt_coeffs = rel_term->GetSingleVarCoeffs();
+  if (!opt_coeffs || rel_term->IsInvalidTermExpression()) {
     return term;
   }
-  auto [a, b] = term_node->term_linear_coeffs.value();
+  auto [a, b] = *opt_coeffs;
   if (a != 0.0) {
     if (b < 0.0) {
       term = std::make_shared<sql::ast::Operation>(term, std::make_shared<sql::ast::Constant>(-b), "+");

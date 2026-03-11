@@ -187,14 +187,14 @@ std::shared_ptr<RelNode> RelContextBuilder::RunPipeline(std::shared_ptr<RelNode>
   BindingRewriter binding_domain_rewriter;
   root = binding_domain_rewriter.Visit(root);
 
-  TermRewriter expr_as_term_rewriter;
-  root = expr_as_term_rewriter.Visit(root);
-
   IDsVisitor ids_visitor(this);
   ids_visitor.Visit(root);
 
   ArityVisitor arity_visitor(this);
   arity_visitor.Visit(root);
+
+  TermRewriter expr_as_term_rewriter(this);
+  root = expr_as_term_rewriter.Visit(root);
 
   WildcardRewriter underscore_rewriter(this);
   root = underscore_rewriter.Visit(root);
