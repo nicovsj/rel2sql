@@ -26,15 +26,15 @@ std::string ConstantToString(const sql::ast::constant_t& c) {
       c);
 }
 
-const char* DomainOperationOpToString(DomainOperation::Operation op) {
+const char* DomainOperationOpToString(RelTermOp op) {
   switch (op) {
-    case DomainOperation::Operation::ADD:
+    case RelTermOp::ADD:
       return "+";
-    case DomainOperation::Operation::SUBTRACT:
+    case RelTermOp::SUB:
       return "-";
-    case DomainOperation::Operation::MULTIPLY:
+    case RelTermOp::MUL:
       return "*";
-    case DomainOperation::Operation::DIVIDE:
+    case RelTermOp::DIV:
       return "/";
   }
   return "?";

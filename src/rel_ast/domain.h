@@ -10,6 +10,7 @@
 namespace rel2sql {
 
 class RelExpr;
+enum class RelTermOp;
 
 // Base class representing a domain of bounds.
 struct Domain {
@@ -104,14 +105,12 @@ struct DomainUnion : public Domain {
 
 // Represents a operation on two domains.
 struct DomainOperation : public Domain {
-  // Represents the operation to be performed on the left and right sources.
-  enum class Operation { ADD, SUBTRACT, MULTIPLY, DIVIDE };
 
   std::unique_ptr<Domain> lhs;
   std::unique_ptr<Domain> rhs;
-  Operation op;
+  RelTermOp op;
 
-  DomainOperation(std::unique_ptr<Domain> lhs, std::unique_ptr<Domain> rhs, Operation op)
+  DomainOperation(std::unique_ptr<Domain> lhs, std::unique_ptr<Domain> rhs, RelTermOp op)
       : lhs(std::move(lhs)), rhs(std::move(rhs)), op(op) {}
 
   size_t Arity() const override { return lhs->Arity(); }
