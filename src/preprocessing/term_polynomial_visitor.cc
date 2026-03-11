@@ -16,18 +16,58 @@ std::optional<double> ConstantToDouble(const sql::ast::constant_t& c) {
   return std::nullopt;
 }
 
-void MarkInvalid(RelNode* node) {
+void MarkInvalid(RelTerm* node) {
   node->term_linear_coeffs.reset();
   node->term_linear_invalid = true;
 }
 
-void SetLinear(RelNode* node, double a, double b) {
-  node->term_linear_coeffs = std::make_pair(a, b);
+void SetLinear(RelTerm* node, LinearTermCoeffs coeffs) {
+  node->term_linear_coeffs = std::move(coeffs);
   node->term_linear_invalid = false;
 }
 
-bool HasValidLinear(RelNode* node) {
+void SetLinearConstant(RelTerm* node, double b) {
+  SetLinear(node, LinearTermCoeffs{{}, b});
+}
+
+void SetLinearSingleVar(RelTerm* node, const std::string& var, double a, double b) {
+  LinearTermCoeffs c;
+  c.var_coeffs[var] = a;
+  c.constant = b;
+  SetLinear(node, std::move(c));
+}
+
+bool HasValidLinear(RelTerm* node) {
   return !node->term_linear_invalid && node->term_linear_coeffs.has_value();
+}
+
+LinearTermCoeffs Add(const LinearTermCoeffs& lhs, const LinearTermCoeffs& rhs) {
+  LinearTermCoeffs result;
+  result.constant = lhs.constant + rhs.constant;
+  for (const auto& [var, c] : lhs.var_coeffs) result.var_coeffs[var] = c;
+  for (const auto& [var, c] : rhs.var_coeffs) {
+    result.var_coeffs[var] += c;
+  }
+  return result;
+}
+
+LinearTermCoeffs Sub(const LinearTermCoeffs& lhs, const LinearTermCoeffs& rhs) {
+  LinearTermCoeffs result;
+  result.constant = lhs.constant - rhs.constant;
+  for (const auto& [var, c] : lhs.var_coeffs) result.var_coeffs[var] = c;
+  for (const auto& [var, c] : rhs.var_coeffs) {
+    result.var_coeffs[var] -= c;
+  }
+  return result;
+}
+
+LinearTermCoeffs MulByConstant(const LinearTermCoeffs& c, double k) {
+  LinearTermCoeffs result;
+  result.constant = c.constant * k;
+  for (const auto& [var, coeff] : c.var_coeffs) {
+    result.var_coeffs[var] = coeff * k;
+  }
+  return result;
 }
 
 }  // namespace
@@ -38,14 +78,18 @@ std::shared_ptr<RelTerm> TermPolynomialVisitor::Visit(const std::shared_ptr<RelN
     MarkInvalid(node.get());
     return node;
   }
-  SetLinear(node.get(), 0.0, maybe_value.value());
+  SetLinearConstant(node.get(), maybe_value.value());
   return node;
 }
 
 std::shared_ptr<RelTerm> TermPolynomialVisitor::Visit(const std::shared_ptr<RelIDTerm>& node) {
   if (node->variables.size() == 1) {
-    SetLinear(node.get(), 1.0, 0.0);
+    SetLinearSingleVar(node.get(), *node->variables.begin(), 1.0, 0.0);
+  } else if (node->variables.empty()) {
+    // Identifier with no variables (e.g. constant) - treat as invalid for now
+    MarkInvalid(node.get());
   } else {
+    // Multiple variables in ID term - shouldn't happen for simple "x", but handle it
     MarkInvalid(node.get());
   }
   return node;
@@ -60,43 +104,42 @@ std::shared_ptr<RelTerm> TermPolynomialVisitor::Visit(const std::shared_ptr<RelO
     return node;
   }
 
-  auto [a1, b1] = node->lhs->term_linear_coeffs.value();
-  auto [a2, b2] = node->rhs->term_linear_coeffs.value();
+  const auto& c1 = node->lhs->term_linear_coeffs.value();
+  const auto& c2 = node->rhs->term_linear_coeffs.value();
 
   switch (node->op) {
     case RelTermOp::ADD:
-      SetLinear(node.get(), a1 + a2, b1 + b2);
+      SetLinear(node.get(), Add(c1, c2));
       return node;
     case RelTermOp::SUB:
-      SetLinear(node.get(), a1 - a2, b1 - b2);
+      SetLinear(node.get(), Sub(c1, c2));
       return node;
     case RelTermOp::MUL: {
-      bool lhs_has_var = !node->lhs->variables.empty();
-      bool rhs_has_var = !node->rhs->variables.empty();
+      bool lhs_has_var = !c1.var_coeffs.empty();
+      bool rhs_has_var = !c2.var_coeffs.empty();
 
       if (lhs_has_var && rhs_has_var) {
         MarkInvalid(node.get());
         return node;
       }
       if (!lhs_has_var && !rhs_has_var) {
-        SetLinear(node.get(), 0.0, b1 * b2);
+        SetLinearConstant(node.get(), c1.constant * c2.constant);
         return node;
       }
       if (lhs_has_var) {
-        SetLinear(node.get(), a1 * b2, b1 * b2);
+        SetLinear(node.get(), MulByConstant(c1, c2.constant));
       } else {
-        SetLinear(node.get(), a2 * b1, b2 * b1);
+        SetLinear(node.get(), MulByConstant(c2, c1.constant));
       }
       return node;
     }
     case RelTermOp::DIV: {
-      bool rhs_has_var = !node->rhs->variables.empty();
-      if (rhs_has_var || a2 != 0.0 || b2 == 0.0) {
+      if (!c2.var_coeffs.empty() || c2.constant == 0.0) {
         MarkInvalid(node.get());
         return node;
       }
-      double inv = 1.0 / b2;
-      SetLinear(node.get(), a1 * inv, b1 * inv);
+      double inv = 1.0 / c2.constant;
+      SetLinear(node.get(), MulByConstant(c1, inv));
       return node;
     }
   }

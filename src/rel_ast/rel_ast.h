@@ -7,6 +7,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -35,6 +36,27 @@ enum class RelTermOp { ADD, SUB, MUL, DIV };
 // =============================================================================
 
 using RelLiteralValue = std::variant<int, double, std::string, bool>;
+
+// Represents a multivariable linear term: sum_i(a_i * x_i) + constant.
+// E.g. 2*x + 3*y - 5 has var_coeffs = {{"x", 2}, {"y", 3}}, constant = -5.
+struct LinearTermCoeffs {
+  std::unordered_map<std::string, double> var_coeffs;
+  double constant = 0.0;
+
+  bool IsSingleVariable() const { return var_coeffs.size() == 1; }
+  bool IsConstantOnly() const { return var_coeffs.empty(); }
+
+  // For single-variable: returns (a, b) for a*x + b. Returns nullopt if multi-var.
+  std::optional<std::pair<double, double>> GetSingleVarCoeffs() const {
+    if (var_coeffs.size() != 1) return std::nullopt;
+    auto it = var_coeffs.begin();
+    return std::make_pair(it->second, constant);
+  }
+
+  bool operator==(const LinearTermCoeffs& other) const {
+    return var_coeffs == other.var_coeffs && constant == other.constant;
+  }
+};
 
 // =============================================================================
 // Base node with metadata
@@ -72,10 +94,6 @@ class RelNode {
   bool is_recursive = false;
   std::string recursive_definition_name;
 
-  // Linear term analysis (for terms)
-  std::optional<std::pair<double, double>> term_linear_coeffs;
-  bool term_linear_invalid = false;
-
   void VariablesInplaceUnion(const RelNode& other) {
     variables.insert(other.variables.begin(), other.variables.end());
     free_variables.insert(other.free_variables.begin(), other.free_variables.end());
@@ -88,21 +106,6 @@ class RelNode {
     }
   }
 
-  bool IsInvalidTermExpression() const { return term_linear_invalid; }
-
-  bool IsNullPolynomialTerm() const {
-    if (!term_linear_coeffs) return false;
-    auto [a, b] = *term_linear_coeffs;
-    return a == 0.0 && b == 0.0;
-  }
-
-  std::optional<double> GetPolynomialRoot() const {
-    if (term_linear_invalid || !term_linear_coeffs) return std::nullopt;
-    auto [a, b] = *term_linear_coeffs;
-    if (a == 0.0) return std::nullopt;
-    return -b / a;
-  }
-
   // Returns direct structural children for traversal.
   virtual std::vector<std::shared_ptr<RelNode>> Children() const = 0;
 };
@@ -113,6 +116,17 @@ struct RelExpr : RelNode {
 
 struct RelTerm : RelExpr {
   virtual ~RelTerm() = default;
+
+  // Linear term analysis: sum_i(a_i * x_i) + constant. Supports multivariable terms.
+  std::optional<LinearTermCoeffs> term_linear_coeffs;
+  bool term_linear_invalid = false;
+
+  bool IsInvalidTermExpression() const { return term_linear_invalid; }
+
+  // Returns (a, b) for single-variable term a*x + b. Returns nullopt for multi-var.
+  std::optional<std::pair<double, double>> GetSingleVarCoeffs() const {
+    return term_linear_coeffs ? term_linear_coeffs->GetSingleVarCoeffs() : std::nullopt;
+  }
 };
 
 struct RelFormula : RelExpr {

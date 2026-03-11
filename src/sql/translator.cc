@@ -369,8 +369,7 @@ Translator::FullApplParamSlots Translator::CollectApplParams(RelNode& node,
     if (term->variables.size() != 1) {
       throw VariableException("Term parameter must have exactly one variable for full application");
     }
-    if (term->IsInvalidTermExpression() || term->IsNullPolynomialTerm() ||
-        !term->term_linear_coeffs.has_value()) {
+    if (term->IsInvalidTermExpression() || !term->GetSingleVarCoeffs()) {
       throw VariableException("Invalid or null polynomial term in parameter.");
     }
     slots.term_param_slots.push_back({term.get(), param_idx});

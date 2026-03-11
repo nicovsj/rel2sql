@@ -1,8 +1,13 @@
 #include "preprocessing/safety_inferrer.h"
 
+#include <algorithm>
+#include <cmath>
 #include <functional>
+#include <limits>
 #include <unordered_map>
 
+#include "rel_ast/domain.h"
+#include "rel_ast/rel_ast.h"
 #include "rel_ast/rel_ast_visitor.h"
 #include "sql/aggregate_map.h"
 #include "support/exceptions.h"
@@ -10,6 +15,47 @@
 namespace rel2sql {
 
 namespace {
+
+// Returns LHS_coeffs - RHS_coeffs, or nullopt if either term lacks valid linear coeffs.
+std::optional<LinearTermCoeffs> NetLinearCoeffs(RelTerm* lhs, RelTerm* rhs) {
+  if (!lhs || !rhs || !lhs->term_linear_coeffs || !rhs->term_linear_coeffs || lhs->IsInvalidTermExpression() ||
+      rhs->IsInvalidTermExpression()) {
+    return std::nullopt;
+  }
+  LinearTermCoeffs net;
+  net.constant = lhs->term_linear_coeffs->constant - rhs->term_linear_coeffs->constant;
+  for (const auto& [var, c] : lhs->term_linear_coeffs->var_coeffs) {
+    net.var_coeffs[var] = c;
+  }
+  for (const auto& [var, c] : rhs->term_linear_coeffs->var_coeffs) {
+    net.var_coeffs[var] -= c;
+  }
+  return net;
+}
+
+// Returns the domain for var projected to its single column, or nullopt if no bound contains var.
+// Skips bounds with non-trivial affine coefficients (initial implementation).
+// For single-variable ConstantDomain bounds, returns domain->Clone() directly.
+std::optional<std::unique_ptr<Domain>> GetProjectedDomainForVariable(const BoundSet& safety, const std::string& var) {
+  for (const auto& bound : safety.bounds) {
+    if (bound.HasNonTrivialAffine()) continue;
+    auto it = std::find(bound.variables.begin(), bound.variables.end(), var);
+    if (it == bound.variables.end()) continue;
+    size_t i = static_cast<size_t>(it - bound.variables.begin());
+    if (bound.variables.size() == 1 && dynamic_cast<const ConstantDomain*>(bound.domain.get())) {
+      return bound.domain->Clone();
+    }
+    return std::make_unique<Projection>(std::vector<size_t>{i}, bound.domain->Clone());
+  }
+  return std::nullopt;
+}
+
+sql::ast::constant_t DoubleToConstant(double v) {
+  if (std::floor(v) == v && v >= std::numeric_limits<int>::min() && v <= std::numeric_limits<int>::max()) {
+    return static_cast<int>(v);
+  }
+  return v;
+}
 
 // Returns bounds from parent_safety that mention at least one free variable of child.
 BoundSet InheritBounds(const BoundSet& parent_safety, const RelNode& child) {
@@ -159,26 +205,70 @@ class SafetyComputeVisitor : public BaseRelVisitor {
   }
 
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelComparison>& node) override {
-    if (node->op != RelCompOp::EQ && node->op != RelCompOp::NEQ) return node;
-    if (node->op == RelCompOp::NEQ) return node;
+    // If not an equality comparison, there's no possible inference to be made.
+    if (node->op != RelCompOp::EQ) return node;
 
-    auto* lhs_id = dynamic_cast<RelIDTerm*>(node->lhs.get());
-    auto* rhs_id = dynamic_cast<RelIDTerm*>(node->rhs.get());
+    // If the comparison is t1 = t2, then let's get the net linear coeffs of t1 - t2 (if possible).
+    auto net_opt = NetLinearCoeffs(node->lhs.get(), node->rhs.get());
 
-    std::string variable_name;
-    sql::ast::constant_t constant;
+    if (!net_opt) return node;
 
-    if (lhs_id && node->rhs && node->rhs->constant) {
-      variable_name = lhs_id->id;
-      constant = *node->rhs->constant;
-    } else if (rhs_id && node->lhs && node->lhs->constant) {
-      variable_name = rhs_id->id;
-      constant = *node->lhs->constant;
-    } else {
-      return node;
+    const auto& net = *net_opt;
+    const auto& all_vars = node->variables;
+    const auto& bound_vars = node->safety.bound_variables;
+
+    std::set<std::string> unbound_vars;
+    for (const auto& v : all_vars) {
+      if (!bound_vars.count(v)) unbound_vars.insert(v);
     }
 
-    node->safety = BoundSet({Bound({variable_name}, std::make_unique<ConstantDomain>(constant))});
+    // If there is two or more unbound variables, there's no possible inference to be made.
+    if (unbound_vars.size() != 1) return node;
+
+    const std::string xj = *unbound_vars.begin();
+    auto it = net.var_coeffs.find(xj);
+
+    assert(it != net.var_coeffs.end());
+
+    const auto& [_, coeff_xj] = *it;
+
+    // If the coefficient for the unbound variable is 0, there's no possible inference to be made.
+    if (coeff_xj == 0.0) return node;
+
+    std::unique_ptr<Domain> result;
+    const double constant_term = -net.constant / coeff_xj;
+
+    // Build domain tree from projected domains
+    // Omit ConstantDomain(0) when constant is 0; omit MUL when scale is 1
+    if (constant_term != 0.0) {
+      result = std::make_unique<ConstantDomain>(DoubleToConstant(constant_term));
+    }
+    for (const auto& [v, coeff] : net.var_coeffs) {
+      if (v == xj) continue;
+      auto D_v = GetProjectedDomainForVariable(node->safety, v);
+      if (!D_v) return node;
+      double scale = -coeff / coeff_xj;
+      if (scale == 0.0) continue;  // term contributes nothing
+      std::unique_ptr<Domain> term_v =
+          (scale == 1.0) ? std::move(*D_v)
+                         : std::make_unique<DomainOperation>(
+                               std::move(*D_v),
+                               std::make_unique<ConstantDomain>(DoubleToConstant(scale)),
+                               RelTermOp::MUL);
+      if (!result) {
+        result = std::move(term_v);
+      } else {
+        result = std::make_unique<DomainOperation>(std::move(result), std::move(term_v),
+                                                  RelTermOp::ADD);
+      }
+    }
+    if (!result) {
+      result = std::make_unique<ConstantDomain>(DoubleToConstant(0));  // xj = 0
+    }
+
+    std::unordered_set<Bound> new_bounds;
+    new_bounds.insert(Bound({xj}, std::move(result)));
+    node->safety = node->safety.UnionWith(BoundSet(std::move(new_bounds)));
     return node;
   }
 
@@ -212,7 +302,7 @@ class SafetyComputeVisitor : public BaseRelVisitor {
       variable_names.push_back(variable);
 
       if (term->term_linear_coeffs && !term->IsInvalidTermExpression()) {
-        coeffs.push_back(term->term_linear_coeffs);
+        coeffs.push_back(term->GetSingleVarCoeffs());
       } else {
         coeffs.emplace_back(std::nullopt);
       }
@@ -244,7 +334,7 @@ class SafetyComputeVisitor : public BaseRelVisitor {
       variable_indices.push_back(i);
 
       if (term->term_linear_coeffs && !term->IsInvalidTermExpression()) {
-        coeffs.push_back(term->term_linear_coeffs);
+        coeffs.push_back(term->GetSingleVarCoeffs());
       } else {
         coeffs.emplace_back(std::nullopt);
       }

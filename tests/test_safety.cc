@@ -159,4 +159,109 @@ TEST(SafetyTest, ConditionInheritance) {
   EXPECT_TRUE(BoundSetHasTable(cond->lhs->safety, "B")) << "LHS should inherit B's bound from condition (parent)";
 }
 
+// Returns the constant value if var has a ConstantDomain bound, else nullopt.
+std::optional<sql::ast::constant_t> GetConstantForVariable(const BoundSet& safety,
+                                                          const std::string& var) {
+  for (const auto& bound : safety.bounds) {
+    if (bound.variables.size() != 1 || bound.variables[0] != var) continue;
+    if (auto* cd = dynamic_cast<const ConstantDomain*>(bound.domain.get())) {
+      return cd->value;
+    }
+  }
+  return std::nullopt;
+}
+
+// =============================================================================
+// Linear comparison safety inference
+// =============================================================================
+
+TEST(SafetyTest, LinearComparison1) {
+  // (x=5) and (y=10) and (x+y=z) -> z should be bounded to
+  RelationMap edb_map;
+  auto context = ProcessFormula("x = 5 and x = z", edb_map);
+
+  auto* root = context.Root().get();
+  ASSERT_NE(root, nullptr);
+
+  EXPECT_TRUE(root->safety.bound_variables.count("z")) << "z should be bounded";
+
+  auto z_const = GetConstantForVariable(root->safety, "z");
+
+  ASSERT_TRUE(z_const.has_value()) << "z should have ConstantDomain";
+  EXPECT_TRUE(std::holds_alternative<int>(*z_const) && std::get<int>(*z_const) == 5)
+      << "z should equal 5";
+}
+
+TEST(SafetyTest, LinearComparison2) {
+  // (x=5) and (x+y=z) -> cannot solve (y and z unbounded)
+  RelationMap edb_map;
+  auto context = ProcessFormula("x = 5 and y = 10 and x + y = z", edb_map);
+
+  auto* root = context.Root().get();
+  ASSERT_NE(root, nullptr);
+
+  EXPECT_TRUE(root->safety.bound_variables.count("z")) << "z should be bounded";
+
+}
+
+TEST(SafetyTest, LinearComparison3) {
+  // (x=5) and (x+y=z) -> cannot solve (y and z unbounded)
+  RelationMap edb_map;
+  auto context = ProcessFormula("x = 5 and x + y = z", edb_map);
+
+  auto* root = context.Root().get();
+  ASSERT_NE(root, nullptr);
+
+  EXPECT_TRUE(root->safety.bound_variables.count("x"));
+  EXPECT_FALSE(root->safety.bound_variables.count("z"))
+      << "z should not be bounded (2 unbounded vars)";
+}
+
+TEST(SafetyTest, LinearComparison4) {
+  RelationMap edb_map;
+  auto context = ProcessFormula("x = 5 and x + 1 = z - 1", edb_map);
+
+  auto* root = context.Root().get();
+  ASSERT_NE(root, nullptr);
+
+  EXPECT_TRUE(root->safety.bound_variables.count("z")) << "z should be bounded";
+}
+
+TEST(SafetyTest, LinearComparison5) {
+  // (x=5) and (2*x+3=z) -> z = 13
+  RelationMap edb_map;
+  auto context = ProcessFormula("x = 5 and 2 * x + 3 = z", edb_map);
+
+  auto* root = context.Root().get();
+  ASSERT_NE(root, nullptr);
+
+  EXPECT_TRUE(root->safety.bound_variables.count("z")) << "z should be bounded";
+}
+
+TEST(SafetyTest, LinearComparison6) {
+  // R(x) and S(y) and (x+y=z) -> z bounded via DomainOperation
+  RelationMap edb_map;
+  edb_map["R"] = RelationInfo(1);
+  edb_map["S"] = RelationInfo(1);
+
+  auto context = ProcessFormula("R(x) and S(y) and x + y = z", edb_map);
+
+  auto* root = context.Root().get();
+  ASSERT_NE(root, nullptr);
+
+  EXPECT_TRUE(root->safety.bound_variables.count("z")) << "z should be bounded";
+  EXPECT_TRUE(root->safety.bound_variables.count("x"));
+  EXPECT_TRUE(root->safety.bound_variables.count("y"));
+
+  // z's domain should be DomainOperation (from the linear expression)
+  bool z_has_domain_op = false;
+  for (const auto& bound : root->safety.bounds) {
+    if (bound.variables.size() == 1 && bound.variables[0] == "z") {
+      z_has_domain_op = dynamic_cast<const DomainOperation*>(bound.domain.get()) != nullptr;
+      break;
+    }
+  }
+  EXPECT_TRUE(z_has_domain_op) << "z's domain should be DomainOperation";
+}
+
 }  // namespace rel2sql
