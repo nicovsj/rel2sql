@@ -309,9 +309,12 @@ class SafetyComputeVisitor : public BaseRelVisitor {
     }
 
     int arity = container_->GetArity(id);
-    auto table_source = std::make_unique<DefinedDomain>(id, arity);
-    auto projection = std::make_unique<Projection>(variable_indices, std::move(table_source));
-    auto bound = Bound(std::move(variable_names), std::move(projection));
+    std::unique_ptr<Domain> domain = std::make_unique<DefinedDomain>(id, arity);
+    if (variable_indices.size() != static_cast<size_t>(arity)) {
+      domain = std::make_unique<Projection>(variable_indices, std::move(domain));
+    }
+
+    auto bound = Bound(std::move(variable_names), std::move(domain));
     bound.coeffs = std::move(coeffs);
 
     node.safety = BoundSet({std::move(bound)});

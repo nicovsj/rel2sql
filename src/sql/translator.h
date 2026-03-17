@@ -1,13 +1,17 @@
 #ifndef SQL_SQL_VISITOR_REL_H
 #define SQL_SQL_VISITOR_REL_H
 
+#include <gtest/gtest_prod.h>
+
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
 
+#include "rel_ast/domain.h"
 #include "rel_ast/rel_ast.h"
 #include "rel_ast/rel_ast_visitor.h"
 #include "rel_ast/rel_context.h"
@@ -123,6 +127,10 @@ class Translator : public BaseRelVisitor {
 
   std::shared_ptr<sql::ast::Condition> EqualityShorthandRel(const std::vector<RelNode*>& nodes);
 
+  // Build EQ condition for variables that appear in multiple sources.
+  std::shared_ptr<sql::ast::Condition> BuildEqualityForSources(
+      const std::vector<std::pair<std::shared_ptr<sql::ast::Source>, std::set<std::string>>>& source_var_pairs);
+
   // For a full application, build chained equalities between columns corresponding
   // to repeated term parameters for the same variable (p1 = p2, p2 = p3, ...).
   std::vector<std::shared_ptr<sql::ast::Condition>> AddChainedEqualitiesForTermParams(
@@ -141,6 +149,16 @@ class Translator : public BaseRelVisitor {
   std::shared_ptr<sql::ast::Term> BuildSqlTermFromLinearRelTerm(
       const std::shared_ptr<RelTerm>& rel_term,
       const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources) const;
+
+  // Translate a Domain to a Sourceable (for building CTEs from bounds).
+  std::shared_ptr<sql::ast::Sourceable> DomainToSql(const Domain& domain);
+
+  FRIEND_TEST(TranslationTest, DomainToSqlConstantDomain);
+  FRIEND_TEST(TranslationTest, DomainToSqlDefinedDomain);
+  FRIEND_TEST(TranslationTest, DomainToSqlProjection);
+  FRIEND_TEST(TranslationTest, DomainToSqlDomainUnion);
+  FRIEND_TEST(TranslationTest, DomainToSqlDomainOperation);
+  friend class TranslationTest;
 
   // Create a recursive CTE from a formula (bindings formula with is_recursive). Returns (CTE source, any CTEs from
   // the formula).

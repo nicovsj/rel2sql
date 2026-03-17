@@ -168,12 +168,8 @@ std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelDis
   if (node->lhs) Visit(node->lhs);
   if (node->rhs) Visit(node->rhs);
 
-  if (node->lhs && node->rhs) {
-    if (node->lhs->free_variables != node->rhs->free_variables) {
-      throw TranslationException("Disjunction formula with different free variables", ErrorCode::UNBALANCED_VARIABLE, SourceLocation(0, 0));
-    }
-  }
-
+  // Allow different free variables; safety inference (inherited bounds from parent) ensures
+  // FV(F1) ∪ FV(F2) ⊆ bound(F) when symmetric difference is non-empty.
   if (node->lhs) node->VariablesInplaceUnion(*node->lhs);
   if (node->rhs) node->VariablesInplaceUnion(*node->rhs);
   return node;

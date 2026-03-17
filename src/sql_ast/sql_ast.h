@@ -100,6 +100,12 @@ class Query : public Sourceable {
     ctes.clear();
     ctes_are_recursive = false;
   }
+
+ protected:
+  // Absorb CTEs from child sources/queries into this Query. Called by constructors.
+  // Forward declared; implementation after Source is defined.
+  void AbsorbCTEsFrom(const std::vector<std::shared_ptr<Source>>& sources);
+  void AbsorbCTEsFrom(const std::vector<std::shared_ptr<Sourceable>>& sourceables);
 };
 
 class Alias : public Expression {
@@ -315,6 +321,22 @@ inline bool Query::CTEsEqual(const Query& other) const {
     if (*ctes[i] != *other.ctes[i]) return false;
   }
   return true;
+}
+
+inline void Query::AbsorbCTEsFrom(const std::vector<std::shared_ptr<Source>>& sources) {
+  for (const auto& src : sources) {
+    if (auto* q = dynamic_cast<Query*>(src->sourceable.get())) {
+      q->TransferCTEsTo(*this);
+    }
+  }
+}
+
+inline void Query::AbsorbCTEsFrom(const std::vector<std::shared_ptr<Sourceable>>& sourceables) {
+  for (const auto& s : sourceables) {
+    if (auto* q = dynamic_cast<Query*>(s.get())) {
+      q->TransferCTEsTo(*this);
+    }
+  }
 }
 
 class Selectable : public Expression {
@@ -894,11 +916,15 @@ class Select : public Query {
 
   Select(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<From> from,
          bool is_distinct = false)
-      : columns(columns), from(from), is_distinct(is_distinct) {}
+      : columns(columns), from(from), is_distinct(is_distinct) {
+    AbsorbCTEsFrom(from->sources);
+  }
 
   Select(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<From> from,
          std::shared_ptr<GroupBy> group_by, bool is_distinct = false)
-      : columns(columns), from(from), group_by(group_by), is_distinct(is_distinct) {}
+      : columns(columns), from(from), group_by(group_by), is_distinct(is_distinct) {
+    AbsorbCTEsFrom(from->sources);
+  }
 
   Select(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<From> from,
          std::vector<std::shared_ptr<Source>> ctes, bool is_distinct = false, bool ctes_are_recursive = false)
@@ -906,7 +932,9 @@ class Select : public Query {
         columns(columns),
         from(from),
         group_by(std::nullopt),
-        is_distinct(is_distinct) {}
+        is_distinct(is_distinct) {
+    AbsorbCTEsFrom(from->sources);
+  }
 
   std::ostream& Print(std::ostream& os) const override {
     PrintCTEs(os);
@@ -963,17 +991,25 @@ class Union : public Query {
  public:
   std::vector<std::shared_ptr<Sourceable>> members;
 
-  Union(std::shared_ptr<Sourceable> lhs, std::shared_ptr<Sourceable> rhs) : members({lhs, rhs}) {}
+  Union(std::shared_ptr<Sourceable> lhs, std::shared_ptr<Sourceable> rhs) : members({lhs, rhs}) {
+    AbsorbCTEsFrom(members);
+  }
 
-  Union(std::vector<std::shared_ptr<Sourceable>> members) : members(members) {}
+  Union(std::vector<std::shared_ptr<Sourceable>> members) : members(members) {
+    AbsorbCTEsFrom(members);
+  }
 
   Union(std::shared_ptr<Sourceable> lhs, std::shared_ptr<Sourceable> rhs, std::vector<std::shared_ptr<Source>> ctes,
         bool ctes_are_recursive = false)
-      : Query(ctes, ctes_are_recursive), members({lhs, rhs}) {}
+      : Query(ctes, ctes_are_recursive), members({lhs, rhs}) {
+    AbsorbCTEsFrom(members);
+  }
 
   Union(std::vector<std::shared_ptr<Sourceable>> members, std::vector<std::shared_ptr<Source>> ctes,
         bool ctes_are_recursive = false)
-      : Query(ctes, ctes_are_recursive), members(members) {}
+      : Query(ctes, ctes_are_recursive), members(members) {
+    AbsorbCTEsFrom(members);
+  }
 
   std::ostream& Print(std::ostream& os) const override {
     PrintCTEs(os);
@@ -1004,17 +1040,13 @@ class UnionAll : public Query {
  public:
   std::vector<std::shared_ptr<Sourceable>> members;
 
-  UnionAll(std::shared_ptr<Select> lhs, std::shared_ptr<Select> rhs) : members({lhs, rhs}) {}
+  UnionAll(std::shared_ptr<Sourceable> lhs, std::shared_ptr<Sourceable> rhs) : members({lhs, rhs}) {
+    AbsorbCTEsFrom(members);
+  }
 
-  UnionAll(std::vector<std::shared_ptr<Select>> members) : members(members) {}
-
-  UnionAll(std::shared_ptr<Select> lhs, std::shared_ptr<Select> rhs, std::vector<std::shared_ptr<Source>> ctes,
-           bool ctes_are_recursive = false)
-      : Query(ctes, ctes_are_recursive), members({lhs, rhs}) {}
-
-  UnionAll(std::vector<std::shared_ptr<Select>> members, std::vector<std::shared_ptr<Source>> ctes,
-           bool ctes_are_recursive = false)
-      : Query(ctes, ctes_are_recursive), members(members) {}
+  UnionAll(std::vector<std::shared_ptr<Sourceable>> members) : members(members) {
+    AbsorbCTEsFrom(members);
+  }
 
   std::ostream& Print(std::ostream& os) const override {
     PrintCTEs(os);
