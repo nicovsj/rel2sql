@@ -287,18 +287,18 @@ std::any SqlParserVisitor::visitGroupBy(psr::GroupByContext* ctx) {
 }
 
 std::any SqlParserVisitor::visitUnionAll(psr::UnionAllContext* ctx) {
-  std::vector<std::shared_ptr<sql::ast::Select>> members;
+  std::vector<std::shared_ptr<sql::ast::Sourceable>> members;
 
   // First SELECT
   auto first_result = visit(ctx->select(0));
   auto first = std::any_cast<std::shared_ptr<sql::ast::Select>>(first_result);
-  members.push_back(first);
+  members.push_back(std::static_pointer_cast<sql::ast::Sourceable>(first));
 
   // Remaining SELECTs
   for (size_t i = 1; i < ctx->select().size(); i++) {
     auto select_result = visit(ctx->select(i));
     auto select = std::any_cast<std::shared_ptr<sql::ast::Select>>(select_result);
-    members.push_back(select);
+    members.push_back(std::static_pointer_cast<sql::ast::Sourceable>(select));
   }
 
   auto union_all = std::make_shared<sql::ast::UnionAll>(members);

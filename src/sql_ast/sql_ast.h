@@ -1002,7 +1002,7 @@ class Union : public Query {
 
 class UnionAll : public Query {
  public:
-  std::vector<std::shared_ptr<Select>> members;
+  std::vector<std::shared_ptr<Sourceable>> members;
 
   UnionAll(std::shared_ptr<Select> lhs, std::shared_ptr<Select> rhs) : members({lhs, rhs}) {}
 

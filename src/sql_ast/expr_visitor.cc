@@ -125,8 +125,8 @@ void ExpressionVisitor::Visit(Union& union_expr) {
 }
 
 void ExpressionVisitor::Visit(UnionAll& union_all_expr) {
-  for (auto& select : union_all_expr.members) {
-    Visit(*select);
+  for (auto& member : union_all_expr.members) {
+    Visit(*member);
   }
 }
 

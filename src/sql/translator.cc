@@ -1309,7 +1309,7 @@ void Translator::ApplyDistinctToDefinitionSelects(const std::shared_ptr<sql::ast
   }
   if (auto union_all = std::dynamic_pointer_cast<sql::ast::UnionAll>(sourceable)) {
     for (auto& member : union_all->members) {
-      ApplyDistinctToDefinitionSelects(std::static_pointer_cast<sql::ast::Sourceable>(member));
+      ApplyDistinctToDefinitionSelects(member);
     }
   }
 }
@@ -1345,7 +1345,7 @@ std::string Translator::GetColumnNameForSourceable(const std::shared_ptr<sql::as
 
   if (auto uni_all = std::dynamic_pointer_cast<sql::ast::UnionAll>(src)) {
     if (!uni_all->members.empty()) {
-      return GetColumnNameForSourceable(std::static_pointer_cast<sql::ast::Sourceable>(uni_all->members.front()), idx);
+      return GetColumnNameForSourceable(uni_all->members.front(), idx);
     }
     return fmt::format("A{}", idx);
   }
@@ -1365,9 +1365,7 @@ size_t Translator::GetArityForSourceable(const std::shared_ptr<sql::ast::Sourcea
     return uni->members.empty() ? 0 : GetArityForSourceable(uni->members.front());
   }
   if (auto uni_all = std::dynamic_pointer_cast<sql::ast::UnionAll>(src)) {
-    return uni_all->members.empty()
-               ? 0
-               : GetArityForSourceable(std::static_pointer_cast<sql::ast::Sourceable>(uni_all->members.front()));
+    return uni_all->members.empty() ? 0 : GetArityForSourceable(uni_all->members.front());
   }
   return 0;
 }
