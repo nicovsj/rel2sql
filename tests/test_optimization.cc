@@ -543,8 +543,8 @@ TEST_F(OptimizationTest, RelationalAbstraction3) { EXPECT_EQ(TranslateExpression
 TEST_F(OptimizationTest, RelationalAbstraction4) { EXPECT_EQ(TranslateExpression("{(1,2)}"), "SELECT 1, 2"); }
 
 TEST_F(OptimizationTest, RelationalAbstraction5) {
-  EXPECT_EQ(TranslateExpression("{1;2}"),
-            "SELECT CASE WHEN I0.i = 1 THEN 1 WHEN I0.i = 2 THEN 2 END AS A1 FROM (VALUES (1), (2)) AS I0(i)");
+  EXPECT_EQ(TranslateExpression("{1;2;3}"),
+            "SELECT CASE WHEN I0.i = 1 THEN 1 WHEN I0.i = 2 THEN 2 WHEN I0.i = 3 THEN 3 END AS A1 FROM (VALUES (1), (2), (3)) AS I0(i)");
 }
 
 TEST_F(OptimizationTest, RelationalAbstraction6) {
