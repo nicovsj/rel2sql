@@ -914,6 +914,32 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelConjuncti
   auto lhs_sourceable = ExpectSourceable(node->lhs->sql_expression);
   auto rhs_sourceable = ExpectSourceable(node->rhs->sql_expression);
 
+  // Deduplicate CTEs: if rhs has CTEs from the same Bound as lhs, replace references and drop duplicates.
+  auto* lhs_query = dynamic_cast<sql::ast::Query*>(lhs_sourceable.get());
+  auto* rhs_query = dynamic_cast<sql::ast::Query*>(rhs_sourceable.get());
+  if (lhs_query && rhs_query) {
+    std::map<std::pair<std::size_t, std::vector<std::string>>, std::shared_ptr<sql::ast::Source>> lhs_cte_map;
+    for (const auto& cte : lhs_query->ctes) {
+      if (cte->bound_hash) {
+        lhs_cte_map[{*cte->bound_hash, cte->def_columns}] = cte;
+      }
+    }
+    for (auto it = rhs_query->ctes.begin(); it != rhs_query->ctes.end();) {
+      const auto& cte = *it;
+      if (cte->bound_hash) {
+        auto key = std::make_pair(*cte->bound_hash, cte->def_columns);
+        auto existing = lhs_cte_map.find(key);
+        if (existing != lhs_cte_map.end()) {
+          sql::ast::SourceReplacer replacer(cte->Alias(), existing->second);
+          rhs_sourceable->Accept(replacer);
+          it = rhs_query->ctes.erase(it);
+          continue;
+        }
+      }
+      ++it;
+    }
+  }
+
   auto lhs_source = std::make_shared<sql::ast::Source>(lhs_sourceable, GenerateTableAlias());
   auto rhs_source = std::make_shared<sql::ast::Source>(rhs_sourceable, GenerateTableAlias());
 
@@ -1176,6 +1202,7 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelCompariso
     std::set<std::string> bound_vars(bound.variables.begin(), bound.variables.end());
     std::vector<std::string> def_cols(bound.variables.begin(), bound.variables.end());
     auto cte_source = std::make_shared<sql::ast::Source>(domain_sql, GenerateTableAlias("E"), true, def_cols);
+    cte_source->bound_hash = bound.Hash();
     cte_sources.push_back(cte_source);
     cte_source_var_pairs.push_back({cte_source, bound_vars});
     for (const auto& var : bound_vars) {
@@ -1612,6 +1639,19 @@ std::shared_ptr<sql::ast::Term> Translator::BuildSqlTermFromLinearRelTerm(
       case RelTermOp::DIV:
         op_str = "/";
         break;
+    }
+    // Wrap operands in parentheses when needed for precedence: * and / bind tighter than + and -.
+    // e.g. 3 * (2*x - 1 + 5*x) must not become 3 * 2 * x - 1 + 5 * x
+    const bool parent_is_mul_div = (op_str[0] == '*' || op_str[0] == '/');
+    if (parent_is_mul_div) {
+      if (auto* lhs_op = dynamic_cast<sql::ast::Operation*>(lhs_sql.get());
+          lhs_op && (lhs_op->op == "+" || lhs_op->op == "-")) {
+        lhs_sql = std::make_shared<sql::ast::ParenthesisTerm>(lhs_sql);
+      }
+      if (auto* rhs_op = dynamic_cast<sql::ast::Operation*>(rhs_sql.get());
+          rhs_op && (rhs_op->op == "+" || rhs_op->op == "-")) {
+        rhs_sql = std::make_shared<sql::ast::ParenthesisTerm>(rhs_sql);
+      }
     }
     return std::make_shared<sql::ast::Operation>(lhs_sql, rhs_sql, op_str);
   }

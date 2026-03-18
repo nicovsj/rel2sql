@@ -1,5 +1,7 @@
 #include "constant_optimizer.h"
 
+#include <unordered_map>
+
 #include "replacers.h"
 
 namespace rel2sql {
@@ -36,10 +38,10 @@ bool ExtractConstantSourceData(const std::shared_ptr<Source>& source, ConstantSo
   return true;
 }
 
-void ApplyConstantReplacement(const ConstantSourceData& data, From& from) {
-  if (!from.where) return;
-  ConstantReplacer replacer(data.source_alias, data.term_alias, data.constant);
-  from.where.value()->Accept(replacer);
+void ApplyConstantReplacement(const ConstantSourceData& data, Expression& expression) {
+  std::unordered_map<std::string, std::shared_ptr<Term>> term_map{{data.term_alias, data.constant}};
+  SourceAndColumnReplacer replacer(data.source_alias, term_map);
+  expression.Accept(replacer);
 }
 
 void ConstantOptimizer::Visit(From& from) {
@@ -64,8 +66,8 @@ void ConstantOptimizer::Visit(From& from) {
     for (std::size_t i = 0; i < from.sources.size(); ++i) {
       const auto& source = from.sources[i];
       if (data_per_source[i]) {
-        ApplyConstantReplacement(*data_per_source[i], from);
-        // Do not carry this source over (it's inlined into WHERE)
+        ApplyConstantReplacement(*data_per_source[i], *base_expr_);
+        // Do not carry this source over (it's inlined into expression)
         continue;
       }
       new_sources.push_back(source);

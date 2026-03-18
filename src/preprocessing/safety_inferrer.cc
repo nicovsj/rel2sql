@@ -42,7 +42,7 @@ std::optional<std::unique_ptr<Domain>> GetProjectedDomainForVariable(const Bound
     auto it = std::find(bound.variables.begin(), bound.variables.end(), var);
     if (it == bound.variables.end()) continue;
     size_t i = static_cast<size_t>(it - bound.variables.begin());
-    if (bound.variables.size() == 1 && dynamic_cast<const ConstantDomain*>(bound.domain.get())) {
+    if (bound.variables.size() == 1) {
       return bound.domain->Clone();
     }
     return std::make_unique<Projection>(std::vector<size_t>{i}, bound.domain->Clone());
@@ -236,32 +236,68 @@ class SafetyComputeVisitor : public BaseRelVisitor {
     if (coeff_xj == 0.0) return node;
 
     std::unique_ptr<Domain> result;
-    const double constant_term = -net.constant / coeff_xj;
 
-    // Build domain tree from projected domains
-    // Omit ConstantDomain(0) when constant is 0; omit MUL when scale is 1
-    if (constant_term != 0.0) {
-      result = std::make_unique<ConstantDomain>(DoubleToConstant(constant_term));
-    }
+    // Collect other variables (besides xj) with non-zero coefficients.
+    std::vector<std::pair<std::string, double>> other_vars;
     for (const auto& [v, coeff] : net.var_coeffs) {
-      if (v == xj) continue;
+      if (v == xj || coeff == 0.0) continue;
+      other_vars.emplace_back(v, coeff);
+    }
+
+    // When exactly one other variable: use rational form (D_v - k) / m instead of fractional
+    // constants, so we preserve division and avoid floating point (e.g. (col-1)/2 not -0.5+0.5*col).
+    // xj = (-net.constant - coeff_v * v) / coeff_xj  =>  (v - k) / m  with k=-net.constant/coeff_v, m=-coeff_xj/coeff_v
+    if (other_vars.size() == 1) {
+      const auto& [v, coeff_v] = other_vars[0];
       auto D_v = GetProjectedDomainForVariable(node->safety, v);
-      if (!D_v) return node;
-      double scale = -coeff / coeff_xj;
-      if (scale == 0.0) continue;  // term contributes nothing
-      std::unique_ptr<Domain> term_v =
-          (scale == 1.0) ? std::move(*D_v)
-                         : std::make_unique<DomainOperation>(
-                               std::move(*D_v),
-                               std::make_unique<ConstantDomain>(DoubleToConstant(scale)),
-                               RelTermOp::MUL);
-      if (!result) {
-        result = std::move(term_v);
-      } else {
-        result = std::make_unique<DomainOperation>(std::move(result), std::move(term_v),
-                                                  RelTermOp::ADD);
+      if (D_v && std::abs(coeff_v) > 1e-12) {
+        const double k = -net.constant / coeff_v;
+        const double m = -coeff_xj / coeff_v;
+        if (std::abs(m) > 1e-12) {
+          std::unique_ptr<Domain> numerator;
+          if (std::abs(k) < 1e-12) {
+            numerator = std::move(*D_v);  // D_v - 0 = D_v
+          } else {
+            numerator = std::make_unique<DomainOperation>(
+                std::move(*D_v), std::make_unique<ConstantDomain>(DoubleToConstant(k)), RelTermOp::SUB);
+          }
+          if (std::abs(m - 1.0) < 1e-12) {
+            result = std::move(numerator);  // numerator / 1 = numerator
+          } else {
+            result = std::make_unique<DomainOperation>(
+                std::move(numerator), std::make_unique<ConstantDomain>(DoubleToConstant(m)), RelTermOp::DIV);
+          }
+        }
       }
     }
+
+    // Fallback: additive form constant_term + scale * D_v (used for multiple vars or when rational form fails)
+    if (!result) {
+      const double constant_term = -net.constant / coeff_xj;
+      if (constant_term != 0.0) {
+        result = std::make_unique<ConstantDomain>(DoubleToConstant(constant_term));
+      }
+      for (const auto& [v, coeff] : net.var_coeffs) {
+        if (v == xj) continue;
+        auto D_v = GetProjectedDomainForVariable(node->safety, v);
+        if (!D_v) return node;
+        double scale = -coeff / coeff_xj;
+        if (scale == 0.0) continue;
+        std::unique_ptr<Domain> term_v =
+            (scale == 1.0) ? std::move(*D_v)
+                           : std::make_unique<DomainOperation>(
+                                 std::move(*D_v),
+                                 std::make_unique<ConstantDomain>(DoubleToConstant(scale)),
+                                 RelTermOp::MUL);
+        if (!result) {
+          result = std::move(term_v);
+        } else {
+          result = std::make_unique<DomainOperation>(std::move(result), std::move(term_v),
+                                                     RelTermOp::ADD);
+        }
+      }
+    }
+
     if (!result) {
       result = std::make_unique<ConstantDomain>(DoubleToConstant(0));  // xj = 0
     }

@@ -1,7 +1,9 @@
 #include "self_join_optimizer.h"
 
 #include <sstream>
+#include <vector>
 
+#include "canonical_form.h"
 #include "replacers.h"
 
 namespace rel2sql {
@@ -35,42 +37,6 @@ std::shared_ptr<Column> ExtractSingleColumnFromTerm(const std::shared_ptr<Term>&
   // Other term types (Function, CaseWhen, Constant, etc.) are not treated
   // as simple single-column affine terms here.
   return nullptr;
-}
-
-// Compares two term trees for structural equality, ignoring column source
-// aliases but requiring the same column names, constants, operators and
-// parenthesis structure.
-bool TermsEqualModuloAlias(const std::shared_ptr<Term>& lhs, const std::shared_ptr<Term>& rhs) {
-  if (!lhs || !rhs) return !lhs && !rhs;
-
-  if (auto lcol = std::dynamic_pointer_cast<Column>(lhs)) {
-    auto rcol = std::dynamic_pointer_cast<Column>(rhs);
-    if (!rcol) return false;
-    // Ignore source alias, but require same column name.
-    return lcol->name == rcol->name;
-  }
-
-  if (auto lconst = std::dynamic_pointer_cast<Constant>(lhs)) {
-    auto rconst = std::dynamic_pointer_cast<Constant>(rhs);
-    if (!rconst) return false;
-    return lconst->value == rconst->value;
-  }
-
-  if (auto lop = std::dynamic_pointer_cast<Operation>(lhs)) {
-    auto rop = std::dynamic_pointer_cast<Operation>(rhs);
-    if (!rop) return false;
-    if (lop->op != rop->op) return false;
-    return TermsEqualModuloAlias(lop->lhs, rop->lhs) && TermsEqualModuloAlias(lop->rhs, rop->rhs);
-  }
-
-  if (auto lparen = std::dynamic_pointer_cast<ParenthesisTerm>(lhs)) {
-    auto rparen = std::dynamic_pointer_cast<ParenthesisTerm>(rhs);
-    if (!rparen) return false;
-    return TermsEqualModuloAlias(lparen->term, rparen->term);
-  }
-
-  // Other term kinds are not considered equivalent for self-join elimination.
-  return false;
 }
 
 }  // namespace
@@ -207,10 +173,10 @@ SelfJoinOptimizer::EquivalenceClassesMap SelfJoinOptimizer::ComputeColumnEquival
     auto left_col = std::dynamic_pointer_cast<Column>(equivalence->lhs);
     auto right_col = std::dynamic_pointer_cast<Column>(equivalence->rhs);
 
-    // If the sides are not plain columns, try to extract a single underlying
-    // column from affine-style term expressions such as (T0.A1 - 1)/3.
+    // If the sides are not plain columns, check algebraic equality via canonical form
+    // (e.g. 22*(T2.A1+3)/22 + -3 vs T2.A1) and extract single underlying column.
     if (!left_col || !right_col) {
-      if (!TermsEqualModuloAlias(equivalence->lhs, equivalence->rhs)) continue;
+      if (!AreEqualityExpressionsEqual(equivalence)) continue;
       left_col = ExtractSingleColumnFromTerm(equivalence->lhs);
       right_col = ExtractSingleColumnFromTerm(equivalence->rhs);
     }
@@ -464,11 +430,10 @@ bool SelfJoinOptimizer::IsEquivalenceCandidate(const std::shared_ptr<ComparisonC
   auto left_col = std::dynamic_pointer_cast<Column>(comp_condition->lhs);
   auto right_col = std::dynamic_pointer_cast<Column>(comp_condition->rhs);
 
-  // Accept either plain column = column, or affine-style equalities like
-  // (T2.A1 - 1) = (T0.A1 - 1) where both terms have identical structure
-  // modulo source aliases and each references exactly one column.
+  // Accept either plain column = column, or algebraically equal expressions
+  // (e.g. 22*(T2.A1+3)/22 + -3 = T2.A1) where each references exactly one column.
   if (!left_col || !right_col) {
-    if (!TermsEqualModuloAlias(comp_condition->lhs, comp_condition->rhs)) return false;
+    if (!AreEqualityExpressionsEqual(comp_condition)) return false;
     left_col = ExtractSingleColumnFromTerm(comp_condition->lhs);
     right_col = ExtractSingleColumnFromTerm(comp_condition->rhs);
   }

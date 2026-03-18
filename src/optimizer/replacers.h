@@ -7,6 +7,7 @@
 #include <string>
 #include <unordered_set>
 
+#include "canonical_form.h"
 #include "sql_ast/expr_visitor.h"
 #include "sql_ast/sql_ast.h"
 
@@ -342,6 +343,13 @@ class RedundancyReplacer : public ExpressionVisitor {
     // If both sides of the equality are structurally identical terms
     // (e.g., T0.A1 - 1 = T0.A1 - 1), the comparison is redundant.
     if (comp_condition->lhs && comp_condition->rhs && *comp_condition->lhs == *comp_condition->rhs) {
+      return true;
+    }
+
+    // If both sides are algebraically equal and reduce to the same column (e.g., T0.A1 = 2 * T0.A1 / 2),
+    // the comparison is a tautology. This handles conditions introduced when the self-join optimizer
+    // replaces columns.
+    if (IsTautologyByCanonicalForm(comp_condition)) {
       return true;
     }
 

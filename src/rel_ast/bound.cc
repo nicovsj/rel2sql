@@ -19,6 +19,7 @@ bool Bound::HasNonTrivialAffine() const {
 }
 
 Bound Bound::WithRemovedIndices(const std::vector<size_t>& indices) const {
+  if (indices.empty()) return Bound(*this);
   std::unordered_set<size_t> to_remove(indices.begin(), indices.end());
   std::vector<size_t> complement_indices;
   std::vector<std::string> new_variables;

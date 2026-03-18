@@ -39,6 +39,7 @@ from: FROM source (COMMA source)*;
 source:
 	tableName = IDENTIFIER (AS alias = IDENTIFIER)?	# tableSource
 	| LPAREN select RPAREN sourceAlias?	# subquerySource
+	| LPAREN unionClause RPAREN sourceAlias?	# unionSubquerySource
 	| LPAREN values RPAREN sourceAlias?	# valuesSource;
 
 sourceAlias: AS alias = IDENTIFIER (LPAREN columnList RPAREN)?;

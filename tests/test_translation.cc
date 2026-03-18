@@ -39,8 +39,8 @@ class TranslationTest : public ::testing::Test {
     if (!sql) return "";
     auto expr = std::static_pointer_cast<sql::ast::Expression>(sql);
     sql::ast::Optimizer optimizer;
-    optimizer.Visit(*expr);
-    return expr->ToString();
+    expr = optimizer.Optimize(expr);
+    return expr ? expr->ToString() : "";
   }
 
   std::string TranslateFormula(const std::string& input) {
@@ -817,21 +817,21 @@ TEST_F(TranslationTest, DomainToSqlDefinedDomain) {
 TEST_F(TranslationTest, DomainToSqlProjection) {
   auto inner = std::make_unique<DefinedDomain>("B", 2);
   Projection proj({0}, std::move(inner));  // project first column only
-  EXPECT_EQ(DomainToSqlString(proj), "SELECT T0.A1 AS A1 FROM (SELECT T0.A1 AS A1 FROM B AS T0) AS T1");
+  EXPECT_EQ(DomainToSqlString(proj), "SELECT T0.A1 AS A1 FROM B AS T0");
 }
 
 TEST_F(TranslationTest, DomainToSqlDomainUnion) {
   auto lhs = std::make_unique<DefinedDomain>("A", 1);
   auto rhs = std::make_unique<DefinedDomain>("D", 1);
   DomainUnion domain_union(std::move(lhs), std::move(rhs));
-  EXPECT_EQ(DomainToSqlString(domain_union), "SELECT T0.A1 AS A1 FROM A AS T0 UNION SELECT T0.A1 AS A1 FROM D AS T0");
+  EXPECT_EQ(DomainToSqlString(domain_union), "SELECT T0.A1 AS A1 FROM A AS T0 UNION SELECT T1.A1 AS A1 FROM D AS T1");
 }
 
 TEST_F(TranslationTest, DomainToSqlDomainOperation) {
   auto lhs = std::make_unique<ConstantDomain>(10);
   auto rhs = std::make_unique<ConstantDomain>(2);
   DomainOperation domain_op(std::move(lhs), std::move(rhs), RelTermOp::ADD);
-  EXPECT_EQ(DomainToSqlString(domain_op), "SELECT T0.A1 AS A1 FROM (SELECT 10 AS A1) AS T1, (SELECT 2 AS A1) AS T2 WHERE T1.A1 + T2.A1 = T3.A1");
+  EXPECT_EQ(DomainToSqlString(domain_op), "SELECT 12 AS A1");
 }
 
 }  // namespace rel2sql

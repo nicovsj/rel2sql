@@ -48,6 +48,8 @@ class SqlParserVisitor : public sql_parser::SqlParserBaseVisitor {
 
   std::any visitSubquerySource(psr::SubquerySourceContext* ctx) override;
 
+  std::any visitUnionSubquerySource(psr::UnionSubquerySourceContext* ctx) override;
+
   std::any visitValuesSource(psr::ValuesSourceContext* ctx) override;
 
   std::any visitSourceAlias(psr::SourceAliasContext* ctx) override;

@@ -237,6 +237,22 @@ std::any SqlParserVisitor::visitSubquerySource(psr::SubquerySourceContext* ctx) 
   return std::make_shared<sql::ast::Source>(selectable);
 }
 
+std::any SqlParserVisitor::visitUnionSubquerySource(psr::UnionSubquerySourceContext* ctx) {
+  auto union_result = visit(ctx->unionClause());
+  auto union_sourceable = std::any_cast<std::shared_ptr<sql::ast::Sourceable>>(union_result);
+
+  if (ctx->sourceAlias()) {
+    auto alias_result = visit(ctx->sourceAlias());
+    auto alias_info = std::any_cast<std::pair<std::string, std::vector<std::string>>>(alias_result);
+    std::string alias_name = alias_info.first;
+    std::vector<std::string> def_columns = alias_info.second;
+
+    return std::make_shared<sql::ast::Source>(union_sourceable, alias_name, false, def_columns);
+  }
+
+  return std::make_shared<sql::ast::Source>(union_sourceable);
+}
+
 std::any SqlParserVisitor::visitValuesSource(psr::ValuesSourceContext* ctx) {
   auto values_result = visit(ctx->values());
   auto values = std::any_cast<std::shared_ptr<sql::ast::Values>>(values_result);

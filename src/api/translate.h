@@ -48,8 +48,7 @@ inline std::shared_ptr<sql::ast::Expression> GetSQLRel(std::string_view input,
   auto sql = GetSQLFromRelContext(context);
   if (!sql) return nullptr;
   sql::ast::Optimizer optimizer;
-  optimizer.Visit(*sql);
-  return sql;
+  return optimizer.Optimize(sql);
 }
 
 inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQLRel(

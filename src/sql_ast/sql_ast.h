@@ -4,6 +4,7 @@
 #include <antlr4-runtime.h>
 #include <fmt/core.h>
 
+#include <cstddef>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -153,6 +154,9 @@ class Source : public Expression {
   std::vector<std::string> def_columns;
   bool is_subquery;
   bool is_cte;
+  // Optional: set when Source is a CTE created from a Bound. Used for deduplication
+  // at conjunction level. Two CTEs with same bound_hash and def_columns are equivalent.
+  std::optional<std::size_t> bound_hash;
 
   static bool CheckIsSubquery(std::shared_ptr<Sourceable> sourceable) {
     return std::dynamic_pointer_cast<Query>(sourceable) != nullptr;
@@ -203,6 +207,7 @@ class Source : public Expression {
     if (!other_source) return false;
     if (is_subquery != other_source->is_subquery || is_cte != other_source->is_cte) return false;
     if (def_columns != other_source->def_columns) return false;
+    if (bound_hash != other_source->bound_hash) return false;
     if ((alias.has_value() != other_source->alias.has_value())) return false;
     if (alias.has_value() && other_source->alias.has_value()) {
       if (*alias.value() != *other_source->alias.value()) return false;
@@ -465,7 +470,13 @@ class Operation : public Term {
 
   std::string ToString() const override {
     std::stringstream ss;
-    ss << *lhs << " " << op << " " << *rhs;
+    // Add parentheses around lhs when it's a compound expression and op is / or *, to preserve
+    // correct precedence (e.g. (a - 1) / 2 not a - 1 / 2).
+    const bool lhs_needs_parens =
+        (op == "/" || op == "*") && dynamic_cast<const Operation*>(lhs.get()) != nullptr;
+    if (lhs_needs_parens) ss << "(" << *lhs << ")";
+    else ss << *lhs;
+    ss << " " << op << " " << *rhs;
     return ss.str();
   }
 };
@@ -617,6 +628,13 @@ class Values : public Query {
   }
 };
 
+// Canonical form: (constant_part, terms with coefficients). Used to compare expressions
+// algebraically for self-join detection without simplifying the AST.
+struct CanonicalForm {
+  double constant = 0.0;
+  std::vector<std::pair<std::shared_ptr<Term>, double>> terms;  // (subexpr representative, coeff)
+};
+
 class Condition : public Expression {
  public:
   virtual ~Condition() = default;
@@ -631,6 +649,10 @@ class ComparisonCondition : public Condition {
   std::shared_ptr<Term> lhs;
   CompOp op;
   std::shared_ptr<Term> rhs;
+
+  // Analysis cache: canonical forms for equality checks (populated by CanonicalFormVisitor).
+  mutable std::optional<CanonicalForm> lhs_canonical;
+  mutable std::optional<CanonicalForm> rhs_canonical;
 
   ComparisonCondition(std::shared_ptr<Term> lhs, CompOp op, std::shared_ptr<Term> rhs) : lhs(lhs), op(op), rhs(rhs) {}
 
@@ -953,7 +975,7 @@ class Select : public Query {
       }
     }
 
-    if (from.has_value()) {
+    if (from.has_value() && !from.value()->sources.empty()) {
       os << " " << *from.value();
     }
 
