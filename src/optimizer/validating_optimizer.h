@@ -89,6 +89,7 @@ class ValidatingOptimizer : public BaseOptimizer {
 
     expression_simplifier_optimizer_.Visit(expression);
     ValidateAndReport(expression, "expression_simplifier_optimizer");
+
     canonical_form_visitor_.Visit(expression);
     ValidateAndReport(expression, "canonical_form_visitor");
 
@@ -103,6 +104,7 @@ class ValidatingOptimizer : public BaseOptimizer {
 
     expression_simplifier_optimizer_.Visit(expression);
     ValidateAndReport(expression, "expression_simplifier_optimizer (second pass)");
+
     canonical_form_visitor_.Visit(expression);
     ValidateAndReport(expression, "canonical_form_visitor (second pass)");
 

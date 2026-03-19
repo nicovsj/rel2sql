@@ -5,7 +5,6 @@
 
 #include "api/translate.h"
 #include "optimizer/cte_inliner.h"
-#include "optimizer/expression_simplifier_optimizer.h"
 #include "optimizer/self_join_optimizer.h"
 #include "optimizer/validating_optimizer.h"
 #include "parser/sql_parse.h"
@@ -544,7 +543,8 @@ TEST_F(OptimizationTest, RelationalAbstraction4) { EXPECT_EQ(TranslateExpression
 
 TEST_F(OptimizationTest, RelationalAbstraction5) {
   EXPECT_EQ(TranslateExpression("{1;2;3}"),
-            "SELECT CASE WHEN I0.i = 1 THEN 1 WHEN I0.i = 2 THEN 2 WHEN I0.i = 3 THEN 3 END AS A1 FROM (VALUES (1), (2), (3)) AS I0(i)");
+            "SELECT CASE WHEN I0.i = 1 THEN 1 WHEN I0.i = 2 THEN 2 WHEN I0.i = 3 THEN 3 END AS A1 FROM (VALUES (1), "
+            "(2), (3)) AS I0(i)");
 }
 
 TEST_F(OptimizationTest, RelationalAbstraction6) {
@@ -638,7 +638,6 @@ TEST_F(OptimizationTest, ParameterVariableTerms7) {
             "SELECT T1.A1 AS x FROM B AS T0, B AS T1 WHERE T1.A1 = T0.A1 - 1 AND T0.A2 = T1.A2");
 }
 
-
 // Self-join detection via canonical form: T0.A1 = 22*(T2.A1+3)/22 + -3 is algebraically T0.A1 = T2.A1.
 // The self-join optimizer uses canonical form comparison (no expression simplification) to detect this.
 TEST_F(OptimizationTest, SelfJoinCanonicalFormEquality) {
@@ -651,8 +650,8 @@ TEST_F(OptimizationTest, SelfJoinCanonicalFormEquality) {
   auto div = std::make_shared<sql::ast::Operation>(mul, std::make_shared<sql::ast::Constant>(22), "/");
   auto rhs = std::make_shared<sql::ast::Operation>(div, std::make_shared<sql::ast::Constant>(-3), "+");
   auto t0_source = std::make_shared<sql::ast::Source>(t2, "T0");
-  auto cond = std::make_shared<sql::ast::ComparisonCondition>(
-      std::make_shared<sql::ast::Column>("A1", t0_source), sql::ast::CompOp::EQ, rhs);
+  auto cond = std::make_shared<sql::ast::ComparisonCondition>(std::make_shared<sql::ast::Column>("A1", t0_source),
+                                                              sql::ast::CompOp::EQ, rhs);
   EXPECT_TRUE(sql::ast::SelfJoinOptimizer::IsEquivalenceCandidate(cond));
 }
 
@@ -680,9 +679,9 @@ TEST_F(OptimizationTest, ExpressionAsTermRewriterBindingsBody) {
 }
 
 TEST_F(OptimizationTest, Program) {
-  EXPECT_EQ(
-      TranslateDefinition("def R {[x in A]: B[x]}"),
-      "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, A AS T1 WHERE T0.A1 = T1.A1);");
+  EXPECT_EQ(TranslateDefinition("def R {[x in A]: B[x]}"),
+            "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, A AS T1 WHERE T0.A1 = "
+            "T1.A1);");
 }
 
 TEST_F(OptimizationTest, NamedAttributesFormula) {
@@ -715,7 +714,8 @@ TEST_F(OptimizationTest, NamedAttributesPartialApplication) {
 TEST_F(OptimizationTest, NamedAttributesAggregate) {
   default_edb_map["R"] = RelationInfo({"student_id", "grade"});
   EXPECT_EQ(TranslateDefinition("def S {max[R[x]]}"),
-            "CREATE OR REPLACE VIEW S AS (SELECT DISTINCT T0.student_id AS x, MAX(T0.grade) AS A1 FROM R AS T0 GROUP BY T0.student_id);");
+            "CREATE OR REPLACE VIEW S AS (SELECT DISTINCT T0.student_id AS x, MAX(T0.grade) AS A1 FROM R AS T0 GROUP "
+            "BY T0.student_id);");
 }
 
 TEST_F(OptimizationTest, SingleNamedAttribute) {
@@ -750,7 +750,8 @@ TEST_F(OptimizationTest, SelfComposition) {
 
 TEST_F(OptimizationTest, FirstTransitivityComposition) {
   EXPECT_EQ(TranslateExpression("(x, y): B(x, y) or exists((z) | B(x, z) and B(z, y))"),
-            "SELECT T6.x AS A1, T6.y AS A2 FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0 UNION SELECT T1.A1 AS x, T2.A2 AS y FROM B AS T1, B AS T2 WHERE T1.A2 = T2.A1) AS T6");
+            "SELECT T6.x AS A1, T6.y AS A2 FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0 UNION SELECT T1.A1 AS x, "
+            "T2.A2 AS y FROM B AS T1, B AS T2 WHERE T1.A2 = T2.A1) AS T6");
 }
 
 TEST_F(OptimizationTest, SimpleReferenceDefinition) {
@@ -796,9 +797,9 @@ TEST_F(OptimizationTest, WeirdEdgeCase1) {
   EXPECT_EQ(match1.str(), match2.str());
 }
 
-TEST_F(OptimizationTest, BindingEquality) {
-  EXPECT_EQ(TranslateExpression("(x): x = 1"), "SELECT 1 AS A1");
-}
+TEST_F(OptimizationTest, BindingEquality) { EXPECT_EQ(TranslateExpression("(x): x = 1"), "SELECT 1 AS A1"); }
+
+TEST_F(OptimizationTest, EdgeCase1) { EXPECT_EQ(TranslateExpression("(x,y,z): B(x,y+1) and z = x-y"), ""); }
 
 // DomainToSql tests (DomainToSqlConstantDomain, DomainToSqlDefinedDomain, DomainToSqlProjection,
 // DomainToSqlDomainUnion, DomainToSqlDomainOperation) remain in test_translation.cc as they require
@@ -904,6 +905,27 @@ TEST(FlattenerOptimizationTest, NoFlattenWithGroupBy) {
   std::string result = OptimizeSQLWithFlattenerOptimizer(sql);
   // Should not flatten because GROUP BY is present
   EXPECT_TRUE(result.find("GROUP BY") != std::string::npos);
+}
+
+TEST(FlattenerOptimizationTest, TermSubstitutionPreservesPrecedenceInSubtraction) {
+  // E2.A1 - E1.A1 where E1.A1 = T1.A2 - 1 must become T0.A1 - (T1.A2 - 1),
+  // not T0.A1 - T1.A2 - 1 (which would parse as (T0.A1 - T1.A2) - 1).
+  rel2sql::RelationMap edb_map = rel2sql::CreateDefaultEDBMap();
+  std::string sql =
+      "SELECT E2.A1 - E1.A1 AS result\n"
+      "FROM (SELECT T0.A1 AS A1 FROM B AS T0) AS E2,\n"
+      "     (SELECT T1.A2 - 1 AS A1 FROM B AS T1) AS E1";
+  auto expr = rel2sql::ParseSQL(sql, edb_map);
+  ASSERT_NE(expr, nullptr);
+  rel2sql::sql::ast::FlattenerOptimizer flattener_optimizer;
+  flattener_optimizer.Visit(*expr);
+  std::string result = expr->ToString();
+  // Must contain parenthesized form to preserve semantics
+  EXPECT_TRUE(result.find("( T1.A2 - 1 )") != std::string::npos || result.find("(T1.A2 - 1)") != std::string::npos)
+      << "Expected (T1.A2 - 1) in: " << result;
+  // Must NOT have the wrong form: "X - T1.A2 - 1" (missing parens; would parse as (X - T1.A2) - 1)
+  EXPECT_TRUE(result.find(" - T1.A2 - 1") == std::string::npos)
+      << "Incorrect substitution (missing parens) in: " << result;
 }
 
 TEST(FlattenerOptimizationTest, UnionProjectionPushdown) {

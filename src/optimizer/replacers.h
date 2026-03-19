@@ -62,7 +62,10 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
   // Core helper: if a term slot currently holds a Column from the old source and
   // there is an entry in term_map_ for that column name, replace the entire slot
   // with the mapped term (which may be an arbitrary expression).
-  void ReplaceTermSlot(std::shared_ptr<Term>& slot) {
+  // When wrap_compound is true, wraps non-atomic terms in ParenthesisTerm to preserve
+  // operator precedence (e.g. E2.a1 - E1.a1 where E1.a1 = T2.a2 - 1 becomes
+  // T9.a1 - (T2.a2 - 1), not T9.a1 - T2.a2 - 1). Set to false for SELECT list slots.
+  void ReplaceTermSlot(std::shared_ptr<Term>& slot, bool wrap_compound = true) {
     auto column = std::dynamic_pointer_cast<Column>(slot);
     if (!column) return;
     if (!column->source || column->source.value()->Alias() != old_source_name_) return;
@@ -70,8 +73,12 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
     auto it = term_map_.find(column->name);
     if (it == term_map_.end()) return;
 
-    // Replace the whole term (e.g. T1.x -> (T0.A1 - 1)/3)
-    slot = it->second;
+    auto replacement = it->second;
+    if (wrap_compound && !std::dynamic_pointer_cast<Column>(replacement) &&
+        !std::dynamic_pointer_cast<Constant>(replacement)) {
+      replacement = std::make_shared<ParenthesisTerm>(replacement);
+    }
+    slot = replacement;
   }
 
   void Visit(TermSelectable& term_selectable) override {
@@ -92,7 +99,7 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
       if (replace_alias_ && !term_selectable.alias.has_value()) {
         term_selectable.alias = it->first;  // Replace TermSelectable's alias
       }
-      term_selectable.term = it->second;
+      ReplaceTermSlot(term_selectable.term, /*wrap_compound=*/false);
     }
   }
 
