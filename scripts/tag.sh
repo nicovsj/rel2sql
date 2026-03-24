@@ -58,8 +58,9 @@ esac
 # Create the tag on the last commit
 git tag "$NEW_TAG"
 
-# Push tag to GitHub
-echo "Pushing tag $NEW_TAG to GitHub..."
-git push nicovsj-primary "$NEW_TAG"
+# Push tag to GitHub (override with GIT_REMOTE if needed)
+REMOTE="${GIT_REMOTE:-origin}"
+echo "Pushing tag $NEW_TAG to GitHub (remote: $REMOTE)..."
+git push "$REMOTE" "$NEW_TAG"
 
 echo "Successfully created and pushed tag $NEW_TAG"
