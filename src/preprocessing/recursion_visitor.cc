@@ -1,5 +1,7 @@
 #include "preprocessing/recursion_visitor.h"
 
+#include <stack>
+
 namespace rel2sql {
 
 std::shared_ptr<RelProgram> RecursionVisitor::Visit(const std::shared_ptr<RelProgram>& node) {
@@ -34,6 +36,10 @@ std::shared_ptr<RelExpr> RecursionVisitor::Visit(const std::shared_ptr<RelFormul
 
   node->is_recursive = true;
   node->recursive_definition_name = current_q_;
+
+  if (node->formula) {
+    RegisterUnionSafetyDisjunctions(node->formula);
+  }
 
   if (current_q_.empty()) return node;
 
@@ -188,9 +194,14 @@ bool RecursionVisitor::CheckRecursionPattern(const std::shared_ptr<RelFormula>& 
   match.recursive_disjuncts.clear();
   if (!formula) return false;
 
-  auto* disj = dynamic_cast<RelDisjunction*>(formula.get());
+  std::shared_ptr<RelFormula> f = formula;
+  while (auto p = std::dynamic_pointer_cast<RelParen>(f)) {
+    f = p->formula;
+  }
+
+  auto* disj = dynamic_cast<RelDisjunction*>(f.get());
   if (!disj) {
-    auto exists = std::dynamic_pointer_cast<RelExistential>(formula);
+    auto exists = std::dynamic_pointer_cast<RelExistential>(f);
     if (exists) {
       RecursiveBranchMatch branch;
       if (CheckExistsPattern(exists, current_q_, bindings, branch)) {
@@ -202,36 +213,116 @@ bool RecursionVisitor::CheckRecursionPattern(const std::shared_ptr<RelFormula>& 
   }
 
   std::vector<std::shared_ptr<RelFormula>> disjuncts;
-  CollectOrDisjuncts(formula, disjuncts);
-
-  std::vector<std::shared_ptr<RelFormula>> g_parts;
-  std::vector<std::shared_ptr<RelExistential>> exists_parts;
+  CollectOrDisjuncts(f, disjuncts);
 
   for (const auto& d : disjuncts) {
-    auto exists = std::dynamic_pointer_cast<RelExistential>(d);
-    if (exists) {
-      exists_parts.push_back(exists);
+    const int nq = CountCallsToRelation(d, current_q_);
+    if (nq == 0) {
+      if (std::dynamic_pointer_cast<RelExistential>(d)) {
+        return false;
+      }
+      auto g_ids = CollectIDs(d);
+      if (g_ids.count(current_q_)) return false;
+      if (!OnlyEDBsOrNonRecursiveIDBs(g_ids, current_q_)) return false;
+      match.base_disjuncts.push_back(d);
+    } else if (auto exists = std::dynamic_pointer_cast<RelExistential>(d)) {
+      RecursiveBranchMatch branch;
+      if (!CheckExistsPattern(exists, current_q_, bindings, branch)) return false;
+      match.recursive_disjuncts.push_back(branch);
     } else {
-      g_parts.push_back(d);
+      RecursiveBranchMatch branch;
+      if (!CheckFlatRecursiveBranch(d, current_q_, bindings, branch)) return false;
+      match.recursive_disjuncts.push_back(branch);
     }
   }
 
-  if (g_parts.empty() || exists_parts.empty()) return false;
-
-  for (const auto& g : g_parts) {
-    auto g_ids = CollectIDs(g);
-    if (g_ids.count(current_q_)) return false;
-    if (!OnlyEDBsOrNonRecursiveIDBs(g_ids, current_q_)) return false;
-    match.base_disjuncts.push_back(g);
-  }
-
-  for (const auto& exists : exists_parts) {
-    RecursiveBranchMatch branch;
-    if (!CheckExistsPattern(exists, current_q_, bindings, branch)) return false;
-    match.recursive_disjuncts.push_back(branch);
-  }
-
   if (match.base_disjuncts.empty() || match.recursive_disjuncts.empty()) return false;
+  return true;
+}
+
+int RecursionVisitor::CountCallsToRelation(const std::shared_ptr<RelFormula>& formula,
+                                            const std::string& id) const {
+  if (!formula) return 0;
+  int n = 0;
+  if (auto* full = dynamic_cast<RelFullApplication*>(formula.get())) {
+    if (auto* id_base = dynamic_cast<RelIDApplBase*>(full->base.get())) {
+      if (id_base->id == id) n++;
+    }
+  }
+  if (auto* conj = dynamic_cast<RelConjunction*>(formula.get())) {
+    n += CountCallsToRelation(conj->lhs, id);
+    n += CountCallsToRelation(conj->rhs, id);
+  }
+  if (auto* disj = dynamic_cast<RelDisjunction*>(formula.get())) {
+    n += CountCallsToRelation(disj->lhs, id);
+    n += CountCallsToRelation(disj->rhs, id);
+  }
+  if (auto* exists = dynamic_cast<RelExistential*>(formula.get())) {
+    n += CountCallsToRelation(exists->formula, id);
+  }
+  if (auto* univ = dynamic_cast<RelUniversal*>(formula.get())) {
+    n += CountCallsToRelation(univ->formula, id);
+  }
+  if (auto* unop = dynamic_cast<RelNegation*>(formula.get())) {
+    n += CountCallsToRelation(unop->formula, id);
+  }
+  if (auto* paren = dynamic_cast<RelParen*>(formula.get())) {
+    n += CountCallsToRelation(paren->formula, id);
+  }
+  return n;
+}
+
+bool RecursionVisitor::CheckFlatRecursiveBranch(const std::shared_ptr<RelFormula>& branch, const std::string& q,
+                                                const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
+                                                RecursiveBranchMatch& match) {
+  if (CountCallsToRelation(branch, q) != 1) return false;
+
+  std::shared_ptr<RelFullApplication> q_call;
+  std::shared_ptr<RelFormula> f_part;
+  FindAndPatternParts(branch, q, q_call, f_part);
+
+  if (!q_call || !f_part) return false;
+  if (CountCallsToRelation(f_part, q) != 0) return false;
+
+  auto f_ids = CollectIDs(f_part);
+  if (f_ids.count(q)) return false;
+  if (!OnlyEDBsOrNonRecursiveIDBs(f_ids, q)) return false;
+
+  std::set<std::string> outer_names;
+  for (const auto& b : outer_bindings) {
+    if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) {
+      outer_names.insert(vb->id);
+    }
+  }
+
+  std::set<std::string> w_vars;
+  for (const auto& param : q_call->params) {
+    auto expr = param ? param->GetExpr() : nullptr;
+    if (expr) {
+      auto* term = dynamic_cast<RelIDTerm*>(expr.get());
+      if (term) {
+        w_vars.insert(term->id);
+      }
+    }
+  }
+  // Q(...) arguments may use head binders and/or variables bound by the residual F2 in the same branch.
+  for (const auto& w : w_vars) {
+    if (!outer_names.count(w) && !f_part->free_variables.count(w)) {
+      return false;
+    }
+  }
+
+  std::set<std::string> allow_fv = outer_names;
+  allow_fv.insert(w_vars.begin(), w_vars.end());
+  for (const auto& v : f_part->free_variables) {
+    if (!allow_fv.count(v)) {
+      return false;
+    }
+  }
+
+  match.exists_clause = nullptr;
+  match.recursive_call = q_call;
+  match.residual_formula = f_part;
   return true;
 }
 
@@ -283,6 +374,10 @@ bool RecursionVisitor::IsCallToQ(const RelFullApplication& appl, const std::stri
 void RecursionVisitor::CollectOrDisjuncts(const std::shared_ptr<RelFormula>& formula,
                                           std::vector<std::shared_ptr<RelFormula>>& disjuncts) const {
   if (!formula) return;
+  if (auto* paren = dynamic_cast<RelParen*>(formula.get())) {
+    CollectOrDisjuncts(paren->formula, disjuncts);
+    return;
+  }
   auto* disj = dynamic_cast<RelDisjunction*>(formula.get());
   if (disj) {
     CollectOrDisjuncts(disj->lhs, disjuncts);
@@ -292,10 +387,45 @@ void RecursionVisitor::CollectOrDisjuncts(const std::shared_ptr<RelFormula>& for
   disjuncts.push_back(formula);
 }
 
+void RecursionVisitor::RegisterUnionSafetyDisjunctions(const std::shared_ptr<RelFormula>& formula) {
+  if (!formula) return;
+  if (auto d = std::dynamic_pointer_cast<RelDisjunction>(formula)) {
+    d->use_union_branch_safety = true;
+    RegisterUnionSafetyDisjunctions(d->lhs);
+    RegisterUnionSafetyDisjunctions(d->rhs);
+    return;
+  }
+  if (auto c = std::dynamic_pointer_cast<RelConjunction>(formula)) {
+    RegisterUnionSafetyDisjunctions(c->lhs);
+    RegisterUnionSafetyDisjunctions(c->rhs);
+    return;
+  }
+  if (auto n = std::dynamic_pointer_cast<RelNegation>(formula)) {
+    RegisterUnionSafetyDisjunctions(n->formula);
+    return;
+  }
+  if (auto p = std::dynamic_pointer_cast<RelParen>(formula)) {
+    RegisterUnionSafetyDisjunctions(p->formula);
+    return;
+  }
+  if (auto e = std::dynamic_pointer_cast<RelExistential>(formula)) {
+    RegisterUnionSafetyDisjunctions(e->formula);
+    return;
+  }
+  if (auto u = std::dynamic_pointer_cast<RelUniversal>(formula)) {
+    RegisterUnionSafetyDisjunctions(u->formula);
+    return;
+  }
+}
+
 void RecursionVisitor::FindAndPatternParts(const std::shared_ptr<RelFormula>& formula, const std::string& q,
                                            std::shared_ptr<RelFullApplication>& q_call,
                                            std::shared_ptr<RelFormula>& f_part) const {
   if (!formula) return;
+  if (auto* paren = dynamic_cast<RelParen*>(formula.get())) {
+    FindAndPatternParts(paren->formula, q, q_call, f_part);
+    return;
+  }
   auto* conj = dynamic_cast<RelConjunction*>(formula.get());
   if (conj) {
     FindAndPatternParts(conj->lhs, q, q_call, f_part);

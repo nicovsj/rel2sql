@@ -56,6 +56,11 @@ class RecursionVisitor : public BaseRelVisitor {
                           const std::string& q,
                           const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
                           RecursiveBranchMatch& match);
+  bool CheckFlatRecursiveBranch(const std::shared_ptr<RelFormula>& branch,
+                                const std::string& q,
+                                const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
+                                RecursiveBranchMatch& match);
+  int CountCallsToRelation(const std::shared_ptr<RelFormula>& formula, const std::string& id) const;
   bool IsCallToQ(const RelFullApplication& appl, const std::string& q) const;
   void CollectOrDisjuncts(const std::shared_ptr<RelFormula>& formula,
                           std::vector<std::shared_ptr<RelFormula>>& disjuncts) const;
@@ -63,6 +68,7 @@ class RecursionVisitor : public BaseRelVisitor {
                            const std::string& q,
                            std::shared_ptr<RelFullApplication>& q_call,
                            std::shared_ptr<RelFormula>& f_part) const;
+  void RegisterUnionSafetyDisjunctions(const std::shared_ptr<RelFormula>& formula);
 };
 
 }  // namespace rel2sql

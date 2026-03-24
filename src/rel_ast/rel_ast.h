@@ -339,6 +339,10 @@ struct RelConjunction : RelFormula {
 struct RelDisjunction : RelFormula {
   std::shared_ptr<RelFormula> lhs;
   std::shared_ptr<RelFormula> rhs;
+  // Set by RecursionVisitor for recognized recursive IDB bodies so SafetyInferrer uses UnionWith on
+  // this disjunction (post-order visits disjunctions before the parent RelFormulaAbstraction, so a
+  // stack there would not see recursive context).
+  bool use_union_branch_safety = false;
 
   RelDisjunction(std::shared_ptr<RelFormula> lhs, std::shared_ptr<RelFormula> rhs)
       : lhs(std::move(lhs)), rhs(std::move(rhs)) {}

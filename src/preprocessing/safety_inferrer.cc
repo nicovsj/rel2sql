@@ -6,6 +6,7 @@
 #include <limits>
 #include <unordered_map>
 
+#include "rel_ast/bound_set.h"
 #include "rel_ast/domain.h"
 #include "rel_ast/rel_ast.h"
 #include "rel_ast/rel_ast_visitor.h"
@@ -177,7 +178,11 @@ class SafetyComputeVisitor : public BaseRelVisitor {
             "is not supported yet when (a,b) != (1,0).",
             SourceLocation(0, 0));
       }
-      node->safety = node->lhs->safety.MergeWith(node->rhs->safety);
+      if (node->use_union_branch_safety) {
+        node->safety = node->lhs->safety.UnionWith(node->rhs->safety);
+      } else {
+        node->safety = node->lhs->safety.MergeWith(node->rhs->safety);
+      }
     }
     return node;
   }
@@ -396,20 +401,28 @@ SafetyInferrer::SafetyInferrer(RelContextBuilder* container) : container_(contai
 
 void SafetyInferrer::Run(std::shared_ptr<RelNode> root) {
   std::vector<std::shared_ptr<RelNode>> nodes = CollectNodesPostOrder(root);
-  const size_t n = nodes.size();
+  RunSafetyFixpoint(nodes);
+  ApplyRecursiveCallSafetyInheritance(root);
+  for (const auto& node : nodes) {
+    ComputeSafetyFromChildren(node);
+  }
+  for (size_t i = nodes.size(); i-- > 0;) {
+    InheritSafetyToChildren(nodes[i].get());
+  }
+}
 
+void SafetyInferrer::RunSafetyFixpoint(const std::vector<std::shared_ptr<RelNode>>& nodes) {
+  const size_t n = nodes.size();
   while (true) {
     std::unordered_map<RelNode*, std::set<std::string>> old_bound_vars;
     for (const auto& node : nodes) {
       old_bound_vars[node.get()] = node->safety.bound_variables;
     }
 
-    // Bottom-up: compute safety from children
     for (const auto& node : nodes) {
       ComputeSafetyFromChildren(node);
     }
 
-    // Top-down: inherit bounds from parent to children
     for (size_t i = n; i-- > 0;) {
       InheritSafetyToChildren(nodes[i].get());
     }
@@ -422,6 +435,67 @@ void SafetyInferrer::Run(std::shared_ptr<RelNode> root) {
       }
     }
     if (!changed) break;
+  }
+}
+
+void SafetyInferrer::ApplyRecursiveCallSafetyInheritance(std::shared_ptr<RelNode> root) {
+  auto prog = std::dynamic_pointer_cast<RelProgram>(root);
+  if (!prog) return;
+
+  for (const auto& def : prog->defs) {
+    if (!def || !def->body || def->body->exprs.empty()) continue;
+    auto bf = std::dynamic_pointer_cast<RelFormulaAbstraction>(def->body->exprs[0]);
+    if (!bf || !bf->is_recursive || bf->recursive_definition_name != def->name) continue;
+
+    auto meta = container_->GetRecursionMetadata(def->name);
+    if (!meta) continue;
+
+    BoundSet base_safety;
+    bool have_base = false;
+    for (const auto& nu : meta->non_recursive_disjuncts) {
+      if (!nu || nu->exprs.empty()) continue;
+      auto gf = std::dynamic_pointer_cast<RelFormula>(nu->exprs[0]);
+      if (!gf) continue;
+      if (!have_base) {
+        base_safety = gf->safety;
+        have_base = true;
+      } else {
+        base_safety = base_safety.MergeWith(gf->safety);
+      }
+    }
+
+    std::vector<std::string> head_vars;
+    for (const auto& b : bf->bindings) {
+      if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) {
+        head_vars.push_back(vb->id);
+      }
+    }
+    const int arity = static_cast<int>(head_vars.size());
+
+    for (const auto& br : meta->recursive_disjuncts) {
+      if (!have_base) break;
+      auto call = std::dynamic_pointer_cast<RelFullApplication>(br.recursive_call);
+      if (!call) continue;
+      auto* idb = dynamic_cast<RelIDApplBase*>(call->base.get());
+      if (!idb || idb->id != def->name) continue;
+      if (arity <= 0 || static_cast<int>(call->params.size()) != arity) continue;
+
+      std::unordered_map<std::string, std::string> rename;
+      bool ok = true;
+      for (int i = 0; i < arity; ++i) {
+        auto expr = call->params[static_cast<size_t>(i)] ? call->params[static_cast<size_t>(i)]->GetExpr()
+                                                           : nullptr;
+        auto* term = dynamic_cast<RelIDTerm*>(expr.get());
+        if (!term || !container_->IsVar(term->id)) {
+          ok = false;
+          break;
+        }
+        rename[head_vars[static_cast<size_t>(i)]] = term->id;
+      }
+      if (!ok) continue;
+
+      call->safety = call->safety.UnionWith(base_safety.Renamed(rename));
+    }
   }
 }
 

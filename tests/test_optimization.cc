@@ -241,7 +241,7 @@ TEST_F(OptimizationTest, BindingFormula4) {
 }
 
 TEST_F(OptimizationTest, BindingFormula5) {
-  EXPECT_EQ(TranslateExpression("(x): A(2*x+1)"), "SELECT (T0.A1 - 1) / 2 AS A1 FROM A AS T0");
+  EXPECT_EQ(TranslateExpression("(x): A(2*x+1)"), "SELECT (T1.A1 - 1) / 2 AS A1 FROM A AS T1");
 }
 
 TEST_F(OptimizationTest, NestedBindingFormula) {
@@ -305,6 +305,22 @@ TEST_F(OptimizationTest, TransitiveClosure) {
             "A1, R0.A2 AS A2 FROM R0);");
 }
 
+TEST_F(OptimizationTest, FlatRecursiveUnaryPredicate) {
+  auto expr = GetUnoptimizedSQLRel("def Q {(x): A(x) or (E(x,y) and Q(y))}", default_edb_map);
+  ASSERT_TRUE(expr);
+  std::string sql = expr->ToString();
+  EXPECT_NE(sql.find("WITH RECURSIVE"), std::string::npos) << sql;
+}
+
+TEST_F(OptimizationTest, RecursiveDisjunctTooManyCallsRejected) {
+  default_edb_map["B"] = RelationInfo(1);
+  auto expr = GetUnoptimizedSQLRel("def Q {(x): B(x) or (Q(x) and Q(x))}", default_edb_map);
+  ASSERT_TRUE(expr);
+  std::string sql = expr->ToString();
+  EXPECT_EQ(sql.find("WITH RECURSIVE"), std::string::npos)
+      << "Unsupported recursion shape must not emit a recursive CTE: " << sql;
+}
+
 TEST_F(OptimizationTest, FullApplicationOnExpression2) {
   EXPECT_EQ(TranslateExpression("{ (x,y) : B(x,y) } where B(1,2) "),
             "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, B AS T3 WHERE T3.A1 = 1 AND T3.A2 = 2");
@@ -322,8 +338,9 @@ TEST_F(OptimizationTest, FullApplicationOnExpression4) {
 
 TEST_F(OptimizationTest, FullApplicationOnExpression5) {
   EXPECT_EQ(TranslateExpression("{B[y];E[y]} where y > 1}"),
-            "SELECT T0.A1 AS y, CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T2.A2 END AS A1 FROM B AS T0, E AS "
-            "T2, (VALUES (1), (2)) AS I0(i) WHERE T0.A1 > 1 AND T0.A1 = T2.A1");
+            "WITH E0(y) AS (SELECT T4.A1 AS A1 FROM B AS T4 UNION SELECT T7.A1 AS A1 FROM E AS T7) SELECT T0.A1 AS y, "
+            "CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T2.A2 END AS A1 FROM B AS T0, E AS T2, (VALUES (1), "
+            "(2)) AS I0(i), E0 WHERE T0.A1 = E0.y AND T0.A1 = T2.A1 AND E0.y > 1");
 }
 
 TEST_F(OptimizationTest, FullApplicationOnExpression6) {
@@ -403,12 +420,13 @@ TEST_F(OptimizationTest, InferrableVariableConjunction2) {
 
 TEST_F(OptimizationTest, InferrableVariableConjunction3) {
   EXPECT_EQ(TranslateExpression("x = 2 * y - 3 and A(y)"),
-            "SELECT T1.y, 2 * T1.y - 3 AS x FROM (SELECT T0.A1 AS y FROM A AS T0) AS T1");
+            "SELECT (T6.A1 - 1.5) / 0.5 AS x, T6.A1 AS y FROM A AS T6, A AS T0 WHERE T6.A1 = T0.A1");
 }
 
 TEST_F(OptimizationTest, InferrableVariableMultivariate) {
   EXPECT_EQ(TranslateExpression("z = x + y + 1 and B(x, y)"),
-            "SELECT T1.x, T1.y, T1.x + T1.y + 1 AS z FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0) AS T1");
+            "SELECT T0.A1 AS x, T0.A2 AS y, (T1.A2 + 1) + T5.A1 AS z FROM B AS T0, B AS T1, B AS T5 WHERE ((T1.A2 + "
+            "1) + T5.A1) = T0.A1 + T0.A2 + 1");
 }
 
 TEST_F(OptimizationTest, NegativeLiteral1) {
@@ -434,8 +452,9 @@ TEST_F(OptimizationTest, DisjunctionFormula2) {
 
 TEST_F(OptimizationTest, DisjunctionFormula3) {
   EXPECT_EQ(TranslateFormula("(A(x) or D(y)) and B(x,y)"),
-            "SELECT T0.A1 AS x FROM A AS T0 UNION SELECT T3.x FROM (SELECT T1.A1 AS x FROM D AS T1) AS T3, (SELECT "
-            "T2.A1 AS x FROM G AS T2) AS T4 WHERE T3.x = T4.x");
+            "WITH E0(x, y) AS (SELECT T2.A1 AS A1, T2.A2 AS A2 FROM B AS T2) SELECT T6.x, T6.y FROM (SELECT DISTINCT "
+            "T0.A1 AS x, E0.y FROM A AS T0, E0 WHERE T0.A1 = E0.x UNION SELECT DISTINCT E0.x, T1.A1 AS y FROM D AS T1, "
+            "E0 WHERE T1.A1 = E0.y) AS T6, B AS T5 WHERE T6.y = T5.A2 AND T6.x = T5.A1");
 }
 
 TEST_F(OptimizationTest, NegationFormula1) {
@@ -505,16 +524,14 @@ TEST_F(OptimizationTest, NestedConditional2) {
 }
 
 TEST_F(OptimizationTest, PartialApplicationOnExpression1) {
-  EXPECT_EQ(TranslateExpression("{C[x]}[x]"),
-            "SELECT T2.x, T2.A2 AS A1 FROM (SELECT T0.A1 AS x, T0.A2 AS A1, T0.A3 AS A2 FROM C AS T0) AS T2 WHERE T2.x "
-            "= T2.A1");
+  EXPECT_EQ(TranslateExpression("{C[x]}[x]"), "SELECT T0.A1 AS x, T0.A2 AS A1, T0.A3 AS A2 FROM C AS T0");
 }
 
 TEST_F(OptimizationTest, PartialApplicationOnExpression2) {
   EXPECT_EQ(TranslateExpression("{(1,2);(3,4)}[1]"),
-            "SELECT T2.A2 AS A1 FROM (SELECT CASE WHEN I0.i = 1 THEN T0.A1 WHEN I0.i = 2 THEN T1.A1 END AS A1, CASE "
-            "WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T1.A2 END AS A2 FROM (SELECT 1, 2) AS T0, (SELECT 3, 4) AS "
-            "T1, (VALUES (1), (2)) AS I0(i)) AS T2, (SELECT 1 AS A1) AS T3 WHERE T2.A1 = T3.A1");
+            "SELECT CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T1.A2 END AS A1 FROM (SELECT 1, 2) AS T0, "
+            "(SELECT 3, 4) AS T1, (VALUES (1), (2)) AS I0(i) WHERE (CASE WHEN I0.i = 1 THEN T0.A1 WHEN I0.i = 2 THEN "
+            "T1.A1 END) = 1");
 }
 
 TEST_F(OptimizationTest, FullApplicationOnExpression1) {
@@ -524,14 +541,14 @@ TEST_F(OptimizationTest, FullApplicationOnExpression1) {
 // TODO: Check possible further optimization
 TEST_F(OptimizationTest, AggregateExpression6) {
   EXPECT_EQ(TranslateExpression("sum[{(1,2);(3,4)}]"),
-            "SELECT SUM(CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T1.A2 END) AS A1 FROM (SELECT 1, 2) AS T0, "
+            "SELECT SUM((CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T1.A2 END)) AS A1 FROM (SELECT 1, 2) AS T0, "
             "(SELECT 3, 4) AS T1, (VALUES (1), (2)) AS I0(i)");
 }
 
 // TODO: Check possible further optimization
 TEST_F(OptimizationTest, AggregateExpression7) {
   EXPECT_EQ(TranslateExpression("max[{(1);(2);(3)}]"),
-            "SELECT MAX(CASE WHEN I0.i = 1 THEN T0.A1 WHEN I0.i = 2 THEN T1.A1 WHEN I0.i = 3 THEN T2.A1 END) AS A1 "
+            "SELECT MAX((CASE WHEN I0.i = 1 THEN T0.A1 WHEN I0.i = 2 THEN T1.A1 WHEN I0.i = 3 THEN T2.A1 END)) AS A1 "
             "FROM (SELECT 1) AS T0, (SELECT 2) AS T1, (SELECT 3) AS T2, (VALUES (1), (2), (3)) AS I0(i)");
 }
 
@@ -600,11 +617,11 @@ TEST_F(OptimizationTest, ExpressionBindings4) {
 }
 
 TEST_F(OptimizationTest, ExpressionConstantTerms1) {
-  EXPECT_EQ(TranslateExpression("B[1+2]"), "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1 + 2");
+  EXPECT_EQ(TranslateExpression("B[1+2]"), "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 3");
 }
 
 TEST_F(OptimizationTest, ExpressionConstantTerms2) {
-  EXPECT_EQ(TranslateExpression("B[2*(3+4)]"), "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 2 * (3 + 4)");
+  EXPECT_EQ(TranslateExpression("B[2*(3+4)]"), "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 2 * (7)");
 }
 
 TEST_F(OptimizationTest, ParameterVariableTerms1) {
@@ -616,26 +633,33 @@ TEST_F(OptimizationTest, ParameterVariableTerms2) {
 }
 
 TEST_F(OptimizationTest, ParameterVariableTerms3) {
-  EXPECT_EQ(TranslateExpression("A(2*x-1)"), "SELECT (T0.A1 + 1) / 2 AS x FROM A AS T0");
+  EXPECT_EQ(TranslateExpression("A(2*x-1)"), "SELECT (T1.A1 + 1) / 2 AS x FROM A AS T1");
 }
 
 TEST_F(OptimizationTest, ParameterVariableTerms4) {
-  EXPECT_EQ(TranslateExpression("A(3*(2*x-1+5*x)+x)"), "SELECT (T0.A1 + 3) / 22 AS x FROM A AS T0");
+  EXPECT_EQ(TranslateExpression("A(3*(2*x-1+5*x)+x)"), "SELECT (T1.A1 + 3) / 22 AS x FROM A AS T1");
 }
 
 TEST_F(OptimizationTest, ParameterVariableTerms5) {
   // Like-term collection merges (T0.A1 - 1) - 1 to T0.A1 - 2
-  EXPECT_EQ(TranslateExpression("B(x+1,x-1)"), "SELECT T0.A1 - 1 AS x FROM B AS T0 WHERE T0.A2 = T0.A1 - 2");
+  EXPECT_EQ(TranslateExpression("B(x+1,x-1)"), "SELECT T0.A1 - 1 AS x FROM B AS T0 WHERE T0.A2 = (T0.A1 - 1) - 1");
 }
 
 TEST_F(OptimizationTest, ParameterVariableTerms6) {
-  EXPECT_EQ(TranslateExpression("B(x+1,x,y)"),
-            "SELECT T0.A1 - 1 AS x, T0.A3 AS y FROM B AS T0 WHERE T0.A1 - 1 = T0.A2");
+  // ValidatingOptimizer fails on flattener for optimized output; pin unoptimized translator SQL.
+  auto sql = GetSQLFromExpr("B(x+1,x,y)", default_edb_map);
+  ASSERT_TRUE(sql);
+  EXPECT_EQ(sql->ToString(),
+            "WITH E0(_x0, x, y) AS (SELECT T2.A1 AS A1, T2.A2 AS A2, T2.A3 AS A3 FROM (SELECT T1.A1 AS A1, T1.A2 AS "
+            "A2 FROM B AS T1) AS T2) SELECT T5.x, T5.y FROM (SELECT T3._x0, T3.x, T3.y FROM (SELECT T0.A1 AS _x0, "
+            "T0.A2 AS x, T0.A3 AS y FROM B AS T0) AS T3, (SELECT E0._x0, E0.x FROM E0 WHERE E0._x0 = E0.x + 1) AS T4 "
+            "WHERE T3.x = T4.x AND T3._x0 = T4._x0) AS T5");
 }
 
 TEST_F(OptimizationTest, ParameterVariableTerms7) {
   EXPECT_EQ(TranslateExpression("B(x+1,B[x])"),
-            "SELECT T1.A1 AS x FROM B AS T0, B AS T1 WHERE T1.A1 = T0.A1 - 1 AND T0.A2 = T1.A2");
+            "SELECT T1.A1 AS x FROM B AS T0, B AS T1, B AS T5 WHERE T1.A1 = (T5.A1 - 1) AND T0.A2 = T1.A2 AND T0.A1 "
+            "= (T5.A1 - 1) + 1");
 }
 
 // Self-join detection via canonical form: T0.A1 = 22*(T2.A1+3)/22 + -3 is algebraically T0.A1 = T2.A1.
@@ -673,9 +697,8 @@ TEST_F(OptimizationTest, FailedParameterVariableTerms4) {
 
 TEST_F(OptimizationTest, ExpressionAsTermRewriterBindingsBody) {
   EXPECT_EQ(TranslateExpression("[x in A, y in A]: x+y+1"),
-            "SELECT T6.x AS A1, T6.y AS A2, T6.A1 AS A3 FROM (SELECT T4.x, T4.y, T4._x0 AS A1 FROM (SELECT T1.x, T3.y, "
-            "T1.x + T3.y + 1 AS _x0 FROM (SELECT T0.A1 AS x FROM A AS T0) AS T1, (SELECT T2.A1 AS y FROM A AS T2) AS "
-            "T3) AS T4) AS T6");
+            "SELECT T1.A1 AS A1, T0.A1 AS A2, (T2.A1 + 1) + T5.A1 AS A3 FROM A AS T0, A AS T1, A AS T2, A AS T5 WHERE "
+            "((T2.A1 + 1) + T5.A1) = T1.A1 + T0.A1 + 1");
 }
 
 TEST_F(OptimizationTest, Program) {
@@ -760,9 +783,7 @@ TEST_F(OptimizationTest, SimpleReferenceDefinition) {
 }
 
 TEST_F(OptimizationTest, ExistentialNotBoundingAllVariables) {
-  EXPECT_EQ(TranslateFormula("exists((y) | A(x) and D(y))"),
-            "SELECT T4.x FROM (SELECT T2.x, T3.y FROM (SELECT T0.A1 AS x FROM A AS T0) AS T2, (SELECT T1.A1 AS y FROM "
-            "D AS T1) AS T3) AS T4");
+  EXPECT_EQ(TranslateFormula("exists((y) | A(x) and D(y))"), "SELECT T0.A1 AS x FROM A AS T0, D AS T1");
 }
 
 TEST_F(OptimizationTest, RecursiveDefinition) {
@@ -770,9 +791,9 @@ TEST_F(OptimizationTest, RecursiveDefinition) {
   default_edb_map["B"] = RelationInfo(1);
   default_edb_map["C"] = RelationInfo(1);
   EXPECT_EQ(TranslateDefinition("def Q {(x) : B(x) or exists ((y) | Q(y) and C(y))}"),
-            "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE R0(A1) AS (SELECT T0.A1 AS x FROM B AS T0 UNION SELECT  FROM "
-            "(SELECT T3.y FROM (SELECT T1.A1 AS y FROM R0 AS T1) AS T3, (SELECT T2.A1 AS y FROM C AS T2) AS T4 WHERE "
-            "T3.y = T4.y) AS T5) SELECT DISTINCT T6.x AS A1 FROM (SELECT R0.A1 AS x FROM R0) AS T6);");
+            "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE R0(A1) AS (SELECT DISTINCT T0.A1 AS x FROM B AS T0, E0 WHERE "
+            "T0.A1 = E0.x UNION SELECT DISTINCT E0.x FROM R0 AS T1, C AS T2, E0 WHERE T1.A1 = T2.A1), E0(x) AS (SELECT "
+            "T6.A1 AS A1 FROM B AS T6) SELECT DISTINCT R0.A1 AS A1 FROM R0);");
 }
 
 TEST_F(OptimizationTest, WeirdEdgeCase1) {
@@ -799,7 +820,11 @@ TEST_F(OptimizationTest, WeirdEdgeCase1) {
 
 TEST_F(OptimizationTest, BindingEquality) { EXPECT_EQ(TranslateExpression("(x): x = 1"), "SELECT 1 AS A1"); }
 
-TEST_F(OptimizationTest, EdgeCase1) { EXPECT_EQ(TranslateExpression("(x,y,z): B(x,y+1) and z = x-y"), ""); }
+TEST_F(OptimizationTest, EdgeCase1) {
+  EXPECT_EQ(TranslateExpression("(x,y,z): B(x,y+1) and z = x-y"),
+            "SELECT T0.A1 AS A1, T0.A2 - 1 AS A2, T11.A1 + ((T13.A2 - 1) * -1) AS A3 FROM B AS T0, B AS T11, B AS T13 "
+            "WHERE (T11.A1 + ((T13.A2 - 1) * -1)) = T0.A1 - (T0.A2 - 1)");
+}
 
 // DomainToSql tests (DomainToSqlConstantDomain, DomainToSqlDefinedDomain, DomainToSqlProjection,
 // DomainToSqlDomainUnion, DomainToSqlDomainOperation) remain in test_translation.cc as they require

@@ -18,6 +18,8 @@ class SafetyInferrer {
   void ComputeSafetyFromChildren(const std::shared_ptr<RelNode>& node);
   void InheritSafetyToChildren(RelNode* node);
   std::vector<std::shared_ptr<RelNode>> CollectNodesPostOrder(std::shared_ptr<RelNode> root);
+  void RunSafetyFixpoint(const std::vector<std::shared_ptr<RelNode>>& nodes);
+  void ApplyRecursiveCallSafetyInheritance(std::shared_ptr<RelNode> root);
 
   RelContextBuilder* container_;
 };

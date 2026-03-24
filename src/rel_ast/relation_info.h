@@ -12,6 +12,7 @@ namespace rel2sql {
 struct RelUnion;
 class RelNode;
 
+// exists_clause is null for flat recursive branches (no enclosing exists).
 struct RecursiveBranchInfoTyped {
   std::shared_ptr<RelNode> exists_clause;
   std::shared_ptr<RelNode> recursive_call;
