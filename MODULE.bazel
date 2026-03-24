@@ -24,11 +24,27 @@ git_override(
 )
 
 http_jar = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_jar")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 http_jar(
     name = "antlr4_jar",
     urls = ["https://www.antlr.org/download/antlr-" + ANTLR4_VERSION + "-complete.jar"],
     sha256 = "bc13a9c57a8dd7d5196888211e5ede657cb64a3ce968608697e4f668251a8487",
+)
+
+# DuckDB C++ library (test-only); platform archives from official releases.
+http_archive(
+    name = "duckdb_lib_linux_amd64",
+    build_file = "//third_party/duckdb:BUILD.linux.bazel",
+    sha256 = "91b06f8d4bca471bab4f46c676ae2a58c9ca18987d0ec3d25fd95aabaf9eef3e",
+    urls = ["https://github.com/duckdb/duckdb/releases/download/v1.2.2/libduckdb-linux-amd64.zip"],
+)
+
+http_archive(
+    name = "duckdb_lib_osx_universal",
+    build_file = "//third_party/duckdb:BUILD.macos.bazel",
+    sha256 = "150588828afd4e84cc7b13f69ba62247147a20c814a8b9a21efa55531d2fd3c9",
+    urls = ["https://github.com/duckdb/duckdb/releases/download/v1.2.2/libduckdb-osx-universal.zip"],
 )
 
 # Utility dependencies
@@ -40,6 +56,9 @@ bazel_dep(name = "googletest", version = "1.17.0")
 
 # C++ rules
 bazel_dep(name = "rules_cc", version = "0.1.1")
+
+# Constraint values for select() (e.g. @platforms//os:linux)
+bazel_dep(name = "platforms", version = "0.0.11")
 
 # Java rules
 bazel_dep(name = "rules_java", version = "8.14.0")

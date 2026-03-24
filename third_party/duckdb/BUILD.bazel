@@ -1,0 +1,10 @@
+package(default_visibility = ["//visibility:public"])
+
+alias(
+    name = "duckdb",
+    actual = select({
+        "@platforms//os:linux": "@duckdb_lib_linux_amd64//:duckdb",
+        "@platforms//os:macos": "@duckdb_lib_osx_universal//:duckdb",
+        "//conditions:default": "@duckdb_lib_linux_amd64//:duckdb",
+    }),
+)

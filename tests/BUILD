@@ -13,6 +13,19 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "duckdb_exec",
+    testonly = True,
+    srcs = ["duckdb_exec.cc"],
+    hdrs = ["duckdb_exec.h"],
+    includes = ["."],
+    deps = [
+        "//:rel2sql",
+        "//third_party/duckdb:duckdb",
+        "@googletest//:gtest",
+    ],
+)
+
 cc_test(
     name = "test_translation",
     srcs = [
@@ -43,6 +56,7 @@ cc_test(
         "test_optimization.cc",
     ],
     deps = [
+        ":duckdb_exec",
         ":test_common",
         "//:rel2sql",
         "@googletest//:gtest_main",
