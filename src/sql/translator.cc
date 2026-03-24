@@ -211,13 +211,17 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelLiteral>& no
 std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelProduct>& node) {
   if (node->has_only_literal_values) {
     std::vector<std::shared_ptr<sql::ast::Selectable>> selects;
-    for (auto& expr : node->exprs) {
+    for (size_t i = 0; i < node->exprs.size(); ++i) {
+      auto& expr = node->exprs[i];
       Visit(expr);
       if (!expr->constant.has_value()) {
         throw std::runtime_error("Special product expression with non-constant member");
       }
       auto constant = std::make_shared<sql::ast::Constant>(expr->constant.value());
-      selects.push_back(std::make_shared<sql::ast::TermSelectable>(constant));
+      // Explicit A1, A2, ... so wrapped subqueries (e.g. in disjunctive abstractions) are valid in DuckDB
+      // and other engines that do not synthesize PostgreSQL-style column names for SELECT literals.
+      selects.push_back(
+          std::make_shared<sql::ast::TermSelectable>(constant, fmt::format("A{}", i + 1)));
     }
     node->sql_expression = std::make_shared<sql::ast::Select>(selects);
     return node;

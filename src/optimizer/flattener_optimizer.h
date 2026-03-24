@@ -25,7 +25,7 @@ class FlattenerOptimizer : public BaseOptimizer {
   // Check if a source can be flattened into a subquery.
   static bool CanFlattenSubquery(const std::shared_ptr<Source>& source);
 
-  // Check if a source is a constant-only subquery (SELECT const AS col with no FROM).
+  // Check if a source is a constant-only subquery (SELECT const AS col [, ...] with no FROM).
   static bool CanFlattenConstantSubquery(const std::shared_ptr<Source>& source);
 
   // Build a map of term names to terms in the subquery.

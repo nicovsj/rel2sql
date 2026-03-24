@@ -127,10 +127,13 @@ bool FlattenerOptimizer::CanFlattenSubquery(const std::shared_ptr<Source>& sourc
 bool FlattenerOptimizer::CanFlattenConstantSubquery(const std::shared_ptr<Source>& source) {
   auto select_subquery = std::dynamic_pointer_cast<Select>(source->sourceable);
   if (!select_subquery || select_subquery->from.has_value()) return false;
-  if (select_subquery->columns.size() != 1) return false;
-  auto term_selectable = std::dynamic_pointer_cast<TermSelectable>(select_subquery->columns[0]);
-  if (!term_selectable || !term_selectable->HasAlias()) return false;
-  return std::dynamic_pointer_cast<Constant>(term_selectable->term) != nullptr;
+  if (select_subquery->columns.empty()) return false;
+  for (const auto& col : select_subquery->columns) {
+    auto term_selectable = std::dynamic_pointer_cast<TermSelectable>(col);
+    if (!term_selectable || !term_selectable->HasAlias()) return false;
+    if (!std::dynamic_pointer_cast<Constant>(term_selectable->term)) return false;
+  }
+  return true;
 }
 
 std::unordered_map<std::string, std::shared_ptr<Term>> FlattenerOptimizer::BuildTermMap(
