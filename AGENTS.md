@@ -48,7 +48,7 @@ bazel test --config=default //tests:test_translation
 bazel test --config=default //tests:test_safety
 ```
 
-**Available test targets:** `test_translation`, `test_sql_ast`, `test_optimization`, `test_safety`, `test_exceptions`, `test_sql_parser`, `test_rel_ast`, `test_sql_parser_roundtrip`, `test_rewriter`
+**Available test targets:** `test_translation`, `test_sql_ast`, `test_safety`, `test_exceptions`, `test_sql_parser`, `test_rel_ast`, `test_sql_parser_roundtrip`, `test_rewriter`
 
 **Run the CLI:**
 

@@ -32,6 +32,7 @@ cc_test(
         "test_translation.cc",
     ],
     deps = [
+        ":duckdb_exec",
         ":test_common",
         "//:rel2sql",
         "@googletest//:gtest_main",
@@ -44,19 +45,6 @@ cc_test(
         "test_sql_ast.cc",
     ],
     deps = [
-        ":test_common",
-        "//:rel2sql",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "test_optimization",
-    srcs = [
-        "test_optimization.cc",
-    ],
-    deps = [
-        ":duckdb_exec",
         ":test_common",
         "//:rel2sql",
         "@googletest//:gtest_main",
