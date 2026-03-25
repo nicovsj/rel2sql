@@ -1,7 +1,7 @@
 # cspell:disable
 
 # BUILD
-load("//:antlr.bzl", "antlr_cc_library")
+load("//build_defs:antlr.bzl", "antlr_cc_library")
 load("@rules_java//java:java_binary.bzl", "java_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
@@ -17,16 +17,16 @@ java_binary(
 
 antlr_cc_library(
     name = "rel_parser",
-    lexer_src = "grammar/RelLexer.g4",
+    lexer_src = "src/grammar/RelLexer.g4",
     package = "rel_parser",
-    parser_src = "grammar/RelParser.g4",
+    parser_src = "src/grammar/RelParser.g4",
 )
 
 antlr_cc_library(
     name = "sql_parser",
-    lexer_src = "grammar/SqlLexer.g4",
+    lexer_src = "src/grammar/SqlLexer.g4",
     package = "sql_parser",
-    parser_src = "grammar/SqlParser.g4",
+    parser_src = "src/grammar/SqlParser.g4",
 )
 
 cc_library(

@@ -1,0 +1,138 @@
+// BASIC TESTING SUITE FOR REL2SQL
+
+// We assume the following:
+// arity(A) = arity(D) = arity(G) = 1
+// arity(B) = arity(E) = arity(H) = 2
+// arity(C) = arity(F) = arity(I) = 3
+
+// These are mainly taken from the translation tests of rel2sql.
+// They are not wrapped around definitions, as they are parsed directly
+// as a formula or expression.
+
+// --- FORMULAS ---
+
+// Full application
+A(x)
+B(x,y)
+C(x,y,z)
+B(x,x)
+C(x,x,x)
+C(x,y,x)
+
+
+// Conjunction
+A(x) and D(x)
+A(x) and B(x,y)
+
+// Disjunction
+A(x) or D(x)
+A(x) or B(x,y)
+
+// Conjunction and Disjunction
+A(x) or (D(x) and G(x))
+(D(x) and G(x)) or A(x)
+A(x) and (D(x) or G(x))
+(D(x) or G(x)) and A(x)
+
+// Negation
+A(x) and not D(x)
+not A(x) and D(x)
+A(x) and not (D(x) or G(x))
+A(x) and B(x,y) and not D(x) and not G(x,y)
+
+// Existential
+exists((y) | B(x,y))
+exists((y,z) | C(x,y,z))
+exists((y in A) | B(x,y))
+exists((y in A, z in D) | C(x,y,z))
+exists((y in A, z) | C(x,y,z))
+
+// Universal
+forall((y in A) | B(x, y))
+forall((y in A, z in D) | C(x, y, z))
+forall((y) | B(x,y))
+forall((y,z) | C(x,y,z))
+
+// Nested quantifiers
+exists((y) | exists((z) | C(x,y,z)))
+exists((y in A) | forall((z in D) | C(x,y,z)))
+forall((y in A) | exists((z) | B(y,z)))
+exists((y) | exists((z) | exists((w) | I(x,y,z) and I(y,z,w))))
+
+// Literals
+A(x) and x < 5
+A(x) and x <= 5
+A(x) and x >= 5
+A(x) and x = 5
+A(x) and x != 5
+A(x) and x*x = 25
+A(x) and x+y > 10
+
+A(x) and x + y > 5
+A(x) and x - y < 0
+A(x) and x * y = 10
+A(x) and x / y > 2
+A(x) and (x + y) * z > 100
+A(x) and x + y + z = 15
+
+A(x) and x > -5
+A(x) and x < 3.14
+A(x) and x >= -10.5
+A(x) and x = -1
+
+// --- EXPRESSIONS ---
+
+// Partial application
+B[x]
+B[1]
+B[E[x]]
+B[E[B[x]]]
+C[B[x],y]
+C[x,1]
+C[B[x],E[y]]
+C[B[x],E[x]]
+I[C[x,y],F[y,z]]
+C[B[x],x]
+C[B[x],x,y]
+
+// Relational Abstraction
+{1}
+{(1)}
+{(1,2)}
+{1;2}
+{(1);(2)}
+{(1,2);(3,4)}
+
+// Partial Application with Relational Abstraction as base
+
+{A(x)}[x]
+{(1,2);(3,4)}[1]
+
+
+// Conditional
+B[x] where A(x)
+(B[x] where A(x)) where D(x)
+B[x] where (A(x) and D(x))
+
+// Bindings
+(x): A(x)
+(x,x): A(x)
+[x in T,y in R]: F[x,y]
+[x in A,y]: C[x,y] where D(y)
+[x in A,y in D]: B(x,y)
+
+// Aggregates
+sum[A]
+average[A]
+min[A]
+max[A]
+max[B[x]]
+
+// Aggregates on relational abstractions
+sum[{(1,2);(3,4)}]
+max[{(1);(2);(3)}]
+
+// --- MIXING ----
+(x,y): exists((z) | B(x,z) and E(z,y))
+(x,y): exists((z) | B(x,z) and B(z,y))
+(x,y): B(x,y) or exists((z) | B(x,z) and B(z,y))

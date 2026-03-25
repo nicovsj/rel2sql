@@ -11,6 +11,10 @@
     },
     "files.exclude": {
         "**/external": true,
+        "bazel-bin": true,
+        "bazel-out": true,
+        "bazel-testlogs": true,
+        "bazel-rel2sql": true
     },
     "search.exclude": {
         "**/bazel-*": true,

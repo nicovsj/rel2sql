@@ -1,9 +1,4 @@
 {
-  "version": "0.2",
-  "language": "en",
-  "files": [
-    "**/*.{js,jsx,ts,tsx,md,mdx,c,cpp,h,hpp,py,rs}"
-  ],
   "exclude": [
     "**/.git/**",
     "**/node_modules/**",
@@ -16,6 +11,9 @@
     "**/build.log",
     "**/bazel-*"
   ],
+  "files": [
+    "**/*.{js,jsx,ts,tsx,md,mdx,c,cpp,h,hpp,py,rs}"
+  ],
   "ignorePaths": [
     ".git",
     "node_modules",
@@ -27,6 +25,8 @@
     "compile_commands.json",
     "build.log"
   ],
+  "language": "en",
+  "version": "0.2",
   "words": [
     "bazel",
     "bzlmod",
