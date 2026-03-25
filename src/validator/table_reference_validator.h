@@ -1,8 +1,8 @@
 #ifndef TABLE_REFERENCE_VALIDATOR_H
 #define TABLE_REFERENCE_VALIDATOR_H
 
-#include <unordered_set>
 #include <string>
+#include <unordered_set>
 
 #include "base_validator.h"
 
@@ -42,9 +42,7 @@ class TableReferenceValidator : public BaseValidator {
   }
 
   // Returns the set of table aliases that were referenced but don't exist
-  const std::unordered_set<std::string>& GetMissingTableAliases() const {
-    return missing_table_aliases_;
-  }
+  const std::unordered_set<std::string>& GetMissingTableAliases() const { return missing_table_aliases_; }
 
   void Visit(Select& select) override;
   void Visit(From& from) override;

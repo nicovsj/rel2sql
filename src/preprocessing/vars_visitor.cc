@@ -1,4 +1,5 @@
 #include "preprocessing/vars_visitor.h"
+
 #include "support/exceptions.h"
 
 namespace rel2sql {
@@ -39,7 +40,6 @@ std::shared_ptr<RelTerm> VariablesVisitor::Visit(const std::shared_ptr<RelIDTerm
   }
   return node;
 }
-
 
 std::shared_ptr<RelTerm> VariablesVisitor::Visit(const std::shared_ptr<RelOpTerm>& node) {
   if (node->lhs) Visit(node->lhs);
@@ -201,7 +201,6 @@ std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelExi
   for (const auto& var : bindings_free) node->free_variables.erase(var);
   return node;
 }
-
 
 std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelUniversal>& node) {
   if (node->formula) Visit(node->formula);

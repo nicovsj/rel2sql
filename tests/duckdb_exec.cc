@@ -1,4 +1,4 @@
-#include "duckdb.h"
+#include "duckdb_exec.h"
 
 #include <algorithm>
 #include <cctype>
@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "duckdb_exec.h"
+#include "duckdb.h"
 #include "gtest/gtest.h"
 #include "rel_ast/relation_info.h"
 

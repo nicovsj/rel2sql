@@ -232,7 +232,7 @@ SelfJoinOptimizer::EquivalenceClassesMap SelfJoinOptimizer::ComputeColumnEquival
 }
 
 std::unordered_set<std::string> SelfJoinOptimizer::CollectReferencedColumns(const Select& select,
-                                                                             const std::string& source_alias) {
+                                                                            const std::string& source_alias) {
   std::unordered_set<std::string> referenced;
 
   // Collect from SELECT clause
@@ -262,7 +262,7 @@ std::unordered_set<std::string> SelfJoinOptimizer::CollectReferencedColumns(cons
 }
 
 void SelfJoinOptimizer::CollectColumnsFromTerm(const std::shared_ptr<Term>& term, const std::string& source_alias,
-                                                std::unordered_set<std::string>& referenced) {
+                                               std::unordered_set<std::string>& referenced) {
   if (!term) return;
 
   // Check if it's a Column
@@ -299,8 +299,8 @@ void SelfJoinOptimizer::CollectColumnsFromTerm(const std::shared_ptr<Term>& term
 }
 
 void SelfJoinOptimizer::CollectColumnsFromConditionRecursive(const std::shared_ptr<Condition>& condition,
-                                                              const std::string& source_alias,
-                                                              std::unordered_set<std::string>& referenced) {
+                                                             const std::string& source_alias,
+                                                             std::unordered_set<std::string>& referenced) {
   if (!condition) return;
 
   // Check if it's a ComparisonCondition
@@ -338,7 +338,7 @@ void SelfJoinOptimizer::CollectColumnsFromConditionRecursive(const std::shared_p
 }
 
 bool SelfJoinOptimizer::IsSelfJoin(const SourcePair& source_pair, const EquivalenceClassesMap& eq_class_map,
-                                    const Select& select) {
+                                   const Select& select) {
   // Check if both sources are tables
   auto table1 = std::dynamic_pointer_cast<Table>(source_pair.first->sourceable);
   auto table2 = std::dynamic_pointer_cast<Table>(source_pair.second->sourceable);
@@ -412,8 +412,7 @@ bool SelfJoinOptimizer::IsSelfJoin(const SourcePair& source_pair, const Equivale
     auto source1_eq = eq_class_map.column_to_class.find(source1_id);
 
     // If either column is not found in any equivalence class, or they're not in the same class
-    if (source2_eq == eq_class_map.column_to_class.end() ||
-        source1_eq == eq_class_map.column_to_class.end() ||
+    if (source2_eq == eq_class_map.column_to_class.end() || source1_eq == eq_class_map.column_to_class.end() ||
         source2_eq->second != source1_eq->second) {
       return false;
     }

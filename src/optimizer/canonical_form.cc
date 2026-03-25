@@ -10,16 +10,14 @@ namespace sql::ast {
 namespace {
 
 std::optional<double> ConstantToDouble(const Constant& c) {
-  return std::visit(
-      utl::overloaded{[](int i) -> std::optional<double> { return static_cast<double>(i); },
-                      [](double d) -> std::optional<double> { return d; },
-                      [](const auto&) -> std::optional<double> { return std::nullopt; }},
-      c.value);
+  return std::visit(utl::overloaded{[](int i) -> std::optional<double> { return static_cast<double>(i); },
+                                    [](double d) -> std::optional<double> { return d; },
+                                    [](const auto&) -> std::optional<double> { return std::nullopt; }},
+                    c.value);
 }
 
 // Returns (coefficient, subexpr) when term = coeff * subexpr. subexpr is nullptr for constants.
-std::optional<std::pair<double, std::shared_ptr<Term>>> ExtractCoeffAndSubexpr(
-    const std::shared_ptr<Term>& term) {
+std::optional<std::pair<double, std::shared_ptr<Term>>> ExtractCoeffAndSubexpr(const std::shared_ptr<Term>& term) {
   if (!term) return std::nullopt;
 
   if (auto c = std::dynamic_pointer_cast<Constant>(term)) {
@@ -185,8 +183,7 @@ std::optional<CanonicalForm> ComputeCanonicalForm(const std::shared_ptr<Term>& t
   }
 
   form.terms.erase(
-      std::remove_if(form.terms.begin(), form.terms.end(),
-                     [](const auto& p) { return std::abs(p.second) < 1e-10; }),
+      std::remove_if(form.terms.begin(), form.terms.end(), [](const auto& p) { return std::abs(p.second) < 1e-10; }),
       form.terms.end());
 
   return form;
@@ -247,8 +244,7 @@ bool IsTautologyByCanonicalForm(const std::shared_ptr<ComparisonCondition>& comp
   auto right_col = ExtractSingleColumnFromTerm(comp->rhs);
   if (!left_col || !right_col) return false;
   if (!left_col->source.has_value() || !right_col->source.has_value()) return false;
-  return left_col->source.value()->Alias() == right_col->source.value()->Alias() &&
-         left_col->name == right_col->name;
+  return left_col->source.value()->Alias() == right_col->source.value()->Alias() && left_col->name == right_col->name;
 }
 
 }  // namespace sql::ast

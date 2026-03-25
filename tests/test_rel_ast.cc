@@ -5,8 +5,8 @@
 #include "preprocessing/ids_visitor.h"
 #include "preprocessing/vars_visitor.h"
 #include "rel_ast/rel_ast_builder.h"
-#include "rel_ast/rel_context_builder.h"
 #include "rel_ast/rel_ast_visitor.h"
+#include "rel_ast/rel_context_builder.h"
 #include "rel_ast/relation_info.h"
 
 namespace rel2sql {

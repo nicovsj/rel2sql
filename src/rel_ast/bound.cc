@@ -33,8 +33,7 @@ Bound Bound::WithRemovedIndices(const std::vector<size_t>& indices) const {
       }
     }
   }
-  auto new_source =
-      std::make_unique<Projection>(complement_indices, domain->Clone());
+  auto new_source = std::make_unique<Projection>(complement_indices, domain->Clone());
   Bound result(std::move(new_variables), std::move(new_source));
   result.coeffs = std::move(new_coeffs);
   return result;

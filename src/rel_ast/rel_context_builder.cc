@@ -48,8 +48,7 @@ void RelContextBuilder::AddIDB(const std::string& id, int arity) {
   auto it = relation_info_.find(id);
   if (it != relation_info_.end()) {
     it->second.arity = arity;
-    if (it->second.attribute_names.empty() ||
-        it->second.attribute_names.size() != static_cast<size_t>(arity)) {
+    if (it->second.attribute_names.empty() || it->second.attribute_names.size() != static_cast<size_t>(arity)) {
       it->second.attribute_names.clear();
       it->second.attribute_names.reserve(arity);
       for (int i = 0; i < arity; ++i) {
@@ -69,8 +68,7 @@ void RelContextBuilder::AddEDB(const std::string& edb, int arity) {
   relation_info_.emplace(edb, RelationInfoTyped(arity));
 }
 
-void RelContextBuilder::AddEDB(const std::string& edb,
-                                const std::vector<std::string>& attribute_names) {
+void RelContextBuilder::AddEDB(const std::string& edb, const std::vector<std::string>& attribute_names) {
   if (idb_.count(edb)) throw std::runtime_error("EDB " + edb + " already in the set of IDBs");
   if (vars_.count(edb)) throw std::runtime_error("EDB " + edb + " already in the set of variables");
   ids_.insert(edb);
@@ -88,13 +86,11 @@ void RelContextBuilder::AddDependency(const std::string& id, const std::string& 
   relation_info_[id].AddDependency(dep);
 }
 
-void RelContextBuilder::RegisterRecursiveBaseDisjunct(const std::string& id,
-                                                       std::shared_ptr<RelUnion> node) {
+void RelContextBuilder::RegisterRecursiveBaseDisjunct(const std::string& id, std::shared_ptr<RelUnion> node) {
   relation_info_[id].AddNonRecursiveDisjunct(std::move(node));
 }
 
-void RelContextBuilder::RegisterRecursiveBranch(const std::string& id,
-                                                 const RecursiveBranchInfoTyped& info) {
+void RelContextBuilder::RegisterRecursiveBranch(const std::string& id, const RecursiveBranchInfoTyped& info) {
   relation_info_[id].AddRecursiveDisjunct(info);
 }
 
@@ -105,9 +101,7 @@ void RelContextBuilder::RemoveVarsFromDependencyGraph() {
       continue;
     }
     auto& deps = relation_info_[id].dependencies;
-    deps.erase(std::remove_if(deps.begin(), deps.end(), [this](const std::string& dep) {
-                 return IsVar(dep);
-               }),
+    deps.erase(std::remove_if(deps.begin(), deps.end(), [this](const std::string& dep) { return IsVar(dep); }),
                deps.end());
   }
 }
@@ -156,8 +150,7 @@ std::optional<RelationInfoTyped> RelContextBuilder::GetRelationInfo(const std::s
   return std::nullopt;
 }
 
-std::optional<RecursionInfoTyped> RelContextBuilder::GetRecursionMetadata(
-    const std::string& id) const {
+std::optional<RecursionInfoTyped> RelContextBuilder::GetRecursionMetadata(const std::string& id) const {
   auto rel_info = GetRelationInfo(id);
   if (!rel_info || rel_info->recursion_metadata.empty()) return std::nullopt;
   return rel_info->recursion_metadata;
@@ -167,9 +160,7 @@ bool RelContextBuilder::IsIDB(const std::string& id) const { return idb_.count(i
 
 bool RelContextBuilder::IsEDB(const std::string& id) const { return edb_.count(id) != 0; }
 
-bool RelContextBuilder::IsRelation(const std::string& id) const {
-  return IsIDB(id) || IsEDB(id);
-}
+bool RelContextBuilder::IsRelation(const std::string& id) const { return IsIDB(id) || IsEDB(id); }
 
 bool RelContextBuilder::IsVar(const std::string& var) const { return vars_.count(var) != 0; }
 
@@ -223,12 +214,8 @@ std::shared_ptr<RelNode> RelContextBuilder::RunPipeline(std::shared_ptr<RelNode>
   return root;
 }
 
-RelContext RelContextBuilder::Build() {
-  return RelContext(std::move(*this));
-}
+RelContext RelContextBuilder::Build() { return RelContext(std::move(*this)); }
 
-RelContext RelContextBuilder::Snapshot() const {
-  return RelContext(*this);
-}
+RelContext RelContextBuilder::Snapshot() const { return RelContext(*this); }
 
 }  // namespace rel2sql

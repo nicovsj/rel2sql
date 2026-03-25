@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-#include "support/exceptions.h"
 #include "rel2sql/rel2sql.h"
+#include "support/exceptions.h"
 
 namespace rel2sql {
 

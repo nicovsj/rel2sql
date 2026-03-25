@@ -106,9 +106,7 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
   // For generic Term references (e.g. in operations, parentheses, functions...),
   // dispatch to the concrete node type via Accept. Column occurrences are then
   // handled in the specific overrides below.
-  void Visit(Term& term) override {
-    term.Accept(*this);
-  }
+  void Visit(Term& term) override { term.Accept(*this); }
 
   void Visit(Operation& operation) override {
     // First recurse into children so nested expressions are rewritten.

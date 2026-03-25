@@ -240,8 +240,7 @@ bool RecursionVisitor::CheckRecursionPattern(const std::shared_ptr<RelFormula>& 
   return true;
 }
 
-int RecursionVisitor::CountCallsToRelation(const std::shared_ptr<RelFormula>& formula,
-                                            const std::string& id) const {
+int RecursionVisitor::CountCallsToRelation(const std::shared_ptr<RelFormula>& formula, const std::string& id) const {
   if (!formula) return 0;
   int n = 0;
   if (auto* full = dynamic_cast<RelFullApplication*>(formula.get())) {

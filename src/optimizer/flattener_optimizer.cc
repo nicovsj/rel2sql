@@ -30,8 +30,7 @@ void FlattenerOptimizer::Visit(Select& select) {
   TryFlattenSubquery(select);
 }
 
-std::shared_ptr<Expression> FlattenerOptimizer::TryFlattenUnionSubquery(
-    const std::shared_ptr<Select>& select) {
+std::shared_ptr<Expression> FlattenerOptimizer::TryFlattenUnionSubquery(const std::shared_ptr<Select>& select) {
   if (!select || !select->from.has_value() || select->group_by.has_value()) return nullptr;
 
   auto& from = *select->from.value();
@@ -114,6 +113,7 @@ std::shared_ptr<Expression> FlattenerOptimizer::TryFlattenUnionSubquery(
 
 bool FlattenerOptimizer::CanFlattenSubquery(const std::shared_ptr<Source>& source) {
   if (source->is_cte) return false;
+  if (source->inhibit_subquery_flatten) return false;
   auto select_subquery = std::dynamic_pointer_cast<Select>(source->sourceable);
   if (!select_subquery) return false;
   if (select_subquery->ctes_are_recursive) return false;

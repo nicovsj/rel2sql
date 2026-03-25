@@ -14,8 +14,7 @@ class FlattenerOptimizer : public BaseOptimizer {
 
   // If the Select wraps a Union/UnionAll with a simple projection, returns the
   // flattened Union (projection pushed into members). Otherwise returns nullptr.
-  static std::shared_ptr<Expression> TryFlattenUnionSubquery(
-      const std::shared_ptr<Select>& select);
+  static std::shared_ptr<Expression> TryFlattenUnionSubquery(const std::shared_ptr<Select>& select);
 
  private:
   bool TryFlattenSubquery(Select& select);

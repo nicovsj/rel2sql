@@ -43,31 +43,23 @@ class RecursionVisitor : public BaseRelVisitor {
 
   bool IsRecursiveID(const std::string& id) const;
   std::unordered_set<std::string> CollectIDs(const std::shared_ptr<RelFormula>& formula) const;
-  bool OnlyEDBsOrNonRecursiveIDBs(const std::unordered_set<std::string>& ids,
-                                  const std::string& current_q) const;
-  bool VariablesFromBindingOrQuantification(
-      const std::set<std::string>& vars,
-      const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
-      const std::vector<std::shared_ptr<RelBinding>>& quant_bindings) const;
+  bool OnlyEDBsOrNonRecursiveIDBs(const std::unordered_set<std::string>& ids, const std::string& current_q) const;
+  bool VariablesFromBindingOrQuantification(const std::set<std::string>& vars,
+                                            const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
+                                            const std::vector<std::shared_ptr<RelBinding>>& quant_bindings) const;
   bool CheckRecursionPattern(const std::shared_ptr<RelFormula>& formula,
-                             const std::vector<std::shared_ptr<RelBinding>>& bindings,
-                             RecursionPatternMatch& match);
-  bool CheckExistsPattern(const std::shared_ptr<RelExistential>& exists,
-                          const std::string& q,
-                          const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
-                          RecursiveBranchMatch& match);
-  bool CheckFlatRecursiveBranch(const std::shared_ptr<RelFormula>& branch,
-                                const std::string& q,
+                             const std::vector<std::shared_ptr<RelBinding>>& bindings, RecursionPatternMatch& match);
+  bool CheckExistsPattern(const std::shared_ptr<RelExistential>& exists, const std::string& q,
+                          const std::vector<std::shared_ptr<RelBinding>>& outer_bindings, RecursiveBranchMatch& match);
+  bool CheckFlatRecursiveBranch(const std::shared_ptr<RelFormula>& branch, const std::string& q,
                                 const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
                                 RecursiveBranchMatch& match);
   int CountCallsToRelation(const std::shared_ptr<RelFormula>& formula, const std::string& id) const;
   bool IsCallToQ(const RelFullApplication& appl, const std::string& q) const;
   void CollectOrDisjuncts(const std::shared_ptr<RelFormula>& formula,
                           std::vector<std::shared_ptr<RelFormula>>& disjuncts) const;
-  void FindAndPatternParts(const std::shared_ptr<RelFormula>& formula,
-                           const std::string& q,
-                           std::shared_ptr<RelFullApplication>& q_call,
-                           std::shared_ptr<RelFormula>& f_part) const;
+  void FindAndPatternParts(const std::shared_ptr<RelFormula>& formula, const std::string& q,
+                           std::shared_ptr<RelFullApplication>& q_call, std::shared_ptr<RelFormula>& f_part) const;
   void RegisterUnionSafetyDisjunctions(const std::shared_ptr<RelFormula>& formula);
 };
 

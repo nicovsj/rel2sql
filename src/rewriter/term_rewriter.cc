@@ -161,16 +161,14 @@ std::shared_ptr<RelFormula> TermRewriter::Visit(const std::shared_ptr<RelFullApp
   std::vector<std::shared_ptr<RelApplParam>> new_params;
   int ev_idx = 0;
   for (size_t i = 0; i < result->params.size(); i++) {
-    if (ev_idx < static_cast<int>(expr_positions.size()) &&
-        static_cast<int>(i) == expr_positions[ev_idx]) {
+    if (ev_idx < static_cast<int>(expr_positions.size()) && static_cast<int>(i) == expr_positions[ev_idx]) {
       new_params.push_back(MakeVarParam(fresh_vars[ev_idx++]));
     } else {
       new_params.push_back(result->params[i]);
     }
   }
 
-  std::shared_ptr<RelFormula> formula =
-      std::make_shared<RelFullApplication>(result->base, std::move(new_params));
+  std::shared_ptr<RelFormula> formula = std::make_shared<RelFullApplication>(result->base, std::move(new_params));
   for (size_t i = 0; i < fresh_vars.size(); i++) {
     auto lhs = std::make_shared<RelIDTerm>(fresh_vars[i]);
     auto eq = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, expr_terms[i]);
@@ -232,8 +230,7 @@ std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelPartialApp
   auto full_appl = std::make_shared<RelFullApplication>(result->base, std::move(full_params));
   auto lhs = std::make_shared<RelIDTerm>(z);
   auto eq = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, std::move(expr_term));
-  auto exists_formula =
-      std::make_shared<RelConjunction>(std::move(full_appl), std::move(eq));
+  auto exists_formula = std::make_shared<RelConjunction>(std::move(full_appl), std::move(eq));
   std::vector<std::shared_ptr<RelBinding>> exist_bindings;
   exist_bindings.push_back(std::make_shared<RelVarBinding>(z, std::nullopt));
   auto exists = std::make_shared<RelExistential>(std::move(exist_bindings), std::move(exists_formula));

@@ -1,6 +1,5 @@
 #include "expression_simplifier_optimizer.h"
 
-#include <cmath>
 #include <optional>
 #include <vector>
 
@@ -60,14 +59,6 @@ std::shared_ptr<Constant> NegateConstant(const Constant& c) {
                       [](double d) -> std::shared_ptr<Constant> { return std::make_shared<Constant>(-d); },
                       [](const auto&) -> std::shared_ptr<Constant> { return nullptr; }},
       c.value);
-}
-
-bool ConstantsEqual(const Constant& a, const Constant& b) {
-  return std::visit(
-      utl::overloaded{[](int ai, int bi) { return ai == bi; }, [](double ad, double bd) { return ad == bd; },
-                      [](const std::string& as, const std::string& bs) { return as == bs; },
-                      [](bool ab, bool bb) { return ab == bb; }, [](const auto&, const auto&) { return false; }},
-      a.value, b.value);
 }
 
 // Returns true if both sides are constants and the comparison is always true.

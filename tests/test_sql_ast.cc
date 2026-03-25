@@ -412,8 +412,7 @@ TEST(SQLPrintingTest, CTEs) {
 
   auto ss1 = std::make_shared<Select>(std::vector<std::shared_ptr<Selectable>>{a1}, f1);
 
-  auto cte =
-      std::make_shared<Source>(ss1, std::make_shared<Alias>("S1", std::vector<std::string>{"A1"}), true);
+  auto cte = std::make_shared<Source>(ss1, std::make_shared<Alias>("S1", std::vector<std::string>{"A1"}), true);
 
   auto c4 = std::make_shared<Column>("A1", cte);
 
@@ -433,7 +432,7 @@ TEST(SQLPrintingTest, CTEs) {
   auto f2 = std::make_shared<From>(std::vector<std::shared_ptr<Source>>{t2, cte}, lc1);
 
   auto ss2 = std::make_shared<Select>(std::vector<std::shared_ptr<Selectable>>{a2, a3}, f2,
-                                               std::vector<std::shared_ptr<Source>>{cte});
+                                      std::vector<std::shared_ptr<Source>>{cte});
 
   std::ostringstream os;
 

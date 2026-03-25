@@ -289,16 +289,14 @@ class SafetyComputeVisitor : public BaseRelVisitor {
         double scale = -coeff / coeff_xj;
         if (scale == 0.0) continue;
         std::unique_ptr<Domain> term_v =
-            (scale == 1.0) ? std::move(*D_v)
-                           : std::make_unique<DomainOperation>(
-                                 std::move(*D_v),
-                                 std::make_unique<ConstantDomain>(DoubleToConstant(scale)),
-                                 RelTermOp::MUL);
+            (scale == 1.0)
+                ? std::move(*D_v)
+                : std::make_unique<DomainOperation>(
+                      std::move(*D_v), std::make_unique<ConstantDomain>(DoubleToConstant(scale)), RelTermOp::MUL);
         if (!result) {
           result = std::move(term_v);
         } else {
-          result = std::make_unique<DomainOperation>(std::move(result), std::move(term_v),
-                                                     RelTermOp::ADD);
+          result = std::make_unique<DomainOperation>(std::move(result), std::move(term_v), RelTermOp::ADD);
         }
       }
     }
@@ -483,8 +481,7 @@ void SafetyInferrer::ApplyRecursiveCallSafetyInheritance(std::shared_ptr<RelNode
       std::unordered_map<std::string, std::string> rename;
       bool ok = true;
       for (int i = 0; i < arity; ++i) {
-        auto expr = call->params[static_cast<size_t>(i)] ? call->params[static_cast<size_t>(i)]->GetExpr()
-                                                           : nullptr;
+        auto expr = call->params[static_cast<size_t>(i)] ? call->params[static_cast<size_t>(i)]->GetExpr() : nullptr;
         auto* term = dynamic_cast<RelIDTerm*>(expr.get());
         if (!term || !container_->IsVar(term->id)) {
           ok = false;

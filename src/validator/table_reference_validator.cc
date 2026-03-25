@@ -152,9 +152,7 @@ void TableReferenceValidator::CollectAliasFromSource(const Source& source) {
   }
 }
 
-void TableReferenceValidator::RecordMissingAlias(const std::string& alias) {
-  missing_table_aliases_.insert(alias);
-}
+void TableReferenceValidator::RecordMissingAlias(const std::string& alias) { missing_table_aliases_.insert(alias); }
 
 }  // namespace sql::ast
 }  // namespace rel2sql

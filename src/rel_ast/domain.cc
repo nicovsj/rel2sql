@@ -1,10 +1,10 @@
 #include "rel_ast/domain.h"
-#include "rel_ast/rel_ast.h"
 
 #include <algorithm>
 #include <functional>
 #include <sstream>
 
+#include "rel_ast/rel_ast.h"
 #include "support/utils.h"
 
 namespace rel2sql {
@@ -60,9 +60,7 @@ bool IntensionalDomain::operator==(const Domain& other) const {
   return node == other_intensional->node;
 }
 
-std::unique_ptr<Domain> IntensionalDomain::Clone() const {
-  return std::make_unique<IntensionalDomain>(node);
-}
+std::unique_ptr<Domain> IntensionalDomain::Clone() const { return std::make_unique<IntensionalDomain>(node); }
 
 // TableSource methods
 bool DefinedDomain::operator==(const Domain& other) const {
@@ -83,29 +81,17 @@ bool Projection::operator==(const Projection& other) const {
   return projected_indices == other.projected_indices && *domain == *other.domain;
 }
 
-std::size_t ConstantDomain::Hash() const {
-  return std::hash<sql::ast::constant_t>()(value);
-}
+std::size_t ConstantDomain::Hash() const { return std::hash<sql::ast::constant_t>()(value); }
 
-std::string ConstantDomain::ToString() const {
-  return ConstantToString(value);
-}
+std::string ConstantDomain::ToString() const { return ConstantToString(value); }
 
-std::size_t DefinedDomain::Hash() const {
-  return std::hash<std::string>()(table_name);
-}
+std::size_t DefinedDomain::Hash() const { return std::hash<std::string>()(table_name); }
 
-std::string DefinedDomain::ToString() const {
-  return table_name;
-}
+std::string DefinedDomain::ToString() const { return table_name; }
 
-std::size_t IntensionalDomain::Hash() const {
-  return std::hash<decltype(node)>()(node);
-}
+std::size_t IntensionalDomain::Hash() const { return std::hash<decltype(node)>()(node); }
 
-std::string IntensionalDomain::ToString() const {
-  return node ? node->ToString() : "?";
-}
+std::string IntensionalDomain::ToString() const { return node ? node->ToString() : "?"; }
 
 bool DomainUnion::operator==(const Domain& other) const {
   auto other_union = dynamic_cast<const DomainUnion*>(&other);
@@ -138,8 +124,7 @@ std::size_t DomainOperation::Hash() const {
 
 std::string DomainOperation::ToString() const {
   std::ostringstream oss;
-  oss << "(" << lhs->ToString() << " " << DomainOperationOpToString(op) << " " << rhs->ToString()
-      << ")";
+  oss << "(" << lhs->ToString() << " " << DomainOperationOpToString(op) << " " << rhs->ToString() << ")";
   return oss.str();
 }
 

@@ -8,7 +8,6 @@ namespace rel2sql {
 
 namespace sql::ast {
 
-
 struct ConstantSourceData {
   std::string source_alias;
   std::string term_alias;
@@ -80,8 +79,6 @@ void ConstantOptimizer::Visit(From& from) {
     Visit(*source);
   }
 }
-
-
 
 }  // namespace sql::ast
 }  // namespace rel2sql

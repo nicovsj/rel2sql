@@ -2,6 +2,7 @@
 #define EXTENDED_NODE_EXCEPTIONS_H
 
 #include <antlr4-runtime.h>
+
 #include <stdexcept>
 #include <string>
 
@@ -22,7 +23,7 @@ class ExtendedNodeDifferenceException : public std::runtime_error {
 
  private:
   static std::string BuildMessage(antlr4::ParserRuleContext* ctx, const std::string& field_name,
-                                   const std::string& details) {
+                                  const std::string& details) {
     std::string msg = "ExtendedNode difference found";
     if (ctx) {
       msg += " at context: " + ctx->getText();

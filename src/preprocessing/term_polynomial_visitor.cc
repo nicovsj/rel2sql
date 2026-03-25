@@ -26,9 +26,7 @@ void SetLinear(RelTerm* node, LinearTermCoeffs coeffs) {
   node->term_linear_invalid = false;
 }
 
-void SetLinearConstant(RelTerm* node, double b) {
-  SetLinear(node, LinearTermCoeffs{{}, b});
-}
+void SetLinearConstant(RelTerm* node, double b) { SetLinear(node, LinearTermCoeffs{{}, b}); }
 
 void SetLinearSingleVar(RelTerm* node, const std::string& var, double a, double b) {
   LinearTermCoeffs c;
@@ -37,9 +35,7 @@ void SetLinearSingleVar(RelTerm* node, const std::string& var, double a, double 
   SetLinear(node, std::move(c));
 }
 
-bool HasValidLinear(RelTerm* node) {
-  return !node->term_linear_invalid && node->term_linear_coeffs.has_value();
-}
+bool HasValidLinear(RelTerm* node) { return !node->term_linear_invalid && node->term_linear_coeffs.has_value(); }
 
 LinearTermCoeffs Add(const LinearTermCoeffs& lhs, const LinearTermCoeffs& rhs) {
   LinearTermCoeffs result;

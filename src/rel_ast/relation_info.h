@@ -23,9 +23,7 @@ struct RecursionInfoTyped {
   std::vector<std::shared_ptr<RelUnion>> non_recursive_disjuncts;
   std::vector<RecursiveBranchInfoTyped> recursive_disjuncts;
 
-  bool empty() const {
-    return non_recursive_disjuncts.empty() && recursive_disjuncts.empty();
-  }
+  bool empty() const { return non_recursive_disjuncts.empty() && recursive_disjuncts.empty(); }
 };
 
 struct RelationInfo {

@@ -94,18 +94,18 @@ task parse-antlr -- test.rl
 
 ## Pre-commit
 
-Git hooks are defined in `.pre-commit-config.yaml` via [pre-commit-hooks](https://github.com/pre-commit/pre-commit-hooks) and [pocc/pre-commit-hooks](https://github.com/pocc/pre-commit-hooks) (`clang-format`, `clang-tidy`). Those tools must be on your **`PATH`** (e.g. Homebrew LLVM is keg-only until you `export PATH="$(brew --prefix llvm)/bin:$PATH"`).
+Git hooks are defined in `.pre-commit-config.yaml` via [pre-commit-hooks](https://github.com/pre-commit/pre-commit-hooks) and [pocc/pre-commit-hooks](https://github.com/pocc/pre-commit-hooks) (`clang-format` only). `clang-format` must be on your **`PATH`** (e.g. Homebrew LLVM is keg-only until you `export PATH="$(brew --prefix llvm)/bin:$PATH"`).
 
-The repo does **not** pin a LLVM patch version in pre-commit (avoiding mismatches between Homebrew, Xcode/Cursor, and Linux CI). If you need identical formatter output everywhere, align LLVM installs and optionally add `args: [--version=X.Y.Z]` back for both hooks.
+The repo does **not** pin a LLVM patch version in pre-commit (avoiding mismatches between Homebrew, Xcode/Cursor, and Linux CI). If you need identical formatter output everywhere, align LLVM installs and optionally add `args: [--version=X.Y.Z]` back for the hook.
 
-**Cursor / GUI commits:** The integrated terminal loads [`.vscode/settings.json`](.vscode/settings.json) `terminal.integrated.env.*` so `clang-tidy` is found when `brew install llvm` is used. Commits triggered from the **Source Control UI** inherit the app environment (not the terminal profile): if hooks report `clang-tidy` missing, open Cursor from a shell where `PATH` includes LLVM (`cursor .`) or set the same `PATH` in your login environment.
+**Cursor / GUI commits:** The integrated terminal loads [`.vscode/settings.json`](.vscode/settings.json) `terminal.integrated.env.*` so LLVM tools are found when `brew install llvm` is used. Commits triggered from the **Source Control UI** inherit the app environment (not the terminal profile): if hooks report `clang-format` missing, open Cursor from a shell where `PATH` includes LLVM (`cursor .`) or set the same `PATH` in your login environment.
 
 ```sh
 pip install pre-commit   # or uv tool install pre-commit
 pre-commit install
 ```
 
-`clang-tidy` is most accurate when `compile_commands.json` exists at the repo root (`task generate-compile-commands`). Checks are configured in `.clang-tidy`.
+`clang-tidy` is not run by pre-commit (it is too slow for every commit); run it manually or in CI. It is most accurate when `compile_commands.json` exists at the repo root (`task generate-compile-commands`). Checks are configured in `.clang-tidy`.
 
 ## Key Files
 

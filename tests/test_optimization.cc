@@ -136,14 +136,15 @@ TEST_F(OptimizationTest, ExistentialFormula5) {
 
 TEST_F(OptimizationTest, UniversalFormula1) {
   OPT_EXPECT_EQ(TranslateFormula("forall ((y in A) | B(x, y))"),
-                "SELECT T1.A1 AS x FROM B AS T1 WHERE NOT EXISTS (SELECT * FROM A AS T0 WHERE (T1.A1, T0.A1) NOT IN "
-                "(SELECT * FROM B AS T1))");
+                "SELECT T1.A1 AS x FROM B AS T1 WHERE NOT EXISTS (SELECT 1 FROM A AS T0 WHERE NOT EXISTS (SELECT 1 "
+                "FROM (SELECT T1.A1 AS x, T1.A2 AS y FROM B AS T1) AS T3 WHERE T1.A1 = T3.x AND T0.A1 = T3.y))");
 }
 
 TEST_F(OptimizationTest, UniversalFormula2) {
   OPT_EXPECT_EQ(TranslateFormula("forall ((y in A, z in D) | C(x, y, z))"),
-                "SELECT T2.A1 AS x FROM C AS T2 WHERE NOT EXISTS (SELECT * FROM A AS T0, D AS T1 WHERE (T2.A1, T0.A1, "
-                "T1.A1) NOT IN (SELECT * FROM C AS T2))");
+                "SELECT T2.A1 AS x FROM C AS T2 WHERE NOT EXISTS (SELECT 1 FROM A AS T0, D AS T1 WHERE NOT EXISTS "
+                "(SELECT 1 FROM (SELECT T2.A1 AS x, T2.A2 AS y, T2.A3 AS z FROM C AS T2) AS T4 WHERE T2.A1 = T4.x "
+                "AND T0.A1 = T4.y AND T1.A1 = T4.z))");
 }
 
 TEST_F(OptimizationTest, ProductExpression) { OPT_EXPECT_EQ(TranslateExpression("(1, 2)"), "SELECT 1 AS A1, 2 AS A2"); }
@@ -531,15 +532,15 @@ TEST_F(OptimizationTest, NestedQuantifiers1) {
 TEST_F(OptimizationTest, NestedQuantifiers2) {
   OPT_EXPECT_EQ(
       TranslateFormula("exists ((y in A) | forall ((z in D) | C(x, y, z)))"),
-      "SELECT T1.A1 AS x FROM C AS T1, A AS T4 WHERE T1.A2 = T4.A1 AND NOT EXISTS (SELECT * FROM D AS T0 WHERE "
-      "(T1.A1, T1.A2, T0.A1) NOT IN (SELECT * FROM C AS T1))");
+      "SELECT T1.A1 AS x FROM C AS T1, A AS T5 WHERE T1.A2 = T5.A1 AND NOT EXISTS (SELECT 1 FROM D AS T0 WHERE NOT "
+      "EXISTS (SELECT 1 FROM (SELECT T1.A1 AS x, T1.A2 AS y, T1.A3 AS z FROM C AS T1) AS T3 WHERE T1.A1 = T3.x AND "
+      "T1.A2 = T3.y AND T0.A1 = T3.z))");
 }
 
-// DuckDB: N/A — row (…) NOT IN (SELECT * …) / duplicate alias shape not accepted by DuckDB binder.
 TEST_F(OptimizationTest, NestedQuantifiers3) {
   OPT_EXPECT_EQ(TranslateFormula("forall ((y in A) | exists ((z) | C(x, y, z)))"),
-                "SELECT T1.A1 AS x FROM C AS T1 WHERE NOT EXISTS (SELECT * FROM A AS T0 WHERE (T1.A1, T0.A1) NOT IN "
-                "(SELECT * FROM C AS T1))");
+                "SELECT T1.A1 AS x FROM C AS T1 WHERE NOT EXISTS (SELECT 1 FROM A AS T0 WHERE NOT EXISTS (SELECT 1 "
+                "FROM (SELECT T1.A1 AS x, T1.A2 AS y FROM C AS T1) AS T4 WHERE T1.A1 = T4.x AND T0.A1 = T4.y))");
 }
 
 TEST_F(OptimizationTest, NestedQuantifiers4) {

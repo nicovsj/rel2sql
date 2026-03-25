@@ -109,8 +109,7 @@ std::string RewriteProgramAll(std::string_view input) {
   return program ? program->ToString() : "";
 }
 
-std::string RewriteProgramWithUnderscore(std::string_view input,
-                                         const RelationMap& edb_map = {}) {
+std::string RewriteProgramWithUnderscore(std::string_view input, const RelationMap& edb_map = {}) {
   auto program = ParseProgram(input);
   if (!program) return "";
 

@@ -15,8 +15,7 @@ class CTEInliner : public BaseOptimizer {
  private:
   bool TryReplaceRedundantCTE(const std::shared_ptr<Source>& cte, const Select& owning_select);
 
-  bool TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& cte,
-                                   const std::shared_ptr<Select>& cte_select);
+  bool TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& cte, const std::shared_ptr<Select>& cte_select);
 
   bool TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte, const std::shared_ptr<Select>& cte_select);
 

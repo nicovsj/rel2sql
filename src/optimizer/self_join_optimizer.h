@@ -47,7 +47,7 @@ class SelfJoinOptimizer : public BaseOptimizer {
   bool EliminateRedundantSelfJoins(Select& select);
 
   SourcesByIdentifier GroupSourcesByIdentifier(const std::vector<std::shared_ptr<Source>>& sources,
-                                                const Select& select);
+                                               const Select& select);
 
   /**
    * Generates all possible pairs from a vector of candidate sources.
@@ -74,8 +74,7 @@ class SelfJoinOptimizer : public BaseOptimizer {
    * @param select The SELECT statement to analyze for column references
    * @return true if the source pair forms a self join in the query, false otherwise
    */
-  bool IsSelfJoin(const SourcePair& source_pair, const EquivalenceClassesMap& eq_class_map,
-                  const Select& select);
+  bool IsSelfJoin(const SourcePair& source_pair, const EquivalenceClassesMap& eq_class_map, const Select& select);
 
   /**
    * Collects all columns from a specific source that are referenced in the SELECT statement.
@@ -85,8 +84,7 @@ class SelfJoinOptimizer : public BaseOptimizer {
    * @param source_alias The alias of the source to collect columns for
    * @return Set of column names referenced from the source
    */
-  std::unordered_set<std::string> CollectReferencedColumns(const Select& select,
-                                                            const std::string& source_alias);
+  std::unordered_set<std::string> CollectReferencedColumns(const Select& select, const std::string& source_alias);
 
   /**
    * Recursively collects columns from a Term that reference a specific source.
@@ -96,7 +94,7 @@ class SelfJoinOptimizer : public BaseOptimizer {
    * @param referenced Set to add referenced column names to
    */
   void CollectColumnsFromTerm(const std::shared_ptr<Term>& term, const std::string& source_alias,
-                               std::unordered_set<std::string>& referenced);
+                              std::unordered_set<std::string>& referenced);
 
   /**
    * Recursively collects columns from a Condition that reference a specific source.
@@ -106,8 +104,8 @@ class SelfJoinOptimizer : public BaseOptimizer {
    * @param referenced Set to add referenced column names to
    */
   void CollectColumnsFromConditionRecursive(const std::shared_ptr<Condition>& condition,
-                                             const std::string& source_alias,
-                                             std::unordered_set<std::string>& referenced);
+                                            const std::string& source_alias,
+                                            std::unordered_set<std::string>& referenced);
 
   /**
    * Recursively extracts all ComparisonCondition objects from a Condition tree.

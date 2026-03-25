@@ -8,7 +8,9 @@ namespace rel2sql {
 // Abstract node visitors -> Call DispatchVisit on the node
 // =============================================================================
 
-std::shared_ptr<RelNode> BaseRelVisitor::Visit(const std::shared_ptr<RelNode>& node) { return node->DispatchVisit(*this, node); }
+std::shared_ptr<RelNode> BaseRelVisitor::Visit(const std::shared_ptr<RelNode>& node) {
+  return node->DispatchVisit(*this, node);
+}
 
 std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelExpr>& node) {
   return std::dynamic_pointer_cast<RelExpr>(node->DispatchVisit(*this, node));

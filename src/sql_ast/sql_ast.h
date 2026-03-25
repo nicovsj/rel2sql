@@ -154,6 +154,9 @@ class Source : public Expression {
   std::vector<std::string> def_columns;
   bool is_subquery;
   bool is_cte;
+  /// When true, FlattenerOptimizer does not inline this subquery (used e.g. for a second copy of
+  /// F◦ in universal quantification so it stays a distinct correlated alias).
+  bool inhibit_subquery_flatten = false;
   // Optional: set when Source is a CTE created from a Bound. Used for deduplication
   // at conjunction level. Two CTEs with same bound_hash and def_columns are equivalent.
   std::optional<std::size_t> bound_hash;
@@ -205,7 +208,9 @@ class Source : public Expression {
   bool Equals(const Expression& other) const override {
     const auto* other_source = dynamic_cast<const Source*>(&other);
     if (!other_source) return false;
-    if (is_subquery != other_source->is_subquery || is_cte != other_source->is_cte) return false;
+    if (is_subquery != other_source->is_subquery || is_cte != other_source->is_cte ||
+        inhibit_subquery_flatten != other_source->inhibit_subquery_flatten)
+      return false;
     if (def_columns != other_source->def_columns) return false;
     if (bound_hash != other_source->bound_hash) return false;
     if ((alias.has_value() != other_source->alias.has_value())) return false;
@@ -472,10 +477,11 @@ class Operation : public Term {
     std::stringstream ss;
     // Add parentheses around lhs when it's a compound expression and op is / or *, to preserve
     // correct precedence (e.g. (a - 1) / 2 not a - 1 / 2).
-    const bool lhs_needs_parens =
-        (op == "/" || op == "*") && dynamic_cast<const Operation*>(lhs.get()) != nullptr;
-    if (lhs_needs_parens) ss << "(" << *lhs << ")";
-    else ss << *lhs;
+    const bool lhs_needs_parens = (op == "/" || op == "*") && dynamic_cast<const Operation*>(lhs.get()) != nullptr;
+    if (lhs_needs_parens)
+      ss << "(" << *lhs << ")";
+    else
+      ss << *lhs;
     ss << " " << op << " " << *rhs;
     return ss.str();
   }
@@ -936,8 +942,7 @@ class Select : public Query {
   Select(const std::vector<std::shared_ptr<Selectable>>& columns, bool is_distinct = false)
       : columns(columns), is_distinct(is_distinct) {}
 
-  Select(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<From> from,
-         bool is_distinct = false)
+  Select(const std::vector<std::shared_ptr<Selectable>>& columns, std::shared_ptr<From> from, bool is_distinct = false)
       : columns(columns), from(from), is_distinct(is_distinct) {
     AbsorbCTEsFrom(from->sources);
   }
@@ -1017,9 +1022,7 @@ class Union : public Query {
     AbsorbCTEsFrom(members);
   }
 
-  Union(std::vector<std::shared_ptr<Sourceable>> members) : members(members) {
-    AbsorbCTEsFrom(members);
-  }
+  Union(std::vector<std::shared_ptr<Sourceable>> members) : members(members) { AbsorbCTEsFrom(members); }
 
   Union(std::shared_ptr<Sourceable> lhs, std::shared_ptr<Sourceable> rhs, std::vector<std::shared_ptr<Source>> ctes,
         bool ctes_are_recursive = false)
@@ -1066,9 +1069,7 @@ class UnionAll : public Query {
     AbsorbCTEsFrom(members);
   }
 
-  UnionAll(std::vector<std::shared_ptr<Sourceable>> members) : members(members) {
-    AbsorbCTEsFrom(members);
-  }
+  UnionAll(std::vector<std::shared_ptr<Sourceable>> members) : members(members) { AbsorbCTEsFrom(members); }
 
   std::ostream& Print(std::ostream& os) const override {
     PrintCTEs(os);

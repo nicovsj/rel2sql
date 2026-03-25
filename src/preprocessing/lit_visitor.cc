@@ -2,7 +2,6 @@
 
 namespace rel2sql {
 
-
 std::shared_ptr<RelDef> LiteralVisitor::Visit(const std::shared_ptr<RelDef>& node) {
   if (!node->body) return node;
 

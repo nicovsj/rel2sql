@@ -160,8 +160,7 @@ TEST(SafetyTest, ConditionInheritance) {
 }
 
 // Returns the constant value if var has a ConstantDomain bound, else nullopt.
-std::optional<sql::ast::constant_t> GetConstantForVariable(const BoundSet& safety,
-                                                          const std::string& var) {
+std::optional<sql::ast::constant_t> GetConstantForVariable(const BoundSet& safety, const std::string& var) {
   for (const auto& bound : safety.bounds) {
     if (bound.variables.size() != 1 || bound.variables[0] != var) continue;
     if (auto* cd = dynamic_cast<const ConstantDomain*>(bound.domain.get())) {
@@ -188,8 +187,7 @@ TEST(SafetyTest, LinearComparison1) {
   auto z_const = GetConstantForVariable(root->safety, "z");
 
   ASSERT_TRUE(z_const.has_value()) << "z should have ConstantDomain";
-  EXPECT_TRUE(std::holds_alternative<int>(*z_const) && std::get<int>(*z_const) == 5)
-      << "z should equal 5";
+  EXPECT_TRUE(std::holds_alternative<int>(*z_const) && std::get<int>(*z_const) == 5) << "z should equal 5";
 }
 
 TEST(SafetyTest, LinearComparison2) {
@@ -201,7 +199,6 @@ TEST(SafetyTest, LinearComparison2) {
   ASSERT_NE(root, nullptr);
 
   EXPECT_TRUE(root->safety.bound_variables.count("z")) << "z should be bounded";
-
 }
 
 TEST(SafetyTest, LinearComparison3) {
@@ -213,8 +210,7 @@ TEST(SafetyTest, LinearComparison3) {
   ASSERT_NE(root, nullptr);
 
   EXPECT_TRUE(root->safety.bound_variables.count("x"));
-  EXPECT_FALSE(root->safety.bound_variables.count("z"))
-      << "z should not be bounded (2 unbounded vars)";
+  EXPECT_FALSE(root->safety.bound_variables.count("z")) << "z should not be bounded (2 unbounded vars)";
 }
 
 TEST(SafetyTest, LinearComparison4) {

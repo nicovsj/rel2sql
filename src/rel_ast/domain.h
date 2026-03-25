@@ -105,7 +105,6 @@ struct DomainUnion : public Domain {
 
 // Represents a operation on two domains.
 struct DomainOperation : public Domain {
-
   std::unique_ptr<Domain> lhs;
   std::unique_ptr<Domain> rhs;
   RelTermOp op;

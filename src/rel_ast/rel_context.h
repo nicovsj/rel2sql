@@ -7,8 +7,8 @@
 #include <unordered_set>
 #include <vector>
 
-#include "rel_ast/relation_info.h"
 #include "rel_ast/rel_ast.h"
+#include "rel_ast/relation_info.h"
 
 namespace rel2sql {
 

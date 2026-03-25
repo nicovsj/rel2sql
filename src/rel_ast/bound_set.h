@@ -67,8 +67,7 @@ struct BoundSet {
     for (const auto& bound : bounds) {
       if (!bound.domain) continue;
 
-      std::unique_ptr<Domain> filtered =
-          FilterProjections(bound.domain.get(), std::forward<Predicate>(should_remove));
+      std::unique_ptr<Domain> filtered = FilterProjections(bound.domain.get(), std::forward<Predicate>(should_remove));
 
       if (filtered) {
         Bound cleaned(bound.variables, std::move(filtered));

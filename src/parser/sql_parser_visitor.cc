@@ -106,8 +106,7 @@ std::any SqlParserVisitor::visitSelect(psr::SelectContext* ctx) {
   // Build Select with appropriate constructor
   std::shared_ptr<sql::ast::Select> result;
   if (!ctes.empty()) {
-    result =
-        std::make_shared<sql::ast::Select>(columns, effective_from, ctes, is_distinct, with_recursive_ctes);
+    result = std::make_shared<sql::ast::Select>(columns, effective_from, ctes, is_distinct, with_recursive_ctes);
   } else if (group_by.has_value()) {
     result = std::make_shared<sql::ast::Select>(columns, effective_from, group_by.value(), is_distinct);
   } else if (from.has_value()) {

@@ -28,8 +28,9 @@ bool test_rel2sql() {
 // Test function for EDB-based translation
 bool test_rel2sql_with_relation_map() {
   rel2sql::RelationMap relation_map;
-  relation_map["relation1"] = rel2sql::RelationInfo(2);                                        // Create EDB with arity 2
-  relation_map["relation2"] = rel2sql::RelationInfo(std::vector<std::string>{"name", "age"});  // Create EDB with named attributes
+  relation_map["relation1"] = rel2sql::RelationInfo(2);  // Create EDB with arity 2
+  relation_map["relation2"] =
+      rel2sql::RelationInfo(std::vector<std::string>{"name", "age"});  // Create EDB with named attributes
 
   std::string result = rel2sql::Translate("def output {1}", relation_map);
   return !result.empty();

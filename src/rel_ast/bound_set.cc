@@ -372,5 +372,4 @@ BoundSet BoundSet::SmallCover() const {
   return BoundSet(small_cover, bound_variables);
 }
 
-
 }  // namespace rel2sql

@@ -1,7 +1,8 @@
 #include "sql/translator.h"
 
-#include <algorithm>
 #include <fmt/core.h>
+
+#include <algorithm>
 
 #include "optimizer/replacers.h"
 #include "rel_ast/domain.h"
@@ -220,8 +221,7 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelProduct>& no
       auto constant = std::make_shared<sql::ast::Constant>(expr->constant.value());
       // Explicit A1, A2, ... so wrapped subqueries (e.g. in disjunctive abstractions) are valid in DuckDB
       // and other engines that do not synthesize PostgreSQL-style column names for SELECT literals.
-      selects.push_back(
-          std::make_shared<sql::ast::TermSelectable>(constant, fmt::format("A{}", i + 1)));
+      selects.push_back(std::make_shared<sql::ast::TermSelectable>(constant, fmt::format("A{}", i + 1)));
     }
     node->sql_expression = std::make_shared<sql::ast::Select>(selects);
     return node;
@@ -678,8 +678,7 @@ std::shared_ptr<sql::ast::Sourceable> Translator::DomainToSql(const Domain& doma
   if (auto* cd = dynamic_cast<const ConstantDomain*>(&domain)) {
     auto constant = std::make_shared<sql::ast::Constant>(cd->value);
     auto selectable = std::make_shared<sql::ast::TermSelectable>(constant, "A1");
-    return std::make_shared<sql::ast::Select>(
-        std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable}, false);
+    return std::make_shared<sql::ast::Select>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable}, false);
   }
 
   if (auto* dd = dynamic_cast<const DefinedDomain*>(&domain)) {
@@ -687,7 +686,7 @@ std::shared_ptr<sql::ast::Sourceable> Translator::DomainToSql(const Domain& doma
     auto table = std::dynamic_pointer_cast<sql::ast::Table>(table_source->sourceable);
     if (!table) {
       throw TranslationException("DomainToSql: DefinedDomain must be a table", ErrorCode::UNKNOWN_BINARY_OPERATOR,
-                                SourceLocation(0, 0));
+                                 SourceLocation(0, 0));
     }
     std::vector<std::shared_ptr<sql::ast::Selectable>> cols;
     for (int i = 0; i < static_cast<int>(dd->table_arity); i++) {
@@ -702,7 +701,7 @@ std::shared_ptr<sql::ast::Sourceable> Translator::DomainToSql(const Domain& doma
   if (auto* proj = dynamic_cast<const Projection*>(&domain)) {
     if (proj->IsEmpty()) {
       throw TranslationException("DomainToSql: empty projection", ErrorCode::UNKNOWN_BINARY_OPERATOR,
-                                SourceLocation(0, 0));
+                                 SourceLocation(0, 0));
     }
     auto inner_sql = DomainToSql(*proj->domain);
     auto inner_source = std::make_shared<sql::ast::Source>(inner_sql, GenerateTableAlias());
@@ -726,7 +725,7 @@ std::shared_ptr<sql::ast::Sourceable> Translator::DomainToSql(const Domain& doma
   if (auto* op = dynamic_cast<const DomainOperation*>(&domain)) {
     if (op->lhs->Arity() != 1 || op->rhs->Arity() != 1) {
       throw TranslationException("DomainToSql: DomainOperation requires arity 1", ErrorCode::UNKNOWN_BINARY_OPERATOR,
-                                SourceLocation(0, 0));
+                                 SourceLocation(0, 0));
     }
     auto lhs_sql = DomainToSql(*op->lhs);
     auto rhs_sql = DomainToSql(*op->rhs);
@@ -734,10 +733,18 @@ std::shared_ptr<sql::ast::Sourceable> Translator::DomainToSql(const Domain& doma
     auto rhs_source = std::make_shared<sql::ast::Source>(rhs_sql, GenerateTableAlias());
     const char* op_str = "+";
     switch (op->op) {
-      case RelTermOp::ADD: op_str = "+"; break;
-      case RelTermOp::SUB: op_str = "-"; break;
-      case RelTermOp::MUL: op_str = "*"; break;
-      case RelTermOp::DIV: op_str = "/"; break;
+      case RelTermOp::ADD:
+        op_str = "+";
+        break;
+      case RelTermOp::SUB:
+        op_str = "-";
+        break;
+      case RelTermOp::MUL:
+        op_str = "*";
+        break;
+      case RelTermOp::DIV:
+        op_str = "/";
+        break;
     }
     std::string lhs_col = GetColumnNameForSourceable(lhs_sql, 1);
     std::string rhs_col = GetColumnNameForSourceable(rhs_sql, 1);
@@ -745,19 +752,18 @@ std::shared_ptr<sql::ast::Sourceable> Translator::DomainToSql(const Domain& doma
     auto rhs_term = std::make_shared<sql::ast::Column>(rhs_col, rhs_source);
     auto result_term = std::make_shared<sql::ast::Operation>(lhs_term, rhs_term, op_str);
     auto selectable = std::make_shared<sql::ast::TermSelectable>(result_term, "A1");
-    auto from = std::make_shared<sql::ast::From>(
-        std::vector<std::shared_ptr<sql::ast::Source>>{lhs_source, rhs_source});
-    return std::make_shared<sql::ast::Select>(
-        std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable}, from, false);
+    auto from =
+        std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{lhs_source, rhs_source});
+    return std::make_shared<sql::ast::Select>(std::vector<std::shared_ptr<sql::ast::Selectable>>{selectable}, from,
+                                              false);
   }
 
   if (dynamic_cast<const IntensionalDomain*>(&domain)) {
-    throw NotImplementedException("DomainToSql: IntensionalDomain not supported for CTE bounds",
-                                  SourceLocation(0, 0));
+    throw NotImplementedException("DomainToSql: IntensionalDomain not supported for CTE bounds", SourceLocation(0, 0));
   }
 
   throw TranslationException("DomainToSql: unknown domain type", ErrorCode::UNKNOWN_BINARY_OPERATOR,
-                            SourceLocation(0, 0));
+                             SourceLocation(0, 0));
 }
 
 std::pair<std::shared_ptr<sql::ast::Source>, std::vector<std::shared_ptr<sql::ast::Source>>>
@@ -985,7 +991,7 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelDisjuncti
   for (const auto& var : all_fv) {
     if (!node->safety.bound_variables.count(var)) {
       throw TranslationException("Disjunction: variable '" + var + "' is not bound (safety check failed)",
-                                ErrorCode::UNBALANCED_VARIABLE, SourceLocation(0, 0));
+                                 ErrorCode::UNBALANCED_VARIABLE, SourceLocation(0, 0));
     }
   }
 
@@ -1093,10 +1099,8 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelDisjuncti
   std::vector<std::shared_ptr<sql::ast::Source>> from2 = {rhs_source};
   from2.insert(from2.end(), cte_sources.begin(), cte_sources.end());
 
-  auto select_stmt1 = std::make_shared<sql::ast::Select>(
-      select1, std::make_shared<sql::ast::From>(from1, eq1), true);
-  auto select_stmt2 = std::make_shared<sql::ast::Select>(
-      select2, std::make_shared<sql::ast::From>(from2, eq2), true);
+  auto select_stmt1 = std::make_shared<sql::ast::Select>(select1, std::make_shared<sql::ast::From>(from1, eq1), true);
+  auto select_stmt2 = std::make_shared<sql::ast::Select>(select2, std::make_shared<sql::ast::From>(from2, eq2), true);
 
   node->sql_expression = std::make_shared<sql::ast::Union>(select_stmt1, select_stmt2, cte_sources, false);
   return node;
@@ -1116,7 +1120,7 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelNegation>
   for (const auto& var : fv) {
     if (!node->safety.bound_variables.count(var)) {
       throw TranslationException("Negation: variable '" + var + "' is not bound (safety check failed)",
-                                ErrorCode::UNBALANCED_VARIABLE, SourceLocation(0, 0));
+                                 ErrorCode::UNBALANCED_VARIABLE, SourceLocation(0, 0));
     }
   }
 
@@ -1191,7 +1195,7 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelCompariso
   for (const auto& var : node->free_variables) {
     if (!node->safety.bound_variables.count(var)) {
       throw TranslationException("Comparison: variable '" + var + "' is not bound (safety check failed)",
-                                ErrorCode::UNBALANCED_VARIABLE, SourceLocation(0, 0));
+                                 ErrorCode::UNBALANCED_VARIABLE, SourceLocation(0, 0));
     }
   }
 
@@ -1221,18 +1225,30 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelCompariso
   auto lhs_sql = BuildSqlTermFromLinearRelTerm(node->lhs, free_var_sources);
   auto rhs_sql = BuildSqlTermFromLinearRelTerm(node->rhs, free_var_sources);
   if (!lhs_sql || !rhs_sql) {
-    throw TranslationException("Comparison: could not translate terms to SQL",
-                              ErrorCode::UNKNOWN_BINARY_OPERATOR, SourceLocation(0, 0));
+    throw TranslationException("Comparison: could not translate terms to SQL", ErrorCode::UNKNOWN_BINARY_OPERATOR,
+                               SourceLocation(0, 0));
   }
 
   sql::ast::CompOp sql_op;
   switch (node->op) {
-    case RelCompOp::EQ: sql_op = sql::ast::CompOp::EQ; break;
-    case RelCompOp::NEQ: sql_op = sql::ast::CompOp::NEQ; break;
-    case RelCompOp::LT: sql_op = sql::ast::CompOp::LT; break;
-    case RelCompOp::GT: sql_op = sql::ast::CompOp::GT; break;
-    case RelCompOp::LTE: sql_op = sql::ast::CompOp::LTE; break;
-    case RelCompOp::GTE: sql_op = sql::ast::CompOp::GTE; break;
+    case RelCompOp::EQ:
+      sql_op = sql::ast::CompOp::EQ;
+      break;
+    case RelCompOp::NEQ:
+      sql_op = sql::ast::CompOp::NEQ;
+      break;
+    case RelCompOp::LT:
+      sql_op = sql::ast::CompOp::LT;
+      break;
+    case RelCompOp::GT:
+      sql_op = sql::ast::CompOp::GT;
+      break;
+    case RelCompOp::LTE:
+      sql_op = sql::ast::CompOp::LTE;
+      break;
+    case RelCompOp::GTE:
+      sql_op = sql::ast::CompOp::GTE;
+      break;
   }
   auto comp_cond = std::make_shared<sql::ast::ComparisonCondition>(lhs_sql, sql_op, rhs_sql);
 
@@ -1515,24 +1531,34 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelUniversal
     bound_var_names.push_back(vb->id);
   }
 
-  // Translate inner formula to a Sourceable subquery.
+  // Translate inner formula to a Sourceable subquery (paper Section 5.2: two aliases T1, T2 over F◦).
   Visit(node->formula);
   auto inner_expr = node->formula->sql_expression;
   auto inner_srcable = ExpectSourceable(inner_expr);
 
-  auto subquery = std::make_shared<sql::ast::Source>(inner_srcable, GenerateTableAlias());
+  auto subquery_outer = std::make_shared<sql::ast::Source>(inner_srcable, GenerateTableAlias());
+  auto subquery_inner = std::make_shared<sql::ast::Source>(inner_srcable, GenerateTableAlias());
+  // Keep the inner F◦ copy as its own subquery so the flattener cannot merge it with the outer
+  // copy (same underlying Select); merging produced a single alias and bogus T1.A1 = T1.A1.
+  subquery_inner->inhibit_subquery_flatten = true;
 
-  // Build columns for free variables from the subquery.
-  std::vector<std::shared_ptr<sql::ast::Column>> free_var_columns;
   std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
   for (const auto& var : node->free_variables) {
-    auto col = std::make_shared<sql::ast::Column>(var, subquery);
-    free_var_columns.push_back(col);
+    auto col = std::make_shared<sql::ast::Column>(var, subquery_outer);
     select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(col));
   }
 
-  // Build inclusion tuple: (free_vars, bound_vars) where bound_vars come from domain tables.
-  std::vector<std::shared_ptr<sql::ast::Column>> inclusion_tuple = free_var_columns;
+  auto make_select_one = [] {
+    return std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Constant>(1));
+  };
+
+  std::vector<std::shared_ptr<sql::ast::Condition>> inner_eq_conditions;
+  for (const auto& var : node->free_variables) {
+    auto outer_c = std::make_shared<sql::ast::Column>(var, subquery_outer);
+    auto inner_c = std::make_shared<sql::ast::Column>(var, subquery_inner);
+    inner_eq_conditions.push_back(
+        std::make_shared<sql::ast::ComparisonCondition>(outer_c, sql::ast::CompOp::EQ, inner_c));
+  }
 
   for (size_t i = 0; i < bound_var_names.size(); i++) {
     auto domain_source = bound_domain_sources[i];
@@ -1543,32 +1569,39 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelUniversal
     }
     auto domain_col_name = table->GetAttributeName(0);
     auto domain_col = std::make_shared<sql::ast::Column>(domain_col_name, domain_source);
-    inclusion_tuple.push_back(domain_col);
+    auto inner_bound_col = std::make_shared<sql::ast::Column>(bound_var_names[i], subquery_inner);
+    inner_eq_conditions.push_back(
+        std::make_shared<sql::ast::ComparisonCondition>(domain_col, sql::ast::CompOp::EQ, inner_bound_col));
   }
 
-  // Build intermediate inner select: SELECT * FROM subquery
-  auto wildcard = std::make_shared<sql::ast::Wildcard>();
-  auto inter_inner_from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{subquery});
-  auto inter_inner_select = std::make_shared<sql::ast::Select>(
-      std::vector<std::shared_ptr<sql::ast::Selectable>>{wildcard}, inter_inner_from);
+  std::shared_ptr<sql::ast::Condition> inner_where;
+  if (inner_eq_conditions.empty()) {
+    inner_where = nullptr;
+  } else if (inner_eq_conditions.size() == 1) {
+    inner_where = inner_eq_conditions[0];
+  } else {
+    inner_where = std::make_shared<sql::ast::LogicalCondition>(inner_eq_conditions, sql::ast::LogicalOp::AND);
+  }
 
-  // Build inclusion condition: (free_vars, bound_vars) NOT IN (SELECT * FROM subquery)
-  auto inclusion = std::make_shared<sql::ast::Inclusion>(inclusion_tuple, inter_inner_select, /*is_not=*/true);
+  auto inner_from =
+      std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{subquery_inner}, inner_where);
+  auto inner_select = std::make_shared<sql::ast::Select>(
+      std::vector<std::shared_ptr<sql::ast::Selectable>>{make_select_one()}, inner_from);
 
-  // Build inner select: SELECT * FROM domains WHERE inclusion
-  auto wildcard2 = std::make_shared<sql::ast::Wildcard>();
-  auto inner_from = std::make_shared<sql::ast::From>(bound_domain_sources, inclusion);
-  auto inner_select =
-      std::make_shared<sql::ast::Select>(std::vector<std::shared_ptr<sql::ast::Selectable>>{wildcard2}, inner_from);
+  auto inner_not_exists = std::make_shared<sql::ast::LogicalCondition>(
+      std::vector<std::shared_ptr<sql::ast::Condition>>{std::make_shared<sql::ast::Exists>(inner_select)},
+      sql::ast::LogicalOp::NOT);
 
-  // Build NOT EXISTS condition
-  auto exists = std::make_shared<sql::ast::Exists>(inner_select);
-  auto not_exists = std::make_shared<sql::ast::LogicalCondition>(
-      std::vector<std::shared_ptr<sql::ast::Condition>>{exists}, sql::ast::LogicalOp::NOT);
+  auto middle_from = std::make_shared<sql::ast::From>(bound_domain_sources, inner_not_exists);
+  auto middle_select = std::make_shared<sql::ast::Select>(
+      std::vector<std::shared_ptr<sql::ast::Selectable>>{make_select_one()}, middle_from);
 
-  // Build outer select: SELECT free_vars FROM subquery WHERE NOT EXISTS (...)
-  auto outer_from =
-      std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{subquery}, not_exists);
+  auto outer_not_exists = std::make_shared<sql::ast::LogicalCondition>(
+      std::vector<std::shared_ptr<sql::ast::Condition>>{std::make_shared<sql::ast::Exists>(middle_select)},
+      sql::ast::LogicalOp::NOT);
+
+  auto outer_from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{subquery_outer},
+                                                     outer_not_exists);
   auto select = std::make_shared<sql::ast::Select>(select_columns, outer_from);
   node->sql_expression = select;
   return node;
