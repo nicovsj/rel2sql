@@ -5,8 +5,16 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+      - id: pretty-format-json
+        args: [--autofix]
+        # settings.json is JSONC (comments/trailing commas); not strict JSON.
+        exclude: ^(MODULE\.bazel\.lock|\.vscode/settings\.json)$
+
   - repo: https://github.com/pocc/pre-commit-hooks
     rev: v1.3.5
     hooks:
       - id: clang-format
-        args: ["--version=21.1.2"]
+        args: [--version=22.1.1]
+      - id: clang-tidy
+        args: [--version=22.1.1]
+        exclude: ^wasm/
