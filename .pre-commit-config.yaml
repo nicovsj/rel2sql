@@ -13,8 +13,8 @@ repos:
   - repo: https://github.com/pocc/pre-commit-hooks
     rev: v1.3.5
     hooks:
+      # No --version=… : pin only if every machine/CI uses the same LLVM (pocc checks the first
+      # clang-format on PATH). Homebrew/Xcode often ship 21.x while other setups use 22.x.
+      # pocc defaults to check-only (diff, no writes); -i applies .clang-format in place.
       - id: clang-format
-        args: [--version=22.1.1]
-      - id: clang-tidy
-        args: [--version=22.1.1]
-        exclude: ^wasm/
+        args: [-i]

@@ -1,4 +1,10 @@
 {
+    "terminal.integrated.env.osx": {
+        "PATH": "/opt/homebrew/opt/llvm/bin:/usr/local/opt/llvm/bin:${env:PATH}"
+    },
+    "terminal.integrated.env.linux": {
+        "PATH": "/usr/lib/llvm-18/bin:/usr/lib/llvm-17/bin:/usr/lib/llvm-16/bin:${env:PATH}"
+    },
     "antlr4.generation": {
         "mode": "internal",
         "outputDir": ".",
