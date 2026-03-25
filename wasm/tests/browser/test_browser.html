@@ -100,7 +100,7 @@
             {
                 name: "Simple output",
                 input: "def output {1}",
-                expected: "SELECT DISTINCT * FROM (VALUES (1)) AS T0(A1)"
+                expected: "SELECT DISTINCT T0.A1 AS A1 FROM (VALUES (1)) AS T0(A1)"
             },
             {
                 name: "Variable output",

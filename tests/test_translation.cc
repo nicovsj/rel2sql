@@ -358,21 +358,22 @@ TEST_F(TranslationTest, Definition2) {
 TEST_F(TranslationTest, MultipleDefs1) {
   OPT_EXPECT_EQ(
       TranslateProgram("def R {(1, 2); (3, 4)} \n def S {(1, 4); (3, 4)}"),
-      "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE OR "
-      "REPLACE VIEW S AS (SELECT DISTINCT * FROM (VALUES (1, 4), (3, 4)) AS T1(A1, A2));");
+      "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (3, 4)) AS "
+      "T0(A1, A2));\n\nCREATE OR REPLACE VIEW S AS (SELECT DISTINCT T1.A1 AS A1, T1.A2 AS A2 FROM (VALUES (1, 4), "
+      "(3, 4)) AS T1(A1, A2));");
 }
 
 TEST_F(TranslationTest, MultipleDefs2) {
-  OPT_EXPECT_EQ(
-      TranslateProgram("def R {(1, 2); (3, 4)} \n def S {B[1]} \n def T {B[3]}"),
-      "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));\n\nCREATE OR "
-      "REPLACE VIEW S AS (SELECT DISTINCT T1.A2 AS A1 FROM B AS T1 WHERE T1.A1 = 1);\n\nCREATE OR REPLACE VIEW T "
-      "AS (SELECT DISTINCT T4.A2 AS A1 FROM B AS T4 WHERE T4.A1 = 3);");
+  OPT_EXPECT_EQ(TranslateProgram("def R {(1, 2); (3, 4)} \n def S {R[1]} \n def T {R[3]}"),
+                "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (3, 4)) AS "
+                "T0(A1, A2));\n\nCREATE OR REPLACE VIEW S AS (SELECT DISTINCT T1.A2 AS A1 FROM R AS T1 WHERE T1.A1 = "
+                "1);\n\nCREATE OR REPLACE VIEW T AS (SELECT DISTINCT T4.A2 AS A1 FROM R AS T4 WHERE T4.A1 = 3);");
 }
 
 TEST_F(TranslationTest, TableDefinition) {
   OPT_EXPECT_EQ(TranslateDefinition("def R {(1, 2); (3, 4)}"),
-                "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2));");
+                "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (3, 4)) AS "
+                "T0(A1, A2));");
 }
 
 TEST_F(TranslationTest, EDBBindingFormula) {

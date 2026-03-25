@@ -213,7 +213,9 @@ TEST_F(SqlParserTest, ParseCreateViewWithColumnList) {
 }
 
 TEST_F(SqlParserTest, ParseCreateViewWithValues) {
-  std::string sql = "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT * FROM (VALUES (1, 2), (3, 4)) AS T0 (A1, A2));";
+  std::string sql =
+      "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (3, 4)) AS T0 "
+      "(A1, A2));";
   auto expr = ParseSQL(sql);
 
   ASSERT_NE(expr, nullptr);

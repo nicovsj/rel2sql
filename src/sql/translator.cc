@@ -108,9 +108,15 @@ std::shared_ptr<sql::ast::Expression> Translator::BuildLiteralRelationAbstractio
   auto alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias(), column_names);
   auto source = std::make_shared<sql::ast::Source>(values_expr, alias);
   auto from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{source});
-  auto wildcard = std::make_shared<sql::ast::Wildcard>();
-  auto select =
-      std::make_shared<sql::ast::Select>(std::vector<std::shared_ptr<sql::ast::Selectable>>{wildcard}, from, true);
+  // Explicit A1, A2, ... like RelProduct: SELECT * does not reliably expose VALUES column names to outer references
+  // (e.g. R[1] / partial application) across SQL dialects.
+  std::vector<std::shared_ptr<sql::ast::Selectable>> selects;
+  for (size_t i = 0; i < arity; ++i) {
+    auto col_name = fmt::format("A{}", i + 1);
+    auto column = std::make_shared<sql::ast::Column>(col_name, source);
+    selects.push_back(std::make_shared<sql::ast::TermSelectable>(column, col_name));
+  }
+  auto select = std::make_shared<sql::ast::Select>(selects, from, true);
   return std::static_pointer_cast<sql::ast::Expression>(select);
 }
 
