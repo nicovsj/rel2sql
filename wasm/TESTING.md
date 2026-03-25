@@ -1,84 +1,71 @@
-# 🧪 Rel2SQL WASM Testing
+# Rel2SQL WASM Testing
 
-## **Simple Test Structure**
+## Test structure
 
-### **Essential Tests (2 total):**
+### Main automated checks
 
-1. **`npm_package_test.mjs`** - Main test for CI/CD
-   - Builds both Node.js and Browser WASM
-   - Creates npm package
-   - Tests Node.js consumption
-   - Verifies browser build files
+1. **`npm_package_test.mjs`** — CI-style flow: builds Node + browser WASM with Bazel, stages `packages/rel2sql-wasm/dist`, packs the npm package, and smoke-tests consumption.
+2. **`bindings_test.mjs`** — Loads artifacts from `bazel-bin` and asserts the Embind API contract (also run in CI after the npm script builds WASM).
+3. **`test_browser.html`** — Manual browser checks (performance, errors, loader paths). Served via `task test:wasm:browser` or a local `python3 -m http.server`.
 
-2. **`test_browser.html`** - Comprehensive browser test
-   - Direct WASM loading
-   - Loader-based loading
-   - Performance testing
-   - Error handling
-   - Multiple test scenarios
+## How to test
 
-## **How to Test**
+### From the repo root (Task)
 
-### **For Development:**
 ```bash
-# Main test (recommended)
-task test-npm-package
+# All WASM-related Node steps (bindings + npm + browser server)
+task test:wasm
 
-# Browser testing
-task test-browser
-# Then open: http://localhost:8080/wasm/tests/browser/test_browser_direct.html
+# Individual steps
+task test:wasm:bindings   # requires prior: bazel build //wasm:rel2sql_wasm_node --config=emcc
+task test:wasm:npm
+task test:wasm:browser    # then open http://localhost:8080/wasm/tests/browser/test_browser.html
+
+# Native C++ tests + WASM tasks above
+task test:all
 ```
 
-### **For CI/CD:**
+### Direct Node (same as CI package workflow)
+
 ```bash
-# Official test
 node wasm/tests/npm_package_test.mjs
+node wasm/tests/bindings_test.mjs   # run after WASM is built (npm script builds it)
 ```
 
-### **Manual Browser Testing:**
-```bash
-# Setup and start server
-task test-browser
+### Manual browser testing
 
-# Or manually:
+```bash
+task test:wasm:browser
+# Or:
 node wasm/setup_browser_test.mjs
 python3 -m http.server 8080
-
-# Open browser:
-# http://localhost:8080/wasm/tests/browser/test_browser.html
+# Open: http://localhost:8080/wasm/tests/browser/test_browser.html
 ```
 
-## **Test Structure**
+## Layout
 
 ```
 wasm/
 ├── setup_browser_test.mjs          # Browser test setup
 ├── tests/
-│   ├── npm_package_test.mjs        # Main test (CI/CD)
+│   ├── bindings_test.mjs           # Embind contract (CI + task test:wasm:bindings)
+│   ├── npm_package_test.mjs        # Package build/consumption (CI)
+│   ├── load_wasm_module.mjs        # Helper for bindings_test
 │   └── browser/
-│       ├── test_browser.html          # Comprehensive browser test
-│       └── dist/                        # Generated files (gitignored)
+│       ├── test_browser.html       # Manual browser test
+│       └── dist/                   # Generated (gitignored)
 │           ├── loader-browser.js
 │           ├── rel2sql_embindings_browser.js
 │           └── rel2sql_embindings_browser.wasm
 └── TESTING.md                      # This file
 ```
 
-## **Test Coverage**
+## Coverage
 
-✅ **Node.js Build** - Full coverage
-✅ **Browser Build** - Full coverage
-✅ **NPM Package** - Full coverage
-✅ **File Structure** - Full coverage
-✅ **Browser Loading** - Full coverage
-✅ **Translation** - Full coverage
-✅ **Performance** - Full coverage
+- Node.js WASM build — `npm_package_test.mjs`, `bindings_test.mjs`
+- Browser WASM build — `npm_package_test.mjs`, manual HTML
+- NPM package layout and consumption — `npm_package_test.mjs`
 
-## **What Was Removed**
+## Historical cleanup
 
-❌ `test_browser_setup.mjs` - Redundant temp file creation
-❌ `test_npm_package_local.mjs` - Duplicated npm test
-❌ `run_tests.mjs` - Overcomplicated runner
-❌ Generated temp directories - Cleaned up
-
-**Result: Clean structure with single browser test, dist/ directory for generated files, full coverage, no redundancy!** 🎉
+Removed earlier helpers (`test_browser_setup.mjs`, `test_npm_package_local.mjs`, `run_tests.mjs`, etc.) in favor of the flows above.

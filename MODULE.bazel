@@ -4,23 +4,24 @@
 #
 # For more details, please check https://github.com/bazelbuild/bazel/issues/18958
 ###############################################################################
-"Module for com_foo_bar"
 module(
     name = "rel2sql_core",
-    version = "1.0.0"
+    version = "1.0.0",
 )
 
+# Java ANTLR tool JAR version (codegen). C++ runtime is a separate bazel_dep below;
+# bump both together only when intentionally upgrading the whole stack.
 ANTLR4_VERSION = "4.13.1"
 
 bazel_dep(name = "antlr4-cpp-runtime", version = "4.12.0")
 
-# Hedron's Compile Commands Extractor for Bazel
-# https://github.com/hedronvision/bazel-compile-commands-extractor
+# compile_commands.json extraction (clangd). Upstream: hedronvision fork;
+# this repo uses git_override to pin a specific fork commit (see README / AGENTS.md).
 bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
 git_override(
     module_name = "hedron_compile_commands",
     remote = "https://github.com/mikael-s-persson/bazel-compile-commands-extractor",
-    commit = "f5fbd4cee671d8d908f37c83abaf70fba5928fc7"
+    commit = "f5fbd4cee671d8d908f37c83abaf70fba5928fc7",
 )
 
 http_jar = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_jar")

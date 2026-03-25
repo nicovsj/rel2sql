@@ -54,4 +54,7 @@ packages/rel2sql-wasm/*.tgz
 # Generated for clangd (also often listed in ~/.git/info/exclude)
 compile_commands.json
 
+# Machine-specific LLDB working directory (see .lldbinit.example)
+.lldbinit
+
 .db/

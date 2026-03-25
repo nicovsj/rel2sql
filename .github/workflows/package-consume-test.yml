@@ -25,3 +25,6 @@ jobs:
 
       - name: Run npm package test script
         run: node wasm/tests/npm_package_test.mjs
+
+      - name: WASM bindings contract
+        run: node wasm/tests/bindings_test.mjs

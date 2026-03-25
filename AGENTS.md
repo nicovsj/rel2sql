@@ -64,6 +64,8 @@ bazel run //:rel2sql_bin -- -u -f query.rl   # -u = skip optimizations
 task generate-compile-commands
 ```
 
+`compile_commands` generation uses a `git_override` on `hedron_compile_commands` in `MODULE.bazel` (fork URL and commit there), not only the upstream Hedron repo.
+
 **Visualize ANTLR parse tree (GUI):**
 
 ```sh
@@ -90,7 +92,8 @@ task parse-antlr -- test.rl
 
 - Tests live in `tests/` (e.g. `test_rel_ast.cc`, `test_rewriter.cc`)
 - Use `tests/test_common.h` for shared helpers
-- Run tests before committing: `task test:lib`
+- Run tests before committing: `task test` or `task test:lib` (alias)
+- **CI:** `.github/workflows/test.yml` runs native `bazel test //...`. `.github/workflows/package-consume-test.yml` runs the WASM npm package script and the WASM bindings contract test (see that workflow).
 
 ## Pre-commit
 
@@ -123,4 +126,5 @@ Always use gitmojis in commit messages (e.g. `✨ Add feature`, `🐛 Fix bug`, 
 - Don't modify `src/grammar/` without updating `RelASTBuilder` and downstream visitors
 - Don't bypass `RelContextBuilder` when adding new Rel constructs
 - Don't add heavy dependencies without checking WASM compatibility
-- Run `task test:lib` before committing
+- When bumping ANTLR, update **both** the Java tool JAR (`ANTLR4_VERSION` / `http_jar` in `MODULE.bazel`) and the C++ runtime (`bazel_dep` `antlr4-cpp-runtime`); they are intentionally allowed to differ today—change them together only when you mean to
+- Run `task test` (or `task test:lib`) before committing

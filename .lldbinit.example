@@ -1,0 +1,11 @@
+# Local LLDB settings for debugging Bazel-built binaries.
+# Copy to `.lldbinit` (gitignored) or merge into ~/.lldbinit.
+#
+# Bazel runs compilers from a per-workspace execution root. Point LLDB at it so
+# sources and breakpoints resolve:
+#
+#   bazel info execution_root
+#
+# Then set (replace the path with your command output):
+#
+# platform settings -w /path/from/bazel/info/execution_root

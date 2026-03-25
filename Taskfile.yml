@@ -3,7 +3,7 @@ version: "3"
 tasks:
   # Core build tasks
   build:
-    desc: Build the rel2sql executable
+    desc: Build the rel2sql library (//:rel2sql); CLI is //:rel2sql_bin
     cmds:
       - bazel build --config=default //:rel2sql
 
@@ -13,9 +13,14 @@ tasks:
       - bazel build --config=default //:rel2sql_shared
 
   test:
-    desc: Run library tests
+    desc: Run C++ library tests (bazel test //...)
     cmds:
       - bazel test --config=default //...
+
+  test:lib:
+    desc: Alias for task test (native C++ tests only)
+    cmds:
+      - task: test
 
   test:all:
     desc: Run all tests

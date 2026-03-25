@@ -34,7 +34,10 @@ build --per_file_copt='bazel-out/.*@-w'
 # Enable platform-specific configs for regular builds (but not WASM)
 build:default --enable_platform_specific_config
 
-# macOS-specific configuration
+# macOS: pinned CLT SDK for consistent headers/modules with this Bazel/Abseil stack.
+# If MacOSX14.5.sdk is missing, override in user.bazelrc, e.g. use
+# .../SDKs/MacOSX.sdk (symlink) or the path from `xcrun --sdk macosx --show-sdk-path`.
+# See README.md "Troubleshooting".
 build:macos --cxxopt='-isysroot/Library/Developer/CommandLineTools/SDKs/MacOSX14.5.sdk'
 
 #--- Global debug configuration ---
