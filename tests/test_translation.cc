@@ -370,6 +370,15 @@ TEST_F(TranslationTest, MultipleDefs2) {
                 "1);\n\nCREATE OR REPLACE VIEW T AS (SELECT DISTINCT T4.A2 AS A1 FROM R AS T4 WHERE T4.A1 = 3);");
 }
 
+TEST_F(TranslationTest, MultipleDefs3) {
+  OPT_EXPECT_EQ(
+      TranslateProgram("def R {(1, 2); (2, 3)} \n def S {(x,y): R(x,y) or exists((z) | R(x,z) and S(z,y))}"),
+      "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (2, 3)) AS "
+      "T0(A1, A2));\n\nCREATE OR REPLACE VIEW S AS (WITH RECURSIVE R0(A1, A2) AS (SELECT T1.A1 AS x, T1.A2 AS y FROM R "
+      "AS T1 UNION SELECT T2.A1 AS x, T3.A2 AS y FROM R AS T2, R0 AS T3 WHERE T2.A2 = T3.A1) SELECT DISTINCT R0.A1 AS "
+      "A1, R0.A2 AS A2 FROM R0);");
+}
+
 TEST_F(TranslationTest, TableDefinition) {
   OPT_EXPECT_EQ(TranslateDefinition("def R {(1, 2); (3, 4)}"),
                 "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (3, 4)) AS "

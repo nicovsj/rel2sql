@@ -78,7 +78,7 @@ std::shared_ptr<sql::ast::Expression> Translator::BuildLiteralRelationAbstractio
   size_t arity = all_exprs[0]->arity;
   std::vector<std::vector<sql::ast::constant_t>> values;
   for (auto& expr : all_exprs) {
-    if (expr->arity != static_cast<size_t>(arity)) {
+    if (expr->arity != arity) {
       throw std::runtime_error("Inconsistent arity in relation abstraction");
     }
     auto product = std::dynamic_pointer_cast<RelProduct>(expr);

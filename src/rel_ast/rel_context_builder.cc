@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <queue>
 #include <stdexcept>
+#include <unordered_set>
 
 #include "preprocessing/arity_visitor.h"
 #include "preprocessing/ids_visitor.h"
@@ -134,7 +135,17 @@ void RelContextBuilder::ComputeTopologicalSort() {
       }
     }
   }
+  // Nodes only on dependency cycles never get in_degree 0 (e.g. S depends on S and R: both R and S stay > 0 until
+  // Kahn finishes with an empty queue). Without appending them, sorted_ids_ is empty and ArityVisitor skips every
+  // RelDef — all arities stay 0. Append missing IDs in deterministic order after the DAG prefix.
+  std::unordered_set<std::string> placed(order.begin(), order.end());
+  std::vector<std::string> missing;
+  for (const auto& [id, _] : graph) {
+    if (!placed.count(id)) missing.push_back(id);
+  }
+  std::sort(missing.begin(), missing.end());
   std::reverse(order.begin(), order.end());
+  order.insert(order.end(), missing.begin(), missing.end());
   sorted_ids_ = std::move(order);
 }
 
