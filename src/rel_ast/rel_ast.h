@@ -462,6 +462,120 @@ struct RelPartialApplication : RelExpr {
 };
 
 // =============================================================================
+// Lowered builtins (produced by BuiltinResolver from partial/full applications)
+// =============================================================================
+
+enum class RelBuiltinAggregateOp { SUM, COUNT, AVG, MIN, MAX };
+
+struct RelBuiltinAggregateExpr : RelExpr {
+  RelBuiltinAggregateOp op = RelBuiltinAggregateOp::SUM;
+  std::shared_ptr<RelExpr> body;
+
+  RelBuiltinAggregateExpr(RelBuiltinAggregateOp op, std::shared_ptr<RelExpr> body) : op(op), body(std::move(body)) {}
+
+  std::string ToString() const override;
+  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
+};
+
+enum class RelBuiltinOrderKind { SortAsc, SortDesc, BottomDesc };
+
+struct RelBuiltinOrderExpr : RelFormula {
+  RelBuiltinOrderKind kind = RelBuiltinOrderKind::SortAsc;
+  std::shared_ptr<RelExpr> body;
+  std::optional<int64_t> limit;
+  // For bottom(n, R, _, sort_col, _): SQL ORDER BY sort_col DESC LIMIT n
+  std::optional<std::string> bottom_sort_column;
+
+  RelBuiltinOrderExpr(RelBuiltinOrderKind kind, std::shared_ptr<RelExpr> body,
+                      std::optional<int64_t> limit = std::nullopt,
+                      std::optional<std::string> bottom_sort_column = std::nullopt)
+      : kind(kind), body(std::move(body)), limit(std::move(limit)), bottom_sort_column(std::move(bottom_sort_column)) {}
+
+  std::string ToString() const override;
+  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
+};
+
+enum class RelBuiltinDateOp { ParseDate, DateAdd, DateSubtract, ExtractYear };
+
+struct RelBuiltinDateExpr : RelExpr {
+  RelBuiltinDateOp op = RelBuiltinDateOp::ParseDate;
+  std::vector<std::shared_ptr<RelExpr>> args;
+
+  explicit RelBuiltinDateExpr(RelBuiltinDateOp op, std::vector<std::shared_ptr<RelExpr>> args)
+      : op(op), args(std::move(args)) {}
+
+  std::string ToString() const override;
+  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
+};
+
+enum class RelTypedLiteralKind { Day, Month, Year, FixedDecimalType };
+
+struct RelTypedLiteralExpr : RelExpr {
+  RelTypedLiteralKind kind = RelTypedLiteralKind::Day;
+  int arg0 = 0;
+  int arg1 = 0;
+
+  RelTypedLiteralExpr(RelTypedLiteralKind kind, int arg0, int arg1 = 0) : kind(kind), arg0(arg0), arg1(arg1) {}
+
+  std::string ToString() const override;
+  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
+};
+
+struct RelBuiltinDecimalCastExpr : RelExpr {
+  int precision = 0;
+  int scale = 0;
+  std::shared_ptr<RelExpr> value;  // null for decimal[p,s] type literal without value
+
+  RelBuiltinDecimalCastExpr(int precision, int scale, std::shared_ptr<RelExpr> value)
+      : precision(precision), scale(scale), value(std::move(value)) {}
+
+  std::string ToString() const override;
+  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
+};
+
+struct RelBuiltinCoalesceExpr : RelExpr {
+  std::shared_ptr<RelExpr> primary;
+  std::shared_ptr<RelExpr> fallback;
+
+  RelBuiltinCoalesceExpr(std::shared_ptr<RelExpr> primary, std::shared_ptr<RelExpr> fallback)
+      : primary(std::move(primary)), fallback(std::move(fallback)) {}
+
+  std::string ToString() const override;
+  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
+};
+
+struct RelBuiltinSubstringExpr : RelExpr {
+  std::shared_ptr<RelExpr> str;
+  std::shared_ptr<RelExpr> start;
+  std::shared_ptr<RelExpr> len;
+
+  RelBuiltinSubstringExpr(std::shared_ptr<RelExpr> str, std::shared_ptr<RelExpr> start, std::shared_ptr<RelExpr> len)
+      : str(std::move(str)), start(std::move(start)), len(std::move(len)) {}
+
+  std::string ToString() const override;
+  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
+};
+
+struct RelBuiltinLikeMatchFormula : RelFormula {
+  std::string like_pattern;
+  std::shared_ptr<RelExpr> value;
+
+  RelBuiltinLikeMatchFormula(std::string like_pattern, std::shared_ptr<RelExpr> value)
+      : like_pattern(std::move(like_pattern)), value(std::move(value)) {}
+
+  std::string ToString() const override;
+  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
+};
+
+// =============================================================================
 // Program level
 // =============================================================================
 
