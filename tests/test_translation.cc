@@ -293,6 +293,87 @@ TEST_F(TranslationTest, AggregateExpression5) {
   OPT_EXPECT_EQ(TranslateExpression("max[B[x]]"), "SELECT T0.A1 AS x, MAX(T0.A2) AS A1 FROM B AS T0 GROUP BY T0.A1");
 }
 
+TEST_F(TranslationTest, AggregateExpressionCount) {
+  OPT_EXPECT_EQ(TranslateExpression("count[A]"), "SELECT COUNT(1) AS A1 FROM A AS T0");
+}
+
+TEST_F(TranslationTest, AggregateExpressionMeanAlias) {
+  OPT_EXPECT_EQ(TranslateExpression("mean[A]"), "SELECT AVG(T0.A1) AS A1 FROM A AS T0");
+}
+
+TEST_F(TranslationTest, BuiltinSortAsc) {
+  OPT_EXPECT_EQ(TranslateExpression("sort[A]"), "SELECT T0.A1 AS A1 FROM A AS T0 ORDER BY T0.A1 ASC");
+}
+
+TEST_F(TranslationTest, BuiltinReverseSort) {
+  OPT_EXPECT_EQ(TranslateExpression("reverse_sort[A]"), "SELECT T0.A1 AS A1 FROM A AS T0 ORDER BY T0.A1 DESC");
+}
+
+TEST_F(TranslationTest, BuiltinBottomFullApplication) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateProgram("def output { bottom(5, A, _, A1, _) }"),
+                          "SELECT DISTINCT T0.A1 AS A1 FROM A AS T0 ORDER BY T0.A1 DESC LIMIT 5;");
+}
+
+TEST_F(TranslationTest, BuiltinParseDate) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("parse_date[\"2024-01-01\", \"Y-m-d\"]"),
+                          "SELECT DATE '2024-01-01' AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinTypedLiteralDay) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("^Day[5]"), "SELECT INTERVAL '5' DAY AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinTypedLiteralMonth) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("^Month[3]"), "SELECT INTERVAL '3' MONTH AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinTypedLiteralYear) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("^Year[1]"), "SELECT INTERVAL '1' YEAR AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinTypedLiteralFixedDecimal) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("^FixedDecimal[10, 2]"), "SELECT CAST(NULL AS DECIMAL(10,2)) AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinDecimalNoValue) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("decimal[10, 2]"), "SELECT CAST(NULL AS DECIMAL(10,2)) AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinParseDecimal) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("parse_decimal[10, 2, \"1.23\"]"),
+                          "SELECT CAST(('1.23') AS DECIMAL(10,2)) AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinDateAdd) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("date_add[parse_date[\"2024-01-01\", \"Y-m-d\"], ^Day[5]]"),
+                          "SELECT DATE '2024-01-01' + INTERVAL '5' DAY AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinDateSubtract) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("date_subtract[parse_date[\"2024-01-01\", \"Y-m-d\"], ^Day[5]]"),
+                          "SELECT DATE '2024-01-01' - INTERVAL '5' DAY AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinDateYear) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("date_year[parse_date[\"2024-01-01\", \"Y-m-d\"]]"),
+                          "SELECT EXTRACT(YEAR FROM (DATE '2024-01-01')) AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinDefaultValue) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("default_value[A, 0]"),
+                          "SELECT COALESCE((T0.A1), (0)) AS A1 FROM A AS T0");
+}
+
+TEST_F(TranslationTest, BuiltinSubstring) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("substring[\"hello\", 1, 3]"),
+                          "SELECT SUBSTRING(('hello') FROM (1) FOR (3)) AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinLikeMatchFormula) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateFormula("A(x) and like_match(\"foo%\", x)"),
+                          "SELECT T0.A1 AS x FROM A AS T0 WHERE T0.A1 LIKE 'foo%'");
+}
+
 TEST_F(TranslationTest, RelationalAbstraction1) {
   OPT_EXPECT_EQ(TranslateExpression("{(1,2); (3,4)}"),
                 "SELECT CASE WHEN I0.i = 1 THEN 1 WHEN I0.i = 2 THEN 3 END AS A1, CASE WHEN I0.i = 1 THEN 2 WHEN I0.i "
