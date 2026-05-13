@@ -258,6 +258,12 @@ std::unordered_set<std::string> SelfJoinOptimizer::CollectReferencedColumns(cons
     }
   }
 
+  for (const auto& ob : select.order_by) {
+    if (ob.term) {
+      CollectColumnsFromTerm(ob.term, source_alias, referenced);
+    }
+  }
+
   return referenced;
 }
 
