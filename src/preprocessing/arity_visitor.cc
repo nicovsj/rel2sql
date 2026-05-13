@@ -137,6 +137,58 @@ std::shared_ptr<RelFormula> ArityVisitor::Visit(const std::shared_ptr<RelFullApp
   return node;
 }
 
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinAggregateExpr>& node) {
+  if (node->body) Visit(node->body);
+  node->arity = 1;
+  return node;
+}
+
+std::shared_ptr<RelFormula> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinOrderExpr>& node) {
+  if (node->body) Visit(node->body);
+  node->arity = node->body ? node->body->arity : 0;
+  return node;
+}
+
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinDateExpr>& node) {
+  for (auto& a : node->args) {
+    if (a) Visit(a);
+  }
+  node->arity = 1;
+  return node;
+}
+
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelTypedLiteralExpr>& node) {
+  node->arity = 1;
+  return node;
+}
+
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinDecimalCastExpr>& node) {
+  if (node->value) Visit(node->value);
+  node->arity = 1;
+  return node;
+}
+
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinCoalesceExpr>& node) {
+  if (node->primary) Visit(node->primary);
+  if (node->fallback) Visit(node->fallback);
+  node->arity = node->primary ? node->primary->arity : (node->fallback ? node->fallback->arity : 0);
+  return node;
+}
+
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinSubstringExpr>& node) {
+  if (node->str) Visit(node->str);
+  if (node->start) Visit(node->start);
+  if (node->len) Visit(node->len);
+  node->arity = 1;
+  return node;
+}
+
+std::shared_ptr<RelFormula> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinLikeMatchFormula>& node) {
+  if (node->value) Visit(node->value);
+  node->arity = 0;
+  return node;
+}
+
 std::shared_ptr<RelTerm> ArityVisitor::Visit(const std::shared_ptr<RelIDTerm>& node) {
   auto info = container_->GetRelationInfo(node->id);
   if (info) {

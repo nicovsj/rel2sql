@@ -26,6 +26,15 @@ class ArityVisitor : public BaseRelVisitor {
 
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullApplication>& node) override;
 
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinAggregateExpr>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBuiltinOrderExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinDateExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelTypedLiteralExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinDecimalCastExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinCoalesceExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinSubstringExpr>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBuiltinLikeMatchFormula>& node) override;
+
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelIDTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelNumTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelOpTerm>& node) override;

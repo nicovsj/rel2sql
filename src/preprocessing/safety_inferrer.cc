@@ -311,6 +311,66 @@ class SafetyComputeVisitor : public BaseRelVisitor {
     return node;
   }
 
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinAggregateExpr>& node) override {
+    if (node->body) {
+      node->safety = node->body->safety;
+    }
+    return node;
+  }
+
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBuiltinOrderExpr>& node) override {
+    if (node->body) {
+      node->safety = node->body->safety;
+    }
+    return node;
+  }
+
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinDateExpr>& node) override {
+    node->safety = BoundSet();
+    for (auto& a : node->args) {
+      if (a) node->safety = node->safety.UnionWith(a->safety);
+    }
+    return node;
+  }
+
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelTypedLiteralExpr>& node) override {
+    node->safety = BoundSet();
+    return node;
+  }
+
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinDecimalCastExpr>& node) override {
+    if (node->value) {
+      node->safety = node->value->safety;
+    } else {
+      node->safety = BoundSet();
+    }
+    return node;
+  }
+
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinCoalesceExpr>& node) override {
+    node->safety = BoundSet();
+    if (node->primary) node->safety = node->primary->safety;
+    if (node->fallback) node->safety = node->safety.UnionWith(node->fallback->safety);
+    return node;
+  }
+
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinSubstringExpr>& node) override {
+    node->safety = BoundSet();
+    if (node->str) node->safety = node->str->safety;
+    if (node->start) node->safety = node->safety.UnionWith(node->start->safety);
+    if (node->len) node->safety = node->safety.UnionWith(node->len->safety);
+    return node;
+  }
+
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBuiltinLikeMatchFormula>& node) override {
+    if (node->value) {
+      node->safety = node->value->safety;
+    } else {
+      node->safety = BoundSet();
+    }
+    return node;
+  }
+
  private:
   void ComputeBindingsSafety(RelNode& current, RelNode& child,
                              const std::vector<std::shared_ptr<RelBinding>>& bindings) {
