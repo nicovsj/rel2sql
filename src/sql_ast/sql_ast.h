@@ -24,6 +24,7 @@ enum class CompOp {
   GT,
   LTE,
   GTE,
+  LIKE,
 };
 
 enum class AggregateFunction { COUNT, SUM, AVG, MIN, MAX };
@@ -581,6 +582,25 @@ class Column : public Term {
   }
 };
 
+/** SQL fragment emitted verbatim (e.g. DATE '...', INTERVAL ..., CAST(... AS DATE)). */
+class VerbatimTerm : public Term {
+ public:
+  std::string sql;
+
+  explicit VerbatimTerm(std::string sql) : sql(std::move(sql)) {}
+
+  std::ostream& Print(std::ostream& os) const override { return os << sql; }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* o = dynamic_cast<const VerbatimTerm*>(&other);
+    return o && sql == o->sql;
+  }
+
+  std::string ToString() const override { return sql; }
+};
+
 class Values : public Query {
  public:
   std::vector<std::vector<Constant>> values;
@@ -679,6 +699,8 @@ class ComparisonCondition : public Condition {
         return "<=";
       case CompOp::GTE:
         return ">=";
+      case CompOp::LIKE:
+        return "LIKE";
     }
   }
 
@@ -932,12 +954,21 @@ class GroupBy : public Expression {
   }
 };
 
+enum class SortDirection { ASC, DESC };
+
+struct OrderByClause {
+  std::shared_ptr<Term> term;
+  SortDirection direction = SortDirection::ASC;
+};
+
 class Select : public Query {
  public:
   std::vector<std::shared_ptr<Selectable>> columns;
   std::optional<std::shared_ptr<From>> from;
   std::optional<std::shared_ptr<GroupBy>> group_by;
   bool is_distinct = false;
+  std::vector<OrderByClause> order_by;
+  std::optional<int> limit_value;
 
   Select(const std::vector<std::shared_ptr<Selectable>>& columns, bool is_distinct = false)
       : columns(columns), is_distinct(is_distinct) {}
@@ -988,6 +1019,21 @@ class Select : public Query {
       os << " " << *group_by.value();
     }
 
+    if (!order_by.empty()) {
+      os << " ORDER BY ";
+      for (size_t i = 0; i < order_by.size(); ++i) {
+        if (i > 0) {
+          os << ", ";
+        }
+        os << *order_by[i].term;
+        os << (order_by[i].direction == SortDirection::DESC ? " DESC" : " ASC");
+      }
+    }
+
+    if (limit_value.has_value()) {
+      os << " LIMIT " << *limit_value;
+    }
+
     return os;
   }
 
@@ -1010,6 +1056,12 @@ class Select : public Query {
     if (group_by.has_value() && other_select->group_by.has_value()) {
       if (*group_by.value() != *other_select->group_by.value()) return false;
     }
+    if (order_by.size() != other_select->order_by.size()) return false;
+    for (size_t i = 0; i < order_by.size(); ++i) {
+      if (order_by[i].direction != other_select->order_by[i].direction) return false;
+      if (*order_by[i].term != *other_select->order_by[i].term) return false;
+    }
+    if (limit_value != other_select->limit_value) return false;
     return true;
   }
 };
