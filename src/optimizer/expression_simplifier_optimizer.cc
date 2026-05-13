@@ -81,6 +81,8 @@ bool IsTautology(const ComparisonCondition& c) {
                                           return ai <= bi;
                                         case CompOp::GTE:
                                           return ai >= bi;
+                                        case CompOp::LIKE:
+                                          return false;
                                       }
                                     },
                                     [&](double ad, double bd) {
@@ -97,6 +99,8 @@ bool IsTautology(const ComparisonCondition& c) {
                                           return ad <= bd;
                                         case CompOp::GTE:
                                           return ad >= bd;
+                                        case CompOp::LIKE:
+                                          return false;
                                       }
                                     },
                                     [&](const std::string& as, const std::string& bs) {
@@ -113,6 +117,8 @@ bool IsTautology(const ComparisonCondition& c) {
                                           return as <= bs;
                                         case CompOp::GTE:
                                           return as >= bs;
+                                        case CompOp::LIKE:
+                                          return false;
                                       }
                                     },
                                     [&](bool ab, bool bb) {
@@ -129,6 +135,8 @@ bool IsTautology(const ComparisonCondition& c) {
                                           return ab <= bb;
                                         case CompOp::GTE:
                                           return ab >= bb;
+                                        case CompOp::LIKE:
+                                          return false;
                                       }
                                     },
                                     [](const auto&, const auto&) { return false; }},

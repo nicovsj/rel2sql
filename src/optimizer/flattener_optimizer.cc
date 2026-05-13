@@ -91,6 +91,8 @@ std::shared_ptr<Expression> FlattenerOptimizer::TryFlattenUnionSubquery(const st
     }
 
     auto new_select = std::make_shared<Select>(new_columns, new_from, member_select->is_distinct);
+    new_select->order_by = member_select->order_by;
+    new_select->limit_value = member_select->limit_value;
     new_members.push_back(new_select);
   }
 
