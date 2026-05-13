@@ -6,6 +6,7 @@
 #include <unordered_set>
 
 #include "preprocessing/arity_visitor.h"
+#include "preprocessing/builtin_resolver.h"
 #include "preprocessing/ids_visitor.h"
 #include "preprocessing/lit_visitor.h"
 #include "preprocessing/recursion_visitor.h"
@@ -188,6 +189,11 @@ RelContext RelContextBuilder::Process(std::shared_ptr<RelNode> root) {
 std::shared_ptr<RelNode> RelContextBuilder::RunPipeline(std::shared_ptr<RelNode> root) {
   BindingRewriter binding_domain_rewriter;
   root = binding_domain_rewriter.Visit(root);
+
+  // Lower built-in applications (sort, count, parse_date, like_match, ...) into typed
+  // Rel AST nodes before ID/arity analysis runs, so analyzers never see unknown head names.
+  BuiltinResolver builtin_resolver(this);
+  root = builtin_resolver.Resolve(std::move(root));
 
   IDsVisitor ids_visitor(this);
   ids_visitor.Visit(root);
