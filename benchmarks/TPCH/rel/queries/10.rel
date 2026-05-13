@@ -1,0 +1,84 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Returned Item Reporting Query (Q10)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+The Returned Item Reporting Query finds the top 20 customers, in terms of their
+effect on lost revenue for a given quarter, who have returned parts. The query
+considers only parts that were ordered in the specified quarter. The query lists
+the customer's name, address, nation, phone number, account balance, comment
+information and revenue lost. The customers are listed in descending order of
+lost revenue. Revenue lost is defined as sum(l_extendedprice*(1-l_discount)) for
+all qualifying lineitems.
+*/
+
+/*
+:x
+:o
+select
+    c_custkey,
+    c_name,
+    sum(l_extendedprice * (1 - l_discount)) as revenue,
+    c_acctbal,
+    n_name,
+    c_address,
+    c_phone,
+    c_comment
+from
+    customer,
+    orders,
+    lineitem,
+    nation
+where
+    c_custkey = o_custkey
+    and l_orderkey = o_orderkey
+    and o_orderdate >= date '@@1'
+    and o_orderdate < date '@@1' + interval '3' month
+    and l_returnflag = 'R'
+    and c_nationkey = n_nationkey
+group by
+    c_custkey,
+    c_name,
+    c_acctbal,
+    c_phone,
+    n_name,
+    c_address,
+    c_comment
+order by
+    revenue desc;
+:n 20
+*/
+
+@inline
+def lower[]: parse_date["@@1", "Y-m-d"]
+
+@inline
+def upper[]: date_add[parse_date["@@1", "Y-m-d"], ^Month[3]]
+
+@vectorized
+def customer_by_revenue(revenue, c):
+    revenue = sum[(o, num, rev):
+        l_revenue(o, num, rev) and
+        o_custkey(o, c) and
+        lower <= o_orderdate[o] < upper and
+        l_returned(o, num)
+    ]
+
+@vectorized
+def sorted_customers_by_revenue(i, c, revenue):
+    bottom(20, customer_by_revenue, i, revenue, c)
+
+// @vectorized : this is *NOT* vectorized because we deliberately skip the join-tree
+// optimization for cheap queries. The query is slightly slower if we use the vectorizer
+// here due to a couple of intermediates.
+def result(i, c, v1, revenue, v2, v3, v4, v5, v6):
+    v1 = c_name[c] and
+    v2 = c_acctbal[c] and
+    v3 = n_name[c_nationkey[c]] and
+    v4 = c_address[c] and
+    v5 = c_phone[c] and
+    v6 = c_comment[c] and
+    sorted_customers_by_revenue(i, c, revenue)

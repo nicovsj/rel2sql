@@ -1,0 +1,50 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Forecasting Revenue Change Query (Q6)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+The Forecasting Revenue Change Query considers all the lineitems shipped in a
+given year with discounts between DISCOUNT-0.01 and DISCOUNT+0.01. The query
+lists the amount by which the total revenue would have increased if these
+discounts had been eliminated for lineitems with l_quantity less than
+quantity. Note that the potential revenue increase is equal to the sum of
+[l_extendedprice * l_discount] for all lineitems with discounts and quantities
+in the qualifying range.
+
+DATE is the first of January of a randomly selected year within [1993 .. 1997];
+DISCOUNT is randomly selected within [0.02 .. 0.09];
+QUANTITY is randomly selected within [24 .. 25].
+*/
+
+/*
+:x
+:o
+select
+    sum(l_extendedprice * l_discount) as revenue
+from
+    lineitem
+where
+    l_shipdate >= date '@@1'
+    and l_shipdate < date '@@1' + interval '1' year
+    and l_discount between @@2 - 0.01 and @@2 + 0.01
+    and l_quantity < @@3;
+:n -1
+*/
+
+@inline def lower_shipdate[]: parse_date["@@1", "Y-m-d"]
+@inline def upper_shipdate[]: date_add[parse_date["@@1", "Y-m-d"], ^Year[1]]
+@inline def lower_discount[]: dec[@@2] - dec[0.01]
+@inline def upper_discount[]: dec[@@2] + dec[0.01]
+
+// @vectorized : it is fine to put @vectorized here, however, this is commented out because
+// we skip the join-tree optimization for cheap queries, and at SF001 this skipping might
+// causes an exception to be thrown.
+def result[]: sum[(o, num, v):
+    lower_shipdate <= l_shipdate[o, num] < upper_shipdate
+    and lower_discount <= l_discount[o, num] <= upper_discount
+    and l_quantity[o, num] < @@3
+    and v = l_extendedprice[o, num] * l_discount[o, num]
+]

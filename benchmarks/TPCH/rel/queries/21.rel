@@ -1,0 +1,93 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Suppliers Who Kept Orders Waiting Query (Q21)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+The Suppliers Who Kept Orders Waiting query identifies suppliers, for a given
+nation, whose product was part of a multi-supplier order (with current status of
+'F') where they were the only supplier who failed to meet the committed delivery
+date.
+*/
+
+/*
+:x
+:o
+select
+    s_name,
+    count(* ) as numwait
+from
+    supplier,
+    lineitem l1,
+    orders,
+    nation
+where
+    s_suppkey = l1.l_suppkey
+    and o_orderkey = l1.l_orderkey
+    and o_orderstatus = 'F'
+    and l1.l_receiptdate > l1.l_commitdate
+    and exists (
+        select
+            *
+        from
+            lineitem l2
+        where
+            l2.l_orderkey = l1.l_orderkey
+            and l2.l_suppkey <> l1.l_suppkey
+    )
+    and not exists (
+        select
+            *
+        from
+            lineitem l3
+        where
+            l3.l_orderkey = l1.l_orderkey
+            and l3.l_suppkey <> l1.l_suppkey
+            and l3.l_receiptdate > l3.l_commitdate
+    )
+    and s_nationkey = n_nationkey
+    and n_name = '@@1'
+group by
+    s_name
+order by
+    numwait desc,
+    s_name;
+:n 100
+*/
+
+@inline def sub_query1(o1, o1l1_suppkey): exists((l2) | l_suppkey[o1, l2] != o1l1_suppkey)
+
+@inline def sub_query2(o1, l1, o1l1_suppkey):
+    not(exists((l3) |
+        l_suppkey[o1, l3] != o1l1_suppkey and
+        l_suppkey(o1, l1, o1l1_suppkey) and
+        l_receiptdate[o1, l3] > l_commitdate[o1, l3]
+    ))
+
+@inline def lineitems_query(o1, l1, sk):
+    o_orderstatus(o1, 'F') and
+    l_receiptdate[o1, l1] > l_commitdate[o1, l1] and
+    sub_query1(o1, sk) and
+    sub_query2(o1, l1, sk)
+
+// @vectorized : this is *NOT* vectorized because we deliberately skip the join-tree
+// optimization for cheap queries. The query is slightly slower if we use the vectorizer
+// here due to a couple of intermediates.
+def unsorted_result(numwait, sname):
+    numwait = count[(o1, l1, sk):
+        s_name(sk, sname) and
+        l_suppkey(o1, l1, sk) and
+        lineitems_query(o1, l1, sk) and
+        ( ( sk.s_nationkey ).n_name ) = "@@1"
+    ]
+
+@vectorized
+def inside_rev_sort[numwait]: reverse_sort[unsorted_result[numwait]]
+
+@vectorized
+def final_sort[]: reverse_sort[inside_rev_sort]
+
+@vectorized
+def result(i, sname, numwait): final_sort(i, numwait, _, sname) and i <= 100

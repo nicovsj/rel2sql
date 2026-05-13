@@ -1,0 +1,72 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Local Supplier Volume Query (Q5)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+The Local Supplier Volume Query lists for each nation in a region the revenue
+volume that resulted from lineitem transactions in which the customer ordering
+parts and the supplier filling them were both within that nation. The query is
+run in order to determine whether to institute local distribution centers in a
+given region. The query considers only parts ordered in a given year. The query
+displays the nations and revenue volume in descending order by revenue. Revenue
+volume for all qualifying lineitems in a particular nation is defined as
+sum(l_extendedprice * (1 - l_discount)).
+
+REGION is randomly selected within the list of values defined for R_NAME.
+DATE is the first of January of a randomly selected year within [1993 .. 1997].
+*/
+
+/*
+:x
+:o
+select
+    n_name,
+    sum(l_extendedprice * (1 - l_discount)) as revenue
+from
+    customer,
+    orders,
+    lineitem,
+    supplier,
+    nation,
+    region
+where
+    c_custkey = o_custkey
+    and l_orderkey = o_orderkey
+    and l_suppkey = s_suppkey
+    and c_nationkey = s_nationkey
+    and s_nationkey = n_nationkey
+    and n_regionkey = r_regionkey
+    and r_name = '@@1'
+    and o_orderdate >= date '@@2'
+    and o_orderdate < date '@@2' + interval '1' year
+group by
+    n_name
+order by
+    revenue desc;
+:n -1
+*/
+@vectorized def nations(n): ( ( n.n_regionkey ).r_name ) = "@@1"
+@vectorized def lower[]: parse_date["@@2", "Y-m-d"]
+@vectorized def upper[]: date_add[parse_date["@@2", "Y-m-d"], ^Year[1]]
+
+// @vectorized : it is fine to put @vectorized here, however, this is commented out because
+// we skip the join-tree optimization for cheap queries, and at SF001 this skipping might
+// causes an exception to be thrown.
+def revenue_sum[n in nations]: sum[[o, num]:
+    l_revenue[o, num] where
+    ( ( o.o_custkey ).c_nationkey ) = n and
+    ( l_suppkey[o, num].s_nationkey ) = n and
+    lower <= ( o.o_orderdate ) < upper
+]
+
+@vectorized
+def unsorted_result(v, target_nation): exists((n) |
+    revenue_sum(n, v) and
+    n_name(n, target_nation)
+)
+
+@vectorized
+def result(i, n, v): reverse_sort(unsorted_result, i, v, n)

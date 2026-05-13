@@ -1,0 +1,96 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Minimum Cost Supplier Query (Q2)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+
+/*
+The Minimum Cost Supplier Query finds, in a given region, for each part of a
+certain type and size, the supplier who can supply it at minimum cost. If
+several suppliers in that region offer the desired part type and size at the
+same (minimum) cost, the query lists the parts from suppliers with the 100
+highest account balances. For each supplier, the query lists the supplier's
+account balance, name and nation; the part's number and manufacturer; the
+supplier's address, phone number and comment information.
+*/
+
+
+/*
+:x
+:o
+select
+    s_acctbal,
+    s_name,
+    n_name,
+    p_partkey,
+    p_mfgr,
+    s_address,
+    s_phone,
+    s_comment
+from
+    part,
+    supplier,
+    partsupp,
+    nation,
+    region
+where
+    p_partkey = ps_partkey
+    and s_suppkey = ps_suppkey
+    and p_size = @@1
+    and p_type like '%@@2'
+    and s_nationkey = n_nationkey
+    and n_regionkey = r_regionkey
+    and r_name = '@@3'
+    and ps_supplycost = (
+        select
+            min(ps_supplycost)
+        from
+            partsupp,
+            supplier,
+            nation,
+            region
+        where
+            p_partkey = ps_partkey
+            and s_suppkey = ps_suppkey
+            and s_nationkey = n_nationkey
+            and n_regionkey = r_regionkey
+            and r_name = '@@3'
+    )
+order by
+    s_acctbal desc,
+    n_name,
+    s_name,
+    p_partkey;
+:n 100
+*/
+
+@inline
+def supplycost(part, supplier, suppcost): // TOCHECK: do we needd more conditions here?
+    ps_supplycost(part, supplier, suppcost) and
+    ( ( ( supplier.s_nationkey ).n_regionkey ).r_name ) = "@@3"
+
+// @vectorized : this is *NOT* necessarily vectorized at small scale factors because we
+// deliberately skip the join-tree optimization for cheap queries.
+def unsorted_result(v1,v2,v3,v4,v5,v6,v7,v8): exists((s in supplier, p in part) |
+    v1 = s_acctbal[s] and
+    v2 = s_name[s] and
+    v3 = ( ( s_nationkey[s] ).n_name ) and
+    v4 = p and
+    v5 = p_mfgr[p] and
+    v6 = s_address[s] and
+    v7 = s_phone[s] and
+    v8 = s_comment[s] and
+    p_size(p, @@1) and
+    like_match(raw"%@@2", p_type[p]) and
+    ( ( ( s_nationkey[s] ).n_regionkey ).r_name ) = "@@3" and
+    // TODO is this an ArgMin? // we could rewrite using ArgMin but not sure it would simplify things much
+    ps_supplycost[p, s] = min[supplycost[p]]
+)
+
+def inside_rev_sort[a]: reverse_sort[unsorted_result[a]]
+def final_sort[]: reverse_sort[inside_rev_sort]
+
+def result(i,x1, __rest1...): final_sort(i,x1,_,__rest1...) and i <= 100
+// def result[]: unsorted_result

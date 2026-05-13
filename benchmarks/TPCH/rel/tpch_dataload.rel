@@ -1,0 +1,8 @@
+def insert[:nation_csv]: load_csv[nation_csv_config]
+def insert[:region_csv]: load_csv[region_csv_config]
+def insert[:part_csv]: load_csv[part_csv_config]
+def insert[:supplier_csv]: load_csv[supplier_csv_config]
+def insert[:partsupp_csv]: load_csv[partsupp_csv_config]
+def insert[:customer_csv]: load_csv[customer_csv_config]
+@function def insert[:orders_rel]: schema_mapping_orders[load_csv[orders_csv_config]]
+@function def insert[:lineitem_rel]: schema_mapping_lineitem[load_csv[lineitem_csv_config]]

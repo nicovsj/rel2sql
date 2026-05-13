@@ -1,0 +1,74 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Large Volume Customer Query (Q18)
+-- Function Query Definition
+-- Approved February 1998
+*/
+
+/*
+The Large Volume Customer Query finds a list of the top 100 customers who have
+ever placed large quantity orders.  The query lists the customer name, customer
+key, the order key, date and total price and the quantity for the order.
+*/
+
+/*
+:x
+:o
+select
+    c_name,
+    c_custkey,
+    o_orderkey,
+    o_orderdate,
+    o_totalprice,
+    sum(l_quantity)
+from
+    customer,
+    orders,
+    lineitem
+where
+    o_orderkey in (
+        select
+            l_orderkey
+        from
+            lineitem
+        group by
+            l_orderkey having
+                sum(l_quantity) > @@1
+    )
+    and c_custkey = o_custkey
+    and o_orderkey = l_orderkey
+group by
+    c_name,
+    c_custkey,
+    o_orderkey,
+    o_orderdate,
+    o_totalprice
+order by
+    o_totalprice desc,
+    o_orderdate;
+:n 100
+*/
+
+@inline def inner_sum[ok]:
+    sum[l_quantity[ok]] > @@1
+
+@inline def inner_query(ck, ok, sum_quantity):
+    inner_sum(ok) and o_custkey(ok, ck) and sum_quantity = sum[[lk]: l_quantity[ok, lk]]
+
+// @vectorized : it is fine to put @vectorized here, however, this is commented out because
+// we skip the join-tree optimization for cheap queries, and at SF001 this skipping might
+// causes an exception to be thrown.
+def unsorted_result(totalprice, orderdate, name, ck, ok, sum_quantity):
+    c_name(ck, name) and
+    o_orderdate(ok, orderdate) and
+    o_totalprice(ok, totalprice) and
+    inner_query(ck, ok, sum_quantity)
+
+@vectorized
+def inside_rev_sort[totalprice]: reverse_sort[unsorted_result[totalprice]]
+
+@vectorized
+def final_sort[]: reverse_sort[inside_rev_sort]
+
+@vectorized
+def result(i,name,ck,ok,orderdate,totalprice,sum_quantity): final_sort(i,totalprice,_,orderdate,name,ck,ok,sum_quantity) and i <= 100

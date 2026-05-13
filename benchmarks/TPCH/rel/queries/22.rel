@@ -1,0 +1,97 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Global Sales Opportunity Query (Q22)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+This query counts how many customers within a specific range of country codes
+have not placed orders for 7 years but who have a greater than average
+"positive" account balance. It also reflects the magnitude of that balance.
+Country code is defined as the first two characters of c_phone.
+*/
+
+
+/*
+:x
+:o
+select
+    cntrycode,
+    count(* ) as numcust,
+    sum(c_acctbal) as totacctbal
+from
+    (
+        select
+            substring(c_phone from 1 for 2) as cntrycode,
+            c_acctbal
+        from
+            customer
+        where
+            substring(c_phone from 1 for 2) in
+                ('@@1', '@@2', '@@3', '@@4', '@@5', '@@6', '@@7')
+            and c_acctbal > (
+                select
+                    avg(c_acctbal)
+                from
+                    customer
+                where
+                    c_acctbal > 0.00
+                    and substring(c_phone from 1 for 2) in
+                    	('@@1', '@@2', '@@3', '@@4', '@@5', '@@6', '@@7')
+            )
+            and not exists (
+                select
+                    *
+                from
+                    orders
+                where
+                    o_custkey = c_custkey
+            )
+    ) as custsale
+group by
+    cntrycode
+order by
+    cntrycode;
+:n -1
+*/
+
+def selected_country_code[]: "@@1"
+def selected_country_code[]: "@@2"
+def selected_country_code[]: "@@3"
+def selected_country_code[]: "@@4"
+def selected_country_code[]: "@@5"
+def selected_country_code[]: "@@6"
+def selected_country_code[]: "@@7"
+
+@inline
+def c_country_code[c]: substring[c_phone[c], 1, 2]
+
+@inline
+def selected_customer(c): exists((cc) |
+    selected_country_code(cc) and
+    c_country_code[c] = cc
+)
+
+@inline
+def avg_selected[]: average[(c, v):
+    c_acctbal(c, v) and
+    v > dec[0] and
+    selected_customer(c)
+]
+
+@inline
+def inner_query(cntrycode, c, acctbal):
+    selected_customer(c) and
+    c_acctbal(c, acctbal) and
+    acctbal > avg_selected and
+    c_country_code[c] = cntrycode and
+    not(o_custkey(_, c))
+
+// @vectorized
+// not yet vectorizable because R(a,b) and (b="1" or b="2" or b="3") is not vectorizable
+def unsorted_result[cntrycode]:
+    (count[inner_query[cntrycode]], sum[inner_query[cntrycode]])
+
+@vectorized
+def result[]: sort[unsorted_result]

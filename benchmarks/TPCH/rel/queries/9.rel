@@ -1,0 +1,90 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Product Type Profit Measure Query (Q9)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+The Product Type Profit Measure Query finds, for each nation and each year, the
+profit for all parts ordered in that year that contain a specified substring in
+their names and that were filled by a supplier in that nation. The profit is
+defined as the sum of [(l_extendedprice*(1-l_discount)) - (ps_supplycost *
+l_quantity)] for all lineitems describing parts in the specified line. The query
+lists the nations in ascending alphabetical order and, for each nation, the year
+and profit in descending order by year (most recent first).
+*/
+
+/*
+:x
+:o
+select
+    nation,
+    o_year,
+    sum(amount) as sum_profit
+from
+    (
+        select
+            n_name as nation,
+            extract(year from o_orderdate) as o_year,
+            l_extendedprice * (1 - l_discount) - ps_supplycost * l_quantity as amount
+        from
+            part,
+            supplier,
+            lineitem,
+            partsupp,
+            orders,
+            nation
+        where
+            s_suppkey = l_suppkey
+            and ps_suppkey = l_suppkey
+            and ps_partkey = l_partkey
+            and p_partkey = l_partkey
+            and o_orderkey = l_orderkey
+            and s_nationkey = n_nationkey
+            and p_name like '%@@1%'
+    ) as profit
+group by
+    nation,
+    o_year
+order by
+    nation,
+    o_year desc;
+:n -1
+*/
+
+/*
+//TODO(MD): Suggested replacement after fixing issue #319, as this impl is currently
+//          around 20% slower.
+// supplycost of a lineitem
+@inline def supplycost = o, l : ps_supplycost[l_partkey[o, l], l_suppkey[o, l]]
+
+// profit for a lineitem
+@inline def profit = o, l :
+    l_extendedprice[o, l] * (1 - l_discount[o, l]) -  supplycost[o, l] * l_quantity[o, l]
+
+def result = o_nation, o_year :
+    sum[o, l, single_amount:
+      o_year = o.o_orderdate.date_year and
+      l_suppkey[o, l].s_nationkey.n_name = o_nation and
+      like_match(raw"%@@1%", p_name[l_partkey[o, l]]) and
+      single_amount = profit[o, l]
+    ]
+*/
+// @vectorized : this is *NOT* vectorized because we deliberately skip the join-tree
+// optimization for cheap queries. The query is slightly slower if we use the vectorizer
+// here due to a couple of intermediates.
+def result(o_nation, o_year, amount):
+    amount = sum[(ok, lk, single_amount):
+        o_year = ( o_orderdate[ok].date_year ) and
+        exists((pk, sk) |
+            l_suppkey(ok, lk, sk) and
+            l_partkey(ok, lk, pk) and
+            ( ( sk.s_nationkey ).n_name ) = o_nation and
+            like_match(raw"%@@1%", ( pk.p_name )) and
+            single_amount = l_revenue[ok, lk] - ps_supplycost[pk, sk] * l_quantity[ok, lk]
+        )
+    ]
+
+// MB Optimization-wise this query is challenging, but otherwise it's an easy query
+//MD: `ORDER BY NATION, O_YEAR DESC` is missing

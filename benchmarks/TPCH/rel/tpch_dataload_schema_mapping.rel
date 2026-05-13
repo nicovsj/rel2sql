@@ -1,0 +1,18 @@
+// @backed_by_dict to ensure lineitem_rel and order_rel are represented as Dicts.
+// This ensures the handwritten query plans used by
+// bench/Microbench/query_eval/qe_vs_iterators.jl work correctly.
+@backed_by_dict declare lineitem_rel(args...) requires true
+@backed_by_dict declare orders_rel(args...) requires true
+
+@inline
+def schema_mapping_orders({CSV}, column, oid, v):
+    exists((pos) |
+    CSV(:o_orderkey, pos, oid) and
+    CSV(column, pos, v))
+
+@inline
+def schema_mapping_lineitem({CSV}, column, oid, lid, v):
+    exists((pos) |
+    CSV(:l_orderkey, pos, oid) and
+    CSV(:l_linenumber, pos, lid) and
+    CSV(column, pos, v))

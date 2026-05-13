@@ -1,0 +1,77 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Parts/Supplier Relationship Query (Q16)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+The Parts/Supplier Relationship Query counts the number of suppliers who can
+supply parts that satisfy a particular customer's requirements. The customer is
+interested in parts of eight different sizes as long as they are not of a given
+type, not of a given brand, and not from a supplier who has had complaints
+registered at the Better Business Bureau.  Results must be presented in
+descending count and ascending brand, type, and size.
+*/
+
+/*
+:x
+:o
+select
+    p_brand,
+    p_type,
+    p_size,
+    count(distinct ps_suppkey) as supplier_cnt
+from
+    partsupp,
+    part
+where
+    p_partkey = ps_partkey
+    and p_brand <> '@@1'
+    and p_type not like '@@2%'
+    and p_size in (@@3, @@4, @@5, @@6, @@7, @@8, @@9, @@10)
+    and ps_suppkey not in (
+        select
+            s_suppkey
+        from
+            supplier
+        where
+            s_comment like '%Customer%Complaints%'
+    )
+group by
+    p_brand,
+    p_type,
+    p_size
+order by
+    supplier_cnt desc,
+    p_brand,
+    p_type,
+    p_size;
+:n -1
+*/
+
+//This definition is not inlined to increase the performance
+// @vectorized : not yet vectorizable due to [not rel_primitive_like_match]
+def inner_query(brand, ctype, size, sk): exists((pk) |
+    partsupp(pk, sk) and
+    p_brand(pk, brand) and brand != "@@1" and
+    p_type(pk, ctype) and not(like_match(raw"@@2%", ctype)) and
+    p_size(pk, size) and
+    (size = @@3 or size = @@4 or size = @@5 or size = @@6 or
+    size = @@7 or size = @@8 or size = @@9 or size = @@10) and
+    not (has_customer_complaint(sk))
+)
+
+@vectorized
+def unsorted_result(supplier_cnt, brand, ctype, size):
+    supplier_cnt = count[inner_query[brand, ctype, size]]
+
+@vectorized
+def inside_rev_sort[c]: reverse_sort[unsorted_result[c]]
+
+@vectorized
+def final_sort[]: reverse_sort[inside_rev_sort]
+
+@vectorized
+// move count to the end, remove inside index:
+def result(i,b,t,s,c): final_sort(i,c,_,b,t,s)
