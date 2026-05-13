@@ -165,4 +165,46 @@ std::shared_ptr<RelApplBase> BaseRelVisitor::Visit(const std::shared_ptr<RelExpr
   return node;
 }
 
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelBuiltinAggregateExpr>& node) {
+  if (node->body) node->body = Visit(node->body);
+  return node;
+}
+
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelBuiltinOrderExpr>& node) {
+  if (node->body) node->body = Visit(node->body);
+  return node;
+}
+
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelBuiltinDateExpr>& node) {
+  for (auto& a : node->args) {
+    if (a) a = Visit(a);
+  }
+  return node;
+}
+
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelTypedLiteralExpr>& node) { return node; }
+
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelBuiltinDecimalCastExpr>& node) {
+  if (node->value) node->value = Visit(node->value);
+  return node;
+}
+
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelBuiltinCoalesceExpr>& node) {
+  if (node->primary) node->primary = Visit(node->primary);
+  if (node->fallback) node->fallback = Visit(node->fallback);
+  return node;
+}
+
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelBuiltinSubstringExpr>& node) {
+  if (node->str) node->str = Visit(node->str);
+  if (node->start) node->start = Visit(node->start);
+  if (node->len) node->len = Visit(node->len);
+  return node;
+}
+
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelBuiltinLikeMatchFormula>& node) {
+  if (node->value) node->value = Visit(node->value);
+  return node;
+}
+
 }  // namespace rel2sql

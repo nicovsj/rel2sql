@@ -468,6 +468,161 @@ std::vector<std::shared_ptr<RelNode>> RelPartialApplication::Children() const {
   return children;
 }
 
+namespace {
+
+const char* BuiltinAggOpLabel(RelBuiltinAggregateOp op) {
+  switch (op) {
+    case RelBuiltinAggregateOp::SUM:
+      return "sum";
+    case RelBuiltinAggregateOp::COUNT:
+      return "count";
+    case RelBuiltinAggregateOp::AVG:
+      return "average";
+    case RelBuiltinAggregateOp::MIN:
+      return "min";
+    case RelBuiltinAggregateOp::MAX:
+      return "max";
+  }
+  return "?";
+}
+
+const char* BuiltinOrderKindLabel(RelBuiltinOrderKind k) {
+  switch (k) {
+    case RelBuiltinOrderKind::SortAsc:
+      return "sort";
+    case RelBuiltinOrderKind::SortDesc:
+      return "reverse_sort";
+    case RelBuiltinOrderKind::BottomDesc:
+      return "bottom";
+  }
+  return "?";
+}
+
+}  // namespace
+
+std::shared_ptr<RelNode> RelBuiltinAggregateExpr::DispatchVisit(BaseRelVisitor& visitor,
+                                                                std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelBuiltinAggregateExpr>(self));
+}
+std::string RelBuiltinAggregateExpr::ToString() const {
+  return std::string("(") + BuiltinAggOpLabel(op) + "[" + (body ? body->ToString() : "?") + "])";
+}
+std::vector<std::shared_ptr<RelNode>> RelBuiltinAggregateExpr::Children() const {
+  std::vector<std::shared_ptr<RelNode>> ch;
+  if (body) ch.push_back(body);
+  return ch;
+}
+
+std::shared_ptr<RelNode> RelBuiltinOrderExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  auto f = visitor.Visit(std::dynamic_pointer_cast<RelBuiltinOrderExpr>(self));
+  return std::static_pointer_cast<RelNode>(f);
+}
+std::string RelBuiltinOrderExpr::ToString() const {
+  std::ostringstream o;
+  o << BuiltinOrderKindLabel(kind) << "[" << (body ? body->ToString() : "?") << "]";
+  if (limit) o << " LIMIT " << *limit;
+  return o.str();
+}
+std::vector<std::shared_ptr<RelNode>> RelBuiltinOrderExpr::Children() const {
+  std::vector<std::shared_ptr<RelNode>> ch;
+  if (body) ch.push_back(body);
+  return ch;
+}
+
+std::shared_ptr<RelNode> RelBuiltinDateExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelBuiltinDateExpr>(self));
+}
+std::string RelBuiltinDateExpr::ToString() const {
+  std::ostringstream o;
+  o << "date_builtin(" << static_cast<int>(op) << ")";
+  return o.str();
+}
+std::vector<std::shared_ptr<RelNode>> RelBuiltinDateExpr::Children() const {
+  std::vector<std::shared_ptr<RelNode>> ch;
+  for (const auto& a : args) {
+    if (a) ch.push_back(a);
+  }
+  return ch;
+}
+
+std::shared_ptr<RelNode> RelTypedLiteralExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelTypedLiteralExpr>(self));
+}
+std::string RelTypedLiteralExpr::ToString() const {
+  switch (kind) {
+    case RelTypedLiteralKind::Day:
+      return "^Day[" + std::to_string(arg0) + "]";
+    case RelTypedLiteralKind::Month:
+      return "^Month[" + std::to_string(arg0) + "]";
+    case RelTypedLiteralKind::Year:
+      return "^Year[" + std::to_string(arg0) + "]";
+    case RelTypedLiteralKind::FixedDecimalType:
+      return "^FixedDecimal[" + std::to_string(arg0) + "," + std::to_string(arg1) + "]";
+  }
+  return "^?";
+}
+std::vector<std::shared_ptr<RelNode>> RelTypedLiteralExpr::Children() const { return {}; }
+
+std::shared_ptr<RelNode> RelBuiltinDecimalCastExpr::DispatchVisit(BaseRelVisitor& visitor,
+                                                                  std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelBuiltinDecimalCastExpr>(self));
+}
+std::string RelBuiltinDecimalCastExpr::ToString() const {
+  if (value) {
+    return "parse_decimal[" + std::to_string(precision) + "," + std::to_string(scale) + "," + value->ToString() + "]";
+  }
+  return "decimal[" + std::to_string(precision) + "," + std::to_string(scale) + "]";
+}
+std::vector<std::shared_ptr<RelNode>> RelBuiltinDecimalCastExpr::Children() const {
+  std::vector<std::shared_ptr<RelNode>> ch;
+  if (value) ch.push_back(value);
+  return ch;
+}
+
+std::shared_ptr<RelNode> RelBuiltinCoalesceExpr::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelBuiltinCoalesceExpr>(self));
+}
+std::string RelBuiltinCoalesceExpr::ToString() const {
+  return "default_value[" + (primary ? primary->ToString() : "?") + ", " + (fallback ? fallback->ToString() : "?") +
+         "]";
+}
+std::vector<std::shared_ptr<RelNode>> RelBuiltinCoalesceExpr::Children() const {
+  std::vector<std::shared_ptr<RelNode>> ch;
+  if (primary) ch.push_back(primary);
+  if (fallback) ch.push_back(fallback);
+  return ch;
+}
+
+std::shared_ptr<RelNode> RelBuiltinSubstringExpr::DispatchVisit(BaseRelVisitor& visitor,
+                                                                std::shared_ptr<RelNode> self) {
+  return visitor.Visit(std::dynamic_pointer_cast<RelBuiltinSubstringExpr>(self));
+}
+std::string RelBuiltinSubstringExpr::ToString() const {
+  return "substring[" + (str ? str->ToString() : "?") + ", " + (start ? start->ToString() : "?") + ", " +
+         (len ? len->ToString() : "?") + "]";
+}
+std::vector<std::shared_ptr<RelNode>> RelBuiltinSubstringExpr::Children() const {
+  std::vector<std::shared_ptr<RelNode>> ch;
+  if (str) ch.push_back(str);
+  if (start) ch.push_back(start);
+  if (len) ch.push_back(len);
+  return ch;
+}
+
+std::shared_ptr<RelNode> RelBuiltinLikeMatchFormula::DispatchVisit(BaseRelVisitor& visitor,
+                                                                   std::shared_ptr<RelNode> self) {
+  auto f = visitor.Visit(std::dynamic_pointer_cast<RelBuiltinLikeMatchFormula>(self));
+  return std::static_pointer_cast<RelNode>(f);
+}
+std::string RelBuiltinLikeMatchFormula::ToString() const {
+  return "like_match('" + like_pattern + "', " + (value ? value->ToString() : "?") + ")";
+}
+std::vector<std::shared_ptr<RelNode>> RelBuiltinLikeMatchFormula::Children() const {
+  std::vector<std::shared_ptr<RelNode>> ch;
+  if (value) ch.push_back(value);
+  return ch;
+}
+
 std::shared_ptr<RelNode> RelDef::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelDef>(self));
 }
