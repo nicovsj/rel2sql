@@ -59,6 +59,8 @@ void ExpressionVisitor::Visit(ParenthesisTerm& parenthesis_term) { Visit(*parent
 
 void ExpressionVisitor::Visit(Function& function) { Visit(*function.arg); }
 
+void ExpressionVisitor::Visit(VerbatimTerm&) {}
+
 void ExpressionVisitor::Visit(TermSelectable& term_selectable) { Visit(*term_selectable.term); }
 
 void ExpressionVisitor::Visit(ComparisonCondition& comparison_condition) {
@@ -115,6 +117,10 @@ void ExpressionVisitor::Visit(Select& select) {
 
   if (select.group_by) {
     Visit(*select.group_by.value());
+  }
+
+  for (const auto& ob : select.order_by) {
+    Visit(*ob.term);
   }
 }
 

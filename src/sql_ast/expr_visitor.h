@@ -23,6 +23,7 @@ class Constant;
 class Operation;
 class ParenthesisTerm;
 class Function;
+class VerbatimTerm;
 class TermSelectable;
 class ComparisonCondition;
 class LogicalCondition;
@@ -61,6 +62,7 @@ class ExpressionVisitor {
   virtual void Visit(Operation& operation);
   virtual void Visit(ParenthesisTerm& parenthesis_term);
   virtual void Visit(Function& function);
+  virtual void Visit(VerbatimTerm& verbatim_term);
   virtual void Visit(TermSelectable& term_selectable);
   virtual void Visit(ComparisonCondition& comparison_condition);
   virtual void Visit(LogicalCondition& logical_condition);

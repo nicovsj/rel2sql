@@ -10,8 +10,9 @@ namespace rel2sql {
 
 inline const std::unordered_map<std::string, sql::ast::AggregateFunction>& GetAggregateMap() {
   static const std::unordered_map<std::string, sql::ast::AggregateFunction> kMap = {
-      {"sum", sql::ast::AggregateFunction::SUM}, {"average", sql::ast::AggregateFunction::AVG},
-      {"avg", sql::ast::AggregateFunction::AVG}, {"min", sql::ast::AggregateFunction::MIN},
+      {"sum", sql::ast::AggregateFunction::SUM},     {"count", sql::ast::AggregateFunction::COUNT},
+      {"average", sql::ast::AggregateFunction::AVG}, {"avg", sql::ast::AggregateFunction::AVG},
+      {"mean", sql::ast::AggregateFunction::AVG},    {"min", sql::ast::AggregateFunction::MIN},
       {"max", sql::ast::AggregateFunction::MAX},
   };
   return kMap;
