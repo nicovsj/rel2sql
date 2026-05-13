@@ -47,9 +47,7 @@ packages/rel2sql-wasm/dist/
 packages/rel2sql-wasm/*.tgz
 
 # Queries
-*.rel
 !examples/manual-formula-suite.rel
-*.sql
 
 # Generated for clangd (also often listed in ~/.git/info/exclude)
 compile_commands.json
