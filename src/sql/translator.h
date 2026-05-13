@@ -46,8 +46,17 @@ class Translator : public BaseRelVisitor {
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaAbstraction>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialApplication>& node) override;
 
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinAggregateExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinDateExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelTypedLiteralExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinDecimalCastExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinCoalesceExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinSubstringExpr>& node) override;
+
   // Formulas
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullApplication>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBuiltinOrderExpr>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBuiltinLikeMatchFormula>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelConjunction>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelDisjunction>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelNegation>& node) override;
@@ -102,7 +111,16 @@ class Translator : public BaseRelVisitor {
 
   // Build SELECT with GROUP BY and aggregate (for partial application of aggregate functions, e.g. sum[A]).
   std::shared_ptr<sql::ast::Select> VisitAggregateRel(const std::shared_ptr<RelExpr>& expr,
-                                                      sql::ast::AggregateFunction function);
+                                                      sql::ast::AggregateFunction function, bool count_all = false);
+
+  std::shared_ptr<sql::ast::Term> RelExprToSqlTerm(RelNode& node, const std::shared_ptr<RelExpr>& expr);
+
+  /** Like `RelExprToSqlTerm`, but also appends FROM sources from the arg's Select to `from_out`. */
+  std::shared_ptr<sql::ast::Term> RelExprToSqlTerm(RelNode& node, const std::shared_ptr<RelExpr>& expr,
+                                                   std::vector<std::shared_ptr<sql::ast::Source>>& from_out);
+
+  /** If expr is a bare EDB/IDB name, set sql_expression to a SELECT over that relation (Sourceable). */
+  void MaterializeRelationExprIfNeeded(RelNode& ctx_node, const std::shared_ptr<RelExpr>& expr);
 
   std::string GenerateTableAlias(const std::string& prefix = "T");
 

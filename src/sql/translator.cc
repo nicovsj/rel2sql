@@ -7,7 +7,6 @@
 #include "optimizer/replacers.h"
 #include "rel_ast/domain.h"
 #include "rel_ast/rel_ast.h"
-#include "sql/aggregate_map.h"
 #include "sql_ast/sql_ast.h"
 #include "support/exceptions.h"
 
@@ -552,7 +551,7 @@ Translator::FullApplSqlParts Translator::BuildFullApplSql(
 }
 
 std::shared_ptr<sql::ast::Select> Translator::VisitAggregateRel(const std::shared_ptr<RelExpr>& expr,
-                                                                sql::ast::AggregateFunction function) {
+                                                                sql::ast::AggregateFunction function, bool count_all) {
   std::shared_ptr<sql::ast::Sourceable> expr_sql;
   std::shared_ptr<sql::ast::Source> subquery;
 
@@ -576,9 +575,15 @@ std::shared_ptr<sql::ast::Select> Translator::VisitAggregateRel(const std::share
   }
   auto arity = expr->arity;
   std::string column_name = std::format("A{}", arity);
-  auto column = std::make_shared<sql::ast::Column>(column_name, subquery);
+  std::shared_ptr<sql::ast::Term> agg_arg;
+  if (count_all && function == sql::ast::AggregateFunction::COUNT) {
+    agg_arg = std::make_shared<sql::ast::Constant>(1);
+  } else {
+    auto column = std::make_shared<sql::ast::Column>(column_name, subquery);
+    agg_arg = column;
+  }
   auto aggregate_selectable =
-      std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Function>(function, column), "A1");
+      std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Function>(function, agg_arg), "A1");
 
   auto group_cols = VarListShorthandRel({{expr.get(), subquery}});
   std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols = group_cols;
@@ -877,22 +882,6 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelFormulaAbstr
 }
 
 std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelPartialApplication>& node) {
-  // Aggregate special case: sum[expr], max[expr], etc. (single param, base is aggregate ID)
-  if (auto* id_base = dynamic_cast<RelIDApplBase*>(node->base.get())) {
-    auto it = GetAggregateMap().find(id_base->id);
-    if (it != GetAggregateMap().end()) {
-      if (node->params.size() != 1) {
-        throw std::runtime_error("Aggregate function requires exactly one parameter");
-      }
-      auto expr = node->params[0]->GetExpr();
-      if (!expr) {
-        throw std::runtime_error("Aggregate function parameter must be an expression");
-      }
-      node->sql_expression = VisitAggregateRel(expr, it->second);
-      return node;
-    }
-  }
-
   auto base_sourceable = GetBaseSourceableFromApplBase(*node, node->base);
   auto column_name_for_index = [this, &base_sourceable](size_t idx) {
     return GetColumnNameForSourceable(base_sourceable, idx);
@@ -1816,6 +1805,308 @@ std::shared_ptr<sql::ast::Source> Translator::CreateTableSource(const std::strin
   }
   table = std::make_shared<sql::ast::Table>(table_name, context_.GetArity(table_name));
   return std::make_shared<sql::ast::Source>(table);
+}
+
+void Translator::MaterializeRelationExprIfNeeded(RelNode& ctx_node, const std::shared_ptr<RelExpr>& expr) {
+  if (!expr) return;
+  auto* id = dynamic_cast<RelIDTerm*>(expr.get());
+  if (id && context_.IsRelation(id->id)) {
+    expr->sql_expression = GetExpressionFromID(ctx_node, id->id, true);
+  }
+}
+
+std::shared_ptr<sql::ast::Term> Translator::RelExprToSqlTerm(RelNode& node, const std::shared_ptr<RelExpr>& expr) {
+  std::vector<std::shared_ptr<sql::ast::Source>> discard;
+  return RelExprToSqlTerm(node, expr, discard);
+}
+
+std::shared_ptr<sql::ast::Term> Translator::RelExprToSqlTerm(RelNode& node, const std::shared_ptr<RelExpr>& expr,
+                                                             std::vector<std::shared_ptr<sql::ast::Source>>& from_out) {
+  MaterializeRelationExprIfNeeded(node, expr);
+  if (!expr->sql_expression) {
+    Visit(expr);
+  }
+  auto srcable = ExpectSourceable(expr->sql_expression);
+  auto sel = std::dynamic_pointer_cast<sql::ast::Select>(srcable);
+  if (!sel || sel->columns.empty()) {
+    throw TranslationException("RelExprToSqlTerm: expected a Select expression", ErrorCode::UNKNOWN_BINARY_OPERATOR,
+                               SourceLocation(0, 0));
+  }
+  auto ts = std::dynamic_pointer_cast<sql::ast::TermSelectable>(sel->columns[0]);
+  if (!ts || !ts->term) {
+    throw TranslationException("RelExprToSqlTerm: expected TermSelectable column", ErrorCode::UNKNOWN_BINARY_OPERATOR,
+                               SourceLocation(0, 0));
+  }
+  if (sel->from.has_value()) {
+    for (auto& s : sel->from.value()->sources) {
+      from_out.push_back(s);
+    }
+  }
+  (void)node;
+  return ts->term;
+}
+
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBuiltinAggregateExpr>& node) {
+  if (!node->body) return node;
+  sql::ast::AggregateFunction fn = sql::ast::AggregateFunction::SUM;
+  bool count_all = false;
+  switch (node->op) {
+    case RelBuiltinAggregateOp::SUM:
+      fn = sql::ast::AggregateFunction::SUM;
+      break;
+    case RelBuiltinAggregateOp::COUNT:
+      fn = sql::ast::AggregateFunction::COUNT;
+      count_all = true;
+      break;
+    case RelBuiltinAggregateOp::AVG:
+      fn = sql::ast::AggregateFunction::AVG;
+      break;
+    case RelBuiltinAggregateOp::MIN:
+      fn = sql::ast::AggregateFunction::MIN;
+      break;
+    case RelBuiltinAggregateOp::MAX:
+      fn = sql::ast::AggregateFunction::MAX;
+      break;
+  }
+  node->sql_expression = VisitAggregateRel(node->body, fn, count_all);
+  return node;
+}
+
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelTypedLiteralExpr>& node) {
+  std::string interval;
+  switch (node->kind) {
+    case RelTypedLiteralKind::Day:
+      interval = fmt::format("INTERVAL '{}' DAY", node->arg0);
+      break;
+    case RelTypedLiteralKind::Month:
+      interval = fmt::format("INTERVAL '{}' MONTH", node->arg0);
+      break;
+    case RelTypedLiteralKind::Year:
+      interval = fmt::format("INTERVAL '{}' YEAR", node->arg0);
+      break;
+    case RelTypedLiteralKind::FixedDecimalType:
+      interval = fmt::format("CAST(NULL AS DECIMAL({0},{1}))", node->arg0, node->arg1);
+      break;
+  }
+  auto vt = std::make_shared<sql::ast::VerbatimTerm>(interval);
+  auto sel = std::make_shared<sql::ast::Select>(
+      std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(vt, "A1")}, false);
+  node->sql_expression = sel;
+  return node;
+}
+
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBuiltinDateExpr>& node) {
+  if (node->op == RelBuiltinDateOp::ParseDate) {
+    if (node->args.size() != 2) return node;
+    auto ds = dynamic_cast<RelLiteral*>(node->args[0].get());
+    auto fs = dynamic_cast<RelLiteral*>(node->args[1].get());
+    if (!ds || !fs || !std::holds_alternative<std::string>(ds->value) ||
+        !std::holds_alternative<std::string>(fs->value)) {
+      throw TranslationException("parse_date: expected string literals", ErrorCode::UNKNOWN_BINARY_OPERATOR,
+                                 SourceLocation(0, 0));
+    }
+    const std::string& d = std::get<std::string>(ds->value);
+    (void)std::get<std::string>(fs->value);
+    auto vt = std::make_shared<sql::ast::VerbatimTerm>(fmt::format("DATE '{0}'", d));
+    node->sql_expression = std::make_shared<sql::ast::Select>(
+        std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(vt, "A1")},
+        false);
+    return node;
+  }
+  if (node->op == RelBuiltinDateOp::DateAdd || node->op == RelBuiltinDateOp::DateSubtract) {
+    if (node->args.size() != 2) return node;
+    std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
+    auto lhs = RelExprToSqlTerm(*node, node->args[0], from_sources);
+    auto rhs = RelExprToSqlTerm(*node, node->args[1], from_sources);
+    const char* op = node->op == RelBuiltinDateOp::DateAdd ? "+" : "-";
+    auto comb = std::make_shared<sql::ast::Operation>(lhs, rhs, op);
+    auto cols =
+        std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(comb, "A1")};
+    node->sql_expression = from_sources.empty() ? std::make_shared<sql::ast::Select>(cols, false)
+                                                : std::make_shared<sql::ast::Select>(
+                                                      cols, std::make_shared<sql::ast::From>(from_sources), false);
+    return node;
+  }
+  if (node->op == RelBuiltinDateOp::ExtractYear) {
+    if (node->args.size() != 1) return node;
+    std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
+    auto inner = RelExprToSqlTerm(*node, node->args[0], from_sources);
+    auto vt = std::make_shared<sql::ast::VerbatimTerm>(fmt::format("EXTRACT(YEAR FROM ({0}))", inner->ToString()));
+    auto cols =
+        std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(vt, "A1")};
+    node->sql_expression = from_sources.empty() ? std::make_shared<sql::ast::Select>(cols, false)
+                                                : std::make_shared<sql::ast::Select>(
+                                                      cols, std::make_shared<sql::ast::From>(from_sources), false);
+    return node;
+  }
+  return node;
+}
+
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBuiltinDecimalCastExpr>& node) {
+  if (!node->value) {
+    auto vt = std::make_shared<sql::ast::VerbatimTerm>(
+        fmt::format("CAST(NULL AS DECIMAL({0},{1}))", node->precision, node->scale));
+    node->sql_expression = std::make_shared<sql::ast::Select>(
+        std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(vt, "A1")},
+        false);
+    return node;
+  }
+  std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
+  auto inner = RelExprToSqlTerm(*node, node->value, from_sources);
+  auto vt = std::make_shared<sql::ast::VerbatimTerm>(
+      fmt::format("CAST(({0}) AS DECIMAL({1},{2}))", inner->ToString(), node->precision, node->scale));
+  auto cols = std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(vt, "A1")};
+  node->sql_expression = from_sources.empty() ? std::make_shared<sql::ast::Select>(cols, false)
+                                              : std::make_shared<sql::ast::Select>(
+                                                    cols, std::make_shared<sql::ast::From>(from_sources), false);
+  return node;
+}
+
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBuiltinCoalesceExpr>& node) {
+  if (!node->primary || !node->fallback) return node;
+  std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
+  auto a = RelExprToSqlTerm(*node, node->primary, from_sources);
+  auto b = RelExprToSqlTerm(*node, node->fallback, from_sources);
+  auto vt =
+      std::make_shared<sql::ast::VerbatimTerm>(fmt::format("COALESCE(({0}), ({1}))", a->ToString(), b->ToString()));
+  auto cols = std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(vt, "A1")};
+  node->sql_expression = from_sources.empty() ? std::make_shared<sql::ast::Select>(cols, false)
+                                              : std::make_shared<sql::ast::Select>(
+                                                    cols, std::make_shared<sql::ast::From>(from_sources), false);
+  return node;
+}
+
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBuiltinSubstringExpr>& node) {
+  if (!node->str || !node->start || !node->len) return node;
+  std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
+  auto s = RelExprToSqlTerm(*node, node->str, from_sources);
+  auto st = RelExprToSqlTerm(*node, node->start, from_sources);
+  auto ln = RelExprToSqlTerm(*node, node->len, from_sources);
+  auto vt = std::make_shared<sql::ast::VerbatimTerm>(
+      fmt::format("SUBSTRING(({0}) FROM ({1}) FOR ({2}))", s->ToString(), st->ToString(), ln->ToString()));
+  auto cols = std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(vt, "A1")};
+  node->sql_expression = from_sources.empty() ? std::make_shared<sql::ast::Select>(cols, false)
+                                              : std::make_shared<sql::ast::Select>(
+                                                    cols, std::make_shared<sql::ast::From>(from_sources), false);
+  return node;
+}
+
+std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelBuiltinLikeMatchFormula>& node) {
+  if (!node->value) return node;
+
+  // Variable value: emit `SELECT free vars FROM <safety CTEs> WHERE col LIKE 'pat'` (same shape as RelComparison).
+  if (auto* id = dynamic_cast<RelIDTerm*>(node->value.get())) {
+    if (context_.IsVar(id->id)) {
+      BoundSet cover = node->safety.SmallCover();
+      std::vector<std::shared_ptr<sql::ast::Source>> cte_sources;
+      std::vector<std::pair<std::shared_ptr<sql::ast::Source>, std::set<std::string>>> cte_source_var_pairs;
+      std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> free_var_sources;
+      for (const auto& bound : cover.bounds) {
+        if (!bound.domain) continue;
+        auto domain_sql = DomainToSql(*bound.domain);
+        std::set<std::string> bound_vars(bound.variables.begin(), bound.variables.end());
+        std::vector<std::string> def_cols(bound.variables.begin(), bound.variables.end());
+        auto cte_source = std::make_shared<sql::ast::Source>(domain_sql, GenerateTableAlias("E"), true, def_cols);
+        cte_source->bound_hash = bound.Hash();
+        cte_sources.push_back(cte_source);
+        cte_source_var_pairs.push_back({cte_source, bound_vars});
+        for (const auto& var : bound_vars) {
+          if (node->free_variables.count(var)) free_var_sources[var] = cte_source;
+        }
+      }
+      auto eq = BuildEqualityForSources(cte_source_var_pairs);
+
+      auto var_src = free_var_sources.find(id->id);
+      if (var_src == free_var_sources.end()) {
+        throw TranslationException("like_match: variable '" + id->id + "' is not bound", ErrorCode::UNBALANCED_VARIABLE,
+                                   SourceLocation(0, 0));
+      }
+      auto col = std::make_shared<sql::ast::Column>(id->id, var_src->second);
+      auto pat = std::make_shared<sql::ast::Constant>(node->like_pattern);
+      auto like_cond = std::make_shared<sql::ast::ComparisonCondition>(col, sql::ast::CompOp::LIKE, pat);
+
+      std::vector<std::string> ordered_vars(node->free_variables.begin(), node->free_variables.end());
+      std::sort(ordered_vars.begin(), ordered_vars.end());
+      std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+      for (const auto& var : ordered_vars) {
+        auto it = free_var_sources.find(var);
+        if (it != free_var_sources.end()) {
+          select_cols.push_back(
+              std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Column>(var, it->second)));
+        }
+      }
+      std::vector<std::shared_ptr<sql::ast::Condition>> where_conditions;
+      if (eq) where_conditions.push_back(eq);
+      where_conditions.push_back(like_cond);
+      auto where = std::make_shared<sql::ast::LogicalCondition>(where_conditions, sql::ast::LogicalOp::AND);
+      std::vector<std::shared_ptr<sql::ast::Source>> from_sources(cte_sources.begin(), cte_sources.end());
+      auto from = std::make_shared<sql::ast::From>(from_sources, where);
+      node->sql_expression = std::make_shared<sql::ast::Select>(select_cols, from, cte_sources, false);
+      return node;
+    }
+  }
+
+  // Subquery / relation value: select 1 from the value with `col LIKE 'pat'`.
+  MaterializeRelationExprIfNeeded(*node, node->value);
+  if (!node->value->sql_expression) {
+    Visit(node->value);
+  }
+  auto vsql = ExpectSourceable(node->value->sql_expression);
+  auto vs = std::make_shared<sql::ast::Source>(vsql, GenerateTableAlias());
+  std::string col_name = GetColumnNameForSourceable(vsql, 1);
+  auto lhs = std::make_shared<sql::ast::Column>(col_name, vs);
+  auto rhs = std::make_shared<sql::ast::Constant>(node->like_pattern);
+  auto where = std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::LIKE, rhs);
+  auto sel = std::make_shared<sql::ast::Select>(
+      std::vector<std::shared_ptr<sql::ast::Selectable>>{
+          std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Constant>(1), "A1")},
+      std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{vs}, where));
+  node->sql_expression = sel;
+  return node;
+}
+
+std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelBuiltinOrderExpr>& node) {
+  if (!node->body) return node;
+  MaterializeRelationExprIfNeeded(*node, node->body);
+  if (!node->body->sql_expression) {
+    Visit(node->body);
+  }
+  auto body_sql = ExpectSourceable(node->body->sql_expression);
+  auto src = std::make_shared<sql::ast::Source>(body_sql, GenerateTableAlias());
+  node->body->sql_expression = src;
+
+  size_t arity = GetArityForSourceable(body_sql);
+  std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+  for (size_t i = 1; i <= arity; ++i) {
+    std::string cn = GetColumnNameForSourceable(body_sql, i);
+    auto col = std::make_shared<sql::ast::Column>(cn, src);
+    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, cn));
+  }
+
+  std::vector<sql::ast::OrderByClause> order_by;
+  if (node->kind == RelBuiltinOrderKind::BottomDesc && node->bottom_sort_column.has_value()) {
+    auto col = std::make_shared<sql::ast::Column>(*node->bottom_sort_column, src);
+    order_by.push_back({col, sql::ast::SortDirection::DESC});
+  } else {
+    sql::ast::SortDirection dir = sql::ast::SortDirection::ASC;
+    if (node->kind == RelBuiltinOrderKind::SortDesc || node->kind == RelBuiltinOrderKind::BottomDesc) {
+      dir = sql::ast::SortDirection::DESC;
+    }
+    for (size_t i = 1; i <= arity; ++i) {
+      std::string cn = GetColumnNameForSourceable(body_sql, i);
+      auto col = std::make_shared<sql::ast::Column>(cn, src);
+      order_by.push_back({col, dir});
+    }
+  }
+
+  auto from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{src});
+  auto sel = std::make_shared<sql::ast::Select>(select_cols, from);
+  sel->order_by = std::move(order_by);
+  if (node->limit.has_value()) {
+    sel->limit_value = static_cast<int>(*node->limit);
+  }
+  node->sql_expression = sel;
+  return node;
 }
 
 }  // namespace rel2sql
