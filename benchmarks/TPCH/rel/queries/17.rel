@@ -1,0 +1,55 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Small-Quantity-Order Revenue Query (Q17)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+The Small-Quantity-Order Revenue Query considers parts of a given brand and with
+a given container type and determines the average lineitem quantity of such
+parts ordered for all orders (past and pending) in the 7-year data- base. What
+would be the average yearly gross (undiscounted) loss in revenue if orders for
+these parts with a quantity of less than 20% of this average were no longer
+taken?
+*/
+
+/*
+:x
+:o
+select
+    sum(l_extendedprice) / 7.0 as avg_yearly
+from
+    lineitem,
+    part
+where
+    p_partkey = l_partkey
+    and p_brand = '@@1'
+    and p_container = '@@2'
+    and l_quantity < (
+        select
+            0.2 * avg(l_quantity)
+        from
+            lineitem
+        where
+            l_partkey = p_partkey
+    );
+:n -1
+*/
+
+@inline
+def part_avg[p]:
+    parse_decimal[64, 4, "0.2"] * average[[o, num]:
+        l_quantity[o, num] where l_partkey(o, num, p)
+    ]
+
+// @vectorized : it is fine to put @vectorized here, however, this is commented out because
+// we skip the join-tree optimization for cheap queries, and at SF001 this skipping might
+// causes an exception to be thrown.
+def result[]: sum[[o, num, p]:
+    l_extendedprice[o, num] where
+    l_partkey(o, num, p) and
+    ( p.p_brand ) = "@@1" and
+    ( p.p_container ) = "@@2" and
+    l_quantity[o, num] < part_avg[p]
+] / 7

@@ -1,0 +1,102 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R National Market Share Query (Q8)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+The market share for a given nation within a given region is defined as the
+fraction of the revenue, the sum of [l_extendedprice * (1-l_discount)], from the
+products of a specified type in that region that was supplied by suppli- ers
+from the given nation. The query determines this for the years 1995 and 1996
+presented in this order.
+
+NATION is randomly selected within the list of values defined for N_NAME in
+Clause 4.2.3
+
+REGION is the value defined in Clause 4.2.3 for R_NAME where R_REGIONKEY
+corresponds to N_REGIONKEY for the selected NATION in item 1 above
+
+TYPE is randomly selected within the list of 3-syllable strings defined for
+Types in Clause 4.2.2.13.
+*/
+
+/*
+:x
+:o
+select
+    o_year,
+    sum(case
+        when nation = '@@1' then volume
+        else 0
+    end) / sum(volume) as mkt_share
+from
+    (
+        select
+            extract(year from o_orderdate) as o_year,
+            l_extendedprice * (1 - l_discount) as volume,
+            n2.n_name as nation
+        from
+            part,
+            supplier,
+            lineitem,
+            orders,
+            customer,
+            nation n1,
+            nation n2,
+            region
+        where
+            p_partkey = l_partkey
+            and s_suppkey = l_suppkey
+            and l_orderkey = o_orderkey
+            and o_custkey = c_custkey
+            and c_nationkey = n1.n_nationkey
+            and n1.n_regionkey = r_regionkey
+            and r_name = '@@2'
+            and s_nationkey = n2.n_nationkey
+            and o_orderdate between date '1995-01-01' and date '1996-12-31'
+            and p_type = '@@3'
+    ) as all_nations
+group by
+    o_year
+order by
+    o_year;
+:n -1
+*/
+
+@inline def lower[]: parse_date["1995-01-01", "Y-m-d"]
+@inline def upper[]: parse_date["1996-12-31", "Y-m-d"]
+
+@inline def specific_lineitems(ok, lk, n2):
+    lower <= o_orderdate[ok] <= upper and
+    ( l_suppkey[ok, lk].s_nationkey ) = n2 and
+    ( ( ( ( ok.o_custkey ).c_nationkey ).n_regionkey ).r_name ) = "@@2" and
+    ( l_partkey[ok, lk].p_type ) = "@@3"
+
+@inline def lineitem_vol(o_year, ok, lk, volume):
+    o_year = date_year[o_orderdate[ok]] and
+    volume = l_revenue[ok, lk]
+
+@inline def lineitem_vol_all(o_year, ok, lk, volume):
+    lineitem_vol(o_year, ok, lk, volume) and
+    specific_lineitems(ok, lk, _)
+
+@inline def lineitem_vol_one_country(o_year, ok, lk, volume):
+    lineitem_vol(o_year, ok, lk, volume) and
+    ( specific_lineitems[ok, lk].n_name ) = "@@1"
+
+// @vectorized : this is *NOT* vectorized because we deliberately skip the join-tree
+// optimization for cheap queries. The query is slightly slower if we use the vectorizer
+// here due to a couple of intermediates.
+def market_share[o_year]:
+    sum[lineitem_vol_one_country[o_year]] / sum[lineitem_vol_all[o_year]]
+
+@inline
+def years_domain(o_year): lineitem_vol_all(o_year, _, _, _)
+
+// This result is naturally ordered by years_domain, but we add sort just in case:
+def unsorted_result[]: default_value[years_domain, market_share, parse_decimal[64,4,"0"]]
+
+@vectorized
+def result[]: sort[unsorted_result]

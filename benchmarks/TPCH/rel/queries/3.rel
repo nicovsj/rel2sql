@@ -1,0 +1,73 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Shipping Priority Query (Q3)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+The Shipping Priority Query retrieves the shipping priority and potential
+revenue, defined as the sum of l_extendedprice * (1-l_discount), of the orders
+having the largest revenue among those that had not been shipped as of a given
+date. Orders are listed in decreasing order of revenue. If more than 10
+unshipped orders exist, only the 10 orders with the largest revenue are listed.
+*/
+
+/*
+:x
+:o
+select
+    l_orderkey,
+    sum(l_extendedprice * (1 - l_discount)) as revenue,
+    o_orderdate,
+    o_shippriority
+from
+    customer,
+    orders,
+    lineitem
+where
+    c_mktsegment = '@@1'
+    and c_custkey = o_custkey
+    and l_orderkey = o_orderkey
+    and o_orderdate < date '@@2'
+    and l_shipdate > date '@@2'
+group by
+    l_orderkey,
+    o_orderdate,
+    o_shippriority
+order by
+    revenue desc,
+    o_orderdate;
+:n 10
+*/
+
+@inline def target_date[]: parse_date["@@2", "Y-m-d"]
+
+//ok: orderkey
+//ck: customerkey
+//lk: linenumber
+
+// @vectorized : this is *NOT* vectorized because we deliberately skip the join-tree
+// optimization for cheap queries. The query is slightly slower if we use the vectorizer
+// here due to a couple of intermediates.
+def unsorted_result(revenue, orderdate, ok, shippriority):
+    o_orderdate(ok, orderdate) and
+    o_shippriority(ok, shippriority) and
+    o_orderdate[ok] < target_date and
+    revenue = sum[(ck, lk, rev):
+        c_mktsegment(ck, "@@1") and
+        o_custkey(ok, ck) and
+        l_shipdate[ok, lk] > target_date and
+        rev = l_revenue[ok, lk]
+    ]
+
+@vectorized
+def inside_rev_sort[revenue]: reverse_sort[unsorted_result[revenue]]
+
+@vectorized
+def final_sort[]: reverse_sort[inside_rev_sort]
+
+@vectorized
+def result(i, ok, revenue, orderdate, shippriority): exists((i1) |
+    final_sort(i, revenue, i1, orderdate, ok, shippriority) and i <= 10
+)

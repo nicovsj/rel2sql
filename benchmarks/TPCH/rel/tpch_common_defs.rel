@@ -1,0 +1,38 @@
+/**************************************************
+ * Reusable definitions for TPC-H
+ */
+
+@inline
+def dec { decimal[64, 4] }
+
+@inline
+def l_revenue[o, num]:
+    l_extendedprice[o, num] * (1 - l_discount[o, num])
+
+@inline
+def l_charge[o, num]:
+    l_extendedprice[o, num] * (1 - l_discount[o, num]) * (1 + l_tax[o, num])
+
+@inline
+def priority_urgent(o):
+    o_orderpriority[o] = "1-URGENT"
+
+@inline
+def priority_high(o):
+    o_orderpriority[o] = "2-HIGH"
+
+@inline
+def l_returned(o, num):
+    l_returnflag(o, num, 'R')
+
+@inline
+def orderpriority(prio):
+    o_orderpriority(_, prio)
+
+@inline
+def promotional_part(p):
+    like_match(raw"%PROMO%", p_type[p])
+
+@inline
+def has_customer_complaint(sk):
+    exists((cmt) | s_comment(sk, cmt) and like_match(raw"%Customer%Complaints%", cmt))

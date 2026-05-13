@@ -1,0 +1,117 @@
+@inline
+def nation_rel(column, nid, v):
+    exists((pos) |
+    nation_csv(:n_nationkey, pos, nid) and
+    nation_csv(column, pos, v))
+
+@function def n_name { nation_rel[:n_name] }
+@function def n_regionkey { nation_rel[:n_regionkey] }
+@function def n_comment { nation_rel[:n_comment] }
+def nation(n):
+    nation_csv(:n_nationkey, _, n)
+
+@inline
+def region_rel(column, rid, v):
+    exists((pos) |
+    region_csv(:r_regionkey, pos, rid) and
+    region_csv(column, pos, v))
+
+@function def r_name { region_rel[:r_name] }
+@function def r_comment { region_rel[:r_comment] }
+def region(r):
+    region_csv(:r_regionkey, _, r)
+
+@inline
+def part_rel(column, pid, v):
+    exists((pos) |
+    part_csv(:p_partkey, pos, pid) and
+    part_csv(column, pos, v))
+
+@function def p_name { part_rel[:p_name] }
+@function def p_mfgr { part_rel[:p_mfgr] }
+@function def p_brand { part_rel[:p_brand] }
+@function def p_type { part_rel[:p_type] }
+@function def p_size { part_rel[:p_size] }
+@function def p_container { part_rel[:p_container] }
+@function def p_retailprice { part_rel[:p_retailprice] }
+@function def p_comment { part_rel[:p_comment] }
+def part(p):
+  part_csv(:p_partkey, _, p)
+
+@inline
+def supplier_rel(col, s, v):
+    exists((pos) |
+    supplier_csv(:s_suppkey, pos, s) and
+    supplier_csv(col, pos, v))
+
+@function def s_name { supplier_rel[:s_name] }
+@function def s_address { supplier_rel[:s_address] }
+@function def s_nationkey { supplier_rel[:s_nationkey] }
+@function def s_phone { supplier_rel[:s_phone] }
+@function def s_acctbal { supplier_rel[:s_acctbal] }
+@function def s_comment { supplier_rel[:s_comment] }
+def supplier(s):
+    supplier_csv(:s_suppkey, _, s)
+
+@inline
+def partsupp_rel(col, k1, k2, v):
+    exists((pos) |
+    partsupp_csv(:ps_partkey, pos, k1) and
+    partsupp_csv(:ps_suppkey, pos, k2) and
+    partsupp_csv(col, pos, v))
+
+@function def ps_availqty { partsupp_rel[:ps_availqty] }
+@function def ps_supplycost { partsupp_rel[:ps_supplycost] }
+@function def ps_comment { partsupp_rel[:ps_comment] }
+def partsupp(k1, k2):
+    exists((pos) |
+    partsupp_csv(:ps_partkey, pos, k1) and
+    partsupp_csv(:ps_suppkey, pos, k2))
+
+@inline
+def customer_rel(column, kid, v):
+    exists((pos) |
+    customer_csv(:c_custkey, pos, kid) and
+    customer_csv(column, pos, v))
+
+@function def c_name { customer_rel[:c_name] }
+@function def c_address { customer_rel[:c_address] }
+@function def c_nationkey { customer_rel[:c_nationkey] }
+@function def c_phone { customer_rel[:c_phone] }
+@function def c_acctbal { customer_rel[:c_acctbal] }
+@function def c_mktsegment { customer_rel[:c_mktsegment] }
+@function def c_comment { customer_rel[:c_comment] }
+def customer(c):
+    customer_csv(:c_custkey, _, c)
+
+@function def o_custkey { orders_rel[:o_custkey] }
+@function def o_orderstatus { orders_rel[:o_orderstatus] }
+@function def o_totalprice { orders_rel[:o_totalprice] }
+@function def o_orderdate { orders_rel[:o_orderdate] }
+@function def o_orderpriority { orders_rel[:o_orderpriority] }
+@function def o_clerk { orders_rel[:o_clerk] }
+@function def o_shippriority { orders_rel[:o_shippriority] }
+@function def o_comment { orders_rel[:o_comment] }
+@inline
+def orders(o):
+    orders_rel(:o_orderkey, _, o)
+
+@function def l_partkey { lineitem_rel[:l_partkey] }
+@function def l_suppkey { lineitem_rel[:l_suppkey] }
+@function def l_quantity { lineitem_rel[:l_quantity] }
+@function def l_extendedprice { lineitem_rel[:l_extendedprice] }
+@function def l_discount { lineitem_rel[:l_discount] }
+@function def l_tax { lineitem_rel[:l_tax] }
+@function def l_returnflag { lineitem_rel[:l_returnflag] }
+@function def l_linestatus { lineitem_rel[:l_linestatus] }
+@function def l_shipdate { lineitem_rel[:l_shipdate] }
+@function def l_commitdate { lineitem_rel[:l_commitdate] }
+@function def l_receiptdate { lineitem_rel[:l_receiptdate] }
+@function def l_shipinstruct { lineitem_rel[:l_shipinstruct] }
+@function def l_shipmode { lineitem_rel[:l_shipmode] }
+@function def l_comment { lineitem_rel[:l_comment] }
+
+@inline
+def lineitem(k1, k2):
+    lineitem_rel(:l_orderkey, _, k2, k1) and
+    lineitem_rel(:l_linenumber, k1, _, k2)

@@ -1,0 +1,107 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Discounted Revenue Query (Q19)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+
+/*
+The Discounted Revenue query finds the gross discounted revenue for all orders
+for three different types of parts that were shipped by air and delivered in
+person. Parts are selected based on the combination of specific brands, a list
+of containers, and a range of sizes.
+*/
+
+/*
+:x
+:o
+select
+    sum(l_extendedprice* (1 - l_discount)) as revenue
+from
+    lineitem,
+    part
+where
+    (
+        p_partkey = l_partkey
+        and p_brand = '@@1'
+        and p_container in ('SM CASE', 'SM BOX', 'SM PACK', 'SM PKG')
+        and l_quantity >= @@4 and l_quantity <= @@4 + 10
+        and p_size between 1 and 5
+        and l_shipmode in ('AIR', 'AIR REG')
+        and l_shipinstruct = 'DELIVER IN PERSON'
+    )
+    or
+    (
+        p_partkey = l_partkey
+        and p_brand = '@@2'
+        and p_container in ('MED BAG', 'MED BOX', 'MED PKG', 'MED PACK')
+        and l_quantity >= @@5 and l_quantity <= @@5 + 10
+        and p_size between 1 and 10
+        and l_shipmode in ('AIR', 'AIR REG')
+        and l_shipinstruct = 'DELIVER IN PERSON'
+    )
+    or
+    (
+        p_partkey = l_partkey
+        and p_brand = '@@3'
+        and p_container in ('LG CASE', 'LG BOX', 'LG PACK', 'LG PKG')
+        and l_quantity >= @@6 and l_quantity <= @@6 + 10
+        and p_size between 1 and 15
+        and l_shipmode in ('AIR', 'AIR REG')
+        and l_shipinstruct = 'DELIVER IN PERSON'
+    );
+:n -1
+*/
+
+@inline
+def container_size(:small, x): x = "SM CASE" or x = "SM BOX" or x = "SM PACK" or x = "SM PKG"
+@inline
+def container_size(:medium, x): x = "MED BAG" or x = "MED BOX" or x = "MED PKG" or x = "MED PACK"
+@inline
+def container_size(:large, x): x = "LG CASE" or x = "LG BOX" or x = "LG PACK" or x = "LG PKG"
+
+@inline def quantity_range(o, l, param): param <= l_quantity[o, l] <= param + 10
+
+@inline
+def ship_mode(o, l, shipmode):
+    l_shipmode(o, l, shipmode) and (shipmode = "AIR" or shipmode = "AIR REG")
+
+@inline
+def ship_instruction(o, l): l_shipinstruct(o, l, "DELIVER IN PERSON")
+
+@inline def sub_query1(o, l, pk, container, shipmode):
+    l_partkey(o, l, pk) and
+    p_brand(pk, "@@1") and
+    p_container(pk, container) and container_size(:small, container) and
+    quantity_range(o, l, @@4) and 1 <= ( pk.p_size ) <= 5 and
+    ship_mode(o, l, shipmode) and ship_instruction(o, l)
+
+@inline def sub_query2(o, l, pk, container, shipmode):
+    l_partkey(o, l, pk) and
+    p_brand(pk, "@@2") and
+    p_container(pk, container) and container_size(:medium, container) and
+    quantity_range(o, l, @@5) and 1 <= ( pk.p_size ) <= 10 and
+    ship_mode(o, l, shipmode) and ship_instruction(o, l)
+
+@inline def sub_query3(o, l, pk, container, shipmode):
+    l_partkey(o, l, pk) and
+    p_brand(pk, "@@3") and
+    p_container(pk, container) and container_size(:large, container) and
+    quantity_range(o, l, @@6) and 1 <= ( pk.p_size ) <= 15 and
+    ship_mode(o, l, shipmode) and ship_instruction(o, l)
+
+@inline def inner_query(o, l): exists((pk, container, shipmode) |
+    (sub_query1(o, l, pk, container, shipmode) or
+    sub_query2(o, l, pk, container, shipmode) or
+   sub_query3(o, l, pk, container, shipmode)))
+
+// @vectorized : it is fine to put @vectorized here, however, this is commented out because
+// we skip the join-tree optimization for cheap queries, and at SF001 this skipping might
+// causes an exception to be thrown.
+def result[]: sum[[o, l]: l_revenue[o, l] where inner_query(o, l)]
+
+//MD: We could rewrite this Rel program to extract the shared logic between sub_query1,
+//    sub_query2 and sub_query3, but first, it's not (completely) fair (benchmark-wise),
+//    as the current way for expressing the query better matches its SQL counterpart and
+//    second, it's a good exercise for the optimizer to try doing the CSE, though it's challenging

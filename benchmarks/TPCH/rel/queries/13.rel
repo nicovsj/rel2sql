@@ -1,0 +1,59 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Customer Distribution Query (Q13)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+This query determines the distribution of customers by the number of orders they
+have made, including customers who have no record of orders, past or present. It
+counts and reports how many customers have no orders, how many have 1, 2, 3,
+etc. A check is made to ensure that the orders counted do not fall into one of
+several special categories of orders. Special categories are identified in the
+order comment column by looking for a particular pattern.
+*/
+
+/*
+:x
+:o
+select
+    c_count,
+    count(* ) as custdist
+from
+    (
+        select
+            c_custkey,
+            count(o_orderkey)
+        from
+            customer left outer join orders on
+                c_custkey = o_custkey
+                and o_comment not like '%@@1%@@2%'
+        group by
+            c_custkey
+    ) as c_orders (c_custkey, c_count)
+group by
+    c_count
+order by
+    custdist desc,
+    c_count desc;
+:n -1
+*/
+
+@inline
+def temp[]:
+    ([ck]: count[(ok): o_custkey(ok, ck) and not(like_match(raw"%@@1%@@2%", (ok.o_comment)))])
+    // Left outerjoin
+    <++ (customer, 0)
+
+@vectorized
+def unsorted_result[custdist]: count[(customer_key): temp(customer_key, custdist)]
+
+@vectorized
+def sorted_by_custdist[]: reverse_sort[(custdist, c_count): unsorted_result(c_count, custdist)]
+
+@vectorized
+def sorted_by_c_count(i, c_count, cust_dist): sort(((_i, cc, cd): sorted_by_custdist(_i, cd, cc)), i, _, c_count, cust_dist)
+
+@vectorized
+def result[]: sorted_by_c_count

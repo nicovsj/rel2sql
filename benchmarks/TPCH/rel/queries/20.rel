@@ -1,0 +1,87 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Potential Part Promotion Query (Q20)
+-- Function Query Definition
+-- Approved February 1998
+*/
+
+/*
+The Potential Part Promotion query identifies suppliers who have an excess of a
+given part available; an excess is defined to be more than 50% of the parts like
+the given part that the supplier shipped in a given year for a given
+nation. Only parts whose names share a certain naming convention are considered.
+*/
+
+/*
+:x
+:o
+select
+    s_name,
+    s_address
+from
+    supplier,
+    nation
+where
+    s_suppkey in (
+        select
+            ps_suppkey
+        from
+            partsupp
+        where
+            ps_partkey in (
+                select
+                    p_partkey
+                from
+                    part
+                where
+                    p_name like '@@1%'
+            )
+            and ps_availqty > (
+                select
+                    0.5 * sum(l_quantity)
+                from
+                    lineitem
+                where
+                    l_partkey = ps_partkey
+                    and l_suppkey = ps_suppkey
+                    and l_shipdate >= date '@@2'
+                    and l_shipdate < date '@@2' + interval '1' year
+            )
+    )
+    and s_nationkey = n_nationkey
+    and n_name = '@@3'
+order by
+    s_name;
+:n -1
+*/
+@inline def lower[]: parse_date["@@2", "Y-m-d"]
+@inline def upper[]: date_add[parse_date["@@2", "Y-m-d"], ^Year[1]]
+
+@inline def specific_partkeys(pk): like_match(raw"@@1%", ( pk.p_name ))
+
+@inline def availqty_limit(pk, sk, sum_qty_limit):
+    sum_qty_limit = dec[0.5] * sum[(o, l, qty_limit):
+        l_partkey(o, l, pk) and
+        l_suppkey(o, l, sk) and
+        lower <= l_shipdate[o, l] < upper and
+        l_quantity(o, l, qty_limit)
+    ]
+
+@inline def specific_suppliers(sk): exists((pk) |
+    specific_partkeys(pk) and
+    ps_availqty[pk, sk] > availqty_limit[pk, sk])
+
+@inline def inner_query(sk):
+    specific_suppliers(sk) and
+    ( ( sk.s_nationkey ).n_name ) = "@@3"
+
+// @vectorized : it is fine to put @vectorized here, however, this is commented out because
+// we skip the join-tree optimization for cheap queries, and at SF001 this skipping might
+// causes an exception to be thrown.
+def unsorted_result(name, address): exists((sk) |
+    inner_query(sk) and
+    s_name(sk, name) and
+    s_address(sk, address))
+
+@vectorized
+def result[]: sort[unsorted_result]

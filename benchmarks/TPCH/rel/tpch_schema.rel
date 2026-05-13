@@ -1,0 +1,185 @@
+// nation
+def nation_csv_config[:path]: nation_csv_path
+def nation_csv_config[:syntax, :header_row]: 0
+def nation_csv_config[:syntax, :delim]: '|'
+def nation_csv_config[:syntax, :header]:
+    {(1, :n_nationkey);
+    (2, :n_name);
+    (3, :n_regionkey);
+    (4, :n_comment)}
+
+def nation_csv_config[:schema]:
+    {(:n_nationkey, "int");
+    (:n_name, "string");
+    (:n_regionkey, "int");
+    (:n_comment, "string")}
+
+// region
+def region_csv_config[:path]: region_csv_path
+def region_csv_config[:syntax, :header_row]: 0
+def region_csv_config[:syntax, :delim]: '|'
+def region_csv_config[:syntax, :header]:
+    {(1, :r_regionkey);
+    (2, :r_name);
+    (3, :r_comment)}
+
+def region_csv_config[:schema]:
+    {(:r_regionkey, "int");
+    (:r_name, "string");
+    (:r_comment, "string")}
+
+// part
+def part_csv_config[:path]: part_csv_path
+def part_csv_config[:syntax, :header_row]: 0
+def part_csv_config[:syntax, :delim]: '|'
+def part_csv_config[:syntax, :header]:
+    {(1, :p_partkey);
+    (2, :p_name);
+    (3, :p_mfgr);
+    (4, :p_brand);
+    (5, :p_type);
+    (6, :p_size);
+    (7, :p_container);
+    (8, :p_retailprice);
+    (9, :p_comment)}
+
+def part_csv_config[:schema]:
+    {(:p_partkey, "int");
+    (:p_name, "string");
+    (:p_mfgr, "string");
+    (:p_brand, "string");
+    (:p_type, "string");
+    (:p_size, "int");
+    (:p_container, "string");
+    (:p_retailprice, "decimal(64,4)");
+    (:p_comment, "string")}
+
+// supplier
+def supplier_csv_config[:path]: supplier_csv_path
+def supplier_csv_config[:syntax, :header_row]: 0
+def supplier_csv_config[:syntax, :delim]: '|'
+def supplier_csv_config[:syntax, :header]:
+    {(1, :s_suppkey);
+    (2, :s_name);
+    (3, :s_address);
+    (4, :s_nationkey);
+    (5, :s_phone);
+    (6, :s_acctbal);
+    (7, :s_comment)}
+
+def supplier_csv_config[:schema]:
+    {(:s_suppkey, "int");
+    (:s_name, "string");
+    (:s_address, "string");
+    (:s_nationkey, "int");
+    (:s_phone, "string");
+    (:s_acctbal, "decimal(64,4)");
+    (:s_comment, "string")}
+
+// partuspp
+def partsupp_csv_config[:path]: partsupp_csv_path
+def partsupp_csv_config[:syntax, :header_row]: 0
+def partsupp_csv_config[:syntax, :delim]: '|'
+def partsupp_csv_config[:syntax, :header]:
+    {(1, :ps_partkey);
+    (2, :ps_suppkey);
+    (3, :ps_availqty);
+    (4, :ps_supplycost);
+    (5, :ps_comment)}
+
+def partsupp_csv_config[:schema]:
+    {(:ps_partkey, "int");
+    (:ps_suppkey, "int");
+    (:ps_availqty, "int");
+    (:ps_supplycost, "decimal(64,4)");
+    (:ps_comment, "string")}
+
+// customer
+def customer_csv_config[:path]: customer_csv_path
+def customer_csv_config[:syntax, :header_row]: 0
+def customer_csv_config[:syntax, :delim]: '|'
+def customer_csv_config[:syntax, :header]:
+    {(1, :c_custkey);
+    (2, :c_name);
+    (3, :c_address);
+    (4, :c_nationkey);
+    (5, :c_phone);
+    (6, :c_acctbal);
+    (7, :c_mktsegment);
+    (8, :c_comment)}
+
+def customer_csv_config[:schema]:
+    {(:c_custkey, "int");
+    (:c_name, "string");
+    (:c_address, "string");
+    (:c_nationkey, "int");
+    (:c_phone, "string");
+    (:c_acctbal, "decimal(64,4)");
+    (:c_mktsegment, "string");
+    (:c_comment, "string")}
+
+// orders
+def orders_csv_config[:path]: orders_csv_path
+def orders_csv_config[:syntax, :header_row]: 0
+def orders_csv_config[:syntax, :delim]: '|'
+def orders_csv_config[:syntax, :header]:
+    {(1, :o_orderkey);
+    (2, :o_custkey);
+    (3, :o_orderstatus);
+    (4, :o_totalprice);
+    (5, :o_orderdate);
+    (6, :o_orderpriority);
+    (7, :o_clerk);
+    (8, :o_shippriority);
+    (9, :o_comment)}
+
+def orders_csv_config[:schema]:
+    {(:o_orderkey, "int");
+    (:o_custkey, "int");
+    (:o_orderstatus, "char");
+    (:o_totalprice, "decimal(64,4)");
+    (:o_orderdate, "date");
+    (:o_orderpriority, "string");
+    (:o_clerk, "string");
+    (:o_shippriority, "int");
+    (:o_comment, "string")}
+
+// lineitem
+def lineitem_csv_config[:path]: lineitem_csv_path
+def lineitem_csv_config[:syntax, :header_row]: 0
+def lineitem_csv_config[:syntax, :delim]: '|'
+def lineitem_csv_config[:syntax, :header]:
+    {(1, :l_orderkey);
+    (2 ,:l_partkey);
+    (3 ,:l_suppkey);
+    (4 ,:l_linenumber);
+    (5 ,:l_quantity);
+    (6 ,:l_extendedprice);
+    (7 ,:l_discount);
+    (8 ,:l_tax);
+    (9 ,:l_returnflag);
+    (10 ,:l_linestatus);
+    (11 ,:l_shipdate);
+    (12 ,:l_commitdate);
+    (13 ,:l_receiptdate);
+    (14 ,:l_shipinstruct);
+    (15 ,:l_shipmode);
+    (16 ,:l_comment)}
+
+def lineitem_csv_config[:schema]:
+    {(:l_orderkey, "int");
+    (:l_partkey, "int");
+    (:l_suppkey, "int");
+    (:l_linenumber, "int");
+    (:l_quantity, "decimal(64,4)");
+    (:l_extendedprice, "decimal(64,4)");
+    (:l_discount, "decimal(64,4)");
+    (:l_tax, "decimal(64,4)");
+    (:l_returnflag, "char");
+    (:l_linestatus, "char");
+    (:l_shipdate, "date");
+    (:l_commitdate, "date");
+    (:l_receiptdate, "date");
+    (:l_shipinstruct, "string");
+    (:l_shipmode, "string");
+    (:l_comment, "string")}

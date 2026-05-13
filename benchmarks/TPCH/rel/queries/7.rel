@@ -1,0 +1,98 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Volume Shipping Query (Q7)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+
+The Volume Shipping Query finds, for two given nations, the gross discounted
+revenues derived from lineitems in which parts were shipped from a supplier in
+either nation to a customer in the other nation during 1995 and 1996.  The query
+lists the supplier nation, the customer nation, the year, and the revenue from
+shipments that took place in that year. The query orders the answer by Supplier
+nation, Customer nation, and year (all ascending).
+
+NATION1 is randomly selected within the list of values defined for N_NAME in Clause 4.2.3;
+
+NATION2 is randomly selected within the list of values defined for N_NAME in
+Clause 4.2.3 and must be different from the value selected for NATION1 in item
+1 above.
+
+*/
+
+/*
+:x
+:o
+select
+    supp_nation,
+    cust_nation,
+    l_year,
+    sum(volume) as revenue
+from
+    (
+        select
+            n1.n_name as supp_nation,
+            n2.n_name as cust_nation,
+            extract(year from l_shipdate) as l_year,
+            l_extendedprice * (1 - l_discount) as volume
+        from
+            supplier,
+            lineitem,
+            orders,
+            customer,
+            nation n1,
+            nation n2
+        where
+            s_suppkey = l_suppkey
+            and o_orderkey = l_orderkey
+            and c_custkey = o_custkey
+            and s_nationkey = n1.n_nationkey
+            and c_nationkey = n2.n_nationkey
+            and (
+                (n1.n_name = '@@1' and n2.n_name = '@@2')
+                or (n1.n_name = '@@2' and n2.n_name = '@@1')
+            )
+            and l_shipdate between date '1995-01-01' and date '1996-12-31'
+    ) as shipping
+group by
+    supp_nation,
+    cust_nation,
+    l_year
+order by
+    supp_nation,
+    cust_nation,
+    l_year;
+:n -1
+*/
+@vectorized def lower[]: parse_date["1995-01-01", "Y-m-d"]
+@vectorized def upper[]: parse_date["1996-12-31", "Y-m-d"]
+
+@vectorized
+def nations(n1, n2):
+    (n_name(n1,"@@1") and n_name(n2,"@@2")) or
+    (n_name(n1,"@@2") and n_name(n2,"@@1"))
+
+@inline
+def shipment_volume[n1, n2, y]:
+    sum[[o, num]:
+        l_revenue[o,num] where
+        (( l_suppkey[o, num].s_nationkey ) = n1 and
+        ( ( o.o_custkey ).c_nationkey ) = n2 and
+        lower <= l_shipdate[o, num] <= upper and
+        ( l_shipdate[o, num].date_year ) = y)
+    ]
+    where nations(n1, n2)
+
+// @vectorized : this is *NOT* vectorized because we deliberately skip the join-tree
+// optimization for cheap queries. The query is slightly slower if we use the vectorizer
+// here due to a couple of intermediates.
+def unsorted_result(s1, s2, y, vol): exists((n1, n2) |
+    shipment_volume(n1, n2, y, vol) and
+    n_name[n1] = s1 and
+    n_name[n2] = s2
+)
+
+@vectorized
+def result[]: sort[unsorted_result]

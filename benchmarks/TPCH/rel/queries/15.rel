@@ -1,0 +1,85 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Top Supplier Query (Q15)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+The Top Supplier Query finds the supplier who contributed the most to the
+overall revenue for parts shipped during a given quarter of a given year. In
+case of a tie, the query lists all suppliers whose contribution was equal to the
+maximum, presented in supplier number order.
+*/
+
+/*
+:x
+create view revenue:s (supplier_no, total_revenue) as
+    select
+        l_suppkey,
+        sum(l_extendedprice * (1 - l_discount))
+    from
+        lineitem
+    where
+        l_shipdate >= date '@@1'
+        and l_shipdate < date '@@1' + interval '3' month
+    group by
+        l_suppkey;
+
+:o
+select
+    s_suppkey,
+    s_name,
+    s_address,
+    s_phone,
+    total_revenue
+from
+    supplier,
+    revenue:s
+where
+    s_suppkey = supplier_no
+    and total_revenue = (
+        select
+            max(total_revenue)
+        from
+            revenue:s
+    )
+order by
+    s_suppkey;
+
+drop view revenue:s;
+:n -1
+*/
+
+
+// issue #323 is fixed. https://github.com/RelationalAI/raicode/issues/323
+// issue #324 is fixed. https://github.com/RelationalAI/raicode/issues/324
+// but... slower?
+@vectorized def lower[]: parse_date["@@1", "Y-m-d"]
+@vectorized def upper[]: date_add[parse_date["@@1", "Y-m-d"], ^Month[3]]
+
+@inline def revenue(supplier_no, total_revenue): total_revenue = sum[(o, num, v):
+    l_suppkey(o, num, supplier_no) and
+    lower <= l_shipdate[o, num] < upper and
+    v = l_revenue[o,num]
+]
+
+//TODO(MD): the performance of this query degrades more than 3x if the following definition
+//          is inlined. This should be fixed after finding a solution for issue #319
+def result_s_suppkey(suppkey): revenue[suppkey] = max[revenue]
+@inline def result_s_name(suppkey, name): s_name(suppkey, name) and result_s_suppkey(suppkey)
+@inline def result_s_address(suppkey, address): s_address(suppkey, address) and result_s_suppkey(suppkey)
+@inline def result_s_phone(suppkey, phone): s_phone(suppkey, phone) and result_s_suppkey(suppkey)
+@inline def result_total_revenue(suppkey, total_revenue): revenue(suppkey, total_revenue) and result_s_suppkey(suppkey)
+
+// @vectorized : this is *NOT* vectorized because we deliberately skip the join-tree
+// optimization for cheap queries. The query is slightly slower if we use the vectorizer
+// here due to a couple of intermediates.
+def unsorted_result(suppkey, name, address, phone, total_revenue):
+    result_s_name(suppkey, name) and
+    result_s_address(suppkey, address) and
+    result_s_phone(suppkey, phone) and
+    result_total_revenue(suppkey, total_revenue)
+
+@vectorized
+def result[]: sort[unsorted_result]
