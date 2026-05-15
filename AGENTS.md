@@ -56,6 +56,10 @@ bazel test --config=default //tests:test_safety
 echo 'def output {"Hello"}' | bazel run //:rel2sql_bin
 bazel run //:rel2sql_bin -- -f query.rl
 bazel run //:rel2sql_bin -- -u -f query.rl   # -u = skip optimizations
+# Optional extensional schema (relation name → arity) for undefined-relation errors on real workloads:
+bazel run //:rel2sql_bin -- -u -e benchmarks/TPCH/rel/tpch_edb.edb -f query.rl
+# Regenerate the bundled TPC-H arity map after changing `tpch_schema_mapping.rel`:
+python3 scripts/gen_tpch_edb.py
 ```
 
 **IDE setup (clangd):**
