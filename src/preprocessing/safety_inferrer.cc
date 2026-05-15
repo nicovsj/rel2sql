@@ -4,6 +4,7 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <stdexcept>
 #include <unordered_map>
 
 #include "rel_ast/bound_set.h"
@@ -72,6 +73,14 @@ BoundSet InheritBounds(const BoundSet& parent_safety, const RelNode& child) {
   return inherited;
 }
 
+void UnionSafetyIntoSubtree(RelNode* root, const BoundSet& extra) {
+  if (!root || extra.IsEmpty()) return;
+  root->safety = root->safety.UnionWith(extra);
+  for (const auto& child : root->Children()) {
+    UnionSafetyIntoSubtree(child.get(), extra);
+  }
+}
+
 // Visitor that computes safety from children only (no recursion).
 // Used when nodes are processed in post-order.
 class SafetyComputeVisitor : public BaseRelVisitor {
@@ -110,6 +119,9 @@ class SafetyComputeVisitor : public BaseRelVisitor {
 
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelCondition>& node) override {
     if (node->lhs && node->rhs) {
+      if (!node->lhs->safety.IsEmpty()) {
+        UnionSafetyIntoSubtree(node->rhs.get(), node->lhs->safety);
+      }
       node->safety = node->rhs->safety.UnionWith(node->lhs->safety);
     }
     return node;
@@ -121,7 +133,15 @@ class SafetyComputeVisitor : public BaseRelVisitor {
   }
 
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaAbstraction>& node) override {
-    if (node->formula) ComputeBindingsSafety(*node, *node->formula, node->bindings);
+    if (!node->formula) return node;
+    BoundSet inner_body_for_join;
+    if (auto* ex = dynamic_cast<RelExistential*>(node->formula.get())) {
+      if (ex->formula) inner_body_for_join = ex->formula->safety;
+    }
+    ComputeBindingsSafety(*node, *node->formula, node->bindings);
+    if (!inner_body_for_join.IsEmpty()) {
+      node->safety = node->safety.UnionWith(inner_body_for_join);
+    }
     return node;
   }
 
@@ -210,7 +230,14 @@ class SafetyComputeVisitor : public BaseRelVisitor {
   }
 
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelComparison>& node) override {
-    // If not an equality comparison, there's no possible inference to be made.
+    // Propagate child safety for all comparators. (EQ-only domain inference below still needs
+    // `bound_variables` / bounds from lhs ∪ rhs, and non-EQ comparisons must inherit sibling
+    // bounds from e.g. `TermRewriter` existentials: `{e}(_x0) ∧ _x0 ⋄ t`.)
+    if (node->lhs && node->rhs) {
+      node->safety = node->lhs->safety.UnionWith(node->rhs->safety);
+    }
+
+    // If not an equality comparison, there's no further inference to be made.
     if (node->op != RelCompOp::EQ) return node;
 
     // If the comparison is t1 = t2, then let's get the net linear coeffs of t1 - t2 (if possible).
@@ -368,6 +395,15 @@ class SafetyComputeVisitor : public BaseRelVisitor {
     } else {
       node->safety = BoundSet();
     }
+    return node;
+  }
+
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelExprAsTerm>&) override {
+    throw std::logic_error("SafetyInferrer: RelExprAsTerm leaked past TermRewriter");
+  }
+
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelStringTerm>& node) override {
+    node->safety = BoundSet();
     return node;
   }
 
