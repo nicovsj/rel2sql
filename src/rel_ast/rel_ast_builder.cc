@@ -227,16 +227,32 @@ std::any RelASTBuilder::visitParen(psr::ParenContext* ctx) {
   return std::shared_ptr<RelFormula>(node);
 }
 
-std::any RelASTBuilder::visitComparison(psr::ComparisonContext* ctx) {
-  auto lhs_result = visit(ctx->lhs);
-  auto rhs_result = visit(ctx->rhs);
-  auto lhs = Cast<RelTerm>(lhs_result);
-  auto rhs = Cast<RelTerm>(rhs_result);
-  std::string op_str = ctx->comparator()->getText();
-  RelCompOp op = ParseCompOp(op_str);
-  auto node = std::make_shared<RelComparison>(std::move(lhs), op, std::move(rhs));
-  SetCtx(node.get(), ctx);
-  return std::shared_ptr<RelFormula>(node);
+std::any RelASTBuilder::visitChainedComparison(psr::ChainedComparisonContext* ctx) {
+  const auto comps = ctx->comparator();
+  const size_t n = comps.size();
+  if (n == 0) {
+    throw std::runtime_error("chained comparison: empty chain");
+  }
+  auto head_any = visit(ctx->head);
+  auto left = Cast<RelTerm>(head_any);
+  std::shared_ptr<RelFormula> acc;
+  for (size_t i = 0; i < n; ++i) {
+    auto* rhs_ctx = ctx->term(static_cast<size_t>(i + 1));
+    auto rhs_any = visit(rhs_ctx);
+    auto right = Cast<RelTerm>(rhs_any);
+    RelCompOp op = ParseCompOp(comps[i]->getText());
+    auto cmp = std::make_shared<RelComparison>(left, op, right);
+    SetCtx(cmp.get(), ctx);
+    left = cmp->rhs;
+    if (!acc) {
+      acc = std::move(cmp);
+    } else {
+      auto conj = std::make_shared<RelConjunction>(std::move(acc), std::move(cmp));
+      SetCtx(conj.get(), ctx);
+      acc = std::move(conj);
+    }
+  }
+  return acc;
 }
 
 std::any RelASTBuilder::visitUnOp(psr::UnOpContext* ctx) {
@@ -297,6 +313,40 @@ std::any RelASTBuilder::visitParenthesisTerm(psr::ParenthesisTermContext* ctx) {
   auto term_result = visit(ctx->term());
   auto term = Cast<RelTerm>(term_result);
   auto node = std::make_shared<RelParenthesisTerm>(std::move(term));
+  SetCtx(node.get(), ctx);
+  return std::shared_ptr<RelTerm>(node);
+}
+
+std::any RelASTBuilder::visitAppTerm(psr::AppTermContext* ctx) {
+  auto base_result = visit(ctx->applBase());
+  auto base = std::any_cast<std::shared_ptr<RelApplBase>>(base_result);
+  auto params_result = visit(ctx->applParams());
+  auto params = std::any_cast<std::vector<std::shared_ptr<RelApplParam>>>(params_result);
+  auto partial = std::make_shared<RelPartialApplication>(std::move(base), std::move(params));
+  SetCtx(partial.get(), ctx);
+  auto wrapper = std::make_shared<RelExprAsTerm>(std::static_pointer_cast<RelExpr>(partial));
+  SetCtx(wrapper.get(), ctx);
+  return std::shared_ptr<RelTerm>(wrapper);
+}
+
+std::any RelASTBuilder::visitStrTerm(psr::StrTermContext* ctx) {
+  std::string text = ctx->getText();
+  text.erase(std::remove(text.begin(), text.end(), '"'), text.end());
+  auto node = std::make_shared<RelStringTerm>(std::move(text));
+  SetCtx(node.get(), ctx);
+  return std::shared_ptr<RelTerm>(node);
+}
+
+std::any RelASTBuilder::visitCharTerm(psr::CharTermContext* ctx) {
+  std::string text = ctx->getText();
+  text.erase(std::remove(text.begin(), text.end(), '\''), text.end());
+  auto node = std::make_shared<RelStringTerm>(std::move(text));
+  SetCtx(node.get(), ctx);
+  return std::shared_ptr<RelTerm>(node);
+}
+
+std::any RelASTBuilder::visitDateTerm(psr::DateTermContext* ctx) {
+  auto node = std::make_shared<RelStringTerm>(ctx->getText());
   SetCtx(node.get(), ctx);
   return std::shared_ptr<RelTerm>(node);
 }

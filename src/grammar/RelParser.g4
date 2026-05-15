@@ -65,21 +65,25 @@ numericalConstant:
 term:
 	lhs = term op = (T_OP_MULT | T_OP_DIV) rhs = term		# opTerm
 	| lhs = term op = (T_OP_PLUS | T_OP_MINUS) rhs = term	# opTerm
+	| applBase '[' applParams ']'							# appTerm
 	| T_ID													# IDTerm
 	| numericalConstant										# numTerm
+	| T_STATIC_STR_LIT										# strTerm
+	| T_CHAR_LIT											# charTerm
+	| T_DATE_LIT											# dateTerm
 	| '(' term ')'											# parenthesisTerm;
 
 // The order of the rules below matters for precedence.
 expr:
 	literal								# litExpr
 	| '(' productInner ')'				# productExpr
+	| applBase '[' applParams ']'		# partialAppl
 	| term								# termExpr
 	| lhs = expr 'where' rhs = formula	# conditionExpr
 	| relAbs							# relAbsExpr
 	| formula							# formulaExpr
 	| '[' bindingInner ']' ':' expr		# bindingsExpr
-	| '(' bindingInner ')' ':' formula	# bindingsFormula
-	| applBase '[' applParams ']'		# partialAppl;
+	| '(' bindingInner ')' ':' formula	# bindingsFormula;
 
 // Formula with operator precedence: not > and > or Order matters: atomic formulas first, then not,
 // then and, then or
@@ -89,7 +93,8 @@ formula:
 	| op = 'exists' '(' '(' bindingInner ')' '|' formula ')'	# quantification
 	| op = 'forall' '(' '(' bindingInner ')' '|' formula ')'	# quantification
 	| '(' formula ')'											# paren
-	| lhs = term comparator rhs = term							# comparison
+	// Chained scalar comparisons: `a <= b <= c` means `a <= b and b <= c` (middle term shared).
+	| head = term (comp = comparator tail = term)+			# chainedComparison
 	| op = 'not' formula										# unOp
 	| lhs = formula op = 'and' rhs = formula					# binOp
 	| lhs = formula op = 'or' rhs = formula						# binOp;

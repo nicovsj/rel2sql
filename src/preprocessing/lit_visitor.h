@@ -17,6 +17,8 @@ class LiteralVisitor : public BaseRelVisitor {
 
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProduct>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelNumTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelStringTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelExprAsTerm>& node) override;
 };
 
 }  // namespace rel2sql
