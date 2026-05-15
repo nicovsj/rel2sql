@@ -769,8 +769,20 @@ std::shared_ptr<sql::ast::Sourceable> Translator::DomainToSql(const Domain& doma
                                               false);
   }
 
-  if (dynamic_cast<const IntensionalDomain*>(&domain)) {
-    throw NotImplementedException("DomainToSql: IntensionalDomain not supported for CTE bounds", SourceLocation(0, 0));
+  if (auto* intl = dynamic_cast<const IntensionalDomain*>(&domain)) {
+    if (!intl->node) {
+      throw TranslationException("DomainToSql: IntensionalDomain has no inner expression",
+                                 ErrorCode::UNKNOWN_BINARY_OPERATOR, SourceLocation(0, 0));
+    }
+    if (!intl->node->sql_expression) {
+      Visit(intl->node);
+    }
+    auto sourceable = std::dynamic_pointer_cast<sql::ast::Sourceable>(intl->node->sql_expression);
+    if (!sourceable) {
+      throw TranslationException("DomainToSql: IntensionalDomain inner did not produce a Sourceable",
+                                 ErrorCode::UNKNOWN_BINARY_OPERATOR, SourceLocation(0, 0));
+    }
+    return sourceable;
   }
 
   throw TranslationException("DomainToSql: unknown domain type", ErrorCode::UNKNOWN_BINARY_OPERATOR,
@@ -1320,6 +1332,15 @@ std::shared_ptr<RelTerm> Translator::Visit(const std::shared_ptr<RelParenthesisT
   return node;
 }
 
+std::shared_ptr<RelTerm> Translator::Visit(const std::shared_ptr<RelStringTerm>& node) {
+  node->sql_expression = std::make_shared<sql::ast::Constant>(sql::ast::constant_t(node->value));
+  return node;
+}
+
+std::shared_ptr<RelTerm> Translator::Visit(const std::shared_ptr<RelExprAsTerm>&) {
+  throw std::logic_error("Translator: RelExprAsTerm leaked past TermRewriter");
+}
+
 std::vector<std::shared_ptr<sql::ast::Selectable>> Translator::VarListShorthandRel(
     const std::vector<RelNode*>& nodes, const std::shared_ptr<sql::ast::Source>& source) {
   std::unordered_set<std::string> seen_vars;
@@ -1640,6 +1661,10 @@ std::shared_ptr<sql::ast::Term> Translator::BuildSqlTermFromLinearRelTerm(
 
   if (auto* num = dynamic_cast<RelNumTerm*>(rel_term.get())) {
     return std::make_shared<sql::ast::Constant>(num->value);
+  }
+
+  if (auto* str = dynamic_cast<RelStringTerm*>(rel_term.get())) {
+    return std::make_shared<sql::ast::Constant>(sql::ast::constant_t(str->value));
   }
 
   if (auto* id = dynamic_cast<RelIDTerm*>(rel_term.get())) {
