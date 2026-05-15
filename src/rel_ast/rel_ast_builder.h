@@ -39,7 +39,7 @@ class RelASTBuilder : public rel_parser::RelParserBaseVisitor {
   std::any visitFullAppl(psr::FullApplContext* ctx) override;
   std::any visitQuantification(psr::QuantificationContext* ctx) override;
   std::any visitParen(psr::ParenContext* ctx) override;
-  std::any visitComparison(psr::ComparisonContext* ctx) override;
+  std::any visitChainedComparison(psr::ChainedComparisonContext* ctx) override;
   std::any visitUnOp(psr::UnOpContext* ctx) override;
   std::any visitBinOp(psr::BinOpContext* ctx) override;
 
@@ -48,6 +48,10 @@ class RelASTBuilder : public rel_parser::RelParserBaseVisitor {
   std::any visitNumTerm(psr::NumTermContext* ctx) override;
   std::any visitOpTerm(psr::OpTermContext* ctx) override;
   std::any visitParenthesisTerm(psr::ParenthesisTermContext* ctx) override;
+  std::any visitAppTerm(psr::AppTermContext* ctx) override;
+  std::any visitStrTerm(psr::StrTermContext* ctx) override;
+  std::any visitCharTerm(psr::CharTermContext* ctx) override;
+  std::any visitDateTerm(psr::DateTermContext* ctx) override;
 
   // Literals
   std::any visitInt(psr::IntContext* ctx) override;

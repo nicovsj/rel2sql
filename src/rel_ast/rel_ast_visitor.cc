@@ -158,6 +158,13 @@ std::shared_ptr<RelTerm> BaseRelVisitor::Visit(const std::shared_ptr<RelParenthe
   return node;
 }
 
+std::shared_ptr<RelTerm> BaseRelVisitor::Visit(const std::shared_ptr<RelExprAsTerm>& node) {
+  if (node->inner) node->inner = Visit(node->inner);
+  return node;
+}
+
+std::shared_ptr<RelTerm> BaseRelVisitor::Visit(const std::shared_ptr<RelStringTerm>& node) { return node; }
+
 std::shared_ptr<RelApplBase> BaseRelVisitor::Visit(const std::shared_ptr<RelIDApplBase>& node) { return node; }
 
 std::shared_ptr<RelApplBase> BaseRelVisitor::Visit(const std::shared_ptr<RelExprApplBase>& node) {

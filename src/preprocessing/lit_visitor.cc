@@ -1,5 +1,7 @@
 #include "preprocessing/lit_visitor.h"
 
+#include <stdexcept>
+
 namespace rel2sql {
 
 std::shared_ptr<RelDef> LiteralVisitor::Visit(const std::shared_ptr<RelDef>& node) {
@@ -47,6 +49,15 @@ std::shared_ptr<RelExpr> LiteralVisitor::Visit(const std::shared_ptr<RelProduct>
 std::shared_ptr<RelTerm> LiteralVisitor::Visit(const std::shared_ptr<RelNumTerm>& node) {
   node->constant = node->value;
   return node;
+}
+
+std::shared_ptr<RelTerm> LiteralVisitor::Visit(const std::shared_ptr<RelStringTerm>& node) {
+  node->constant = sql::ast::constant_t(node->value);
+  return node;
+}
+
+std::shared_ptr<RelTerm> LiteralVisitor::Visit(const std::shared_ptr<RelExprAsTerm>&) {
+  throw std::logic_error("LiteralVisitor: RelExprAsTerm leaked past TermRewriter");
 }
 
 }  // namespace rel2sql

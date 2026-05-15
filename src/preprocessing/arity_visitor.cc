@@ -215,6 +215,22 @@ std::shared_ptr<RelTerm> ArityVisitor::Visit(const std::shared_ptr<RelParenthesi
   return node;
 }
 
+std::shared_ptr<RelTerm> ArityVisitor::Visit(const std::shared_ptr<RelExprAsTerm>& node) {
+  if (node->inner) Visit(node->inner);
+  size_t inner_arity = node->inner ? node->inner->arity : 0;
+  if (inner_arity != 1) {
+    throw ArityException("Expression-as-term operand must have arity 1, got " + std::to_string(inner_arity),
+                         GetSourceLocationFromNode(node.get()));
+  }
+  node->arity = 1;
+  return node;
+}
+
+std::shared_ptr<RelTerm> ArityVisitor::Visit(const std::shared_ptr<RelStringTerm>& node) {
+  node->arity = 1;
+  return node;
+}
+
 int ArityVisitor::GetArityFromBase(const std::shared_ptr<RelApplBase>& base) {
   if (auto* id_base = dynamic_cast<RelIDApplBase*>(base.get())) {
     if (GetAggregateMap().find(id_base->id) != GetAggregateMap().end()) return 1;

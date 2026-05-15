@@ -20,6 +20,7 @@ class IDsVisitor : public BaseRelVisitor {
   std::shared_ptr<RelUnion> Visit(const std::shared_ptr<RelUnion>& node) override;
 
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelIDTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelExprAsTerm>& node) override;
 
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelExprAbstraction>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaAbstraction>& node) override;

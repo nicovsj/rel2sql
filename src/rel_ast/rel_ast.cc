@@ -201,6 +201,28 @@ std::vector<std::shared_ptr<RelNode>> RelParenthesisTerm::Children() const {
   return children;
 }
 
+std::shared_ptr<RelNode> RelExprAsTerm::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  auto t = visitor.Visit(std::dynamic_pointer_cast<RelExprAsTerm>(self));
+  return std::static_pointer_cast<RelNode>(t);
+}
+
+std::string RelExprAsTerm::ToString() const { return inner ? inner->ToString() : "?"; }
+
+std::vector<std::shared_ptr<RelNode>> RelExprAsTerm::Children() const {
+  std::vector<std::shared_ptr<RelNode>> children;
+  if (inner) children.push_back(inner);
+  return children;
+}
+
+std::shared_ptr<RelNode> RelStringTerm::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  auto t = visitor.Visit(std::dynamic_pointer_cast<RelStringTerm>(self));
+  return std::static_pointer_cast<RelNode>(t);
+}
+
+std::string RelStringTerm::ToString() const { return "\"" + value + "\""; }
+
+std::vector<std::shared_ptr<RelNode>> RelStringTerm::Children() const { return {}; }
+
 std::shared_ptr<RelNode> RelBoolean::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelBoolean>(self));
 }

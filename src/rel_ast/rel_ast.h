@@ -231,6 +231,33 @@ struct RelParenthesisTerm : RelTerm {
   std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
+// Wraps a `RelExpr` (typically a `RelPartialApplication` or a lowered built-in) so it can appear in
+// `RelOpTerm::lhs/rhs` or `RelComparison::lhs/rhs`. Eliminated by `TermRewriter` before downstream
+// passes (variables/safety/translator) ever see it.
+struct RelExprAsTerm : RelTerm {
+  std::shared_ptr<RelExpr> inner;
+
+  explicit RelExprAsTerm(std::shared_ptr<RelExpr> inner) : inner(std::move(inner)) {}
+
+  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+
+  std::string ToString() const override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
+};
+
+// Non-numeric constant operand for terms (string/char/date literals appearing inside arithmetic or
+// comparison contexts, e.g. `x = "SM CASE"`).
+struct RelStringTerm : RelTerm {
+  std::string value;
+
+  explicit RelStringTerm(std::string value) : value(std::move(value)) {}
+
+  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+
+  std::string ToString() const override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
+};
+
 // =============================================================================
 // Arguments
 // =============================================================================

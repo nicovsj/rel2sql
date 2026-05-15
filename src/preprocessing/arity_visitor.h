@@ -39,6 +39,8 @@ class ArityVisitor : public BaseRelVisitor {
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelNumTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelOpTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelParenthesisTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelExprAsTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelStringTerm>& node) override;
 
  private:
   int GetArityFromBase(const std::shared_ptr<RelApplBase>& base);
