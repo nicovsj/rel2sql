@@ -1,5 +1,6 @@
 #include "rewriter/term_rewriter.h"
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -36,7 +37,8 @@ std::shared_ptr<RelExpr> TermRewriter::WrapTermExpr(std::shared_ptr<RelTerm> ter
   std::string z = FreshVarName();
   auto bind = std::make_shared<RelVarBinding>(z, std::nullopt);
   auto lhs = std::make_shared<RelIDTerm>(z);
-  auto formula = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, term);
+  std::shared_ptr<RelFormula> formula = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, term);
+  formula = Visit(std::dynamic_pointer_cast<RelComparison>(formula));
   auto bindings_formula =
       std::make_shared<RelFormulaAbstraction>(std::vector<std::shared_ptr<RelBinding>>{bind}, std::move(formula));
   if (!wrap_in_abs) {
@@ -51,7 +53,8 @@ std::shared_ptr<RelExpr> TermRewriter::WrapConditionExpr(std::shared_ptr<RelCond
   std::string z = FreshVarName();
   auto bind = std::make_shared<RelVarBinding>(z, std::nullopt);
   auto lhs = std::make_shared<RelIDTerm>(z);
-  auto eq_formula = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, term);
+  std::shared_ptr<RelFormula> eq_formula = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, term);
+  eq_formula = Visit(std::dynamic_pointer_cast<RelComparison>(eq_formula));
   auto formula = std::make_shared<RelConjunction>(std::move(eq_formula), expr->rhs);
   auto bindings_formula =
       std::make_shared<RelFormulaAbstraction>(std::vector<std::shared_ptr<RelBinding>>{bind}, std::move(formula));
@@ -172,7 +175,8 @@ std::shared_ptr<RelFormula> TermRewriter::Visit(const std::shared_ptr<RelFullApp
   for (size_t i = 0; i < fresh_vars.size(); i++) {
     auto lhs = std::make_shared<RelIDTerm>(fresh_vars[i]);
     auto eq = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, expr_terms[i]);
-    formula = std::make_shared<RelConjunction>(std::move(formula), std::move(eq));
+    std::shared_ptr<RelFormula> eq_formula = Visit(eq);
+    formula = std::make_shared<RelConjunction>(std::move(formula), std::move(eq_formula));
   }
 
   std::vector<std::shared_ptr<RelBinding>> bindings;
@@ -180,6 +184,65 @@ std::shared_ptr<RelFormula> TermRewriter::Visit(const std::shared_ptr<RelFullApp
     bindings.push_back(std::make_shared<RelVarBinding>(v, std::nullopt));
   }
   return std::make_shared<RelExistential>(std::move(bindings), std::move(formula));
+}
+
+std::shared_ptr<RelFormula> TermRewriter::Visit(const std::shared_ptr<RelComparison>& node) {
+  auto result = std::dynamic_pointer_cast<RelComparison>(BaseRelVisitor::Visit(node));
+  if (!result) return result;
+
+  std::vector<std::pair<std::string, std::shared_ptr<RelExpr>>> lifted;
+
+  std::function<void(std::shared_ptr<RelTerm>&)> walk = [&](std::shared_ptr<RelTerm>& term) {
+    if (!term) return;
+    if (auto eat = std::dynamic_pointer_cast<RelExprAsTerm>(term)) {
+      auto z = FreshVarName();
+      lifted.emplace_back(z, eat->inner);
+      auto id = std::make_shared<RelIDTerm>(z);
+      id->ctx = eat->ctx;
+      term = std::move(id);
+      return;
+    }
+    if (auto op = std::dynamic_pointer_cast<RelOpTerm>(term)) {
+      walk(op->lhs);
+      walk(op->rhs);
+      return;
+    }
+    if (auto par = std::dynamic_pointer_cast<RelParenthesisTerm>(term)) {
+      walk(par->term);
+      return;
+    }
+  };
+
+  walk(result->lhs);
+  walk(result->rhs);
+
+  if (lifted.empty()) return result;
+
+  // Conjoin every `{inner}(zi)` atom into one subtree, then the comparison, so each
+  // `RelConjunction` node's safety is `lhs.safety ∪ rhs.safety` over a subtree that
+  // already mentions every zi. (Left-nested `Conj(a0, Conj(a1, cmp))` would give the inner
+  // conj only `a1 ∪ cmp` — missing a0's bound for z0 when cmp still references z0.)
+  std::shared_ptr<RelFormula> atoms_conj;
+  std::vector<std::shared_ptr<RelBinding>> bindings;
+  bindings.reserve(lifted.size());
+  for (auto& [z, inner] : lifted) {
+    bindings.push_back(std::make_shared<RelVarBinding>(z, std::nullopt));
+    auto union_inner = std::make_shared<RelUnion>(std::vector<std::shared_ptr<RelExpr>>{inner});
+    union_inner->ctx = inner ? inner->ctx : nullptr;
+    auto appl_base = std::make_shared<RelExprApplBase>(std::move(union_inner));
+    auto id_param = std::make_shared<RelIDTerm>(z);
+    auto param = std::make_shared<RelExprApplParam>(std::static_pointer_cast<RelExpr>(id_param));
+    auto atom = std::make_shared<RelFullApplication>(std::static_pointer_cast<RelApplBase>(appl_base),
+                                                     std::vector<std::shared_ptr<RelApplParam>>{std::move(param)});
+    auto atom_f = std::static_pointer_cast<RelFormula>(atom);
+    atoms_conj =
+        atoms_conj ? std::make_shared<RelConjunction>(std::move(atoms_conj), std::move(atom_f)) : std::move(atom_f);
+  }
+  antlr4::ParserRuleContext* cmp_ctx = result->ctx;
+  auto formula = std::make_shared<RelConjunction>(std::move(atoms_conj), std::move(result));
+  auto existential = std::make_shared<RelExistential>(std::move(bindings), std::move(formula));
+  existential->ctx = cmp_ctx;
+  return existential;
 }
 
 std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelPartialApplication>& node) {
@@ -230,7 +293,8 @@ std::shared_ptr<RelExpr> TermRewriter::Visit(const std::shared_ptr<RelPartialApp
   auto full_appl = std::make_shared<RelFullApplication>(result->base, std::move(full_params));
   auto lhs = std::make_shared<RelIDTerm>(z);
   auto eq = std::make_shared<RelComparison>(lhs, RelCompOp::EQ, std::move(expr_term));
-  auto exists_formula = std::make_shared<RelConjunction>(std::move(full_appl), std::move(eq));
+  std::shared_ptr<RelFormula> eq_formula = Visit(eq);
+  auto exists_formula = std::make_shared<RelConjunction>(std::move(full_appl), std::move(eq_formula));
   std::vector<std::shared_ptr<RelBinding>> exist_bindings;
   exist_bindings.push_back(std::make_shared<RelVarBinding>(z, std::nullopt));
   auto exists = std::make_shared<RelExistential>(std::move(exist_bindings), std::move(exists_formula));
