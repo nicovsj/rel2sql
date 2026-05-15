@@ -70,6 +70,8 @@ class Translator : public BaseRelVisitor {
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelNumTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelOpTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelParenthesisTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelStringTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelExprAsTerm>& node) override;
 
  private:
   std::shared_ptr<sql::ast::Sourceable> TryGetTopLevelIDSelect(RelUnion* body);
