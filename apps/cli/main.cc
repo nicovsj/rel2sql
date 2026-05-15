@@ -1,3 +1,4 @@
+#include <rel2sql/edb_file.h>
 #include <rel2sql/rel2sql.h>
 
 #include <fstream>
@@ -12,6 +13,7 @@ int main(int argc, char* argv[]) {
   std::ifstream file;
   bool unoptimized = false;
   std::string filename;
+  std::string edb_path;
 
   // Parse arguments
   for (int i = 1; i < argc; i++) {
@@ -24,8 +26,16 @@ int main(int argc, char* argv[]) {
         return 1;
       }
       filename = argv[++i];
+    } else if (arg == "-e" || arg == "--edb") {
+      if (i + 1 >= argc) {
+        std::cerr << "Error: " << arg << " requires a filename argument" << std::endl;
+        return 1;
+      }
+      edb_path = argv[++i];
     } else {
-      std::cerr << "Usage: " << argv[0] << " [-f filename] [-u]" << std::endl;
+      std::cerr << "Usage: " << argv[0] << " [-f filename] [-e edb_file] [-u]" << std::endl;
+      std::cerr << "  -e/--edb  Optional extensional DB map: each line is \"relation_name arity\" "
+                   "(see benchmarks/TPCH/rel/tpch_edb.edb).\n";
       return 1;
     }
   }
@@ -44,10 +54,24 @@ int main(int argc, char* argv[]) {
 
   std::string file_contents = oss.str();
 
-  if (unoptimized) {
-    std::cout << rel2sql::DumbTranslate(file_contents) << std::endl;
-  } else {
-    std::cout << rel2sql::Translate(file_contents) << std::endl;
+  try {
+    if (edb_path.empty()) {
+      if (unoptimized) {
+        std::cout << rel2sql::DumbTranslate(file_contents) << std::endl;
+      } else {
+        std::cout << rel2sql::Translate(file_contents) << std::endl;
+      }
+    } else {
+      rel2sql::RelationMap edb = rel2sql::LoadEdbFile(edb_path);
+      if (unoptimized) {
+        std::cout << rel2sql::DumbTranslate(file_contents, edb) << std::endl;
+      } else {
+        std::cout << rel2sql::Translate(file_contents, edb) << std::endl;
+      }
+    }
+  } catch (const std::exception& e) {
+    std::cerr << "Error: " << e.what() << std::endl;
+    return 1;
   }
 
   if (file.is_open()) {

@@ -1,5 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <filesystem>
+#include <fstream>
+
+#include "rel2sql/edb_file.h"
 #include "rel2sql/rel2sql.h"
 #include "support/exceptions.h"
 
@@ -160,6 +164,29 @@ TEST_F(ExceptionTest, ErrorCodes) {
   EXPECT_EQ(TranslationException("", ErrorCode::UNBALANCED_VARIABLE).getErrorCode(), ErrorCode::UNBALANCED_VARIABLE);
   EXPECT_EQ(TranslationException("", ErrorCode::UNSAFE_QUANTIFICATION).getErrorCode(),
             ErrorCode::UNSAFE_QUANTIFICATION);
+}
+
+TEST_F(ExceptionTest, LoadEdbFileParsesArityLines) {
+  const auto path = std::filesystem::temp_directory_path() / "rel2sql_edb_unit_test.edb";
+  {
+    std::ofstream out(path);
+    out << "# comment\nR 2\nQ 1\n";
+  }
+  RelationMap m = LoadEdbFile(path.string());
+  EXPECT_EQ(m.size(), 2U);
+  EXPECT_TRUE(m.has("R"));
+  EXPECT_EQ(m["R"].arity, 2);
+  std::filesystem::remove(path);
+}
+
+TEST_F(ExceptionTest, LoadEdbFileRejectsDuplicateRelation) {
+  const auto path = std::filesystem::temp_directory_path() / "rel2sql_edb_dup.edb";
+  {
+    std::ofstream out(path);
+    out << "A 1\nA 2\n";
+  }
+  EXPECT_THROW(LoadEdbFile(path.string()), std::runtime_error);
+  std::filesystem::remove(path);
 }
 
 }  // namespace rel2sql
