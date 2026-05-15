@@ -35,6 +35,7 @@ class TermRewriter : public BaseRelVisitor {
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelProduct>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullApplication>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialApplication>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelComparison>& node) override;
 
  private:
   std::string FreshVarName();
