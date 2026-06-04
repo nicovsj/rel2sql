@@ -1,0 +1,49 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "tpch_pipeline_lib",
+    srcs = ["pipeline/tpch_pipeline_lib.cc"],
+    hdrs = [
+        "pipeline/tpch_pipeline_lib.h",
+        "pipeline/manifest_data.h",
+    ],
+    includes = ["."],
+    deps = ["//tests:duckdb_exec"],
+)
+
+cc_test(
+    name = "tpch_pipeline_test",
+    srcs = ["pipeline/tpch_pipeline_test.cc"],
+    data = [
+        "pipeline/manifest.json",
+        "rel/tpch_edb.edb",
+        "rel/tpch_edb_duckdb_types.edb",
+        "//:rel2sql_bin",
+        "//scripts:tpch_rewrite.py",
+    ],
+    tags = [
+        "tpch",
+    ],
+    timeout = "long",
+    deps = [
+        ":tpch_pipeline_lib",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "tpch_runner",
+    srcs = ["pipeline/tpch_runner_main.cc"],
+    data = [
+        "pipeline/manifest.json",
+        "rel/tpch_edb.edb",
+        "rel/tpch_edb_duckdb_types.edb",
+        "//:rel2sql_bin",
+        "//scripts:tpch_rewrite.py",
+    ],
+    deps = [":tpch_pipeline_lib"],
+)
