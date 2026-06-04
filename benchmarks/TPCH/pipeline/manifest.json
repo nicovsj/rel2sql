@@ -1,0 +1,144 @@
+{
+  "defaults": {
+    "timeout_sec": 60,
+    "translate_mode": "with_defs",
+    "unoptimized": false
+  },
+  "queries": {
+    "1": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "E104",
+      "translate": "fail"
+    },
+    "10": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "E104",
+      "translate": "fail"
+    },
+    "11": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "E102",
+      "translate": "fail"
+    },
+    "12": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "E104",
+      "translate": "fail"
+    },
+    "13": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "<++",
+      "translate": "fail"
+    },
+    "14": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "E104",
+      "translate": "fail"
+    },
+    "15": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "E104",
+      "translate": "fail"
+    },
+    "16": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "skip_reason": "MergeWith on long OR chains can hang",
+      "timeout_sec": 120,
+      "translate": "skip"
+    },
+    "17": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "skip_reason": "known crash or timeout on full Q17",
+      "translate": "fail"
+    },
+    "18": {
+      "compare_local": "optional",
+      "execute_empty": "fail",
+      "rewrite": "ok",
+      "skip_reason": "promotional_part view: undefined alias T86.p (like_match def wrapper)",
+      "translate": "ok"
+    },
+    "19": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "E102",
+      "translate": "fail"
+    },
+    "2": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "__rest1",
+      "translate": "fail"
+    },
+    "20": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "E104",
+      "translate": "fail"
+    },
+    "21": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "E102",
+      "translate": "fail"
+    },
+    "22": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "arity 1",
+      "translate": "fail"
+    },
+    "3": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "E104",
+      "translate": "fail"
+    },
+    "4": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "E104",
+      "translate": "fail"
+    },
+    "5": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "reverse_sort",
+      "translate": "fail"
+    },
+    "6": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "E104",
+      "translate": "fail"
+    },
+    "7": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "E104",
+      "translate": "fail"
+    },
+    "8": {
+      "execute_empty": "skip",
+      "rewrite": "ok",
+      "stderr_contains": "default_value",
+      "translate": "fail"
+    },
+    "9": {
+      "compare_local": "optional",
+      "execute_empty": "fail",
+      "rewrite": "ok",
+      "skip_reason": "promotional_part view: undefined alias T86.p (like_match def wrapper)",
+      "translate": "ok"
+    }
+  }
+}
