@@ -62,9 +62,10 @@ After this change the MVP subset gets past the term/expr boundary in `scripts/tp
 
 ### Tooling for replication
 
-* `scripts/tpch_rewrite.py <N>` — apply Section 1 rewrites to a benchmark Rel file (concatenating `tpch_common_defs.rel`), substitute TPC-H parameters, wrap shorthand defs in `{ … }`, rewrite `(a.b.c)` → `c[b[a]]`, and print the result.
+* `scripts/tpch_rewrite.py <N>` — apply Section 1 rewrites to a benchmark Rel file (concatenating `tpch_common_defs.rel`), substitute TPC-H parameters, cap `decimal[64, …]` / `parse_decimal[64, …]` to precision 32 for DuckDB, wrap shorthand defs in `{ … }`, rewrite `(a.b.c)` → `c[b[a]]`, and print the result.
 * `scripts/gen_tpch_edb.py` — write `benchmarks/TPCH/rel/tpch_edb.edb` (`<relation> <arity>` lines) from `tpch_schema_mapping.rel` for use with `rel2sql_bin -e …`.
-* `scripts/tpch_smoke.sh` — feed each MVP query (full + solo) through `rel2sql_bin -u -e benchmarks/TPCH/rel/tpch_edb.edb` when that file exists, capturing the first parse / translation error.
+* `scripts/tpch_emit_sql.sh` — translate queries to `benchmarks/TPCH/out/sql/` (and rewritten Rel under `out/rel/`) for diff against `benchmarks/TPCH/sql/q{N}.sql`; `task tpch:emit-sql` or `task tpch:emit-sql -- 11`.
+* `scripts/tpch_smoke.sh` — same pipeline for the MVP subset (Q11, Q17, Q18, Q19, Q21).
 
 **Minimum viable subset (first round-trip demo):** Q11, Q17, Q18, Q19, Q21 — the term/expr split and chained comparisons are no longer blockers; the remaining gap for a CLI smoke run is an **EDB-binding strategy** for the base relations (plus optimizer caveats for some aggregate-heavy patterns).
 

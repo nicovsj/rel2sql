@@ -6,6 +6,7 @@ Applies semantics-preserving source rewrites so the queries parse in
   1a strip `@vectorized` / `@inline` annotations
   1b substitute `@@N` with concrete TPC-H parameter values
   1c rename `mean[` to `average[` (Q1 only)
+  1d cap `decimal[64, …]` / `parse_decimal[64, …]` precision to 32 (DuckDB max 38)
   1f rewrite `(x.y.z)` and `app[x].y` to nested applications `y[x]`, `z[y[x]]`
 
 The script concatenates `tpch_common_defs.rel` with a target query, applies
@@ -93,6 +94,31 @@ def substitute_params(text: str, q: int) -> str:
 
 def rename_mean(text: str) -> str:
     return re.sub(r"\bmean\[", "average[", text)
+
+
+# Section 1d -----------------------------------------------------------------
+
+# TPC-H Rel uses decimal[64, 4] (RAI convention). DuckDB rejects DECIMAL width > 38.
+DUCKDB_DECIMAL_MAX_PRECISION = 32
+
+DECIMAL_HIGH_PRECISION_RE = re.compile(
+    r"\b(decimal|parse_decimal)\s*\[\s*(\d+)\s*,\s*(\d+)",
+    re.IGNORECASE,
+)
+
+
+def cap_decimal_precision(text: str, max_precision: int = DUCKDB_DECIMAL_MAX_PRECISION) -> str:
+    """Lower decimal / parse_decimal precision when it exceeds DuckDB limits."""
+
+    def repl(match: re.Match[str]) -> str:
+        name = match.group(1)
+        prec = int(match.group(2))
+        scale = match.group(3)
+        if prec <= max_precision:
+            return match.group(0)
+        return f"{name}[{max_precision}, {scale}"
+
+    return DECIMAL_HIGH_PRECISION_RE.sub(repl, text)
 
 
 # Section 1f -----------------------------------------------------------------
@@ -339,6 +365,7 @@ def rewrite(query_num: int, include_defs: bool = True) -> str:
     text = strip_annotations(text)
     text = substitute_params(text, query_num)
     text = rename_mean(text)
+    text = cap_decimal_precision(text)
     text = rewrite_dot_access(text)
     text = wrap_def_bodies(text)
     return text

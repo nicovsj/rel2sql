@@ -57,9 +57,19 @@ echo 'def output {"Hello"}' | bazel run //:rel2sql_bin
 bazel run //:rel2sql_bin -- -f query.rl
 bazel run //:rel2sql_bin -- -u -f query.rl   # -u = skip optimizations
 # Optional extensional schema (relation name → arity) for undefined-relation errors on real workloads:
-bazel run //:rel2sql_bin -- -u -e benchmarks/TPCH/rel/tpch_edb.edb -f query.rl
+bazel run //:rel2sql_bin -- -e benchmarks/TPCH/rel/tpch_edb.edb -f query.rl
 # Regenerate the bundled TPC-H arity map after changing `tpch_schema_mapping.rel`:
-python3 scripts/gen_tpch_edb.py
+python3 scripts/gen_tpch_edb.py   # also writes tpch_edb_duckdb_types.edb for DuckDB VARCHAR columns
+# Pipeline harness (manifest-driven rewrite → translate → DuckDB empty execute):
+task tpch:pipeline-test         # bazel test //benchmarks/TPCH:tpch_pipeline_test
+task tpch:full-db-run -- 18     # local runner; TPCH_DUCKDB_PATH + --compare for result diff
+# Emit translated SQL for diff against reference TPC-H SQL (optimized; UNOPTIMIZED=1 for -u):
+task tpch:emit-sql              # all Q1–Q22 → benchmarks/TPCH/out/sql/ (full + solo)
+task tpch:emit-sql:mvp          # MVP Q11,Q17,Q18,Q19,Q21, full only (common defs)
+task tpch:emit-sql:no-q16       # all except Q16 (MergeWith OR-chain hang)
+SKIP_QUERIES=16 task tpch:emit-sql
+task tpch:emit-sql -- 11        # single query
+scripts/tpch_smoke.sh           # MVP subset only
 ```
 
 **IDE setup (clangd):**

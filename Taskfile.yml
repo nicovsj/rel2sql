@@ -89,6 +89,42 @@ tasks:
       - antlr4-parse src/grammar/RelParser.g4 src/grammar/RelLexer.g4 program -gui {{.CLI_ARGS}}
     silent: true
 
+  tpch:emit-sql:
+    desc: Translate TPC-H Rel to benchmarks/TPCH/out/sql with optimizer (UNOPTIMIZED=1 for -u)
+    cmds:
+      - bazel build --config=default //:rel2sql_bin
+      - scripts/tpch_emit_sql.sh {{.CLI_ARGS}}
+
+  tpch:emit-sql:no-q16:
+    desc: Like tpch:emit-sql but skip Q16 (MergeWith on long OR chains can hang)
+    env:
+      SKIP_QUERIES: "16"
+    cmds:
+      - bazel build --config=default //:rel2sql_bin
+      - scripts/tpch_emit_sql.sh {{.CLI_ARGS}}
+
+  tpch:emit-sql:mvp:
+    desc: MVP TPC-H (Q11,Q17,Q18,Q19,Q21) full+solo; use tpch:emit-sql:no-q16 for all queries
+    cmds:
+      - bazel build --config=default //:rel2sql_bin
+      - scripts/tpch_smoke.sh
+
+  tpch:smoke:
+    desc: Alias for tpch:emit-sql:mvp
+    cmds:
+      - task: tpch:emit-sql:mvp
+
+  tpch:pipeline-test:
+    desc: Bazel test //benchmarks/TPCH:tpch_pipeline_test (rewrite, translate, DuckDB empty execute)
+    cmds:
+      - bazel test --config=default //benchmarks/TPCH:tpch_pipeline_test
+
+  tpch:full-db-run:
+    desc: Rewrite, translate, run ref+rel2sql SQL on TPCH_DUCKDB_PATH and diff results (local)
+    cmds:
+      - bazel build --config=default //benchmarks/TPCH:tpch_runner //:rel2sql_bin
+      - scripts/tpch_full_db_run.sh {{.CLI_ARGS}}
+
   # Utility tasks
   clean:
     desc: Clean Bazel build artifacts
