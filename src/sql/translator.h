@@ -129,6 +129,25 @@ class Translator : public BaseRelVisitor {
   // Return the column name for the idx-th column (1-based) of a sourceable (Table, Select, Union, etc.).
   std::string GetColumnNameForSourceable(const std::shared_ptr<sql::ast::Sourceable>& src, size_t idx) const;
 
+  // Column name exposed by a subquery source for a logical variable (SELECT list alias, not inner T.i.name).
+  std::string ResolveOutputColumnNameForVariableOnSource(const std::shared_ptr<sql::ast::Source>& source,
+                                                         const std::string& var) const;
+
+  // True when lhs is `{inner}(z)` and rhs is `z op t` from TermRewriter comparison lifting.
+  static bool IsTermRewriterLiftedBindingConjunction(const RelConjunction& node);
+
+  // `sum[body] op k` as one grouped subquery with a filtered aggregate column.
+  bool TryEmitFilteredAggregateComparison(const std::shared_ptr<RelComparison>& node,
+                                          const std::shared_ptr<RelBuiltinAggregateExpr>& agg_expr);
+
+  // `sum[body] op k` after TermRewriter: translate as filtered aggregate, not CTE + wrong group column.
+  bool TryTranslateAggregateConstantComparison(const std::shared_ptr<RelComparison>& node, const BoundSet& cover,
+                                               const std::shared_ptr<RelFormula>& lifted_atom = nullptr);
+
+  // `export_var = sum[body]` after TermRewriter (`exists z | {agg}(z) and export_var = z`).
+  bool TryTranslateAggregateVariableEquality(const std::shared_ptr<RelComparison>& node, const BoundSet& cover,
+                                             const std::shared_ptr<RelFormula>& lifted_atom = nullptr);
+
   // Return the number of columns (arity) of a sourceable.
   size_t GetArityForSourceable(const std::shared_ptr<sql::ast::Sourceable>& src) const;
 
