@@ -6,6 +6,7 @@
 #include <limits>
 #include <stdexcept>
 #include <unordered_map>
+#include <variant>
 
 #include "rel_ast/bound_set.h"
 #include "rel_ast/domain.h"
@@ -79,6 +80,213 @@ void UnionSafetyIntoSubtree(RelNode* root, const BoundSet& extra) {
   for (const auto& child : root->Children()) {
     UnionSafetyIntoSubtree(child.get(), extra);
   }
+}
+
+bool ConstantDomainIsZero(const Domain& domain) {
+  const auto* cd = dynamic_cast<const ConstantDomain*>(&domain);
+  if (!cd) return false;
+  return std::visit(
+      [](const auto& v) -> bool {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, int>) {
+          return v == 0;
+        } else if constexpr (std::is_same_v<T, double>) {
+          return v == 0.0;
+        }
+        return false;
+      },
+      cd->value);
+}
+
+bool TermContainsId(const RelTerm* term) {
+  if (!term) return false;
+  if (dynamic_cast<const RelIDTerm*>(term) != nullptr) return true;
+  if (const auto* op = dynamic_cast<const RelOpTerm*>(term)) {
+    return TermContainsId(op->lhs.get()) || TermContainsId(op->rhs.get());
+  }
+  if (const auto* par = dynamic_cast<const RelParenthesisTerm*>(term)) {
+    return TermContainsId(par->term.get());
+  }
+  return false;
+}
+
+// Divisor must be a compile-time constant expression (no column variables).
+bool DivisorIsSafe(const RelTerm* divisor) { return divisor != nullptr && !TermContainsId(divisor); }
+
+// Build a domain for a term from already-bounded variables (ADD/SUB/MUL/DIV on domains).
+// Fails for non-compositional terms or division by a variable / zero.
+std::optional<std::unique_ptr<Domain>> TermToDomain(const RelTerm* term, const BoundSet& safety) {
+  if (!term) return std::nullopt;
+
+  if (const auto* id = dynamic_cast<const RelIDTerm*>(term)) {
+    if (id->variables.size() != 1) return std::nullopt;
+    return GetProjectedDomainForVariable(safety, *id->variables.begin());
+  }
+
+  if (const auto* num = dynamic_cast<const RelNumTerm*>(term)) {
+    auto maybe_value = std::visit(
+        [](const auto& v) -> std::optional<double> {
+          using T = std::decay_t<decltype(v)>;
+          if constexpr (std::is_same_v<T, int>) {
+            return static_cast<double>(v);
+          } else if constexpr (std::is_same_v<T, double>) {
+            return v;
+          }
+          return std::nullopt;
+        },
+        num->value);
+    if (!maybe_value) return std::nullopt;
+    return std::make_unique<ConstantDomain>(DoubleToConstant(*maybe_value));
+  }
+
+  if (const auto* par = dynamic_cast<const RelParenthesisTerm*>(term)) {
+    return TermToDomain(par->term.get(), safety);
+  }
+
+  const auto* op = dynamic_cast<const RelOpTerm*>(term);
+  if (!op || !op->lhs || !op->rhs) return std::nullopt;
+
+  auto lhs_dom = TermToDomain(op->lhs.get(), safety);
+  if (!lhs_dom) return std::nullopt;
+
+  switch (op->op) {
+    case RelTermOp::ADD:
+    case RelTermOp::SUB:
+    case RelTermOp::MUL: {
+      auto rhs_dom = TermToDomain(op->rhs.get(), safety);
+      if (!rhs_dom) return std::nullopt;
+      return std::make_unique<DomainOperation>(std::move(*lhs_dom), std::move(*rhs_dom), op->op);
+    }
+    case RelTermOp::DIV: {
+      if (!DivisorIsSafe(op->rhs.get())) return std::nullopt;
+      auto rhs_dom = TermToDomain(op->rhs.get(), safety);
+      if (!rhs_dom || ConstantDomainIsZero(**rhs_dom)) return std::nullopt;
+      return std::make_unique<DomainOperation>(std::move(*lhs_dom), std::move(*rhs_dom), RelTermOp::DIV);
+    }
+  }
+  return std::nullopt;
+}
+
+std::set<std::string> UnboundVariablesInComparison(const RelComparison& node) {
+  std::set<std::string> unbound;
+  const auto& bound_vars = node.safety.bound_variables;
+  for (const auto& v : node.variables) {
+    if (!bound_vars.count(v)) unbound.insert(v);
+  }
+  return unbound;
+}
+
+void InsertInferredBound(RelComparison* node, const std::string& var, std::unique_ptr<Domain> domain) {
+  std::unordered_set<Bound> new_bounds;
+  new_bounds.insert(Bound({var}, std::move(domain)));
+  node->safety = node->safety.UnionWith(BoundSet(std::move(new_bounds)));
+}
+
+// Affine equality inference (NetLinearCoeffs). Returns a domain for the single unbound variable.
+std::optional<std::unique_ptr<Domain>> InferDomainFromAffineEquality(RelComparison* node) {
+  auto net_opt = NetLinearCoeffs(node->lhs.get(), node->rhs.get());
+  if (!net_opt) return std::nullopt;
+
+  const auto& net = *net_opt;
+  std::set<std::string> unbound_vars = UnboundVariablesInComparison(*node);
+  if (unbound_vars.size() != 1) return std::nullopt;
+
+  const std::string xj = *unbound_vars.begin();
+  auto coeff_it = net.var_coeffs.find(xj);
+  if (coeff_it == net.var_coeffs.end()) return std::nullopt;
+
+  const double coeff_xj = coeff_it->second;
+  if (coeff_xj == 0.0) return std::nullopt;
+
+  std::unique_ptr<Domain> result;
+
+  std::vector<std::pair<std::string, double>> other_vars;
+  for (const auto& [v, coeff] : net.var_coeffs) {
+    if (v == xj || coeff == 0.0) continue;
+    other_vars.emplace_back(v, coeff);
+  }
+
+  if (other_vars.size() == 1) {
+    const auto& [v, coeff_v] = other_vars[0];
+    auto D_v = GetProjectedDomainForVariable(node->safety, v);
+    if (D_v && std::abs(coeff_v) > 1e-12) {
+      const double k = -net.constant / coeff_v;
+      const double m = -coeff_xj / coeff_v;
+      if (std::abs(m) > 1e-12) {
+        std::unique_ptr<Domain> numerator;
+        if (std::abs(k) < 1e-12) {
+          numerator = std::move(*D_v);
+        } else {
+          numerator = std::make_unique<DomainOperation>(
+              std::move(*D_v), std::make_unique<ConstantDomain>(DoubleToConstant(k)), RelTermOp::SUB);
+        }
+        if (std::abs(m - 1.0) < 1e-12) {
+          result = std::move(numerator);
+        } else {
+          result = std::make_unique<DomainOperation>(
+              std::move(numerator), std::make_unique<ConstantDomain>(DoubleToConstant(m)), RelTermOp::DIV);
+        }
+      }
+    }
+  }
+
+  if (!result) {
+    const double constant_term = -net.constant / coeff_xj;
+    if (constant_term != 0.0) {
+      result = std::make_unique<ConstantDomain>(DoubleToConstant(constant_term));
+    }
+    for (const auto& [v, coeff] : net.var_coeffs) {
+      if (v == xj) continue;
+      auto D_v = GetProjectedDomainForVariable(node->safety, v);
+      if (!D_v) return std::nullopt;
+      double scale = -coeff / coeff_xj;
+      if (scale == 0.0) continue;
+      std::unique_ptr<Domain> term_v =
+          (scale == 1.0)
+              ? std::move(*D_v)
+              : std::make_unique<DomainOperation>(
+                    std::move(*D_v), std::make_unique<ConstantDomain>(DoubleToConstant(scale)), RelTermOp::MUL);
+      if (!result) {
+        result = std::move(term_v);
+      } else {
+        result = std::make_unique<DomainOperation>(std::move(result), std::move(term_v), RelTermOp::ADD);
+      }
+    }
+  }
+
+  if (!result) {
+    result = std::make_unique<ConstantDomain>(DoubleToConstant(0));
+  }
+  return result;
+}
+
+// Compositional equality: xj = T where xj is a bare ID and T uses only bounded variables.
+std::optional<std::pair<std::string, std::unique_ptr<Domain>>> InferDomainFromCompositionalEquality(
+    RelComparison* node) {
+  std::set<std::string> unbound_vars = UnboundVariablesInComparison(*node);
+  if (unbound_vars.size() != 1) return std::nullopt;
+
+  const std::string xj = *unbound_vars.begin();
+  const RelTerm* expr = nullptr;
+
+  if (auto* lhs_id = dynamic_cast<RelIDTerm*>(node->lhs.get())) {
+    if (lhs_id->id == xj) {
+      expr = node->rhs.get();
+    }
+  } else if (auto* rhs_id = dynamic_cast<RelIDTerm*>(node->rhs.get())) {
+    if (rhs_id->id == xj) {
+      expr = node->lhs.get();
+    }
+  }
+  if (!expr) return std::nullopt;
+
+  for (const auto& v : expr->variables) {
+    if (!node->safety.bound_variables.count(v)) return std::nullopt;
+  }
+
+  auto domain = TermToDomain(expr, node->safety);
+  if (!domain) return std::nullopt;
+  return std::make_pair(xj, std::move(*domain));
 }
 
 // Visitor that computes safety from children only (no recursion).
@@ -237,104 +445,20 @@ class SafetyComputeVisitor : public BaseRelVisitor {
       node->safety = node->lhs->safety.UnionWith(node->rhs->safety);
     }
 
-    // If not an equality comparison, there's no further inference to be made.
     if (node->op != RelCompOp::EQ) return node;
 
-    // If the comparison is t1 = t2, then let's get the net linear coeffs of t1 - t2 (if possible).
-    auto net_opt = NetLinearCoeffs(node->lhs.get(), node->rhs.get());
-
-    if (!net_opt) return node;
-
-    const auto& net = *net_opt;
-    const auto& all_vars = node->variables;
-    const auto& bound_vars = node->safety.bound_variables;
-
-    std::set<std::string> unbound_vars;
-    for (const auto& v : all_vars) {
-      if (!bound_vars.count(v)) unbound_vars.insert(v);
+    // 1) Affine inference (NetLinearCoeffs).
+    if (auto affine_domain = InferDomainFromAffineEquality(node.get())) {
+      std::set<std::string> unbound_vars = UnboundVariablesInComparison(*node);
+      InsertInferredBound(node.get(), *unbound_vars.begin(), std::move(*affine_domain));
+      return node;
     }
 
-    // If there is two or more unbound variables, there's no possible inference to be made.
-    if (unbound_vars.size() != 1) return node;
-
-    const std::string xj = *unbound_vars.begin();
-    auto it = net.var_coeffs.find(xj);
-
-    assert(it != net.var_coeffs.end());
-
-    const auto& [_, coeff_xj] = *it;
-
-    // If the coefficient for the unbound variable is 0, there's no possible inference to be made.
-    if (coeff_xj == 0.0) return node;
-
-    std::unique_ptr<Domain> result;
-
-    // Collect other variables (besides xj) with non-zero coefficients.
-    std::vector<std::pair<std::string, double>> other_vars;
-    for (const auto& [v, coeff] : net.var_coeffs) {
-      if (v == xj || coeff == 0.0) continue;
-      other_vars.emplace_back(v, coeff);
+    // 2) Compositional inference: z = f(bounded vars) with f built from +,-,*,/ (constant divisor only).
+    if (auto comp = InferDomainFromCompositionalEquality(node.get())) {
+      InsertInferredBound(node.get(), comp->first, std::move(comp->second));
     }
 
-    // When exactly one other variable: use rational form (D_v - k) / m instead of fractional
-    // constants, so we preserve division and avoid floating point (e.g. (col-1)/2 not -0.5+0.5*col).
-    // xj = (-net.constant - coeff_v * v) / coeff_xj  =>  (v - k) / m  with k=-net.constant/coeff_v, m=-coeff_xj/coeff_v
-    if (other_vars.size() == 1) {
-      const auto& [v, coeff_v] = other_vars[0];
-      auto D_v = GetProjectedDomainForVariable(node->safety, v);
-      if (D_v && std::abs(coeff_v) > 1e-12) {
-        const double k = -net.constant / coeff_v;
-        const double m = -coeff_xj / coeff_v;
-        if (std::abs(m) > 1e-12) {
-          std::unique_ptr<Domain> numerator;
-          if (std::abs(k) < 1e-12) {
-            numerator = std::move(*D_v);  // D_v - 0 = D_v
-          } else {
-            numerator = std::make_unique<DomainOperation>(
-                std::move(*D_v), std::make_unique<ConstantDomain>(DoubleToConstant(k)), RelTermOp::SUB);
-          }
-          if (std::abs(m - 1.0) < 1e-12) {
-            result = std::move(numerator);  // numerator / 1 = numerator
-          } else {
-            result = std::make_unique<DomainOperation>(
-                std::move(numerator), std::make_unique<ConstantDomain>(DoubleToConstant(m)), RelTermOp::DIV);
-          }
-        }
-      }
-    }
-
-    // Fallback: additive form constant_term + scale * D_v (used for multiple vars or when rational form fails)
-    if (!result) {
-      const double constant_term = -net.constant / coeff_xj;
-      if (constant_term != 0.0) {
-        result = std::make_unique<ConstantDomain>(DoubleToConstant(constant_term));
-      }
-      for (const auto& [v, coeff] : net.var_coeffs) {
-        if (v == xj) continue;
-        auto D_v = GetProjectedDomainForVariable(node->safety, v);
-        if (!D_v) return node;
-        double scale = -coeff / coeff_xj;
-        if (scale == 0.0) continue;
-        std::unique_ptr<Domain> term_v =
-            (scale == 1.0)
-                ? std::move(*D_v)
-                : std::make_unique<DomainOperation>(
-                      std::move(*D_v), std::make_unique<ConstantDomain>(DoubleToConstant(scale)), RelTermOp::MUL);
-        if (!result) {
-          result = std::move(term_v);
-        } else {
-          result = std::make_unique<DomainOperation>(std::move(result), std::move(term_v), RelTermOp::ADD);
-        }
-      }
-    }
-
-    if (!result) {
-      result = std::make_unique<ConstantDomain>(DoubleToConstant(0));  // xj = 0
-    }
-
-    std::unordered_set<Bound> new_bounds;
-    new_bounds.insert(Bound({xj}, std::move(result)));
-    node->safety = node->safety.UnionWith(BoundSet(std::move(new_bounds)));
     return node;
   }
 

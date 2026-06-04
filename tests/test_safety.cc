@@ -260,4 +260,74 @@ TEST(SafetyTest, LinearComparison6) {
   EXPECT_TRUE(z_has_domain_op) << "z's domain should be DomainOperation";
 }
 
+bool VariableBoundHasDomainOp(const BoundSet& safety, const std::string& var, RelTermOp op) {
+  for (const auto& bound : safety.bounds) {
+    if (bound.variables.size() != 1 || bound.variables[0] != var) continue;
+    const auto* dom_op = dynamic_cast<const DomainOperation*>(bound.domain.get());
+    return dom_op != nullptr && dom_op->op == op;
+  }
+  return false;
+}
+
+TEST(SafetyTest, CompositionalMulEquality) {
+  RelationMap edb_map;
+  edb_map["R"] = RelationInfo(1);
+  edb_map["S"] = RelationInfo(1);
+
+  auto context = ProcessFormula("R(x) and S(y) and x * y = z", edb_map);
+  auto* root = context.Root().get();
+  ASSERT_NE(root, nullptr);
+
+  EXPECT_TRUE(root->safety.bound_variables.count("z")) << "z should be bounded via MUL";
+  EXPECT_TRUE(VariableBoundHasDomainOp(root->safety, "z", RelTermOp::MUL));
+}
+
+TEST(SafetyTest, CompositionalDivByConstant) {
+  RelationMap edb_map;
+  edb_map["R"] = RelationInfo(1);
+
+  auto context = ProcessFormula("R(x) and x / 5 = z", edb_map);
+  auto* root = context.Root().get();
+  ASSERT_NE(root, nullptr);
+
+  EXPECT_TRUE(root->safety.bound_variables.count("z")) << "z should be bounded via DIV by constant";
+  EXPECT_TRUE(VariableBoundHasDomainOp(root->safety, "z", RelTermOp::DIV));
+}
+
+TEST(SafetyTest, CompositionalDivByVariableFails) {
+  RelationMap edb_map;
+  edb_map["R"] = RelationInfo(1);
+  edb_map["S"] = RelationInfo(1);
+
+  auto context = ProcessFormula("R(x) and S(y) and x / y = z", edb_map);
+  auto* root = context.Root().get();
+  ASSERT_NE(root, nullptr);
+
+  EXPECT_FALSE(root->safety.bound_variables.count("z")) << "z must not be bounded when divisor is a variable";
+}
+
+TEST(SafetyTest, CompositionalDivByZeroFails) {
+  RelationMap edb_map;
+  edb_map["R"] = RelationInfo(1);
+
+  auto context = ProcessFormula("R(x) and x / 0 = z", edb_map);
+  auto* root = context.Root().get();
+  ASSERT_NE(root, nullptr);
+
+  EXPECT_FALSE(root->safety.bound_variables.count("z")) << "z must not be bounded when divisor is zero";
+}
+
+TEST(SafetyTest, CompositionalTpchShapedMul) {
+  RelationMap edb_map;
+  edb_map["R"] = RelationInfo(1);
+  edb_map["S"] = RelationInfo(1);
+
+  auto context = ProcessFormula("R(x) and S(y) and (1 - y) * x = z", edb_map);
+  auto* root = context.Root().get();
+  ASSERT_NE(root, nullptr);
+
+  EXPECT_TRUE(root->safety.bound_variables.count("z")) << "z should be bounded (TPC-H-shaped product)";
+  EXPECT_TRUE(VariableBoundHasDomainOp(root->safety, "z", RelTermOp::MUL));
+}
+
 }  // namespace rel2sql
