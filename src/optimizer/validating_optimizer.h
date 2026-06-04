@@ -16,6 +16,7 @@
 #include "self_join_optimizer.h"
 #include "sql_ast/expr_visitor.h"
 #include "sql_ast/sql_ast.h"
+#include "table_alias_renumberer.h"
 #include "validator/validator.h"
 
 namespace rel2sql {
@@ -45,6 +46,8 @@ class ValidatingOptimizer : public BaseOptimizer {
       }
     }
     Visit(*expr);
+    TableAliasRenumberer::Renumber(*expr);
+    ValidateAndReport(*expr, "table_alias_renumberer");
     return expr;
   }
 
