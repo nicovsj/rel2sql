@@ -56,3 +56,8 @@ compile_commands.json
 .lldbinit
 
 .db/
+
+# Generated rel2sql TPC-H translations (see benchmarks/TPCH/out/README.md)
+benchmarks/TPCH/out/sql/
+benchmarks/TPCH/out/rel/
+benchmarks/TPCH/out/err/
