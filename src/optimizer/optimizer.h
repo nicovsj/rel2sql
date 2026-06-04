@@ -13,6 +13,7 @@
 #include "self_join_optimizer.h"
 #include "sql_ast/expr_visitor.h"
 #include "sql_ast/sql_ast.h"
+#include "table_alias_renumberer.h"
 
 namespace rel2sql {
 namespace sql::ast {
@@ -33,6 +34,7 @@ class Optimizer : public BaseOptimizer {
       }
     }
     Visit(*expr);
+    TableAliasRenumberer::Renumber(*expr);
     return expr;
   }
 
