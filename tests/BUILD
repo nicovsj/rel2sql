@@ -15,7 +15,6 @@ cc_library(
 
 cc_library(
     name = "duckdb_exec",
-    testonly = True,
     srcs = ["duckdb_exec.cc"],
     hdrs = ["duckdb_exec.h"],
     includes = ["."],
