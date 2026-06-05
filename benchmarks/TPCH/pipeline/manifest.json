@@ -62,9 +62,8 @@
     },
     "18": {
       "compare_local": "optional",
-      "execute_empty": "fail",
+      "execute_empty": "ok",
       "rewrite": "ok",
-      "skip_reason": "promotional_part view: undefined alias T86.p (like_match def wrapper)",
       "translate": "ok"
     },
     "19": {
@@ -135,9 +134,8 @@
     },
     "9": {
       "compare_local": "optional",
-      "execute_empty": "fail",
+      "execute_empty": "ok",
       "rewrite": "ok",
-      "skip_reason": "promotional_part view: undefined alias T86.p (like_match def wrapper)",
       "translate": "ok"
     }
   }

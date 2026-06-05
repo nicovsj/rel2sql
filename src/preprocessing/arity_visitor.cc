@@ -107,7 +107,7 @@ std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelExprAbstra
 
 std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelFormulaAbstraction>& node) {
   if (node->formula) Visit(node->formula);
-  node->arity = node->bindings.size();
+  node->arity = node->bindings.size() + (node->formula ? node->formula->arity : 0);
   return node;
 }
 
@@ -145,7 +145,28 @@ std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinAgg
 
 std::shared_ptr<RelFormula> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinOrderExpr>& node) {
   if (node->body) Visit(node->body);
-  node->arity = node->body ? node->body->arity : 0;
+  size_t body_arity = node->body ? node->body->arity : 0;
+  // reverse_sort[IDB]: TPC-H final_sort adds row index (A1) and a wildcard slot (A3).
+  if (node->kind == RelBuiltinOrderKind::SortDesc && node->body) {
+    std::string idb_id;
+    if (auto* id = dynamic_cast<RelIDTerm*>(node->body.get())) {
+      idb_id = id->id;
+    } else if (auto* pa = dynamic_cast<RelPartialApplication*>(node->body.get())) {
+      if (pa->params.empty()) {
+        if (auto* id_base = dynamic_cast<RelIDApplBase*>(pa->base.get())) {
+          idb_id = id_base->id;
+        }
+      }
+    }
+    if (!idb_id.empty() && container_->IsIDB(idb_id)) {
+      const int base_arity = container_->GetArity(idb_id);
+      if (base_arity >= 2) {
+        node->arity = static_cast<size_t>(base_arity) + 2;
+        return node;
+      }
+    }
+  }
+  node->arity = body_arity;
   return node;
 }
 

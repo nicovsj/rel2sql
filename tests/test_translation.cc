@@ -1,9 +1,11 @@
 // cspell:ignore GTEST
 #include <gtest/gtest.h>
 
+#include <cstdio>
 #include <map>
 #include <regex>
 #include <set>
+#include <sstream>
 
 #include "api/translate.h"
 #include "duckdb_exec.h"
@@ -32,6 +34,41 @@ RelContext BuildContextFromFormula(const std::string& formula, const RelationMap
   auto root = ast_builder.BuildFromFormula(tree);
   RelContextBuilder builder(edb_map);
   return builder.Process(root);
+}
+
+RelContext BuildContextFromProgram(const std::string& program, const RelationMap& edb_map) {
+  auto parser = GetParser(program);
+  auto tree = parser->program();
+  RelASTBuilder ast_builder;
+  auto root = ast_builder.Build(tree);
+  RelContextBuilder builder(edb_map);
+  return builder.Process(root);
+}
+
+const RelDef* FindDef(const RelProgram& program, const std::string& name) {
+  for (const auto& def : program.defs) {
+    if (def && def->name == name) return def.get();
+  }
+  return nullptr;
+}
+
+std::string RunShellCapture(const char* cmd) {
+  std::ostringstream captured;
+  FILE* pipe = popen(cmd, "r");
+  if (!pipe) return {};
+  char buf[8192];
+  while (std::fgets(buf, sizeof buf, pipe) != nullptr) {
+    captured << buf;
+  }
+  pclose(pipe);
+  return captured.str();
+}
+
+std::string RepoDataPath(const std::string& relative) {
+  if (const char* src = std::getenv("TEST_SRCDIR")) {
+    return std::string(src) + "/_main/" + relative;
+  }
+  return relative;
 }
 
 }  // namespace
@@ -371,6 +408,16 @@ TEST_F(TranslationTest, BuiltinSubstring) {
 TEST_F(TranslationTest, BuiltinLikeMatchFormula) {
   OPT_EXPECT_EQ_NO_DUCKDB(TranslateFormula("A(x) and like_match(\"foo%\", x)"),
                           "SELECT T0.A1 AS x FROM A AS T0 WHERE T0.A1 LIKE 'foo%'");
+}
+
+// TPC-H common def: unary def with like_match on partial application p_type[p].
+TEST_F(TranslationTest, PromotionalPartLikeMatchDef) {
+  RelationMap edb;
+  edb["p_type"] = RelationInfo(2);
+  OPT_EXPECT_EQ_NO_DUCKDB(ApplyValidatingOptimizer(GetUnoptimizedSQLRel(
+                              "def promotional_part { [p]: like_match(\"%PROMO%\", p_type[p]) }", edb)),
+                          "CREATE OR REPLACE VIEW promotional_part AS (SELECT DISTINCT T0.A1 AS A1 FROM p_type AS T0 "
+                          "WHERE T0.A2 LIKE '%PROMO%');");
 }
 
 // String literal as a term operand of a comparison (was previously rejected by the term/expr split).
@@ -1303,6 +1350,57 @@ TEST(SelfJoinOptimizationTest, MultiColumnSelfJoin) {
   if (!::testing::Test::HasFailure()) {
     ::rel2sql::testing::AssertExecutesInDuckDB(result, rel2sql::CreateDefaultEDBMap());
   }
+}
+
+TEST(TpchQ18TranslationTest, FinalSortUsesRankedReverseSort) {
+  const std::string rel = R"(def unsorted_result { (a,b,c,d,e,f): R(a,b,c,d,e,f) }
+  def inside_rev_sort { [a]: reverse_sort[unsorted_result[a]] }
+  def final_sort { reverse_sort[inside_rev_sort] }
+  def result { (i,x,y,z,u,v,w): final_sort(i,x,_,y,z,u,v,w) and i <= 100 })";
+  rel2sql::RelationMap edb;
+  edb["R"] = rel2sql::RelationInfo(6);
+  auto context = rel2sql::BuildContextFromProgram(rel, edb);
+  auto program = std::dynamic_pointer_cast<rel2sql::RelProgram>(context.Root());
+  ASSERT_NE(program, nullptr);
+  const auto* final_sort_def = rel2sql::FindDef(*program, "final_sort");
+  ASSERT_NE(final_sort_def, nullptr);
+  ASSERT_NE(final_sort_def->body, nullptr);
+  ASSERT_FALSE(final_sort_def->body->exprs.empty());
+  const auto* order = dynamic_cast<const rel2sql::RelBuiltinOrderExpr*>(final_sort_def->body->exprs[0].get());
+  ASSERT_NE(order, nullptr) << final_sort_def->body->exprs[0]->ToString();
+  EXPECT_EQ(order->kind, rel2sql::RelBuiltinOrderKind::SortDesc);
+  EXPECT_GE(order->arity, 8u);
+  EXPECT_TRUE(context.IsIDB("inside_rev_sort"));
+  EXPECT_GE(context.GetArity("inside_rev_sort"), 6);
+
+  rel2sql::Translator translator(context);
+  auto sql = translator.Translate();
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  EXPECT_NE(out.find("ROW_NUMBER()"), std::string::npos) << out;
+  EXPECT_NE(out.find("CREATE OR REPLACE VIEW final_sort"), std::string::npos);
+}
+
+TEST(TpchQ18TranslationTest, RewrittenQ18FinalSortHasRowNumber) {
+  const std::string rel = rel2sql::RunShellCapture(
+      ("python3 " + rel2sql::RepoDataPath("scripts/tpch_rewrite.py") + " 18 2>/dev/null").c_str());
+  ASSERT_FALSE(rel.empty());
+  auto edb = rel2sql::testing::LoadTpchEdbFromFile(rel2sql::RepoDataPath("benchmarks/TPCH/rel/tpch_edb.edb"));
+  ASSERT_FALSE(edb.map.empty());
+  auto context = rel2sql::BuildContextFromProgram(rel, edb);
+  auto program = std::dynamic_pointer_cast<rel2sql::RelProgram>(context.Root());
+  ASSERT_NE(program, nullptr);
+  const auto* final_sort_def = rel2sql::FindDef(*program, "final_sort");
+  ASSERT_NE(final_sort_def, nullptr);
+  const auto* order = dynamic_cast<const rel2sql::RelBuiltinOrderExpr*>(final_sort_def->body->exprs[0].get());
+  ASSERT_NE(order, nullptr) << final_sort_def->body->exprs[0]->ToString();
+  EXPECT_GE(order->arity, 8u) << "inside_rev_sort arity=" << context.GetArity("inside_rev_sort");
+  EXPECT_GE(context.GetArity("inside_rev_sort"), 6);
+
+  auto sql = GetSQLRel(rel, edb);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  EXPECT_NE(out.find("ROW_NUMBER()"), std::string::npos) << out.substr(out.find("final_sort"), 500);
 }
 
 TEST(SelfJoinOptimizationTest, PartialSelfJoin) {
