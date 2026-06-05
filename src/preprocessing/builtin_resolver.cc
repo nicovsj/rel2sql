@@ -36,16 +36,23 @@ std::optional<int> TryIntFromExpr(const std::shared_ptr<RelExpr>& e) {
   return std::nullopt;
 }
 
+std::string NormalizeRelStringLiteral(std::string s) {
+  // Interpolation literals ("...") keep their surrounding double-quotes because
+  // `%` in the body excludes them from T_STATIC_STR_LIT. Strip a pair of outer
+  // quotes when present so builtins (like_match, parse_date) see the raw text.
+  if (s.size() >= 2 && s.front() == '"' && s.back() == '"') s = s.substr(1, s.size() - 2);
+  // Rel raw"..."/raw"%..." forms (TPC-H like_match) -> DuckDB/SQL string body.
+  if (s.size() >= 5 && s.rfind("raw\"", 0) == 0 && s.back() == '"') {
+    s = s.substr(4, s.size() - 5);
+  }
+  return s;
+}
+
 std::optional<std::string> TryStringFromExpr(const std::shared_ptr<RelExpr>& e) {
   if (!e) return std::nullopt;
   if (auto* lit = dynamic_cast<RelLiteral*>(e.get())) {
     if (std::holds_alternative<std::string>(lit->value)) {
-      std::string s = std::get<std::string>(lit->value);
-      // Interpolation literals ("...") keep their surrounding double-quotes because
-      // `%` in the body excludes them from T_STATIC_STR_LIT. Strip a pair of outer
-      // quotes when present so builtins (like_match, parse_date) see the raw text.
-      if (s.size() >= 2 && s.front() == '"' && s.back() == '"') s = s.substr(1, s.size() - 2);
-      return s;
+      return NormalizeRelStringLiteral(std::get<std::string>(lit->value));
     }
   }
   return std::nullopt;

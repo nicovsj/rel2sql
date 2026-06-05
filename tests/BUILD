@@ -30,6 +30,10 @@ cc_test(
     srcs = [
         "test_translation.cc",
     ],
+    data = [
+        "//scripts:tpch_rewrite.py",
+        "//benchmarks/TPCH:rel/tpch_edb.edb",
+    ],
     deps = [
         ":duckdb_exec",
         ":test_common",

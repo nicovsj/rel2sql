@@ -3,6 +3,7 @@
 #include <fmt/core.h>
 
 #include <algorithm>
+#include <sstream>
 
 #include "optimizer/replacers.h"
 #include "rel_ast/domain.h"
@@ -26,6 +27,23 @@ std::vector<std::shared_ptr<RelFormula>> FlattenConjunctionChain(std::shared_ptr
   if (formula) acc.push_back(formula);
   std::reverse(acc.begin(), acc.end());
   return acc;
+}
+
+std::string BuildOrderBySqlOrdinals(size_t arity, sql::ast::SortDirection dir) {
+  if (arity == 0) return "ORDER BY 1";
+  std::ostringstream os;
+  os << "ORDER BY ";
+  for (size_t i = 1; i <= arity; ++i) {
+    if (i > 1) os << ", ";
+    os << i;
+    os << (dir == sql::ast::SortDirection::DESC ? " DESC" : " ASC");
+  }
+  return os.str();
+}
+
+size_t RankedFinalSortOutputPosition(size_t body_col_index) {
+  // body col 1..N -> A2, then A3 is wildcard placeholder, then A4..
+  return body_col_index < 2 ? body_col_index + 1 : body_col_index + 2;
 }
 
 }  // namespace
@@ -2427,22 +2445,37 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelBuiltinLi
     }
   }
 
-  // Subquery / relation value: select 1 from the value with `col LIKE 'pat'`.
+  // Subquery / relation value: filter rows of the value relation with `col LIKE 'pat'`.
   MaterializeRelationExprIfNeeded(*node, node->value);
   if (!node->value->sql_expression) {
     Visit(node->value);
   }
   auto vsql = ExpectSourceable(node->value->sql_expression);
   auto vs = std::make_shared<sql::ast::Source>(vsql, GenerateTableAlias());
-  std::string col_name = GetColumnNameForSourceable(vsql, 1);
+  // like_match(pat, R[key]): key is the first column; match the attribute value (last column when arity > 1).
+  size_t like_col_index = 1;
+  size_t rel_arity = GetArityForSourceable(vsql);
+  if (rel_arity > 1) {
+    like_col_index = rel_arity;
+  }
+  std::string col_name = GetColumnNameForSourceable(vsql, like_col_index);
   auto lhs = std::make_shared<sql::ast::Column>(col_name, vs);
   auto rhs = std::make_shared<sql::ast::Constant>(node->like_pattern);
   auto where = std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::LIKE, rhs);
-  auto sel = std::make_shared<sql::ast::Select>(
-      std::vector<std::shared_ptr<sql::ast::Selectable>>{
-          std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Constant>(1), "A1")},
-      std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{vs}, where));
-  node->sql_expression = sel;
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+  if (node->free_variables.empty()) {
+    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Constant>(1), "A1"));
+  } else {
+    std::vector<std::string> ordered_vars(node->free_variables.begin(), node->free_variables.end());
+    std::sort(ordered_vars.begin(), ordered_vars.end());
+    for (const auto& var : ordered_vars) {
+      select_cols.push_back(
+          std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Column>(var, vs), var));
+    }
+  }
+  node->sql_expression = std::make_shared<sql::ast::Select>(
+      select_cols, std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{vs}, where));
   return node;
 }
 
@@ -2457,12 +2490,20 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelBuiltinOr
   node->body->sql_expression = src;
 
   size_t arity = GetArityForSourceable(body_sql);
-  std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
-  for (size_t i = 1; i <= arity; ++i) {
-    std::string cn = GetColumnNameForSourceable(body_sql, i);
-    auto col = std::make_shared<sql::ast::Column>(cn, src);
-    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, cn));
+  // TPC-H final_sort: reverse_sort[inside_rev_sort] exposes row index + wildcard slot beyond body columns.
+  std::string ranked_idb_id;
+  if (auto* id = dynamic_cast<RelIDTerm*>(node->body.get())) {
+    ranked_idb_id = id->id;
+  } else if (auto* pa = dynamic_cast<RelPartialApplication*>(node->body.get())) {
+    if (pa->params.empty()) {
+      if (auto* id_base = dynamic_cast<RelIDApplBase*>(pa->base.get())) {
+        ranked_idb_id = id_base->id;
+      }
+    }
   }
+  const bool ranked_final_sort = node->kind == RelBuiltinOrderKind::SortDesc && !ranked_idb_id.empty() &&
+                                 context_.IsIDB(ranked_idb_id) &&
+                                 static_cast<size_t>(context_.GetArity(ranked_idb_id)) + 2 > arity;
 
   std::vector<sql::ast::OrderByClause> order_by;
   if (node->kind == RelBuiltinOrderKind::BottomDesc && node->bottom_sort_column.has_value()) {
@@ -2477,6 +2518,34 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelBuiltinOr
       std::string cn = GetColumnNameForSourceable(body_sql, i);
       auto col = std::make_shared<sql::ast::Column>(cn, src);
       order_by.push_back({col, dir});
+    }
+  }
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+  if (ranked_final_sort) {
+    sql::ast::SortDirection over_dir = sql::ast::SortDirection::DESC;
+    if (!order_by.empty()) {
+      over_dir = order_by[0].direction;
+    }
+    const std::string over_clause = BuildOrderBySqlOrdinals(arity, over_dir);
+    auto row_num = std::make_shared<sql::ast::VerbatimTerm>("ROW_NUMBER() OVER (" + over_clause + ")");
+    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(row_num, "A1"));
+    for (size_t i = 1; i <= arity; ++i) {
+      if (i == 2) {
+        select_cols.push_back(
+            std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Constant>(1), "A3"));
+      }
+      std::string cn = GetColumnNameForSourceable(body_sql, i);
+      auto col = std::make_shared<sql::ast::Column>(cn, src);
+      const std::string out_alias = fmt::format("A{}", RankedFinalSortOutputPosition(i));
+      select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, out_alias));
+    }
+    node->arity = select_cols.size();
+  } else {
+    for (size_t i = 1; i <= arity; ++i) {
+      std::string cn = GetColumnNameForSourceable(body_sql, i);
+      auto col = std::make_shared<sql::ast::Column>(cn, src);
+      select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, cn));
     }
   }
 
