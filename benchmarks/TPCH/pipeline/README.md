@@ -32,21 +32,32 @@ python3 scripts/gen_tpch_manifest_cc.py benchmarks/TPCH/pipeline/manifest.json b
 - Tables used by reference SQL (`lineitem_rel`, `customer_csv`, …)
 - Tables/views used by rel2sql output (`l_quantity`, `o_custkey`, …, plus `result` after running the translated script)
 
-The repo does **not** ship TPC-H CSV or a prebuilt DuckDB file. Schema names differ between reference SQL and rel2sql output; see [`docs/tpch-rel2sql-roundtrip-catalog.md`](../../../docs/tpch-rel2sql-roundtrip-catalog.md).
+Generate a small local database (SF **0.01**, DuckDB `tpch` extension — no separate dbgen):
+
+```sh
+task tpch:build-db
+export TPCH_DUCKDB_PATH="$(pwd)/benchmarks/TPCH/data/tpch_sf001.duckdb"
+
+# Emit SQL, load views, print answer rows
+task tpch:run-query -- 18
+
+# Compare translated vs reference SQL on the same DB
+task tpch:full-db-run -- --compare 18
+```
+
+See [`../data/README.md`](../data/README.md). Schema names differ between reference SQL and rel2sql output; see [`docs/tpch-rel2sql-roundtrip-catalog.md`](../../../docs/tpch-rel2sql-roundtrip-catalog.md).
 
 ```sh
 # Pipeline only (no data)
 task tpch:full-db-run -- 18
-
-# Compare results (you provide the DB)
-export TPCH_DUCKDB_PATH=/path/to/tpch.duckdb
-task tpch:full-db-run -- --compare 18
 
 # All manifest queries
 task tpch:full-db-run -- --compare --all
 ```
 
 ## Environment variables
+
+Copy [`.env.example`](../../../.env.example) to `.env` at the repo root; `task` loads it for all tasks (`dotenv` in `Taskfile.yml`).
 
 | Variable | Purpose |
 |----------|---------|

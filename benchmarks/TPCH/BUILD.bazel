@@ -4,6 +4,11 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files([
+    "rel/tpch_edb.edb",
+    "rel/tpch_edb_duckdb_types.edb",
+])
+
 cc_library(
     name = "tpch_pipeline_lib",
     srcs = ["pipeline/tpch_pipeline_lib.cc"],

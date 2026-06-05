@@ -1,5 +1,8 @@
 version: "3"
 
+# Load repo-root .env for task tpch:* and other tasks (copy from .env.example).
+dotenv: [".env"]
+
 tasks:
   # Core build tasks
   build:
@@ -118,6 +121,39 @@ tasks:
     desc: Bazel test //benchmarks/TPCH:tpch_pipeline_test (rewrite, translate, DuckDB empty execute)
     cmds:
       - bazel test --config=default //benchmarks/TPCH:tpch_pipeline_test
+
+  tpch:build-db:
+    desc: Generate TPC-H DuckDB (default SF 0.01 -> tpch_sf001.duckdb; pass --sf/--output)
+    cmds:
+      - python3 scripts/tpch_build_duckdb.py {{.CLI_ARGS}}
+
+  tpch:build-db:sf1:
+    desc: Generate benchmarks/TPCH/data/tpch_sf100.duckdb (TPC-H SF 1.0)
+    cmds:
+      - python3 scripts/tpch_build_duckdb.py --sf 1.0
+
+  tpch:run-query:
+    desc: Emit SQL for query N, load into TPCH_DUCKDB_PATH, print result rows (default Q18)
+    cmds:
+      - |
+        Q="{{.CLI_ARGS | default "18"}}"
+        export TPCH_DUCKDB_PATH="${TPCH_DUCKDB_PATH:-$(pwd)/benchmarks/TPCH/data/tpch_sf001.duckdb}"
+        test -f "$TPCH_DUCKDB_PATH" || { echo "Missing $TPCH_DUCKDB_PATH — run: task tpch:build-db" >&2; exit 1; }
+        bazel build --config=default //:rel2sql_bin
+        scripts/tpch_emit_sql.sh "$Q"
+        duckdb "$TPCH_DUCKDB_PATH" < "benchmarks/TPCH/out/sql/q${Q}.sql"
+        duckdb "$TPCH_DUCKDB_PATH" -c "SELECT * FROM result LIMIT 20;"
+
+  tpch:run-ref:
+    desc: Run reference TPC-H SQL (benchmarks/TPCH/sql/qN.sql) on TPCH_DUCKDB_PATH (default Q18)
+    cmds:
+      - |
+        Q="{{.CLI_ARGS | default "18"}}"
+        export TPCH_DUCKDB_PATH="${TPCH_DUCKDB_PATH:-$(pwd)/benchmarks/TPCH/data/tpch_sf001.duckdb}"
+        REF="benchmarks/TPCH/sql/q${Q}.sql"
+        test -f "$TPCH_DUCKDB_PATH" || { echo "Missing $TPCH_DUCKDB_PATH — run: task tpch:build-db" >&2; exit 1; }
+        test -f "$REF" || { echo "Missing $REF" >&2; exit 1; }
+        duckdb "$TPCH_DUCKDB_PATH" < "$REF"
 
   tpch:full-db-run:
     desc: Rewrite, translate, run ref+rel2sql SQL on TPCH_DUCKDB_PATH and diff results (local)

@@ -62,7 +62,12 @@ bazel run //:rel2sql_bin -- -e benchmarks/TPCH/rel/tpch_edb.edb -f query.rl
 python3 scripts/gen_tpch_edb.py   # also writes tpch_edb_duckdb_types.edb for DuckDB VARCHAR columns
 # Pipeline harness (manifest-driven rewrite → translate → DuckDB empty execute):
 task tpch:pipeline-test         # bazel test //benchmarks/TPCH:tpch_pipeline_test
+task tpch:build-db              # DuckDB SF 0.01 → benchmarks/TPCH/data/tpch_sf001.duckdb
+task tpch:build-db:sf1          # DuckDB SF 1.0 → benchmarks/TPCH/data/tpch_sf100.duckdb
+task tpch:run-query -- 18       # emit, load, SELECT * FROM result (needs tpch:build-db)
+task tpch:run-ref -- 18         # reference SQL only (benchmarks/TPCH/sql/q18.sql)
 task tpch:full-db-run -- 18     # local runner; TPCH_DUCKDB_PATH + --compare for result diff
+# Local TPC-H paths: cp .env.example .env (Taskfile dotenv loads .env for task tpch:*)
 # Emit translated SQL for diff against reference TPC-H SQL (optimized; UNOPTIMIZED=1 for -u):
 task tpch:emit-sql              # all Q1–Q22 → benchmarks/TPCH/out/sql/ (full + solo)
 task tpch:emit-sql:mvp          # MVP Q11,Q17,Q18,Q19,Q21, full only (common defs)

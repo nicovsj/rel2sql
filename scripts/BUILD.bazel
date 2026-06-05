@@ -3,6 +3,7 @@ package(default_visibility = ["//visibility:public"])
 exports_files([
     "gen_tpch_manifest_cc.py",
     "tpch_rewrite.py",
+    "tpch_build_duckdb.py",
     "tpch_emit_sql.sh",
     "tpch_smoke.sh",
     "tpch_full_db_run.sh",
