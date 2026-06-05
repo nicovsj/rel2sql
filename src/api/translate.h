@@ -51,6 +51,7 @@ inline std::shared_ptr<sql::ast::Expression> GetSQLRel(std::string_view input,
   return optimizer.Optimize(sql);
 }
 
+/** Same pipeline as GetSQLRel but skips sql::ast::Optimizer; still renumbers generated aliases per statement. */
 inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQLRel(
     std::string_view input, const rel2sql::RelationMap& edb_map = rel2sql::RelationMap()) {
   auto parser = GetParser(input);
@@ -59,7 +60,11 @@ inline std::shared_ptr<sql::ast::Expression> GetUnoptimizedSQLRel(
   auto root = ast_builder.Build(tree);
   RelContextBuilder builder(edb_map);
   auto context = builder.Process(root);
-  return GetSQLFromRelContext(context);
+  auto sql = GetSQLFromRelContext(context);
+  if (sql) {
+    sql::ast::TableAliasRenumberer::Renumber(*sql);
+  }
+  return sql;
 }
 
 /** Rel pipeline: parse as formula → RelASTBuilder → RelContextBuilder → SQLVisitorRel. No def wrapper, no DISTINCT. */
