@@ -57,7 +57,13 @@ compile_commands.json
 
 .db/
 
+# Local environment (see .env.example; loaded by Task via dotenv)
+.env
+
 # Generated rel2sql TPC-H translations (see benchmarks/TPCH/out/README.md)
 benchmarks/TPCH/out/sql/
 benchmarks/TPCH/out/rel/
 benchmarks/TPCH/out/err/
+
+# Local TPC-H DuckDB files (see benchmarks/TPCH/data/README.md)
+benchmarks/TPCH/data/*.duckdb
