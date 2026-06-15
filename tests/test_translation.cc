@@ -27,6 +27,19 @@ namespace rel2sql {
 
 namespace {
 
+std::string RunTpchRewrite(int query) {
+  const std::string cmd = "python3 scripts/tpch_rewrite.py " + std::to_string(query) + " 2>/dev/null";
+  FILE* pipe = popen(cmd.c_str(), "r");
+  if (!pipe) return {};
+  std::ostringstream out;
+  char buf[4096];
+  while (std::fgets(buf, sizeof(buf), pipe) != nullptr) {
+    out << buf;
+  }
+  pclose(pipe);
+  return out.str();
+}
+
 RelContext BuildContextFromFormula(const std::string& formula, const RelationMap& edb_map) {
   auto parser = GetParser(formula);
   auto tree = parser->formula();
@@ -393,6 +406,124 @@ TEST_F(TranslationTest, BuiltinDateSubtract) {
 TEST_F(TranslationTest, BuiltinDateYear) {
   OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("date_year[parse_date[\"2024-01-01\", \"Y-m-d\"]]"),
                           "SELECT EXTRACT(YEAR FROM (DATE '2024-01-01')) AS A1");
+}
+
+TEST_F(TranslationTest, TpchQ9RewrittenProgramOptimized) {
+  auto tpch = ::rel2sql::testing::LoadTpchEdbForDuckDb("benchmarks/TPCH/rel/tpch_edb.edb");
+  const std::string rel = RunTpchRewrite(9);
+  ASSERT_FALSE(rel.empty()) << "scripts/tpch_rewrite.py 9 failed";
+  auto sql = GetSQLRel(rel, tpch.relations);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  const auto result_pos = out.find("VIEW result AS");
+  ASSERT_NE(result_pos, std::string::npos) << out;
+  const std::string result_sql = out.substr(result_pos);
+  EXPECT_EQ(result_sql.find(".ok = T1.A1"), std::string::npos) << result_sql;
+  EXPECT_NE(result_sql.find("T0.A1 = T1.A1"), std::string::npos) << result_sql;
+}
+
+TEST_F(TranslationTest, TpchQ9FullExistsOptimized) {
+  auto tpch = ::rel2sql::testing::LoadTpchEdbForDuckDb("benchmarks/TPCH/rel/tpch_edb.edb");
+  auto sql = GetSQLRel(
+      R"(def l_revenue { [o, num]: l_extendedprice[o, num] * (1 - l_discount[o, num]) }
+def result { (o_nation, o_year, amount): amount = sum[(ok, lk, single_amount):
+  o_year = ( date_year[o_orderdate[ok]] ) and
+  exists((pk, sk) | l_suppkey(ok, lk, sk) and l_partkey(ok, lk, pk) and
+    ( n_name[s_nationkey[sk]] ) = o_nation and
+    like_match(raw"%green%", ( p_name[pk] )) and
+    single_amount = l_revenue[ok, lk] - ps_supplycost[pk, sk] * l_quantity[ok, lk])
+] })",
+      tpch.relations);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  const auto result_pos = out.find("VIEW result AS");
+  ASSERT_NE(result_pos, std::string::npos) << out;
+  const std::string result_sql = out.substr(result_pos);
+  EXPECT_EQ(result_sql.find(".ok = T1.A1"), std::string::npos) << result_sql;
+  EXPECT_NE(result_sql.find("T0.A1 = T1.A1"), std::string::npos) << result_sql;
+}
+
+TEST_F(TranslationTest, TpchQ9ResultDefOptimized) {
+  RelationMap edb;
+  edb["o_orderdate"] = RelationInfo(2);
+  edb["l_suppkey"] = RelationInfo(3);
+  edb["l_partkey"] = RelationInfo(3);
+  auto sql = GetSQLRel(
+      "def result { (o_year, amount): amount = sum[(ok, lk): o_year = date_year[o_orderdate[ok]] and "
+      "exists((pk, sk) | l_suppkey(ok, lk, sk) and l_partkey(ok, lk, pk))] }",
+      edb);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  EXPECT_EQ(out.find("T100"), std::string::npos) << out;
+  EXPECT_NE(out.find("T0.A1 = T1.A1"), std::string::npos) << out;
+}
+
+TEST_F(TranslationTest, TpchQ9SumBodyOptimized) {
+  RelationMap edb;
+  edb["o_orderdate"] = RelationInfo(2);
+  edb["l_suppkey"] = RelationInfo(3);
+  edb["l_partkey"] = RelationInfo(3);
+  auto sql = GetSQLRel(
+      "def q9sum { sum[(ok, lk): o_year = date_year[o_orderdate[ok]] and "
+      "exists((pk, sk) | l_suppkey(ok, lk, sk) and l_partkey(ok, lk, pk))] }",
+      edb);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  EXPECT_EQ(out.find("T100"), std::string::npos) << out;
+  EXPECT_NE(out.find("T0.A1 = T1.A1"), std::string::npos) << out;
+}
+
+TEST_F(TranslationTest, BuiltinDateYearOnPartialApplication) {
+  RelationMap edb;
+  edb["o_orderdate"] = RelationInfo(2);
+  edb["l_suppkey"] = RelationInfo(3);
+  auto sql = GetSQLRel(
+      "def inner_q9 { (o_year, ok, lk, sk): o_year = date_year[o_orderdate[ok]] and l_suppkey(ok, lk, sk) }", edb);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  EXPECT_NE(out.find("EXTRACT(YEAR FROM (T0.A2))"), std::string::npos) << out;
+  EXPECT_EQ(out.find("T95"), std::string::npos) << out;
+  EXPECT_EQ(out.find("T100"), std::string::npos) << out;
+  EXPECT_NE(out.find("T0.A1 = T1.A1"), std::string::npos) << out;
+}
+
+TEST(FlattenerOptimizationTest, Q9AggregateWhereAfterPartialAppFlatten) {
+  rel2sql::RelationMap edb;
+  edb["o_orderdate"] = rel2sql::RelationInfo(2);
+  edb["l_suppkey"] = rel2sql::RelationInfo(3);
+  std::string sql =
+      "SELECT T0.A2 AS o_year, SUM(T1.A2) AS A1 "
+      "FROM (SELECT T0.A1 AS ok, T0.A2 AS A1 FROM o_orderdate AS T0) AS T100, "
+      "o_orderdate AS T0, l_suppkey AS T1 "
+      "WHERE T100.ok = T1.A1 "
+      "GROUP BY T0.A2";
+  auto expr = rel2sql::ParseSQL(sql, edb);
+  ASSERT_NE(expr, nullptr);
+  rel2sql::sql::ast::Optimizer optimizer;
+  expr = optimizer.Optimize(expr);
+  std::string result = expr->ToString();
+  EXPECT_EQ(result.find("T100"), std::string::npos) << result;
+  EXPECT_NE(result.find("T0.A1 = T1.A1"), std::string::npos) << result;
+}
+
+TEST(FlattenerOptimizationTest, PartialAppVariableAliasFlatten) {
+  rel2sql::RelationMap edb;
+  edb["o_orderdate"] = rel2sql::RelationInfo(2);
+  edb["l_suppkey"] = rel2sql::RelationInfo(3);
+  std::string sql =
+      "SELECT T4.ok AS A2, T1.A2 AS A3 FROM "
+      "(SELECT T0.A1 AS ok, T0.A2 AS A1 FROM o_orderdate AS T0) AS T4, "
+      "l_suppkey AS T1 WHERE T4.ok = T1.A1";
+  auto expr = rel2sql::ParseSQL(sql, edb);
+  ASSERT_NE(expr, nullptr);
+  rel2sql::sql::ast::FlattenerOptimizer flattener_optimizer;
+  flattener_optimizer.Visit(*expr);
+  std::string result = expr->ToString();
+  EXPECT_EQ(result.find("T4"), std::string::npos) << result;
+  EXPECT_NE(result.find("T0.A1 = T1.A1"), std::string::npos) << result;
+  if (!::testing::Test::HasFailure()) {
+    ::rel2sql::testing::AssertExecutesInDuckDB(result, edb);
+  }
 }
 
 TEST_F(TranslationTest, BuiltinDefaultValue) {
@@ -1150,6 +1281,60 @@ TEST_F(TranslationTest, GeneratedTableAliasesAreDensePerStatement) {
       EXPECT_TRUE(ids.count(i)) << "missing generated alias " << prefix << i << " in:\n" << sql;
     }
   }
+}
+
+TEST(TpchQ11AggregateThreshold, RewrittenResultGroupsByPart) {
+  auto tpch = ::rel2sql::testing::LoadTpchEdbForDuckDb(RepoDataPath("benchmarks/TPCH/rel/tpch_edb.edb"));
+  const std::string program = RunTpchRewrite(11);
+  ASSERT_FALSE(program.empty());
+  auto sql = GetSQLRel(program, tpch.relations);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  const auto result_pos = out.find("VIEW result AS");
+  ASSERT_NE(result_pos, std::string::npos) << out;
+  const std::string result_sql = out.substr(result_pos);
+  EXPECT_NE(result_sql.find("GROUP BY"), std::string::npos) << result_sql.substr(0, 500);
+  EXPECT_EQ(result_sql.find("WHERE (SUM("), std::string::npos) << result_sql.substr(0, 500);
+}
+
+TEST(TpchQ17ScalarDiv, MinimalSumOverSeven) {
+  auto tpch = ::rel2sql::testing::LoadTpchEdbForDuckDb(RepoDataPath("benchmarks/TPCH/rel/tpch_edb.edb"));
+  const std::string rel = R"(
+def result { sum[[o, num, p]:
+    l_extendedprice[o, num] where l_partkey(o, num, p)
+] / 7 }
+)";
+  auto sql = GetSQLRel(rel, tpch.relations);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  const auto result_pos = out.find("VIEW result AS");
+  ASSERT_NE(result_pos, std::string::npos) << out;
+  const std::string result_sql = out.substr(result_pos);
+  EXPECT_NE(result_sql.find("SUM("), std::string::npos) << result_sql;
+  EXPECT_NE(result_sql.find("/ 7"), std::string::npos) << result_sql;
+  EXPECT_EQ(result_sql.find("WHERE ((SUM("), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_EQ(result_sql.find("E5("), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_EQ(result_sql.find("A1 = 'Brand#23'"), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_EQ(result_sql.find("A1 = 'MED BOX'"), std::string::npos) << result_sql.substr(0, 800);
+}
+
+TEST(TpchQ17ScalarDiv, ResultIsSumOverSeven) {
+  auto tpch = ::rel2sql::testing::LoadTpchEdbForDuckDb(RepoDataPath("benchmarks/TPCH/rel/tpch_edb.edb"));
+  const std::string program = RunTpchRewrite(17);
+  ASSERT_FALSE(program.empty());
+  auto sql = GetSQLRel(program, tpch.relations);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  const auto result_pos = out.find("VIEW result AS");
+  ASSERT_NE(result_pos, std::string::npos) << out;
+  const std::string result_sql = out.substr(result_pos);
+  EXPECT_NE(result_sql.find("SUM("), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_NE(result_sql.find("/ 7"), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_EQ(result_sql.find("WHERE ((SUM("), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_EQ(result_sql.find("A1 = 'Brand#23'"), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_EQ(result_sql.find("A1 = 'MED BOX'"), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_NE(result_sql.find("A2 = 'Brand#23'"), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_NE(result_sql.find("A2 = 'MED BOX'"), std::string::npos) << result_sql.substr(0, 800);
 }
 
 }  // namespace rel2sql
