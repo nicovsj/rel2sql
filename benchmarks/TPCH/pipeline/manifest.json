@@ -18,10 +18,10 @@
       "translate": "fail"
     },
     "11": {
-      "execute_empty": "skip",
+      "compare_local": "optional",
+      "execute_empty": "ok",
       "rewrite": "ok",
-      "stderr_contains": "E102",
-      "translate": "fail"
+      "translate": "ok"
     },
     "12": {
       "execute_empty": "skip",
@@ -55,10 +55,9 @@
       "translate": "skip"
     },
     "17": {
-      "execute_empty": "skip",
+      "execute_empty": "ok",
       "rewrite": "ok",
-      "skip_reason": "known crash or timeout on full Q17",
-      "translate": "fail"
+      "translate": "ok"
     },
     "18": {
       "compare_local": "optional",
