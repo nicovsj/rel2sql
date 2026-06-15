@@ -225,9 +225,13 @@ bool FlattenerOptimizer::TryFlattenSubquery(Select& select_statement) {
       }
     }
 
-    // Update references in the outer query
+    // Update references in the outer query (and in the select being flattened — nested
+    // aggregate WHERE may not be reached when base_expr_ is a distant ancestor).
     SourceAndColumnReplacer replacer(old_alias, term_map);
-    base_expr_->Accept(replacer);
+    select_statement.Accept(replacer);
+    if (base_expr_) {
+      base_expr_->Accept(replacer);
+    }
 
     flattened = true;
   }

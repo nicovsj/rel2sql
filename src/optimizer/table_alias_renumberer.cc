@@ -144,6 +144,10 @@ void AliasCollector::Collect(Term& term) {
     if (function->arg) Collect(*function->arg);
     return;
   }
+  if (auto* extract = dynamic_cast<DateExtractTerm*>(&term)) {
+    if (extract->arg) Collect(*extract->arg);
+    return;
+  }
   if (auto* case_when = dynamic_cast<CaseWhen*>(&term)) {
     for (auto& [cond, case_term] : case_when->cases) {
       if (cond) Collect(*cond);
@@ -294,6 +298,10 @@ void AliasApplier::Apply(Term& term) {
   }
   if (auto* function = dynamic_cast<Function*>(&term)) {
     if (function->arg) Apply(*function->arg);
+    return;
+  }
+  if (auto* extract = dynamic_cast<DateExtractTerm*>(&term)) {
+    if (extract->arg) Apply(*extract->arg);
     return;
   }
   if (auto* case_when = dynamic_cast<CaseWhen*>(&term)) {
