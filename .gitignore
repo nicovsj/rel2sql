@@ -64,6 +64,7 @@ compile_commands.json
 benchmarks/TPCH/out/sql/
 benchmarks/TPCH/out/rel/
 benchmarks/TPCH/out/err/
+benchmarks/TPCH/out/explain/
 
 # Local TPC-H DuckDB files (see benchmarks/TPCH/data/README.md)
 benchmarks/TPCH/data/*.duckdb

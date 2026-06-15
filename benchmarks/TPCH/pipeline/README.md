@@ -71,3 +71,35 @@ Copy [`.env.example`](../../../.env.example) to `.env` at the repo root; `task` 
 - **Result diff:** `tpch_runner --compare` (multiset, float tolerance ≈ 1.0).
 
 Empty-table execution in CI only proves the script is syntactically valid on DuckDB, not semantic equivalence with TPC-H.
+
+## Performance / plans (local)
+
+Compare **reference** [`benchmarks/TPCH/sql/qN.sql`](../sql/) vs **translated** answer query (`SELECT * FROM result` after loading `out/sql/qN.sql`) using repeated `EXPLAIN (ANALYZE, FORMAT JSON)` runs.
+
+Recommended workflow (SF **1.0** for meaningful timings):
+
+```sh
+task tpch:build-db:sf1
+export TPCH_DUCKDB_PATH="$(pwd)/benchmarks/TPCH/data/tpch_sf100.duckdb"
+task tpch:emit-sql -- 18
+task tpch:explain-bench -- 18 --runs 10 --warmup 2
+# or directly:
+python3 scripts/tpch_explain_bench.py 18 --runs 10 --warmup 2 --graphviz
+```
+
+Output layout under `benchmarks/TPCH/out/explain/q{N}/`:
+
+| Path | Contents |
+|------|----------|
+| `ref/run_*.json` | Per-run reference plans |
+| `gen/run_*.json` | Per-run translated plans |
+| `ref/plan_median.json`, `gen/plan_median.json` | Plans from median-latency run |
+| `summary.json`, `summary.txt` | Timing stats + operator diff + indented ref/gen plan trees (median run) |
+
+**Interpretation caveats:**
+
+- Translated SQL uses a different shape (views, extra operators); plan fingerprints will usually **not** match reference.
+- DuckDB may run operators in parallel; sum of `operator_timing` can exceed root `latency`.
+- Warm runs reuse one connection (buffer cache warm). Use `--cold` to reload views each run (experimental).
+- View DDL for translated SQL is timed separately (`setup_ms` in summary) and is **not** included in per-run EXPLAIN latency.
+- Not run in CI (slow; requires generated `.duckdb` file).

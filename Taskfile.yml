@@ -161,6 +161,16 @@ tasks:
       - bazel build --config=default //benchmarks/TPCH:tpch_runner //:rel2sql_bin
       - scripts/tpch_full_db_run.sh {{.CLI_ARGS}}
 
+  tpch:explain-bench:
+    desc: Multi-run EXPLAIN ANALYZE ref vs translated (TPCH_DUCKDB_PATH; see data/README for SF1)
+    cmds:
+      - |
+        export TPCH_DUCKDB_PATH="${TPCH_DUCKDB_PATH:-$(pwd)/benchmarks/TPCH/data/tpch_sf100.duckdb}"
+        test -f "$TPCH_DUCKDB_PATH" || { echo "Missing $TPCH_DUCKDB_PATH — run: task tpch:build-db:sf1" >&2; exit 1; }
+        ARGS="{{.CLI_ARGS}}"
+        if [ -z "$ARGS" ]; then ARGS="18"; fi
+        python3 scripts/tpch_explain_bench.py $ARGS
+
   # Utility tasks
   clean:
     desc: Clean Bazel build artifacts
