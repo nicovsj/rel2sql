@@ -32,7 +32,12 @@ std::string SqlQuoteIdent(const std::string& id) {
 }
 
 std::string SqlTypeForColumn(const std::string& relation_name, int col_index, int arity,
-                             const std::unordered_set<std::string>* varchar_value_relations) {
+                             const std::unordered_set<std::string>* varchar_value_relations,
+                             const std::unordered_set<std::string>* date_value_relations) {
+  const bool is_value_col = (arity >= 3 && col_index == arity - 1) || (arity == 2 && col_index == 1);
+  if (date_value_relations && date_value_relations->count(relation_name) != 0 && is_value_col) {
+    return "DATE";
+  }
   if (!varchar_value_relations || varchar_value_relations->count(relation_name) == 0) {
     return "DOUBLE";
   }
@@ -49,14 +54,16 @@ std::string SqlTypeForColumn(const std::string& relation_name, int col_index, in
 }
 
 std::string CreateTableDdl(const std::string& name, const RelationInfo& info,
-                           const std::unordered_set<std::string>* varchar_value_relations) {
+                           const std::unordered_set<std::string>* varchar_value_relations,
+                           const std::unordered_set<std::string>* date_value_relations) {
   std::ostringstream os;
   os << "CREATE TABLE " << SqlQuoteIdent(name) << " (";
   for (int i = 0; i < info.arity; ++i) {
     if (i > 0) {
       os << ", ";
     }
-    os << SqlQuoteIdent(info.AttributeName(i)) << " " << SqlTypeForColumn(name, i, info.arity, varchar_value_relations);
+    os << SqlQuoteIdent(info.AttributeName(i)) << " "
+       << SqlTypeForColumn(name, i, info.arity, varchar_value_relations, date_value_relations);
   }
   os << ");";
   return os.str();
@@ -133,7 +140,8 @@ bool RunSqlOrScript(duckdb_connection con, const std::string& sql, std::string* 
 }
 
 bool ApplyEdbDdl(duckdb_connection con, const RelationMap& edb, std::string* error_out,
-                 const std::unordered_set<std::string>* varchar_value_relations) {
+                 const std::unordered_set<std::string>* varchar_value_relations,
+                 const std::unordered_set<std::string>* date_value_relations) {
   std::vector<std::string> names;
   names.reserve(edb.map.size());
   for (const auto& kv : edb.map) {
@@ -143,7 +151,7 @@ bool ApplyEdbDdl(duckdb_connection con, const RelationMap& edb, std::string* err
 
   for (const auto& name : names) {
     const RelationInfo& info = edb.map.at(name);
-    std::string ddl = CreateTableDdl(name, info, varchar_value_relations);
+    std::string ddl = CreateTableDdl(name, info, varchar_value_relations, date_value_relations);
     if (!RunQuery(con, ddl, "DDL", error_out)) return false;
   }
   return true;
@@ -209,10 +217,8 @@ DuckDbSession::~DuckDbSession() {
 
 RelationMap LoadTpchEdbFromFile(const std::string& path) { return LoadTpchEdbForDuckDb(path).relations; }
 
-std::unordered_set<std::string> LoadTpchVarcharValueRelations(const std::string& tpch_edb_path) {
+std::unordered_set<std::string> LoadTpchCompanionRelationSet(const std::filesystem::path& types_path) {
   std::unordered_set<std::string> out;
-  const std::filesystem::path edb_path(tpch_edb_path);
-  std::filesystem::path types_path = edb_path.parent_path() / "tpch_edb_duckdb_types.edb";
   std::ifstream in(types_path);
   if (!in) {
     return out;
@@ -229,9 +235,20 @@ std::unordered_set<std::string> LoadTpchVarcharValueRelations(const std::string&
   return out;
 }
 
+std::unordered_set<std::string> LoadTpchVarcharValueRelations(const std::string& tpch_edb_path) {
+  const std::filesystem::path edb_path(tpch_edb_path);
+  return LoadTpchCompanionRelationSet(edb_path.parent_path() / "tpch_edb_duckdb_types.edb");
+}
+
+std::unordered_set<std::string> LoadTpchDateValueRelations(const std::string& tpch_edb_path) {
+  const std::filesystem::path edb_path(tpch_edb_path);
+  return LoadTpchCompanionRelationSet(edb_path.parent_path() / "tpch_edb_duckdb_date_types.edb");
+}
+
 TpchEdbForDuckDb LoadTpchEdbForDuckDb(const std::string& tpch_edb_path) {
   TpchEdbForDuckDb out;
   out.varchar_value_relations = LoadTpchVarcharValueRelations(tpch_edb_path);
+  out.date_value_relations = LoadTpchDateValueRelations(tpch_edb_path);
   std::ifstream in(tpch_edb_path);
   if (!in) {
     return out;
@@ -249,7 +266,8 @@ TpchEdbForDuckDb LoadTpchEdbForDuckDb(const std::string& tpch_edb_path) {
 }
 
 std::string OpenInMemorySession(DuckDbSession* session, const RelationMap& edb,
-                                const std::unordered_set<std::string>* varchar_value_relations) {
+                                const std::unordered_set<std::string>* varchar_value_relations,
+                                const std::unordered_set<std::string>* date_value_relations) {
   if (!session) return "null session";
   duckdb_database db = nullptr;
   if (duckdb_open(nullptr, &db) != DuckDBSuccess) {
@@ -261,7 +279,7 @@ std::string OpenInMemorySession(DuckDbSession* session, const RelationMap& edb,
     return "duckdb_connect failed";
   }
   std::string err;
-  if (!ApplyEdbDdl(con, edb, &err, varchar_value_relations)) {
+  if (!ApplyEdbDdl(con, edb, &err, varchar_value_relations, date_value_relations)) {
     duckdb_disconnect(&con);
     duckdb_close(&db);
     return err;

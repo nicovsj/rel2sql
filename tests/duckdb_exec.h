@@ -20,13 +20,15 @@ struct DuckDbResultSet {
 // Parse `tpch_edb.edb` lines: `relation_name arity` (comments and blanks skipped).
 RelationMap LoadTpchEdbFromFile(const std::string& path);
 
-// Relations whose last attribute (value column) is VARCHAR in DuckDB empty-schema DDL.
-// Reads `tpch_edb_duckdb_types.edb` beside `tpch_edb.edb` when present.
+// Relations whose value column is VARCHAR/DATE in DuckDB empty-schema DDL.
+// Reads companion `tpch_edb_duckdb_*_types.edb` beside `tpch_edb.edb` when present.
 std::unordered_set<std::string> LoadTpchVarcharValueRelations(const std::string& tpch_edb_path);
+std::unordered_set<std::string> LoadTpchDateValueRelations(const std::string& tpch_edb_path);
 
 struct TpchEdbForDuckDb {
   RelationMap relations;
   std::unordered_set<std::string> varchar_value_relations;
+  std::unordered_set<std::string> date_value_relations;
 };
 
 // Loads arity map + optional companion DuckDB type hints for TPC-H benchmarks.
@@ -40,7 +42,8 @@ struct DuckDbSession {
 
 // In-memory DB with empty EDB tables. Returns error message on failure.
 std::string OpenInMemorySession(DuckDbSession* session, const RelationMap& edb,
-                                const std::unordered_set<std::string>* varchar_value_relations = nullptr);
+                                const std::unordered_set<std::string>* varchar_value_relations = nullptr,
+                                const std::unordered_set<std::string>* date_value_relations = nullptr);
 
 // Open existing DuckDB file (local compare). Returns error message on failure.
 std::string OpenFileSession(DuckDbSession* session, const std::string& db_path);

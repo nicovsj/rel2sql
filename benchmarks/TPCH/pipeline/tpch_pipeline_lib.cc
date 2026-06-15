@@ -250,8 +250,8 @@ ExecuteResult RunExecuteEmpty(const std::string& sql, const PipelinePaths& paths
     return r;
   }
   rel2sql::testing::DuckDbSession session;
-  std::string err =
-      rel2sql::testing::OpenInMemorySession(&session, tpch_edb.relations, &tpch_edb.varchar_value_relations);
+  std::string err = rel2sql::testing::OpenInMemorySession(
+      &session, tpch_edb.relations, &tpch_edb.varchar_value_relations, &tpch_edb.date_value_relations);
   if (!err.empty()) {
     r.error = err;
     return r;

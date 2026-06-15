@@ -7,6 +7,7 @@ package(default_visibility = ["//visibility:public"])
 exports_files([
     "rel/tpch_edb.edb",
     "rel/tpch_edb_duckdb_types.edb",
+    "rel/tpch_edb_duckdb_date_types.edb",
 ])
 
 cc_library(
@@ -27,6 +28,7 @@ cc_test(
         "pipeline/manifest.json",
         "rel/tpch_edb.edb",
         "rel/tpch_edb_duckdb_types.edb",
+        "rel/tpch_edb_duckdb_date_types.edb",
         "//:rel2sql_bin",
         "//scripts:tpch_rewrite.py",
     ],
@@ -47,6 +49,7 @@ cc_binary(
         "pipeline/manifest.json",
         "rel/tpch_edb.edb",
         "rel/tpch_edb_duckdb_types.edb",
+        "rel/tpch_edb_duckdb_date_types.edb",
         "//:rel2sql_bin",
         "//scripts:tpch_rewrite.py",
     ],
