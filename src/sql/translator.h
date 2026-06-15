@@ -206,6 +206,36 @@ class Translator : public BaseRelVisitor {
   bool TryEmitLiftedPartialAppLiteralEquality(const std::shared_ptr<RelComparison>& node,
                                               const std::shared_ptr<RelFormula>& lifted_atom);
 
+  struct LiftedPartialAppTarget {
+    std::shared_ptr<RelPartialApplication> partial;
+    std::shared_ptr<sql::ast::Select> inner_select;
+    std::shared_ptr<sql::ast::Source> ra_source;
+    std::string value_col;
+    std::string z_var;
+  };
+  std::optional<LiftedPartialAppTarget> ParseLiftedPartialAppFromAtom(const RelFullApplication& app);
+  std::string PartialAppValueColumnOnBase(const RelPartialApplication& partial,
+                                          const std::shared_ptr<sql::ast::Sourceable>& base_sourceable,
+                                          const std::shared_ptr<sql::ast::Source>& ra_source) const;
+  std::shared_ptr<sql::ast::Select> EmitPartialAppFilteredSelect(
+      const std::shared_ptr<RelPartialApplication>& partial, const std::shared_ptr<sql::ast::Select>& inner_select,
+      const std::shared_ptr<sql::ast::Condition>& filter,
+      const std::vector<std::shared_ptr<sql::ast::Source>>& extra_sources = {},
+      const std::vector<std::pair<std::string, std::shared_ptr<sql::ast::Source>>>& extra_exports = {},
+      const std::optional<std::string>& project_value_as = std::nullopt);
+
+  // `exists z | {R[…]}(z) and bound op z` — compare the projected attribute (A3), not join keys.
+  bool TryEmitLiftedPartialAppValueComparison(const std::shared_ptr<RelComparison>& node,
+                                              const std::shared_ptr<RelFormula>& lifted_atom);
+
+  // `exists z | {R[…]}(z) and z = outer_var` when outer_var's domain is the same EDB relation.
+  bool TryEmitLiftedPartialAppVariableEquality(const std::shared_ptr<RelComparison>& node,
+                                               const std::shared_ptr<RelFormula>& lifted_atom);
+
+  // `exists z1,z2 | {R1}(z1) and {R2}(z2) and z1 op z2` — attribute–attribute compare on two partial apps.
+  std::shared_ptr<sql::ast::Select> TryEmitLiftedPartialAppZPairConjunction(
+      const std::vector<std::shared_ptr<RelNode>>& conjuncts);
+
   // Return the number of columns (arity) of a sourceable.
   size_t GetArityForSourceable(const std::shared_ptr<sql::ast::Sourceable>& src) const;
 

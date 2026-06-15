@@ -1337,6 +1337,31 @@ TEST(TpchQ17ScalarDiv, ResultIsSumOverSeven) {
   EXPECT_NE(result_sql.find("A2 = 'MED BOX'"), std::string::npos) << result_sql.substr(0, 800);
 }
 
+TEST(TpchQ12PartialAppFlatten, RewrittenProgramHasNoDanglingBindingRefs) {
+  auto tpch = ::rel2sql::testing::LoadTpchEdbForDuckDb(RepoDataPath("benchmarks/TPCH/rel/tpch_edb.edb"));
+  const std::string program = RunTpchRewrite(12);
+  ASSERT_FALSE(program.empty());
+  auto sql = GetSQLRel(program, tpch.relations);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  EXPECT_EQ(out.find("T128.o"), std::string::npos) << out.substr(out.find("selected_lineitems"), 600);
+  EXPECT_EQ(out.find("T150.o"), std::string::npos) << out.substr(out.find("high_line"), 400);
+  const auto sl_pos = out.find("VIEW selected_lineitems AS");
+  ASSERT_NE(sl_pos, std::string::npos) << out;
+  const std::string sl_sql = out.substr(sl_pos, out.find("VIEW high_line AS") - sl_pos);
+  EXPECT_NE(sl_sql.find("lower AS"), std::string::npos) << sl_sql.substr(0, 800);
+  EXPECT_NE(sl_sql.find("upper AS"), std::string::npos) << sl_sql.substr(0, 800);
+  EXPECT_NE(sl_sql.find(".A3 <"), std::string::npos) << sl_sql.substr(0, 800);
+  EXPECT_NE(sl_sql.find("<= T"), std::string::npos) << sl_sql.substr(0, 800);
+  const auto hl_pos = out.find("VIEW high_line AS");
+  ASSERT_NE(hl_pos, std::string::npos) << out;
+  const std::string hl_sql = out.substr(hl_pos, out.find("VIEW low_line AS") - hl_pos);
+  EXPECT_EQ(hl_sql.find("WHERE T4.A3 = T4.A3"), std::string::npos) << hl_sql.substr(0, 600);
+  EXPECT_NE(hl_sql.find("shipmode"), std::string::npos) << hl_sql.substr(0, 600);
+  const auto result_pos = out.find("VIEW result AS");
+  ASSERT_NE(result_pos, std::string::npos) << out;
+}
+
 }  // namespace rel2sql
 
 // Helper functions for testing individual optimizers

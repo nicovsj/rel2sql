@@ -582,6 +582,21 @@ def main() -> int:
             file=sys.stderr,
         )
 
+    if failures == 0 and args.queries:
+        summary_script = ROOT / "scripts/tpch_explain_summary_csv.py"
+        if summary_script.is_file():
+            proc = subprocess.run(
+                [sys.executable, str(summary_script), "--explain-root", str(args.out_root)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+            if proc.returncode == 0:
+                if proc.stderr.strip():
+                    print(proc.stderr.strip(), file=sys.stderr)
+            else:
+                print(f"warn: summary.csv update failed: {proc.stderr.strip()}", file=sys.stderr)
+
     return 1 if failures else 0
 
 
