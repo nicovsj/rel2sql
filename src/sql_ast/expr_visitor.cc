@@ -59,6 +59,10 @@ void ExpressionVisitor::Visit(ParenthesisTerm& parenthesis_term) { Visit(*parent
 
 void ExpressionVisitor::Visit(Function& function) { Visit(*function.arg); }
 
+void ExpressionVisitor::Visit(DateExtractTerm& date_extract_term) {
+  if (date_extract_term.arg) Visit(*date_extract_term.arg);
+}
+
 void ExpressionVisitor::Visit(VerbatimTerm&) {}
 
 void ExpressionVisitor::Visit(TermSelectable& term_selectable) { Visit(*term_selectable.term); }

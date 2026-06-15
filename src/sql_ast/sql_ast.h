@@ -582,6 +582,30 @@ class Column : public Term {
   }
 };
 
+/** EXTRACT(part FROM arg) with a structured arg so optimizers can rewrite column refs. */
+class DateExtractTerm : public Term {
+ public:
+  enum class Part { Year };
+  Part part;
+  std::shared_ptr<Term> arg;
+
+  DateExtractTerm(Part part, std::shared_ptr<Term> arg) : part(part), arg(std::move(arg)) {}
+
+  std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* o = dynamic_cast<const DateExtractTerm*>(&other);
+    return o && part == o->part && *arg == *o->arg;
+  }
+
+  std::string ToString() const override {
+    const char* part_name = part == Part::Year ? "YEAR" : "YEAR";
+    return fmt::format("EXTRACT({} FROM ({}))", part_name, arg->ToString());
+  }
+};
+
 /** SQL fragment emitted verbatim (e.g. DATE '...', INTERVAL ..., CAST(... AS DATE)). */
 class VerbatimTerm : public Term {
  public:
