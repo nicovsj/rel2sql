@@ -10,6 +10,7 @@
 #include "cte_redundancy_optimizer.h"
 #include "expression_simplifier_optimizer.h"
 #include "flattener_optimizer.h"
+#include "select_column_rebinder.h"
 #include "self_join_optimizer.h"
 #include "sql_ast/expr_visitor.h"
 #include "sql_ast/sql_ast.h"
@@ -35,6 +36,7 @@ class Optimizer : public BaseOptimizer {
     }
     Visit(*expr);
     TableAliasRenumberer::Renumber(*expr);
+    RebindDanglingSelectColumns(*expr);
     return expr;
   }
 
