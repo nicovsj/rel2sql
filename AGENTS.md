@@ -67,6 +67,7 @@ task tpch:build-db:sf1          # DuckDB SF 1.0 → benchmarks/TPCH/data/tpch_sf
 task tpch:run-query -- 18       # emit, load, SELECT * FROM result (needs tpch:build-db)
 task tpch:run-ref -- 18         # reference SQL only (benchmarks/TPCH/sql/q18.sql)
 task tpch:full-db-run -- 18     # local runner; TPCH_DUCKDB_PATH + --compare for result diff
+task tpch:explain-bench -- 18   # multi-run EXPLAIN ANALYZE ref vs translated (default SF1 DB)
 # Local TPC-H paths: cp .env.example .env (Taskfile dotenv loads .env for task tpch:*)
 # Emit translated SQL for diff against reference TPC-H SQL (optimized; UNOPTIMIZED=1 for -u):
 task tpch:emit-sql              # all Q1–Q22 → benchmarks/TPCH/out/sql/ (full + solo)
