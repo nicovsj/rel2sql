@@ -45,10 +45,9 @@ std::string SqlTypeForColumn(const std::string& relation_name, int col_index, in
   if (arity >= 3 && col_index == arity - 1) {
     return "VARCHAR";
   }
-  // Binary TPC-H projections: rel2sql often uses A1 for string values (like_match, literals);
-  // use VARCHAR on both columns for empty-schema smoke tests (no data rows).
+  // Binary TPC-H attrs: A1 is the entity key, A2 is the string value column.
   if (arity == 2) {
-    return "VARCHAR";
+    return col_index == 1 ? "VARCHAR" : "DOUBLE";
   }
   return "DOUBLE";
 }

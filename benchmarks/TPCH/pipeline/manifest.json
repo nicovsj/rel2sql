@@ -24,10 +24,9 @@
       "translate": "ok"
     },
     "12": {
-      "execute_empty": "skip",
+      "execute_empty": "ok",
       "rewrite": "ok",
-      "stderr_contains": "E104",
-      "translate": "fail"
+      "translate": "ok"
     },
     "13": {
       "execute_empty": "skip",

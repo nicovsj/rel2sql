@@ -171,6 +171,11 @@ tasks:
         if [ -z "$ARGS" ]; then ARGS="18"; fi
         python3 scripts/tpch_explain_bench.py $ARGS
 
+  tpch:explain-summary:
+    desc: Regenerate benchmarks/TPCH/out/explain/summary.csv from q*/summary.json
+    cmds:
+      - python3 scripts/tpch_explain_summary_csv.py
+
   # Utility tasks
   clean:
     desc: Clean Bazel build artifacts
