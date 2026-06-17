@@ -18,19 +18,6 @@
 namespace rel2sql::testing {
 namespace {
 
-std::string SqlQuoteIdent(const std::string& id) {
-  std::string out = "\"";
-  for (char c : id) {
-    if (c == '"') {
-      out += "\"\"";
-    } else {
-      out += c;
-    }
-  }
-  out += '"';
-  return out;
-}
-
 std::string SqlTypeForColumn(const std::string& relation_name, int col_index, int arity,
                              const std::unordered_set<std::string>* varchar_value_relations,
                              const std::unordered_set<std::string>* date_value_relations) {
@@ -84,11 +71,6 @@ bool RunQuery(duckdb_connection con, const std::string& sql, const char* ctx, st
   return true;
 }
 
-void RunQueryOrFail(duckdb_connection con, const std::string& sql, const char* ctx) {
-  std::string err;
-  ASSERT_TRUE(RunQuery(con, sql, ctx, &err)) << err;
-}
-
 std::string TrimSql(std::string s) {
   while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) {
     s.erase(s.begin());
@@ -138,24 +120,6 @@ bool RunSqlOrScript(duckdb_connection con, const std::string& sql, std::string* 
   return RunScriptStatementWise(con, sql, error_out);
 }
 
-bool ApplyEdbDdl(duckdb_connection con, const RelationMap& edb, std::string* error_out,
-                 const std::unordered_set<std::string>* varchar_value_relations,
-                 const std::unordered_set<std::string>* date_value_relations) {
-  std::vector<std::string> names;
-  names.reserve(edb.map.size());
-  for (const auto& kv : edb.map) {
-    names.push_back(kv.first);
-  }
-  std::sort(names.begin(), names.end());
-
-  for (const auto& name : names) {
-    const RelationInfo& info = edb.map.at(name);
-    std::string ddl = CreateTableDdl(name, info, varchar_value_relations, date_value_relations);
-    if (!RunQuery(con, ddl, "DDL", error_out)) return false;
-  }
-  return true;
-}
-
 DuckDbResultSet FetchResult(duckdb_result* result) {
   DuckDbResultSet out;
   const idx_t ncols = duckdb_column_count(result);
@@ -202,6 +166,42 @@ std::string RowKey(const std::vector<std::string>& row, double float_tol) {
 }
 
 }  // namespace
+
+std::string SqlQuoteIdent(const std::string& id) {
+  std::string out = "\"";
+  for (char c : id) {
+    if (c == '"') {
+      out += "\"\"";
+    } else {
+      out += c;
+    }
+  }
+  out += '"';
+  return out;
+}
+
+void RunQueryOrFail(duckdb_connection con, const std::string& sql, const char* ctx) {
+  std::string err;
+  ASSERT_TRUE(RunQuery(con, sql, ctx, &err)) << err;
+}
+
+bool ApplyEdbDdl(duckdb_connection con, const RelationMap& edb, std::string* error_out,
+                 const std::unordered_set<std::string>* varchar_value_relations,
+                 const std::unordered_set<std::string>* date_value_relations) {
+  std::vector<std::string> names;
+  names.reserve(edb.map.size());
+  for (const auto& kv : edb.map) {
+    names.push_back(kv.first);
+  }
+  std::sort(names.begin(), names.end());
+
+  for (const auto& name : names) {
+    const RelationInfo& info = edb.map.at(name);
+    std::string ddl = CreateTableDdl(name, info, varchar_value_relations, date_value_relations);
+    if (!RunQuery(con, ddl, "DDL", error_out)) return false;
+  }
+  return true;
+}
 
 DuckDbSession::~DuckDbSession() {
   if (con) {
