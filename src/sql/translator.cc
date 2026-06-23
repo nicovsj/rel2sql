@@ -1112,6 +1112,29 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelDisjuncti
   return node;
 }
 
+std::vector<std::string> Translator::GetOutputColumnOrder(const std::shared_ptr<sql::ast::Sourceable>& sourceable) {
+  if (!sourceable) return {};
+  if (auto select = std::dynamic_pointer_cast<sql::ast::Select>(sourceable)) {
+    std::vector<std::string> order;
+    for (const auto& column : select->columns) {
+      auto term_selectable = std::dynamic_pointer_cast<sql::ast::TermSelectable>(column);
+      if (!term_selectable) continue;
+      if (term_selectable->HasAlias()) {
+        order.push_back(term_selectable->Alias());
+      } else if (auto col_term = std::dynamic_pointer_cast<sql::ast::Column>(term_selectable->term)) {
+        order.push_back(col_term->name);
+      }
+    }
+    return order;
+  }
+  if (auto union_expr = std::dynamic_pointer_cast<sql::ast::Union>(sourceable)) {
+    if (!union_expr->members.empty()) {
+      return GetOutputColumnOrder(union_expr->members.front());
+    }
+  }
+  return {};
+}
+
 std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelNegation>& node) {
   if (!node->formula) return nullptr;
 
@@ -1147,24 +1170,38 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelNegation>
   // Build EQ for CTEs
   auto eq = BuildEqualityForSources(cte_source_var_pairs);
 
-  // Build output columns and NOT IN tuple from CTEs (one column per var in FV)
+  // SELECT output: stable alphabetical order by variable name.
   std::vector<std::string> ordered_vars(fv.begin(), fv.end());
   std::sort(ordered_vars.begin(), ordered_vars.end());
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
-  std::vector<std::shared_ptr<sql::ast::Column>> not_in_columns;
   for (const auto& var : ordered_vars) {
     for (const auto& [cte_src, vars] : cte_source_var_pairs) {
       if (vars.count(var)) {
         auto col = std::make_shared<sql::ast::Column>(var, cte_src);
         select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col));
-        not_in_columns.push_back(col);
         break;
       }
     }
   }
 
-  // Build NOT IN subquery: SELECT * FROM F1° (formula already has correct columns)
+  // NOT IN LHS must match the negated formula's argument order (e.g. H(y,x) → (y,x), not (x,y)).
+  std::vector<std::string> not_in_var_order = GetOutputColumnOrder(formula_sourceable);
+  if (not_in_var_order.size() != fv.size()) {
+    not_in_var_order.assign(fv.begin(), fv.end());
+    std::sort(not_in_var_order.begin(), not_in_var_order.end());
+  }
+
+  std::vector<std::shared_ptr<sql::ast::Column>> not_in_columns;
+  for (const auto& var : not_in_var_order) {
+    for (const auto& [cte_src, vars] : cte_source_var_pairs) {
+      if (vars.count(var)) {
+        not_in_columns.push_back(std::make_shared<sql::ast::Column>(var, cte_src));
+        break;
+      }
+    }
+  }
+
   auto not_in_select = std::make_shared<sql::ast::Select>(
       std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::Wildcard>()},
       std::make_shared<sql::ast::From>(formula_source), true);

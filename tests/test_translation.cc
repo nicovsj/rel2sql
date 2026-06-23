@@ -596,6 +596,13 @@ TEST_F(TranslationTest, NegationFormula4) {
       "AND T1.A1 NOT IN (SELECT DISTINCT * FROM A AS T9)");
 }
 
+// not H(y,x) must test (y,x) against H, not alphabetically ordered (x,y).
+TEST_F(TranslationTest, NegationSwappedBinaryArgs) {
+  OPT_EXPECT_EQ(TranslateFormula("B(x,y) and not H(y,x)"),
+                "SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0 WHERE (T0.A2, T0.A1) NOT IN (SELECT DISTINCT * FROM H "
+                "AS T1)");
+}
+
 TEST_F(TranslationTest, NestedQuantifiers1) {
   OPT_EXPECT_EQ(TranslateFormula("exists ((y) | exists ((z) | C(x, y, z)))"), "SELECT T0.A1 AS x FROM C AS T0");
 }

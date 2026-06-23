@@ -174,6 +174,9 @@ class Translator : public BaseRelVisitor {
       const std::string& recursive_definition_name, const std::vector<std::shared_ptr<RelBinding>>& bindings,
       std::vector<std::shared_ptr<sql::ast::Source>>* out_ctes = nullptr, bool* out_ctes_are_recursive = nullptr);
 
+  // Output column names in SELECT list order (e.g. H(y,x) → {y, x}, not alphabetical).
+  static std::vector<std::string> GetOutputColumnOrder(const std::shared_ptr<sql::ast::Sourceable>& sourceable);
+
   const RelContext& context_;
   std::unordered_map<std::string, int> table_alias_prefix_counter_;
 };
