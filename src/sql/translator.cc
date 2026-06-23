@@ -551,29 +551,53 @@ Translator::FullApplSqlParts Translator::BuildFullApplSql(
   return parts;
 }
 
+std::shared_ptr<sql::ast::Sourceable> Translator::MaterializeRelationAsSet(
+    const std::shared_ptr<sql::ast::Sourceable>& sourceable) {
+  if (auto select = std::dynamic_pointer_cast<sql::ast::Select>(sourceable)) {
+    if (select->is_distinct && !select->group_by.has_value()) {
+      return sourceable;
+    }
+    if (!select->group_by.has_value()) {
+      if (select->from.has_value()) {
+        return std::make_shared<sql::ast::Select>(select->columns, select->from.value(), true);
+      }
+      return std::make_shared<sql::ast::Select>(select->columns, true);
+    }
+  }
+
+  auto source = std::make_shared<sql::ast::Source>(sourceable, GenerateTableAlias());
+  const size_t arity = GetArityForSourceable(sourceable);
+  std::vector<std::shared_ptr<sql::ast::Selectable>> cols;
+  cols.reserve(arity);
+  for (size_t i = 1; i <= arity; ++i) {
+    const std::string col_name = GetColumnNameForSourceable(sourceable, i);
+    auto column = std::make_shared<sql::ast::Column>(col_name, source);
+    cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, col_name));
+  }
+  auto from = std::make_shared<sql::ast::From>(source);
+  return std::make_shared<sql::ast::Select>(cols, from, true);
+}
+
 std::shared_ptr<sql::ast::Select> Translator::VisitAggregateRel(const std::shared_ptr<RelExpr>& expr,
                                                                 sql::ast::AggregateFunction function) {
   std::shared_ptr<sql::ast::Sourceable> expr_sql;
-  std::shared_ptr<sql::ast::Source> subquery;
 
   // Simple relation ID (e.g. sum[A]): use table directly so we get "FROM A AS T0" not an extra subquery.
   if (auto* term = dynamic_cast<RelIDTerm*>(expr.get())) {
     if (context_.IsRelation(term->id)) {
       auto ra_expr = GetExpressionFromID(*expr, term->id, false);
       expr_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(ra_expr);
-      if (expr_sql) {
-        subquery = std::make_shared<sql::ast::Source>(expr_sql, GenerateTableAlias());
-        expr->sql_expression = subquery;
-      }
     }
   }
 
   if (!expr_sql) {
     Visit(expr);
     expr_sql = ExpectSourceable(expr->sql_expression);
-    subquery = std::make_shared<sql::ast::Source>(expr_sql, GenerateTableAlias());
-    expr->sql_expression = subquery;
   }
+
+  expr_sql = MaterializeRelationAsSet(expr_sql);
+  auto subquery = std::make_shared<sql::ast::Source>(expr_sql, GenerateTableAlias());
+  expr->sql_expression = subquery;
   auto arity = expr->arity;
   std::string column_name = std::format("A{}", arity);
   auto column = std::make_shared<sql::ast::Column>(column_name, subquery);
@@ -979,6 +1003,112 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelConjuncti
   return node;
 }
 
+std::vector<std::string> Translator::GetCanonicalUnionColumnOrder(const std::set<std::string>& all_fv) {
+  std::vector<std::string> sorted(all_fv.begin(), all_fv.end());
+  std::sort(sorted.begin(), sorted.end());
+  return sorted;
+}
+
+std::unordered_map<std::string, std::shared_ptr<sql::ast::Term>> Translator::BuildTermMapFromSelect(
+    const std::shared_ptr<sql::ast::Select>& select) {
+  std::unordered_map<std::string, std::shared_ptr<sql::ast::Term>> column_map;
+  if (!select) return column_map;
+  for (const auto& column : select->columns) {
+    auto term_selectable = std::dynamic_pointer_cast<sql::ast::TermSelectable>(column);
+    if (!term_selectable || !term_selectable->term) continue;
+    std::string key;
+    if (term_selectable->HasAlias()) {
+      key = term_selectable->Alias();
+    } else if (auto col_term = std::dynamic_pointer_cast<sql::ast::Column>(term_selectable->term)) {
+      key = col_term->name;
+    } else {
+      key = term_selectable->term->ToString();
+    }
+    column_map[key] = term_selectable->term;
+  }
+  return column_map;
+}
+
+std::vector<std::string> Translator::GetOutputColumnOrder(const std::shared_ptr<sql::ast::Sourceable>& sourceable) {
+  if (!sourceable) return {};
+  if (auto select = std::dynamic_pointer_cast<sql::ast::Select>(sourceable)) {
+    std::vector<std::string> order;
+    for (const auto& column : select->columns) {
+      auto term_selectable = std::dynamic_pointer_cast<sql::ast::TermSelectable>(column);
+      if (!term_selectable) continue;
+      if (term_selectable->HasAlias()) {
+        order.push_back(term_selectable->Alias());
+      } else if (auto col_term = std::dynamic_pointer_cast<sql::ast::Column>(term_selectable->term)) {
+        order.push_back(col_term->name);
+      }
+    }
+    return order;
+  }
+  if (auto union_expr = std::dynamic_pointer_cast<sql::ast::Union>(sourceable)) {
+    if (!union_expr->members.empty()) {
+      return GetOutputColumnOrder(union_expr->members.front());
+    }
+  }
+  return {};
+}
+
+std::shared_ptr<sql::ast::Select> Translator::ProjectSourceableToVarOrder(
+    const std::shared_ptr<sql::ast::Sourceable>& member, const std::vector<std::string>& ordered_vars) {
+  auto member_select = std::dynamic_pointer_cast<sql::ast::Select>(member);
+  auto term_map = BuildTermMapFromSelect(member_select);
+
+  auto resolve_term = [&](size_t i, const std::string& var) -> std::shared_ptr<sql::ast::Term> {
+    if (auto it = term_map.find(var); it != term_map.end()) return it->second;
+    std::string positional_alias = std::format("A{}", i + 1);
+    if (auto it = term_map.find(positional_alias); it != term_map.end()) return it->second;
+    if (ordered_vars.size() == 1 && term_map.size() == 1) return term_map.begin()->second;
+    return nullptr;
+  };
+
+  bool need_wrap = false;
+  for (size_t i = 0; i < ordered_vars.size(); ++i) {
+    if (!resolve_term(i, ordered_vars[i])) {
+      need_wrap = true;
+      break;
+    }
+  }
+
+  if (need_wrap) {
+    auto source = std::make_shared<sql::ast::Source>(member, GenerateTableAlias());
+    std::vector<std::shared_ptr<sql::ast::Selectable>> cols;
+    for (const auto& var : ordered_vars) {
+      auto col = std::make_shared<sql::ast::Column>(var, source);
+      cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, var));
+    }
+    return std::make_shared<sql::ast::Select>(cols, std::make_shared<sql::ast::From>(source));
+  }
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> cols;
+  for (size_t i = 0; i < ordered_vars.size(); ++i) {
+    const auto& var = ordered_vars[i];
+    cols.push_back(std::make_shared<sql::ast::TermSelectable>(resolve_term(i, var), var));
+  }
+
+  if (member_select) {
+    std::shared_ptr<sql::ast::From> from = member_select->from.has_value() ? member_select->from.value() : nullptr;
+    if (!member_select->ctes.empty() || member_select->ctes_are_recursive) {
+      return std::make_shared<sql::ast::Select>(cols, from, member_select->ctes, member_select->is_distinct,
+                                                member_select->ctes_are_recursive);
+    }
+    return std::make_shared<sql::ast::Select>(cols, from, member_select->is_distinct);
+  }
+  return std::make_shared<sql::ast::Select>(
+      cols, std::make_shared<sql::ast::From>(std::make_shared<sql::ast::Source>(member, GenerateTableAlias())));
+}
+
+std::shared_ptr<sql::ast::Union> Translator::BuildAlignedUnion(const std::shared_ptr<sql::ast::Sourceable>& lhs,
+                                                               const std::shared_ptr<sql::ast::Sourceable>& rhs,
+                                                               const std::vector<std::string>& ordered_vars) {
+  auto left = ProjectSourceableToVarOrder(lhs, ordered_vars);
+  auto right = ProjectSourceableToVarOrder(rhs, ordered_vars);
+  return std::make_shared<sql::ast::Union>(left, right);
+}
+
 std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelDisjunction>& node) {
   if (!node->lhs || !node->rhs) return nullptr;
 
@@ -1011,8 +1141,9 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelDisjuncti
   }
 
   if (sym_diff.empty()) {
-    // Same free variables: simple UNION
-    node->sql_expression = std::make_shared<sql::ast::Union>(lhs_sourceable, rhs_sourceable);
+    // Same free variables: UNION with columns aligned by logical variable name.
+    auto ordered_vars = GetCanonicalUnionColumnOrder(all_fv);
+    node->sql_expression = BuildAlignedUnion(lhs_sourceable, rhs_sourceable, ordered_vars);
     return node;
   }
 
@@ -1110,29 +1241,6 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelDisjuncti
 
   node->sql_expression = std::make_shared<sql::ast::Union>(select_stmt1, select_stmt2, cte_sources, false);
   return node;
-}
-
-std::vector<std::string> Translator::GetOutputColumnOrder(const std::shared_ptr<sql::ast::Sourceable>& sourceable) {
-  if (!sourceable) return {};
-  if (auto select = std::dynamic_pointer_cast<sql::ast::Select>(sourceable)) {
-    std::vector<std::string> order;
-    for (const auto& column : select->columns) {
-      auto term_selectable = std::dynamic_pointer_cast<sql::ast::TermSelectable>(column);
-      if (!term_selectable) continue;
-      if (term_selectable->HasAlias()) {
-        order.push_back(term_selectable->Alias());
-      } else if (auto col_term = std::dynamic_pointer_cast<sql::ast::Column>(term_selectable->term)) {
-        order.push_back(col_term->name);
-      }
-    }
-    return order;
-  }
-  if (auto union_expr = std::dynamic_pointer_cast<sql::ast::Union>(sourceable)) {
-    if (!union_expr->members.empty()) {
-      return GetOutputColumnOrder(union_expr->members.front());
-    }
-  }
-  return {};
 }
 
 std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelNegation>& node) {

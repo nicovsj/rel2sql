@@ -274,23 +274,35 @@ TEST_F(TranslationTest, PartialApplicationSharingVariables4) {
 }
 
 TEST_F(TranslationTest, AggregateExpression1) {
-  OPT_EXPECT_EQ(TranslateExpression("sum[A]"), "SELECT SUM(T0.A1) AS A1 FROM A AS T0");
+  OPT_EXPECT_EQ(TranslateExpression("sum[A]"),
+                "SELECT SUM(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1");
 }
 
 TEST_F(TranslationTest, AggregateExpression2) {
-  OPT_EXPECT_EQ(TranslateExpression("average[A]"), "SELECT AVG(T0.A1) AS A1 FROM A AS T0");
+  OPT_EXPECT_EQ(TranslateExpression("average[A]"),
+                "SELECT AVG(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1");
 }
 
 TEST_F(TranslationTest, AggregateExpression3) {
-  OPT_EXPECT_EQ(TranslateExpression("min[A]"), "SELECT MIN(T0.A1) AS A1 FROM A AS T0");
+  OPT_EXPECT_EQ(TranslateExpression("min[A]"),
+                "SELECT MIN(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1");
 }
 
 TEST_F(TranslationTest, AggregateExpression4) {
-  OPT_EXPECT_EQ(TranslateExpression("max[A]"), "SELECT MAX(T0.A1) AS A1 FROM A AS T0");
+  OPT_EXPECT_EQ(TranslateExpression("max[A]"),
+                "SELECT MAX(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1");
 }
 
 TEST_F(TranslationTest, AggregateExpression5) {
-  OPT_EXPECT_EQ(TranslateExpression("max[B[x]]"), "SELECT T0.A1 AS x, MAX(T0.A2) AS A1 FROM B AS T0 GROUP BY T0.A1");
+  OPT_EXPECT_EQ(TranslateExpression("max[B[x]]"),
+                "SELECT T1.x, MAX(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 "
+                "GROUP BY T1.x");
+}
+
+TEST_F(TranslationTest, AggregatePartialApplicationAverage) {
+  OPT_EXPECT_EQ(TranslateExpression("average[E[x]]"),
+                "SELECT T1.x, AVG(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS x, T0.A2 AS A1 FROM E AS T0) AS T1 "
+                "GROUP BY T1.x");
 }
 
 TEST_F(TranslationTest, RelationalAbstraction1) {
@@ -667,13 +679,14 @@ TEST_F(TranslationTest, FullApplicationOnExpression1) {
 TEST_F(TranslationTest, AggregateExpression6) {
   OPT_EXPECT_EQ(
       TranslateExpression("sum[{(1,2);(3,4)}]"),
-      "SELECT SUM((CASE WHEN I0.i = 1 THEN 2 WHEN I0.i = 2 THEN 4 END)) AS A1 FROM (VALUES (1), (2)) AS I0(i)");
+      "SELECT SUM(T2.A2) AS A1 FROM (SELECT DISTINCT CASE WHEN I0.i = 1 THEN 1 WHEN I0.i = 2 THEN 3 END AS A1, "
+      "CASE WHEN I0.i = 1 THEN 2 WHEN I0.i = 2 THEN 4 END AS A2 FROM (VALUES (1), (2)) AS I0(i)) AS T2");
 }
 
 TEST_F(TranslationTest, AggregateExpression7) {
   OPT_EXPECT_EQ(TranslateExpression("max[{(1);(2);(3)}]"),
-                "SELECT MAX((CASE WHEN I0.i = 1 THEN 1 WHEN I0.i = 2 THEN 2 WHEN I0.i = 3 THEN 3 END)) AS A1 FROM "
-                "(VALUES (1), (2), (3)) AS I0(i)");
+                "SELECT MAX(T3.A1) AS A1 FROM (SELECT DISTINCT CASE WHEN I0.i = 1 THEN 1 WHEN I0.i = 2 THEN 2 WHEN "
+                "I0.i = 3 THEN 3 END AS A1 FROM (VALUES (1), (2), (3)) AS I0(i)) AS T3");
 }
 
 TEST_F(TranslationTest, RelationalAbstraction2) { OPT_EXPECT_EQ(TranslateExpression("{1}"), "SELECT 1 AS A1"); }
@@ -876,8 +889,8 @@ TEST_F(TranslationTest, NamedAttributesAggregate) {
   default_edb_map["R"] = RelationInfo({"student_id", "grade"});
   OPT_EXPECT_EQ(
       TranslateDefinition("def S {max[R[x]]}"),
-      "CREATE OR REPLACE VIEW S AS (SELECT DISTINCT T0.student_id AS x, MAX(T0.grade) AS A1 FROM R AS T0 GROUP "
-      "BY T0.student_id);");
+      "CREATE OR REPLACE VIEW S AS (SELECT DISTINCT T1.x, MAX(T1.A1) AS A1 FROM (SELECT DISTINCT T0.student_id AS "
+      "x, T0.grade AS A1 FROM R AS T0) AS T1 GROUP BY T1.x);");
 }
 
 TEST_F(TranslationTest, SingleNamedAttribute) {
@@ -914,8 +927,28 @@ TEST_F(TranslationTest, SelfComposition) {
 TEST_F(TranslationTest, FirstTransitivityComposition) {
   OPT_EXPECT_EQ(
       TranslateExpression("(x, y): B(x, y) or exists((z) | B(x, z) and B(z, y))"),
-      "SELECT T6.x AS A1, T6.y AS A2 FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0 UNION SELECT T1.A1 AS x, "
-      "T2.A2 AS y FROM B AS T1, B AS T2 WHERE T1.A2 = T2.A1) AS T6");
+      "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0 UNION SELECT T1.A1 AS A1, T2.A2 AS A2 FROM B AS T1, B AS T2 "
+      "WHERE T1.A2 = T2.A1");
+}
+
+TEST_F(TranslationTest, UnionColumnAlignmentSwappedBindings) {
+  auto unoptimized = GetSQLFromExpr("(x, y): B(x, y) or B(y, x)", default_edb_map);
+  ASSERT_TRUE(unoptimized) << "translation failed";
+  EXPECT_EQ(unoptimized->ToString(),
+            "SELECT T2.x AS A1, T2.y AS A2 FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0 UNION SELECT "
+            "T1.A2 AS x, T1.A1 AS y FROM B AS T1) AS T2");
+  OPT_EXPECT_EQ(TranslateExpression("(x, y): B(x, y) or B(y, x)"),
+                "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0 UNION SELECT T1.A2 AS A1, T1.A1 AS A2 FROM B AS T1");
+}
+
+TEST_F(TranslationTest, UnionColumnAlignmentWithJoin) {
+  RelationMap edb = CreateDefaultEDBMap();
+  edb["F"] = RelationInfo(2);
+  edb["D"] = RelationInfo(2);
+  OPT_EXPECT_EQ_EDB(
+      edb, ApplyValidatingOptimizer(GetSQLFromExpr("(x, y): exists((u) | F(x, u) and D(u, y)) or B(y, x)", edb)),
+      "SELECT T0.A1 AS A1, T1.A2 AS A2 FROM F AS T0, D AS T1 WHERE T0.A2 = T1.A1 UNION SELECT "
+      "T5.A2 AS A1, T5.A1 AS A2 FROM B AS T5");
 }
 
 TEST_F(TranslationTest, SimpleReferenceDefinition) {

@@ -104,6 +104,10 @@ class Translator : public BaseRelVisitor {
   std::shared_ptr<sql::ast::Select> VisitAggregateRel(const std::shared_ptr<RelExpr>& expr,
                                                       sql::ast::AggregateFunction function);
 
+  // Rel relations are sets; materialize as SELECT DISTINCT before aggregates consume them.
+  std::shared_ptr<sql::ast::Sourceable> MaterializeRelationAsSet(
+      const std::shared_ptr<sql::ast::Sourceable>& sourceable);
+
   std::string GenerateTableAlias(const std::string& prefix = "T");
 
   // Return the column name for the idx-th column (1-based) of a sourceable (Table, Select, Union, etc.).
@@ -174,8 +178,21 @@ class Translator : public BaseRelVisitor {
       const std::string& recursive_definition_name, const std::vector<std::shared_ptr<RelBinding>>& bindings,
       std::vector<std::shared_ptr<sql::ast::Source>>* out_ctes = nullptr, bool* out_ctes_are_recursive = nullptr);
 
+  // UNION helpers: align branch SELECT lists by logical Rel variable name (positional SQL UNION).
+  static std::vector<std::string> GetCanonicalUnionColumnOrder(const std::set<std::string>& all_fv);
+
+  static std::unordered_map<std::string, std::shared_ptr<sql::ast::Term>> BuildTermMapFromSelect(
+      const std::shared_ptr<sql::ast::Select>& select);
+
   // Output column names in SELECT list order (e.g. H(y,x) → {y, x}, not alphabetical).
   static std::vector<std::string> GetOutputColumnOrder(const std::shared_ptr<sql::ast::Sourceable>& sourceable);
+
+  std::shared_ptr<sql::ast::Select> ProjectSourceableToVarOrder(const std::shared_ptr<sql::ast::Sourceable>& member,
+                                                                const std::vector<std::string>& ordered_vars);
+
+  std::shared_ptr<sql::ast::Union> BuildAlignedUnion(const std::shared_ptr<sql::ast::Sourceable>& lhs,
+                                                     const std::shared_ptr<sql::ast::Sourceable>& rhs,
+                                                     const std::vector<std::string>& ordered_vars);
 
   const RelContext& context_;
   std::unordered_map<std::string, int> table_alias_prefix_counter_;
