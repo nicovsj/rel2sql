@@ -68,3 +68,12 @@ benchmarks/TPCH/out/explain/
 
 # Local TPC-H DuckDB files (see benchmarks/TPCH/data/README.md)
 benchmarks/TPCH/data/*.duckdb
+
+# Rel engine server runtime files
+.rel_engine.sock
+.rel_engine.pid
+.rel_engine.log
+.corpus_build.log
+
+# Local corpus build output (regenerate with task corpus:build; not versioned)
+tests/generator/corpus/
