@@ -31,13 +31,16 @@ build --per_file_copt='bazel-out/.*@-w'
 
 #--- Global platform-specific configuration ---
 
-# Enable platform-specific configs for regular builds (but not WASM)
+# Always apply host platform configs (e.g. build:macos). Needed so plain `bazel build`
+# uses the pinned CLT SDK; otherwise Xcode's default SDK breaks Abseil C++ modules.
+build --enable_platform_specific_config
+
+# Back-compat alias (task/CI historically passed --config=default for the line above).
 build:default --enable_platform_specific_config
 
-# macOS: pinned CLT SDK for consistent headers/modules with this Bazel/Abseil stack.
-# If MacOSX14.5.sdk is missing, override in user.bazelrc, e.g. use
-# .../SDKs/MacOSX.sdk (symlink) or the path from `xcrun --sdk macosx --show-sdk-path`.
-# See README.md "Troubleshooting".
+# macOS: prefer Command Line Tools over Xcode so headers/module maps stay consistent.
+# If MacOSX14.5.sdk is missing, override in user.bazelrc — see README.md "Troubleshooting".
+build:macos --action_env=DEVELOPER_DIR=/Library/Developer/CommandLineTools
 build:macos --cxxopt='-isysroot/Library/Developer/CommandLineTools/SDKs/MacOSX14.5.sdk'
 
 #--- Global debug configuration ---
@@ -58,6 +61,9 @@ build:debug --spawn_strategy=local
 build:debug --cxxopt='-Werror=uninitialized'  # Treat uninitialized as errors
 
 #--- Global Emscripten configuration ---
+
+# WASM uses Emscripten's toolchain/sysroot; do not apply build:macos -isysroot.
+build:emcc --noenable_platform_specific_config
 
 # Enable CC toolchain resolution
 build:emcc --incompatible_enable_cc_toolchain_resolution

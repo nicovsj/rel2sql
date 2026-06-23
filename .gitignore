@@ -60,3 +60,12 @@ compile_commands.json
 .db/
 
 .env
+
+# Rel engine server runtime files
+.rel_engine.sock
+.rel_engine.pid
+.rel_engine.log
+.corpus_build.log
+
+# Local corpus build output (regenerate with task corpus:build; not versioned)
+tests/generator/corpus/
