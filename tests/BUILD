@@ -19,8 +19,8 @@ cc_library(
     hdrs = ["duckdb_exec.h"],
     includes = ["."],
     deps = [
-        ":duckdb_session",
         "//:rel2sql",
+        "//third_party/duckdb:duckdb",
         "@googletest//:gtest",
     ],
 )
@@ -32,6 +32,7 @@ cc_library(
     hdrs = ["generator/duckdb_session.h"],
     includes = ["."],
     deps = [
+        ":duckdb_exec",
         "//:rel2sql",
         "//third_party/duckdb:duckdb",
         "@googletest//:gtest",
