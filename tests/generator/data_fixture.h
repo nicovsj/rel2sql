@@ -18,6 +18,11 @@ class DataFixture {
  public:
   static DataFixture Create(const SuiteConfig& config, const RelationMap& schema, size_t rows_per_table = 10);
 
+  // Same EDB rows for every program (seed/index fixed). Used by the golden corpus oracle.
+  static DataFixture CreateCanonical(const RelationMap& edb_map, size_t rows_per_table = 10);
+
+  static DataFixture FromRows(const RelationMap& schema, const std::unordered_map<std::string, TableRows>& rows);
+
   const RelationMap& Schema() const { return schema_; }
   const std::unordered_map<std::string, TableRows>& Rows() const { return rows_; }
 

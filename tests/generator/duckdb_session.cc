@@ -66,6 +66,39 @@ bool LooksLikeSelectStatement(const std::string& sql) {
   return true;
 }
 
+std::vector<std::string> SplitSqlStatements(const std::string& script) {
+  std::vector<std::string> statements;
+  std::string cur;
+  cur.reserve(script.size());
+  for (char c : script) {
+    if (c == ';') {
+      std::string stmt = TrimSql(cur);
+      if (!stmt.empty()) {
+        statements.push_back(std::move(stmt));
+      }
+      cur.clear();
+    } else {
+      cur.push_back(c);
+    }
+  }
+  std::string tail = TrimSql(cur);
+  if (!tail.empty()) {
+    statements.push_back(std::move(tail));
+  }
+  return statements;
+}
+
+bool LooksLikeSelectStatement(const std::string& sql) {
+  const std::string trimmed = TrimSql(sql);
+  if (trimmed.size() < 6) return false;
+  for (size_t i = 0; i < 6; ++i) {
+    if (std::toupper(static_cast<unsigned char>(trimmed[i])) != "SELECT"[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void ApplyEdbDdl(duckdb_connection con, const RelationMap& edb) {
   std::string err;
   ASSERT_TRUE(ApplyEdbDdl(con, edb, &err)) << err;
