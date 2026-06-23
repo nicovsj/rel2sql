@@ -12,6 +12,11 @@ namespace rel2sql::generator {
 namespace {
 
 constexpr uint64_t kDataFixtureSalt = 0xD4FA7A5EULL;
+constexpr uint64_t kCanonicalFixtureSeed = 0;
+constexpr size_t kCanonicalFixtureProgramIndex = 0;
+// Small integer domain keeps generated joins from being mostly empty.
+constexpr int kFixtureValueMin = 1;
+constexpr int kFixtureValueMax = 5;
 
 void InsertRows(duckdb_connection con, const std::string& table_name, const RelationInfo& info, const TableRows& rows) {
   for (const auto& row : rows) {
@@ -54,13 +59,28 @@ DataFixture DataFixture::Create(const SuiteConfig& config, const RelationMap& sc
       std::vector<double> row;
       row.reserve(static_cast<size_t>(info.arity));
       for (int c = 0; c < info.arity; ++c) {
-        row.push_back(static_cast<double>(rng.UniformInt(0, 20)));
+        row.push_back(static_cast<double>(rng.UniformInt(kFixtureValueMin, kFixtureValueMax)));
       }
       table_rows.push_back(std::move(row));
     }
     fixture.rows_[name] = std::move(table_rows);
   }
 
+  return fixture;
+}
+
+DataFixture DataFixture::CreateCanonical(const RelationMap& edb_map, size_t rows_per_table) {
+  SuiteConfig config;
+  config.seed = kCanonicalFixtureSeed;
+  config.program_index = kCanonicalFixtureProgramIndex;
+  config.edb_map = edb_map;
+  return Create(config, edb_map, rows_per_table);
+}
+
+DataFixture DataFixture::FromRows(const RelationMap& schema, const std::unordered_map<std::string, TableRows>& rows) {
+  DataFixture fixture;
+  fixture.schema_ = schema;
+  fixture.rows_ = rows;
   return fixture;
 }
 

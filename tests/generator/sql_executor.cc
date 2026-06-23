@@ -3,6 +3,7 @@
 #include <cstring>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
 
 #include "duckdb.h"
 #include "generator/duckdb_session.h"
@@ -61,12 +62,22 @@ ResultSet SqlExecutor::RunQuery(const std::string& sql, const DataFixture& fixtu
 }
 
 ResultSet SqlExecutor::RunProgram(const std::string& sql_script, const DataFixture& fixture,
-                                  const std::string& output_def) {
+                                  const std::string& output_def, const RelationMap* output_schema) {
   testing::DuckDbConnection db;
   fixture.LoadInto(db.con);
+
+  const auto statements = testing::SplitSqlStatements(sql_script);
+  if (!statements.empty() && testing::LooksLikeSelectStatement(statements.back())) {
+    for (size_t i = 0; i + 1 < statements.size(); ++i) {
+      testing::RunQueryOrFail(db.con, statements[i], "setup");
+    }
+    return ReadResult(db.con, statements.back());
+  }
+
   testing::RunSqlOrScript(db.con, sql_script);
 
-  const int arity = fixture.Schema().map.at(output_def).arity;
+  const auto& schema_map = output_schema != nullptr ? output_schema->map : fixture.Schema().map;
+  const int arity = schema_map.at(output_def).arity;
   std::ostringstream query;
   query << "SELECT * FROM " << testing::SqlQuoteIdent(output_def) << " ORDER BY 1";
   for (int i = 1; i < arity; ++i) {

@@ -23,6 +23,11 @@ bool NearlyEqualDoubles(const std::string& lhs, const std::string& rhs, double e
 
 ResultSet Canonicalize(ResultSet in);
 
+bool IsEmpty(const ResultSet& rs);
+
+// Log when a result has no rows (comparison may be inconclusive).
+void WarnIfEmptyResult(std::ostream& os, const std::string& label, const ResultSet& rs);
+
 }  // namespace rel2sql::generator
 
 #endif  // REL2SQL_TESTS_GENERATOR_RESULT_SET_H_

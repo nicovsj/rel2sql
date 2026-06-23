@@ -2,6 +2,7 @@
 #define REL2SQL_TESTS_GENERATOR_DUCKDB_SESSION_H_
 
 #include <string>
+#include <vector>
 
 #include "duckdb.h"
 #include "rel_ast/relation_info.h"
@@ -13,6 +14,8 @@ std::string CreateTableDdl(const std::string& name, const RelationInfo& info);
 
 void RunQueryOrFail(duckdb_connection con, const std::string& sql, const char* ctx);
 void RunSqlOrScript(duckdb_connection con, const std::string& sql);
+std::vector<std::string> SplitSqlStatements(const std::string& script);
+bool LooksLikeSelectStatement(const std::string& sql);
 void ApplyEdbDdl(duckdb_connection con, const RelationMap& edb);
 
 struct DuckDbConnection {

@@ -57,6 +57,13 @@ inline uint64_t MixSeed(uint64_t seed, size_t program_index, uint64_t attempt = 
   return x;
 }
 
+// Seed for program generation; node_budget is mixed in so budget sweeps explore distinct shapes.
+inline uint64_t ProgramGenerationSeed(uint64_t seed, size_t program_index, size_t node_budget, uint64_t attempt = 0) {
+  uint64_t x = MixSeed(seed, program_index, attempt);
+  x ^= static_cast<uint64_t>(node_budget) + 0x517cc1b727220a95ULL + (x << 6) + (x >> 2);
+  return x;
+}
+
 }  // namespace rel2sql::generator
 
 #endif  // REL2SQL_TESTS_GENERATOR_RNG_H_

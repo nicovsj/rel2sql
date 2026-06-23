@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <iostream>
 #include <sstream>
 
 namespace rel2sql::generator {
@@ -44,6 +45,18 @@ bool ResultSet::operator==(const ResultSet& other) const {
 ResultSet Canonicalize(ResultSet in) {
   std::sort(in.rows.begin(), in.rows.end(), [](const Row& a, const Row& b) { return a.values < b.values; });
   return in;
+}
+
+bool IsEmpty(const ResultSet& rs) { return rs.rows.empty(); }
+
+void WarnIfEmptyResult(std::ostream& os, const std::string& label, const ResultSet& rs) {
+  if (!IsEmpty(rs)) return;
+  os << "WARNING: " << label << " returned 0 rows (";
+  for (size_t i = 0; i < rs.column_names.size(); ++i) {
+    if (i > 0) os << ", ";
+    os << rs.column_names[i];
+  }
+  os << ") — comparison may be inconclusive\n";
 }
 
 }  // namespace rel2sql::generator
