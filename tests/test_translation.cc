@@ -960,6 +960,13 @@ TEST_F(TranslationTest, ExistentialNotBoundingAllVariables) {
   OPT_EXPECT_EQ(TranslateFormula("exists((y) | A(x) and D(y))"), "SELECT T0.A1 AS x FROM A AS T0, D AS T1");
 }
 
+TEST_F(TranslationTest, ConjunctionOfExistentialsWithSameBoundName) {
+  // Each exists binds its own y; they must not be equated when the conjuncts are joined.
+  const std::string sql = TranslateFormula("exists((y) | A(x)) and exists((y) | D(x))");
+  ASSERT_FALSE(sql.empty());
+  ::rel2sql::testing::AssertExecutesInDuckDB(sql, default_edb_map);
+}
+
 TEST_F(TranslationTest, RecursiveDefinition) {
   default_edb_map["A"] = RelationInfo(1);
   default_edb_map["B"] = RelationInfo(1);

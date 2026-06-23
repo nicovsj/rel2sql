@@ -1514,7 +1514,7 @@ std::shared_ptr<sql::ast::Condition> Translator::EqualityShorthandRel(const std:
     if (!node) continue;
     auto source = std::dynamic_pointer_cast<sql::ast::Source>(node->sql_expression);
     if (!source) continue;
-    for (const auto& var : node->variables) {
+    for (const auto& var : node->free_variables) {
       repetition_map[var].push_back(node);
     }
   }
