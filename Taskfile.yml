@@ -22,6 +22,71 @@ tasks:
     cmds:
       - task: test
 
+  test:raicode:
+    desc: Run RAICode dual-path correctness tests (requires submodule + REL2SQL_ENABLE_RAICODE=1)
+    cmds:
+      - bazel test --config=default //tests:test_generated_correctness_raicode --test_tag_filters=requires-raicode
+
+  rel-engine:start:
+    desc: Start RAICode Rel engine in foreground (logs in terminal; Ctrl+C to stop)
+    cmds:
+      - bash scripts/rel_engine_start.sh
+
+  rel-engine:ensure:
+    desc: Start Rel engine in background if not already running (for corpus:build)
+    cmds:
+      - bash scripts/rel_engine_start.sh --background
+
+  rel-engine:stop:
+    desc: Stop the Rel engine server
+    cmds:
+      - bash scripts/rel_engine_stop.sh
+
+  rel-engine:status:
+    desc: Check Rel engine server status
+    cmds:
+      - bash scripts/rel_engine_status.sh
+
+  rel-engine:ping:
+    desc: Ping the Rel engine server (connectivity check)
+    cmds:
+      - bash scripts/rel_engine_ping.sh
+
+  rel-engine:run:
+    desc: Run arbitrary Rel program via RAICode (file path or - for stdin)
+    cmds:
+      - bash scripts/rel_run.sh {{.CLI_ARGS}}
+
+  corpus:build:
+    desc: Build golden Rel-oracle corpus (requires rel-engine server)
+    deps: ["rel-engine:ensure"]
+    cmds:
+      - |
+        export REL2SQL_ENABLE_RAICODE=1
+        export REL2SQL_REL_ENGINE_SOCKET="${PWD}/.rel_engine.sock"
+        export JULIA_PROJECT="${PWD}/third_party/raicode"
+        bazel run --config=default //tests:build_corpus
+
+  corpus:retry-mismatches:
+    desc: Re-evaluate mismatches.jsonl and promote fixed cases into corpus shards
+    deps: ["rel-engine:ensure"]
+    cmds:
+      - |
+        export REL2SQL_ENABLE_RAICODE=1
+        export REL2SQL_REL_ENGINE_SOCKET="${PWD}/.rel_engine.sock"
+        export JULIA_PROJECT="${PWD}/third_party/raicode"
+        bazel run --config=default //tests:retry_mismatches
+
+  corpus:verify-sample:
+    desc: Spot-check corpus via test_corpus_correctness (after corpus is built)
+    cmds:
+      - task: test:corpus
+
+  test:corpus:
+    desc: Run golden corpus correctness tests (no Julia required)
+    cmds:
+      - bazel test --config=default //tests:test_corpus_correctness
+
   test:all:
     desc: Run all tests
     cmds:

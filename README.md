@@ -143,7 +143,7 @@ See [`wasm/TESTING.md`](wasm/TESTING.md).
 
 ## Troubleshooting
 
-- **macOS SDK / header errors:** The shared [`.bazelrc`](.bazelrc) pins `-isysroot` to Command Line Tools **`MacOSX14.5.sdk`** for consistent builds with the pinned toolchain. If that directory is missing, install CLT or add a **user** `.bazelrc` / `user.bazelrc` line overriding `build:macos` — e.g. `.../SDKs/MacOSX.sdk` or the path from `xcrun --sdk macosx --show-sdk-path`. (Using a much newer SDK than the pin can surface different Clang/module behavior; prefer matching the pin when possible.)
+- **macOS SDK / Abseil module errors** (e.g. `does not depend on a module exporting 'stdint.h'`): After a macOS or Xcode upgrade, Bazel may pick up Xcode's SDK while Abseil's C++ module maps expect a consistent sysroot — mixing Command Line Tools and Xcode paths breaks the build. [`.bazelrc`](.bazelrc) enables the macOS config automatically and pins `-isysroot` to **`MacOSX14.5.sdk`** under Command Line Tools. Plain `bazel build` / `bazel test` should work; `--config=default` is optional (legacy alias). WASM builds pass `--config=emcc`, which opts out of the macOS pin. If `MacOSX14.5.sdk` is missing, install CLT or override `build:macos` in `user.bazelrc` (see path from `xcrun --sdk macosx --show-sdk-path`). If headers still look stale after an SDK change, try `bazel fetch --configure --force`.
 - **Debugging under Bazel on macOS:** [bazelbuild/bazel#6327](https://github.com/bazelbuild/bazel/issues/6327).
 - **LLDB and Bazel:** Use `bazel info execution_root` and set LLDB’s platform working directory to that path if source maps / paths misbehave; see [`.lldbinit.example`](.lldbinit.example).
 
