@@ -65,7 +65,7 @@ tasks:
         export REL2SQL_ENABLE_RAICODE=1
         export REL2SQL_REL_ENGINE_SOCKET="${PWD}/.rel_engine.sock"
         export JULIA_PROJECT="${PWD}/third_party/raicode"
-        bazel run --config=default //tests:build_corpus
+        bazel run --config=default //tests:build_corpus -- {{.CLI_ARGS}}
 
   corpus:retry-mismatches:
     desc: Re-evaluate mismatches.jsonl and promote fixed cases into corpus shards
@@ -75,7 +75,7 @@ tasks:
         export REL2SQL_ENABLE_RAICODE=1
         export REL2SQL_REL_ENGINE_SOCKET="${PWD}/.rel_engine.sock"
         export JULIA_PROJECT="${PWD}/third_party/raicode"
-        bazel run --config=default //tests:retry_mismatches
+        bazel run --config=default //tests:retry_mismatches -- {{.CLI_ARGS}}
 
   corpus:verify-sample:
     desc: Spot-check corpus via test_corpus_correctness (after corpus is built)

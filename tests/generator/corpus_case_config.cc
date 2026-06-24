@@ -61,16 +61,21 @@ std::vector<ProfilePreset> CorpusProfilePresets() {
           {"aggregates", AggregatesCorpusProfile()}};
 }
 
-std::vector<uint64_t> CorpusBuildSeeds() { return {1}; }
+std::vector<uint64_t> CorpusBuildSeeds() { return {1, 7, 42, 99}; }
 
 std::vector<size_t> CorpusBuildProgramIndices() {
   std::vector<size_t> indices;
-  indices.reserve(84);
-  for (size_t i = 0; i < 84; ++i) indices.push_back(i);
+  indices.reserve(kCorpusBuildProgramIndexCount);
+  for (size_t i = 0; i < kCorpusBuildProgramIndexCount; ++i) indices.push_back(i);
   return indices;
 }
 
 std::vector<size_t> CorpusBuildBudgets() { return {6, 8, 10, 12, 14, 16}; }
+
+size_t CorpusBuildGridSlotCount() {
+  return CorpusProfilePresets().size() * CorpusBuildSeeds().size() * CorpusBuildProgramIndices().size() *
+         CorpusBuildBudgets().size();
+}
 
 std::optional<GeneratorProfile> ProfileByName(const std::string& name) {
   for (const auto& preset : CorpusProfilePresets()) {

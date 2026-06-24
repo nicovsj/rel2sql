@@ -16,7 +16,7 @@
 namespace rel2sql::generator {
 namespace {
 
-constexpr int kRelEngineRecvTimeoutSec = 300;
+constexpr int kRelEngineRecvTimeoutSec = 240;
 
 void SetSocketTimeout(int fd) {
   timeval tv{};

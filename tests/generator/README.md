@@ -74,7 +74,7 @@ Protocol: NDJSON over `REL2SQL_REL_ENGINE_SOCKET` (default `$REPO_ROOT/.rel_engi
 
 `RelEngine::Run` uses the socket when available; otherwise falls back to one-shot [`run_rel_program.jl`](run_rel_program.jl).
 
-On Rel failures, the server returns RAICode compiler **problem reports** (not just `KeyError`) in the JSON `error` field, plus a per-def availability summary when the output relation is missing. Restart `task rel-engine:start` after changing `rel_engine_core.jl`.
+On Rel failures, the server returns RAICode compiler **problem reports** (not just `KeyError`) in the JSON `error` field, plus a per-def availability summary when the output relation is missing. After a failed query the server resets the embedded database so the next corpus slot does not hang. Restart `task rel-engine:start` after changing `rel_engine_core.jl`.
 
 The golden corpus uses a **canonical EDB fixture** (`DataFixture::CreateCanonical`) — the same 10-row default tables for every case. The rel-engine server loads EDB once and reuses it across requests (only the generated program is reinstalled each time).
 
@@ -123,7 +123,8 @@ Directory: [`corpus/v1/`](corpus/v1/) (local build output; **not** checked into 
 
 ```sh
 task rel-engine:ensure   # or task rel-engine:start in another terminal
-task corpus:build
+task corpus:build -- --resume   # append new grid slots (default when shards exist)
+task corpus:build -- --fresh    # wipe shards and rebuild from scratch
 task rel-engine:stop   # optional
 ```
 
@@ -140,7 +141,7 @@ task corpus:retry-mismatches
 
 Passing cases are appended to corpus shards; `mismatches.jsonl` and `manifest.json` are updated in place.
 
-The builder grid: **1 seed × 84 program indices × 6 budgets × 1 `full` profile** — 504 candidate slots. Only cases that **translate, execute on Rel, match SQL, and have a novel program text** are written to shards (duplicate program text is skipped so budget sweeps do not inflate coverage).
+The builder grid: **4 seeds × 128 program indices × 6 budgets × 4 profile presets** (`full`, `quantifiers`, `expr_algebra`, `aggregates`) — 12,288 candidate slots. Only cases that **translate, execute on Rel, match SQL, and have a novel program text** are written to shards (duplicate program text is skipped so budget sweeps do not inflate coverage).
 
 Case ids look like `s1_i12_b10_pfull`. Multi-def programs use `Gen0`, `Gen1`, … with the **last** def as the oracle output (e.g. `Gen0 → Gen1 → Gen2`, where `Gen2` references only `Gen1`). The dependency graph must be connected with the output def at the top.
 

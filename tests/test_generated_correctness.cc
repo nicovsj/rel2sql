@@ -70,7 +70,7 @@ TEST(GeneratedCorrectnessTest, RejectsArityMismatchApplications) {
 
 TEST(GeneratedCorrectnessTest, OutputDefHasConnectedDependencyGraph) {
   const auto profile = FullCorpusProfile();
-  for (size_t index = 0; index < 84; ++index) {
+  for (size_t index = 0; index < kCorpusBuildProgramIndexCount; ++index) {
     for (size_t budget : {6, 8, 10, 12, 14, 16}) {
       SuiteConfig config = MakeConfig(1, index, budget, profile);
       SCOPED_TRACE("index=" + std::to_string(index) + " budget=" + std::to_string(budget));
@@ -85,7 +85,7 @@ TEST(GeneratedCorrectnessTest, OutputDefHasConnectedDependencyGraph) {
 
 TEST(GeneratedCorrectnessTest, GeneratedProgramsHaveValidApplicationArity) {
   const auto profile = FullCorpusProfile();
-  for (size_t index = 0; index < 84; ++index) {
+  for (size_t index = 0; index < kCorpusBuildProgramIndexCount; ++index) {
     for (size_t budget : {6, 8, 10, 12, 14, 16}) {
       SuiteConfig config = MakeConfig(1, index, budget, profile);
       SCOPED_TRACE("index=" + std::to_string(index) + " budget=" + std::to_string(budget));
@@ -267,12 +267,20 @@ TEST(GeneratedCorrectnessTest, CorpusProfilePresetsAreRegistered) {
   EXPECT_EQ(presets[3].name, "aggregates");
 }
 
+TEST(GeneratedCorrectnessTest, CorpusBuildGridIsConfigured) {
+  EXPECT_EQ(CorpusBuildSeeds().size(), 4u);
+  EXPECT_EQ(CorpusBuildProgramIndices().size(), kCorpusBuildProgramIndexCount);
+  EXPECT_EQ(CorpusBuildBudgets().size(), 6u);
+  EXPECT_EQ(CorpusProfilePresets().size(), 4u);
+  EXPECT_EQ(CorpusBuildGridSlotCount(), 4u * 4u * kCorpusBuildProgramIndexCount * 6u);
+}
+
 TEST(GeneratedCorrectnessTest, NoStaticallyFalseComparisonsInFullProfile) {
   EXPECT_TRUE(ProgramContainsStaticallyFalseComparison("def Gen3 {(x, y, z): (C(x, y, z) and z - z = 1)}"));
   EXPECT_FALSE(ProgramContainsStaticallyFalseComparison("def Gen3 {(x, y, z): (C(x, y, z) and z - z = 0)}"));
   EXPECT_FALSE(ProgramContainsStaticallyFalseComparison("def Gen3 {(x, y, z): (C(x, y, z) and x - y = 1)}"));
 
-  for (size_t index = 0; index < 84; ++index) {
+  for (size_t index = 0; index < kCorpusBuildProgramIndexCount; ++index) {
     for (size_t budget : {6, 8, 10, 12, 14}) {
       const auto config = MakeConfig(1, index, budget, FullCorpusProfile());
       const auto program = GenerateProgram(config);
@@ -295,7 +303,7 @@ TEST(GeneratedCorrectnessTest, RelEngineJsonErrorIncludesCompilerReport) {
 }
 
 TEST(GeneratedCorrectnessTest, ChainedDefsDoNotRepeatVarsInIdbAtoms) {
-  for (size_t index = 0; index < 84; ++index) {
+  for (size_t index = 0; index < kCorpusBuildProgramIndexCount; ++index) {
     for (size_t budget : {6, 8, 10, 12, 14, 16}) {
       const auto config = MakeConfig(1, index, budget, FullCorpusProfile());
       const auto program = GenerateProgram(config);
@@ -305,7 +313,7 @@ TEST(GeneratedCorrectnessTest, ChainedDefsDoNotRepeatVarsInIdbAtoms) {
 }
 
 TEST(GeneratedCorrectnessTest, SingleDefOutputIsGen0) {
-  for (size_t index = 0; index < 84; ++index) {
+  for (size_t index = 0; index < kCorpusBuildProgramIndexCount; ++index) {
     for (size_t budget : {6, 8, 10, 12, 14, 16}) {
       const auto config = MakeConfig(1, index, budget, FullCorpusProfile());
       const auto program = GenerateProgram(config);

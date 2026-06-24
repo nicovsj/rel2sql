@@ -8,6 +8,7 @@
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 
 #include "generator/raicode_paths.h"
 #include "generator/rel_engine_client.h"
@@ -133,6 +134,13 @@ ResultSet RelEngine::Run(const std::string& rel_program, const DataFixture& fixt
   if (RelEngineClient* client = TryGetClient()) {
     try {
       return client->Run(rel_program, fixture, output_def, OutputArity(fixture, output_def, output_schema));
+    } catch (const std::runtime_error& ex) {
+      const bool app_error = std::string_view(ex.what()).starts_with("RAICode runner error:");
+      if (!app_error) {
+        std::lock_guard<std::mutex> lock(g_client_mutex);
+        g_client.reset();
+      }
+      throw;
     } catch (...) {
       std::lock_guard<std::mutex> lock(g_client_mutex);
       g_client.reset();

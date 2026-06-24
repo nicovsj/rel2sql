@@ -1,5 +1,5 @@
 // Builds the golden Rel-oracle corpus via the persistent Rel engine server.
-// Usage: build_corpus [--output-dir PATH] [--shard-size N] [--resume] [--max-cases N]
+// Usage: build_corpus [--output-dir PATH] [--shard-size N] [--resume] [--fresh] [--max-cases N]
 
 #include <algorithm>
 #include <filesystem>
@@ -31,6 +31,7 @@ struct BuildOptions {
   std::filesystem::path output_dir = CorpusV1Root();
   size_t shard_size = 150;
   bool resume = false;
+  bool fresh = false;
   std::optional<size_t> max_cases;
 };
 
@@ -40,6 +41,8 @@ BuildOptions ParseArgs(int argc, char** argv) {
     const std::string arg = argv[i];
     if (arg == "--resume") {
       opts.resume = true;
+    } else if (arg == "--fresh") {
+      opts.fresh = true;
     } else if (arg == "--output-dir" && i + 1 < argc) {
       opts.output_dir = argv[++i];
     } else if (arg == "--shard-size" && i + 1 < argc) {
@@ -136,15 +139,30 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  const size_t grid_slots = CorpusProfilePresets().size() * CorpusBuildSeeds().size() *
-                            CorpusBuildProgramIndices().size() * CorpusBuildBudgets().size();
+  const size_t grid_slots = CorpusBuildGridSlotCount();
   std::cerr << "corpus build starting (fingerprint=" << kCorpusGeneratorFingerprint << ", grid=" << grid_slots
             << " slots)\n";
   std::cerr << "first RAICode query often takes 2-3 minutes; watch progress in .rel_engine.log\n" << std::flush;
 
   std::filesystem::create_directories(opts.output_dir);
 
-  if (!opts.resume) {
+  const bool has_shards = [&]() {
+    if (!std::filesystem::exists(opts.output_dir)) return false;
+    for (const auto& entry : std::filesystem::directory_iterator(opts.output_dir)) {
+      if (!entry.is_regular_file()) continue;
+      const auto name = entry.path().filename().string();
+      if (name.starts_with("shard_") && name.ends_with(".jsonl")) return true;
+    }
+    return false;
+  }();
+
+  if (has_shards && !opts.resume && !opts.fresh) {
+    std::cerr << "corpus shards already exist; pass --resume to append new grid slots or --fresh to rebuild "
+                 "from scratch\n";
+    return 1;
+  }
+
+  if (opts.fresh || (!opts.resume && !has_shards)) {
     for (const auto& entry : std::filesystem::directory_iterator(opts.output_dir)) {
       if (entry.path().extension() == ".jsonl") {
         const auto name = entry.path().filename().string();
