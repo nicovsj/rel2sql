@@ -237,6 +237,7 @@ cc_test(
     ],
     deps = [
         ":duckdb_exec",
+        ":duckdb_session",
         ":test_common",
         "//:rel2sql",
         "@googletest//:gtest_main",
