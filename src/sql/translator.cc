@@ -120,8 +120,36 @@ std::shared_ptr<sql::ast::Expression> Translator::BuildLiteralRelationAbstractio
   return std::static_pointer_cast<sql::ast::Expression>(select);
 }
 
+namespace {
+
+bool IsLiteralUnionMember(const std::shared_ptr<RelExpr>& expr) {
+  if (!expr) return false;
+  if (auto product = std::dynamic_pointer_cast<RelProduct>(expr)) {
+    if (product->exprs.empty()) return false;
+    for (const auto& child : product->exprs) {
+      if (!child || !child->constant.has_value()) return false;
+    }
+    return true;
+  }
+  if (auto lit = std::dynamic_pointer_cast<RelLiteral>(expr)) {
+    return lit->constant.has_value();
+  }
+  return false;
+}
+
+bool IsLiteralOnlyUnion(const std::shared_ptr<RelUnion>& node) {
+  if (node->exprs.empty()) return false;
+  const size_t arity = node->exprs[0]->arity;
+  for (const auto& expr : node->exprs) {
+    if (!expr || expr->arity != arity || !IsLiteralUnionMember(expr)) return false;
+  }
+  return true;
+}
+
+}  // namespace
+
 std::shared_ptr<RelUnion> Translator::Visit(const std::shared_ptr<RelUnion>& node) {
-  if (node->has_only_literal_values) {
+  if (node->has_only_literal_values || IsLiteralOnlyUnion(node)) {
     node->sql_expression = BuildLiteralRelationAbstractionRel(node);
     return node;
   }
@@ -131,76 +159,47 @@ std::shared_ptr<RelUnion> Translator::Visit(const std::shared_ptr<RelUnion>& nod
     throw std::runtime_error("Relation abstraction with no member");
   }
 
-  Visit(node->exprs[0]);
-
-  auto first_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(node->exprs[0]->sql_expression);
-  if (!first_sql) return node;
-
-  auto first_source = std::make_shared<sql::ast::Source>(first_sql, GenerateTableAlias());
-  node->exprs[0]->sql_expression = first_source;
+  for (auto& expr : node->exprs) {
+    Visit(expr);
+    if (!ExpectSourceable(expr->sql_expression)) {
+      throw std::runtime_error("Relation abstraction member did not translate to Sourceable");
+    }
+  }
 
   if (node->exprs.size() == 1) {
-    node->sql_expression = std::static_pointer_cast<sql::ast::Expression>(first_sql);
+    node->sql_expression =
+        std::static_pointer_cast<sql::ast::Expression>(ExpectSourceable(node->exprs[0]->sql_expression));
     return node;
   }
 
-  // Multi-expression: CROSS JOIN each expr's subquery with VALUES(1),(2),... and CASE to pick branch per column.
-  std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
-  from_sources.push_back(first_source);
-
-  std::vector<std::vector<sql::ast::constant_t>> index_values;
-  index_values.push_back({1});
-
-  for (size_t i = 1; i < node->exprs.size(); i++) {
-    Visit(node->exprs[i]);
-
-    auto child_sql = std::dynamic_pointer_cast<sql::ast::Sourceable>(node->exprs[i]->sql_expression);
-
-    if (!child_sql) {
-      throw std::runtime_error("Multi-expression relation abstraction: member did not translate to Sourceable");
+  // Multi-expression: UNION each branch independently (do not AND branch filters via cross join).
+  std::set<std::string> all_fv;
+  for (const auto& expr : node->exprs) {
+    for (const auto& v : expr->free_variables) {
+      all_fv.insert(v);
     }
-
-    auto child_source = std::make_shared<sql::ast::Source>(child_sql, GenerateTableAlias());
-    node->exprs[i]->sql_expression = child_source;
-    from_sources.push_back(child_source);
-    index_values.push_back({static_cast<int>(i + 1)});
   }
 
-  auto values_expr = std::make_shared<sql::ast::Values>(index_values);
-  auto values_alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias("I"), std::vector<std::string>{"i"});
-  auto values_source = std::make_shared<sql::ast::Source>(values_expr, values_alias);
-  from_sources.push_back(values_source);
-
-  auto index_col = std::make_shared<sql::ast::Column>("i", values_source);
-  size_t arity = node->exprs[0]->arity;
-
-  // Like the old VisitRelAbsLogic: EqualityShorthand + VarListShorthand, then CASE for arity columns.
-  std::vector<RelNode*> expr_ptrs;
-  for (auto& e : node->exprs) expr_ptrs.push_back(e.get());
-  auto condition = EqualityShorthandRel(expr_ptrs);
-
-  std::vector<std::pair<RelNode*, std::shared_ptr<sql::ast::Source>>> node_source_pairs;
-  for (size_t j = 0; j < node->exprs.size(); j++) {
-    node_source_pairs.push_back({node->exprs[j].get(), from_sources[j]});
-  }
-  auto selects = VarListShorthandRel(node_source_pairs);
-
-  // Arity columns: CASE to pick column from the right branch.
-  for (size_t col = 0; col < arity; col++) {
-    std::vector<std::pair<std::shared_ptr<sql::ast::Condition>, std::shared_ptr<sql::ast::Term>>> cases;
-    for (size_t j = 0; j < node->exprs.size(); j++) {
-      auto column = std::make_shared<sql::ast::Column>(fmt::format("A{}", col + 1), from_sources[j]);
-      auto comparison =
-          std::make_shared<sql::ast::ComparisonCondition>(index_col, sql::ast::CompOp::EQ, static_cast<int>(j + 1));
-      cases.push_back({comparison, column});
+  const size_t arity = node->exprs[0]->arity;
+  std::vector<std::string> ordered_vars = GetOutputColumnOrder(ExpectSourceable(node->exprs[0]->sql_expression));
+  if (ordered_vars.empty()) {
+    if (all_fv.empty()) {
+      ordered_vars.reserve(arity);
+      for (size_t col = 0; col < arity; ++col) {
+        ordered_vars.push_back(fmt::format("A{}", col + 1));
+      }
+    } else {
+      ordered_vars = GetCanonicalUnionColumnOrder(all_fv);
     }
-    auto case_when = std::make_shared<sql::ast::CaseWhen>(cases);
-    selects.push_back(std::make_shared<sql::ast::TermSelectable>(case_when, fmt::format("A{}", col + 1)));
   }
 
-  auto from = std::make_shared<sql::ast::From>(from_sources, condition);
-  auto select = std::make_shared<sql::ast::Select>(selects, from);
-  node->sql_expression = std::static_pointer_cast<sql::ast::Expression>(select);
+  std::vector<std::shared_ptr<sql::ast::Sourceable>> members;
+  members.reserve(node->exprs.size());
+  for (const auto& expr : node->exprs) {
+    members.push_back(ProjectSourceableToVarOrder(ExpectSourceable(expr->sql_expression), ordered_vars));
+  }
+
+  node->sql_expression = std::make_shared<sql::ast::Union>(members);
   return node;
 }
 
