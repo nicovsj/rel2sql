@@ -65,7 +65,7 @@ Deterministic Rel programs are generated from `(seed, program_index, node_budget
 | **Manual** | `test_generated_correctness_raicode` — live Rel vs SQL per query | `task test:raicode` (needs RAICode) |
 | **Manual** | `build_corpus` — regen goldens from Rel engine | After generator/profile changes |
 
-**Golden corpus** (`tests/generator/corpus/v1/`): `manifest.json`, `shard_*.jsonl` (passing cases), `mismatches.jsonl` (SQL ≠ Rel at build time — translation bug backlog, not run in CI). Case ids: `s{seed}_i{index}_b{budget}_p{profile}` (e.g. `s1_i12_b10_pfull`). Grid: 1 seed × 84 indices × 6 budgets × `full` profile (504 candidate slots; duplicate program text is skipped at build time). Bump `kCorpusGeneratorFingerprint` in [`tests/generator/corpus_version.h`](tests/generator/corpus_version.h) when changing the generator or profile presets, then `task corpus:build`.
+**Golden corpus** (`tests/generator/corpus/v1/`): `manifest.json`, `shard_*.jsonl` (passing cases), `mismatches.jsonl` (SQL ≠ Rel at build time — translation bug backlog, not run in CI). Case ids: `s{seed}_i{index}_b{budget}_p{profile}` (e.g. `s1_i12_b10_pfull`). Grid: 4 seeds × 128 indices × 6 budgets × 4 profile presets (12,288 candidate slots; duplicate program text is skipped at build time). Bump `kCorpusGeneratorFingerprint` in [`tests/generator/corpus_version.h`](tests/generator/corpus_version.h) when changing the generator or profile presets, then `task corpus:build`.
 
 **RAICode Rel engine** (Julia 1.10, `third_party/raicode` submodule):
 

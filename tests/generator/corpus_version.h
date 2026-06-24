@@ -4,7 +4,7 @@
 namespace rel2sql::generator {
 
 // Bump when rel_program_generator, data_fixture, or profile presets change; then regen corpus.
-inline constexpr const char* kCorpusGeneratorFingerprint = "rel2sql-generator-v1-20250625b";
+inline constexpr const char* kCorpusGeneratorFingerprint = "rel2sql-generator-v1-20250616c";
 
 }  // namespace rel2sql::generator
 

@@ -9,6 +9,9 @@
 
 namespace rel2sql::generator {
 
+// Corpus build grid dimensions (see CorpusBuild* helpers). Bump kCorpusGeneratorFingerprint when changed.
+inline constexpr size_t kCorpusBuildProgramIndexCount = 128;
+
 struct ProfilePreset {
   std::string name;
   GeneratorProfile profile;
@@ -26,6 +29,9 @@ std::vector<uint64_t> CorpusBuildSeeds();
 std::vector<size_t> CorpusBuildProgramIndices();
 
 std::vector<size_t> CorpusBuildBudgets();
+
+// presets × seeds × indices × budgets
+size_t CorpusBuildGridSlotCount();
 
 std::optional<GeneratorProfile> ProfileByName(const std::string& name);
 

@@ -8,6 +8,7 @@ using RelationalAITypes
 
 const SERVER_VERSION = "1"
 const MAX_ERROR_LEN = 8000
+const DEFAULT_QUERY_TIMEOUT_SECS = 180
 const query_problems = Ref{Vector{String}}(String[])
 
 export SERVER_VERSION, run_request, handle_message, init_server!, shutdown_server!
@@ -120,6 +121,38 @@ function describe_def_availability(result_dict, program_defs)
     return lines
 end
 
+function reset_database_state!(conn)
+    server_state.edb_loaded = false
+    server_state.edb_fingerprint = UInt64(0)
+    if conn !== nothing
+        try
+            create_database(conn; overwrite=true)
+        catch
+            nothing
+        end
+    end
+    clear_query_problems!()
+    return nothing
+end
+
+function run_query_timed!(f, conn; timeout_secs::Real=DEFAULT_QUERY_TIMEOUT_SECS)
+    task = @async f()
+    deadline = time() + timeout_secs
+    while !istaskdone(task)
+        if time() >= deadline
+            reset_database_state!(conn)
+            error("RAICode query timed out after $(Int(timeout_secs))s")
+        end
+        sleep(0.05)
+    end
+    try
+        return fetch(task)
+    catch exc
+        reset_database_state!(conn)
+        rethrow(exc)
+    end
+end
+
 function missing_output_response(conn, output_sym::Symbol, program_defs, result_dict)
     append_collect_problems!(conn)
     lines = String[]
@@ -144,18 +177,21 @@ function missing_output_response(conn, output_sym::Symbol, program_defs, result_
     return response
 end
 
-function execute_program_request(conn, program::AbstractString, edb_inputs, output_sym::Symbol; use_edb_inputs::Bool=true)
+function execute_program_request(conn, program::AbstractString, edb_inputs, output_sym::Symbol; use_edb_inputs::Bool=true, query_timeout_secs::Real=DEFAULT_QUERY_TIMEOUT_SECS)
     program_defs = extract_program_def_symbols(program)
     request_outputs = unique(vcat(program_defs, [output_sym]))
 
-    result_dict = if use_edb_inputs && !isempty(edb_inputs)
-        query(conn, program; inputs=edb_inputs, outputs=request_outputs)
-    else
-        query(conn, program; outputs=request_outputs)
+    result_dict = run_query_timed!(conn; timeout_secs=query_timeout_secs) do
+        if use_edb_inputs && !isempty(edb_inputs)
+            query(conn, program; inputs=edb_inputs, outputs=request_outputs)
+        else
+            query(conn, program; outputs=request_outputs)
+        end
     end
     append_collect_problems!(conn)
 
     if !haskey(result_dict, output_sym)
+        reset_database_state!(conn)
         return missing_output_response(conn, output_sym, program_defs, result_dict), nothing
     end
 
@@ -364,6 +400,7 @@ function run_request(request::AbstractDict)
         end
         return response
     catch exc
+        reset_database_state!(conn)
         response = error_response(exc, conn)
         elapsed = round(Int, time() - start)
         println(stderr, "rel_engine_server: query failed in $(elapsed)s")
