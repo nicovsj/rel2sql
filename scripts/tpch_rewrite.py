@@ -39,7 +39,7 @@ PARAMS: dict[int, list[object]] = {
     3: ["BUILDING", "1995-03-15"],
     4: ["1993-07-01", "1993-10-01"],
     5: ["ASIA", "1994-01-01", "1995-01-01"],
-    6: ["1994-01-01", "1995-01-01", 0.06, 24],
+    6: ["1994-01-01", 0.06, 24],
     7: ["FRANCE", "GERMANY"],
     8: ["BRAZIL", "AMERICA", "ECONOMY ANODIZED STEEL"],
     9: ["green"],
@@ -53,7 +53,7 @@ PARAMS: dict[int, list[object]] = {
     17: ["Brand#23", "MED BOX"],
     18: [300],
     19: ["Brand#12", "Brand#23", "Brand#34", 1, 10, 20],
-    20: ["forest", "1994-01-01", "1995-01-01", "CANADA"],
+    20: ["forest", "1994-01-01", "CANADA"],
     21: ["SAUDI ARABIA"],
     22: ["13", "31", "23", "29", "30", "18", "17"],
 }
