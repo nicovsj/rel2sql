@@ -6,16 +6,14 @@
   },
   "queries": {
     "1": {
-      "execute_empty": "skip",
+      "execute_empty": "ok",
       "rewrite": "ok",
-      "stderr_contains": "E104",
-      "translate": "fail"
+      "translate": "ok"
     },
     "10": {
-      "execute_empty": "skip",
+      "execute_empty": "ok",
       "rewrite": "ok",
-      "stderr_contains": "E104",
-      "translate": "fail"
+      "translate": "ok"
     },
     "11": {
       "compare_local": "optional",
@@ -29,29 +27,29 @@
       "translate": "ok"
     },
     "13": {
-      "execute_empty": "skip",
+      "execute_empty": "fail",
+      "execute_empty_note": "codegen bug: not(like_match(...)) inside an aggregate filter compiles to a NOT IN subquery with the wrong column count",
       "rewrite": "ok",
-      "stderr_contains": "<++",
-      "translate": "fail"
+      "translate": "ok"
     },
     "14": {
       "execute_empty": "skip",
       "rewrite": "ok",
-      "stderr_contains": "E104",
-      "translate": "fail"
+      "stderr_contains": "E102",
+      "translate": "fail",
+      "translate_note": "newly-discovered gap (not in original plan): safety inference never grounds a variable through an equality whose RHS divides by another variable (src/preprocessing/safety_inferrer.cc DivisorIsSafe rejects any non-constant divisor); 100 * promo_revenue / all_revenue has no query-level rewrite that avoids this"
     },
     "15": {
-      "execute_empty": "skip",
+      "execute_empty": "fail",
+      "execute_empty_note": "codegen bug: max[...] compiled directly into a WHERE clause (\"WHERE T0.A1 = (MAX(T1.A2))\") instead of a subquery; DuckDB rejects bare aggregates in WHERE",
       "rewrite": "ok",
-      "stderr_contains": "E104",
-      "translate": "fail"
+      "translate": "ok"
     },
     "16": {
-      "execute_empty": "skip",
+      "execute_empty": "fail",
+      "execute_empty_note": "same not(like_match(...)) subquery-column-count codegen bug as Q13, now reached because the target_size(...) fact-table rewrite avoids the separate MergeWith OR-chain hang",
       "rewrite": "ok",
-      "skip_reason": "MergeWith on long OR chains can hang",
-      "timeout_sec": 120,
-      "translate": "skip"
+      "translate": "ok"
     },
     "17": {
       "execute_empty": "ok",
@@ -65,76 +63,78 @@
       "translate": "ok"
     },
     "19": {
-      "execute_empty": "skip",
+      "execute_empty": "fail",
+      "execute_empty_note": "codegen bug: ship_mode's OR-of-equality-on-a-bound-variable lowers to a UNION subquery whose column alias doesn't match the outer join's column reference",
       "rewrite": "ok",
-      "stderr_contains": "E102",
-      "translate": "fail"
+      "translate": "ok"
     },
     "2": {
-      "execute_empty": "skip",
+      "execute_empty": "fail",
+      "execute_empty_note": "codegen bug: dangling table alias (stale GenerateTableAlias reference) surfaces once translation succeeds",
       "rewrite": "ok",
-      "stderr_contains": "__rest1",
-      "translate": "fail"
+      "translate": "ok",
+      "unoptimized": true,
+      "unoptimized_note": "optimizer segfaults on this query's wide (8-column) double reverse_sort family at default optimization"
     },
     "20": {
-      "execute_empty": "skip",
+      "execute_empty": "ok",
       "rewrite": "ok",
-      "stderr_contains": "E104",
-      "translate": "fail"
+      "translate": "ok"
     },
     "21": {
-      "execute_empty": "skip",
+      "execute_empty": "fail",
+      "execute_empty_note": "codegen bug: dangling table alias inside sub_query2's NOT IN subquery, same GenerateTableAlias class of bug as Q7/Q22",
       "rewrite": "ok",
-      "stderr_contains": "E102",
-      "translate": "fail"
+      "translate": "ok"
     },
     "22": {
-      "execute_empty": "skip",
+      "execute_empty": "fail",
+      "execute_empty_note": "codegen bug: dangling table alias in c_country_code's generated view, same GenerateTableAlias class of bug as Q7/Q21",
       "rewrite": "ok",
-      "stderr_contains": "arity 1",
-      "translate": "fail"
+      "translate": "ok"
     },
     "3": {
-      "execute_empty": "skip",
+      "execute_empty": "fail",
+      "execute_empty_note": "codegen bug: DuckDB type mismatch (HUGEINT vs DATE) in generated comparison, pre-existing and unrelated to this session's query rewrites",
       "rewrite": "ok",
-      "stderr_contains": "E104",
-      "translate": "fail"
+      "translate": "ok"
     },
     "4": {
-      "execute_empty": "skip",
+      "execute_empty": "fail",
+      "execute_empty_note": "codegen bug: DuckDB type mismatch (BIGINT vs TIMESTAMP) in generated comparison, pre-existing and unrelated to this session's query rewrites",
       "rewrite": "ok",
-      "stderr_contains": "E104",
-      "translate": "fail"
+      "translate": "ok"
     },
     "5": {
-      "execute_empty": "skip",
+      "execute_empty": "fail",
+      "execute_empty_note": "codegen bug: DuckDB type mismatch (BIGINT vs TIMESTAMP), same class as Q3/Q4",
       "rewrite": "ok",
-      "stderr_contains": "reverse_sort",
-      "translate": "fail"
+      "translate": "ok"
     },
     "6": {
-      "execute_empty": "skip",
+      "execute_empty": "ok",
       "rewrite": "ok",
-      "stderr_contains": "E104",
-      "translate": "fail"
+      "translate": "ok"
     },
     "7": {
-      "execute_empty": "skip",
+      "execute_empty": "fail",
+      "execute_empty_note": "codegen bug: dangling table alias, same root cause as the date_year regression (see Q9)",
       "rewrite": "ok",
-      "stderr_contains": "E104",
-      "translate": "fail"
+      "translate": "ok"
     },
     "8": {
       "execute_empty": "skip",
       "rewrite": "ok",
-      "stderr_contains": "default_value",
-      "translate": "fail"
+      "stderr_contains": "E104",
+      "translate": "fail",
+      "translate_note": "blocked by the date_year-in-comparison regression (see Q9) and, once that is fixed, by division-by-a-non-constant-variable in market_share (see Q14); default_value's Pattern E rewrite is applied and correct but cannot be exercised"
     },
     "9": {
-      "compare_local": "optional",
-      "execute_empty": "ok",
+      "execute_empty": "skip",
       "rewrite": "ok",
-      "translate": "ok"
+      "stderr_contains": "E104",
+      "translate": "fail",
+      "translate_note": "newly-discovered regression (not in original plan, not in original manifest which claimed translate:ok): `date_year[R[k]]` used as an equality operand produces invalid/dangling-alias SQL or an outright E104 depending on shape; tests/test_translation.cc's own TpchQ9* tests currently fail at HEAD for the same reason"
     }
   }
 }
