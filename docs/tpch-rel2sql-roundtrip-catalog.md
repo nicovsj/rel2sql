@@ -1,3 +1,42 @@
+## Status as of 2026-09-11 (supersedes the stale claims below)
+
+Everything below this section predates a session that got `rel2sql_bin` building and actually ran
+all 22 queries through the pipeline. Treat the rest of this file as historical narrative, not
+current status. Current status:
+
+- Source of truth: [`benchmarks/TPCH/pipeline/manifest.json`](../benchmarks/TPCH/pipeline/manifest.json)
+  (machine-checked by `bazel test //benchmarks/TPCH:tpch_pipeline_test`) and
+  [`docs/tpch_rel2sql_plan.md`](tpch_rel2sql_plan.md) (source-grounded rewrite rationale, now
+  verified against a real build — see its own file:line citations and the "verified" notes added
+  during this session).
+- **19 of 22 queries now translate** (`translate: ok`): 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 15,
+  16, 17, 18, 19, 20, 21, 22. Only 8, 9, 14 still fail to translate.
+- Of those 19, **8 also execute cleanly on empty tables** (`execute_empty: ok`): 1, 6, 10, 11, 12,
+  17, 18, 20. The other 11 (2, 3, 4, 5, 7, 13, 15, 16, 19, 21, 22) translate without error but the
+  generated SQL fails in DuckDB — these are **pre-existing SQL-codegen bugs in the translator**
+  (dangling table aliases, `not(like_match(...))` inside an aggregate filter producing a
+  multi-column `NOT IN` subquery, `MAX(...)` emitted directly in a `WHERE` clause, an
+  OR-of-string-equality lowered to a `UNION` subquery with a mismatched column alias, and DuckDB
+  type mismatches on date comparisons), **not** language gaps fixable by rewriting the `.rel`
+  source. See each query's `execute_empty_note` in `manifest.json` for specifics.
+- **The "EDB binding" explanation this file gives below for Q19/Q21 is wrong and stale.** Both
+  queries translate and reach `execute_empty` today; Q19 additionally needed a rewrite for two
+  *separate* gaps the original plan didn't anticipate: (a) `param <= l_quantity[o,l] <= param+10`
+  where `param` is only ever compared (inlined with the substituted literal), and (b) `x = "SM
+  CASE" or x = "SM BOX" or ...` — string-literal equality never grounds a variable in the current
+  safety inferrer (only numeric/compositional equalities do), rewritten as an explicit fact table.
+- Two genuinely new-to-this-session findings, not in the original plan, with **no query-level
+  workaround found**: `date_year[R[k]]` used as a comparison operand (blocks Q8, Q9 — and Q9 was
+  previously believed to already pass; `tests/test_translation.cc`'s own `TpchQ9*` tests fail at
+  HEAD for the same reason), and division by a non-constant variable never grounds the dividing
+  equality's target (`src/preprocessing/safety_inferrer.cc`'s `DivisorIsSafe`; blocks Q14 and,
+  once date_year is fixed, Q8's `market_share`).
+- `scripts/tpch_rewrite.py`'s `PARAMS` table had two latent bugs (an extra mid-list parameter for
+  Q6 and Q20 that silently shifted every later `@@N` substitution to the wrong value) — fixed.
+  Worth an audit pass on the rest of the table; see the plan doc.
+
+---
+
 # TPC-H Rel round-trip: semantics-preserving source rewrites (Section 1)
 
 These edits bridge RAI Rel in `benchmarks/TPCH/rel/queries/` to the subset accepted by `RelParser.g4` **without** changing query meaning. Use them in a pre-pass before `GetSQLRel` (or extend the parser).
