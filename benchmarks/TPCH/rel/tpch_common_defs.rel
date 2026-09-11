@@ -3,9 +3,6 @@
  */
 
 @inline
-def dec { decimal[64, 4] }
-
-@inline
 def l_revenue[o, num]:
     l_extendedprice[o, num] * (1 - l_discount[o, num])
 

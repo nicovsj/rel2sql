@@ -41,19 +41,21 @@ order by
 */
 
 @inline
-def temp[]:
-    ([ck]: count[(ok): o_custkey(ok, ck) and not(like_match(raw"%@@1%@@2%", (ok.o_comment)))])
+def matched(ck, custdist):
+    custdist = count[(ok): o_custkey(ok, ck) and not(like_match(raw"%@@1%@@2%", (ok.o_comment)))]
+
+@inline
+def temp(ck, custdist):
     // Left outerjoin
-    <++ (customer, 0)
+    (customer(ck) and matched(ck, custdist))
+    or
+    (customer(ck) and custdist = 0 and not exists((c2) | matched(ck, c2)))
 
 @vectorized
 def unsorted_result[custdist]: count[(customer_key): temp(customer_key, custdist)]
 
-@vectorized
-def sorted_by_custdist[]: reverse_sort[(custdist, c_count): unsorted_result(c_count, custdist)]
+def inside_rev_sort[custdist]: reverse_sort[unsorted_result[custdist]]
+def final_sort[]: reverse_sort[inside_rev_sort]
 
 @vectorized
-def sorted_by_c_count(i, c_count, cust_dist): sort(((_i, cc, cd): sorted_by_custdist(_i, cd, cc)), i, _, c_count, cust_dist)
-
-@vectorized
-def result[]: sorted_by_c_count
+def result(i, c_count, cust_dist): exists((i1) | final_sort(i, cust_dist, i1, c_count))
