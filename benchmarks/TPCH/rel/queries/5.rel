@@ -68,5 +68,8 @@ def unsorted_result(v, target_nation): exists((n) |
     n_name(n, target_nation)
 )
 
+def inside_rev_sort[v]: reverse_sort[unsorted_result[v]]
+def final_sort[]: reverse_sort[inside_rev_sort]
+
 @vectorized
-def result(i, n, v): reverse_sort(unsorted_result, i, v, n)
+def result(i, n, v): exists((i1) | final_sort(i, v, i1, n))

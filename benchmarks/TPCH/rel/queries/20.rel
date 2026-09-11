@@ -60,7 +60,7 @@ order by
 @inline def specific_partkeys(pk): like_match(raw"@@1%", ( pk.p_name ))
 
 @inline def availqty_limit(pk, sk, sum_qty_limit):
-    sum_qty_limit = dec[0.5] * sum[(o, l, qty_limit):
+    sum_qty_limit = 0.5 * sum[(o, l, qty_limit):
         l_partkey(o, l, pk) and
         l_suppkey(o, l, sk) and
         lower <= l_shipdate[o, l] < upper and

@@ -96,7 +96,10 @@ def market_share[o_year]:
 def years_domain(o_year): lineitem_vol_all(o_year, _, _, _)
 
 // This result is naturally ordered by years_domain, but we add sort just in case:
-def unsorted_result[]: default_value[years_domain, market_share, parse_decimal[64,4,"0"]]
+def unsorted_result(o_year, v):
+    (years_domain(o_year) and market_share(o_year, v))
+    or
+    (years_domain(o_year) and v = parse_decimal[64,4,"0"] and not exists((v2) | market_share(o_year, v2)))
 
 @vectorized
 def result[]: sort[unsorted_result]

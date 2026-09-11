@@ -67,9 +67,13 @@ def customer_by_revenue(revenue, c):
         l_returned(o, num)
     ]
 
+def inside_rev_sort[revenue]: reverse_sort[customer_by_revenue[revenue]]
+def final_sort[]: reverse_sort[inside_rev_sort]
+
 @vectorized
-def sorted_customers_by_revenue(i, c, revenue):
-    bottom(20, customer_by_revenue, i, revenue, c)
+def sorted_customers_by_revenue(i, c, revenue): exists((i1) |
+    final_sort(i, revenue, i1, c) and i <= 20
+)
 
 // @vectorized : this is *NOT* vectorized because we deliberately skip the join-tree
 // optimization for cheap queries. The query is slightly slower if we use the vectorizer

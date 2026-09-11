@@ -57,12 +57,14 @@ order by
 :n 100
 */
 
-@inline def sub_query1(o1, o1l1_suppkey): exists((l2) | l_suppkey[o1, l2] != o1l1_suppkey)
+@inline def sub_query1(o1, o1l1_suppkey):
+    exists((l1b) | l_suppkey(o1, l1b, o1l1_suppkey)) and
+    exists((l2) | l_suppkey[o1, l2] != o1l1_suppkey)
 
 @inline def sub_query2(o1, l1, o1l1_suppkey):
+    l_suppkey(o1, l1, o1l1_suppkey) and
     not(exists((l3) |
         l_suppkey[o1, l3] != o1l1_suppkey and
-        l_suppkey(o1, l1, o1l1_suppkey) and
         l_receiptdate[o1, l3] > l_commitdate[o1, l3]
     ))
 

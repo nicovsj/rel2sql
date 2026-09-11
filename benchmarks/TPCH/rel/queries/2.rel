@@ -92,5 +92,6 @@ def unsorted_result(v1,v2,v3,v4,v5,v6,v7,v8): exists((s in supplier, p in part) 
 def inside_rev_sort[a]: reverse_sort[unsorted_result[a]]
 def final_sort[]: reverse_sort[inside_rev_sort]
 
-def result(i,x1, __rest1...): final_sort(i,x1,_,__rest1...) and i <= 100
+def result(i, x1, x2, x3, x4, x5, x6, x7, x8):
+    final_sort(i, x1, _, x2, x3, x4, x5, x6, x7, x8) and i <= 100
 // def result[]: unsorted_result
