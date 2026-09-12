@@ -256,6 +256,58 @@ bool IdAppearsInRelNode(const std::shared_ptr<RelNode>& node, const std::string&
   return false;
 }
 
+// Find the 1-indexed argument position at which `var` is passed to an application of
+// `relation_name` somewhere in `node` (e.g. in `c_phone[c]`, "c" is c_phone's argument 1).
+// Used to recover a binding variable's source column when it's been consumed as an
+// argument deep inside a builtin call (substring[...], date_year[...], ...) whose own
+// translation only threads the resulting value through, not the key that produced it.
+std::optional<size_t> FindArgPositionForVariable(const std::shared_ptr<RelNode>& node, const std::string& relation_name,
+                                                 const std::string& var) {
+  if (!node) return std::nullopt;
+  auto check_params = [&](RelApplBase* base,
+                          const std::vector<std::shared_ptr<RelApplParam>>& params) -> std::optional<size_t> {
+    auto* id_base = dynamic_cast<RelIDApplBase*>(base);
+    if (!id_base || id_base->id != relation_name) return std::nullopt;
+    for (size_t i = 0; i < params.size(); ++i) {
+      if (!params[i]) continue;
+      auto expr = params[i]->GetExpr();
+      auto* idt = dynamic_cast<RelIDTerm*>(expr.get());
+      if (idt && idt->id == var) return i + 1;
+    }
+    return std::nullopt;
+  };
+  if (auto* pa = dynamic_cast<RelPartialApplication*>(node.get())) {
+    if (auto pos = check_params(pa->base.get(), pa->params)) return pos;
+  }
+  if (auto* fa = dynamic_cast<RelFullApplication*>(node.get())) {
+    if (auto pos = check_params(fa->base.get(), fa->params)) return pos;
+  }
+  for (const auto& ch : node->Children()) {
+    if (auto pos = FindArgPositionForVariable(ch, relation_name, var)) return pos;
+  }
+  return std::nullopt;
+}
+
+// Recursively search a Sourceable's reachable table sources for one that's a raw base
+// table application `relation_name[..., var, ...]` in `rel_expr`, and if found, return
+// a Column referencing that variable's own column on that table's source.
+std::shared_ptr<sql::ast::Column> FindColumnForVariableViaBaseTable(const std::shared_ptr<sql::ast::Sourceable>& sql,
+                                                                    const std::shared_ptr<RelNode>& rel_expr,
+                                                                    const std::string& var) {
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(sql);
+  if (!select || !select->from.has_value()) return nullptr;
+  for (const auto& src : select->from.value()->sources) {
+    if (!src || !src->sourceable) continue;
+    if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(src->sourceable)) {
+      if (auto pos = FindArgPositionForVariable(rel_expr, table->name, var)) {
+        return std::make_shared<sql::ast::Column>(table->GetAttributeName(static_cast<int>(*pos) - 1), src);
+      }
+    }
+    if (auto found = FindColumnForVariableViaBaseTable(src->sourceable, rel_expr, var)) return found;
+  }
+  return nullptr;
+}
+
 void CollectIdbTermSources(const std::shared_ptr<RelTerm>& term, const RelContext& ctx,
                            const std::function<std::string()>& gen_alias,
                            std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& out) {
@@ -1042,6 +1094,35 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelExprAbstract
 
   Visit(node->expr);
   auto expr_sql = ExpectSourceable(node->expr->sql_expression);
+
+  // A binding variable free in node->expr isn't necessarily exposed as a same-named
+  // output column of expr_sql — that only holds when expr is a plain relation
+  // application. A builtin call (substring[...], date_year[...], arithmetic, ...)
+  // doesn't propagate the original variable name through to its own output, so
+  // project it explicitly here before wrapping, mirroring VisitAggregateBindingsExpr.
+  if (auto expr_select = std::dynamic_pointer_cast<sql::ast::Select>(expr_sql)) {
+    std::unordered_set<std::string> existing_aliases;
+    for (const auto& col : expr_select->columns) {
+      const auto* ts = dynamic_cast<const sql::ast::TermSelectable*>(col.get());
+      if (ts && ts->alias.has_value()) existing_aliases.insert(*ts->alias);
+    }
+    std::vector<std::shared_ptr<sql::ast::Selectable>> binding_cols;
+    for (const auto& b : node->bindings) {
+      auto* vb = dynamic_cast<RelVarBinding*>(b.get());
+      if (!vb || existing_aliases.count(vb->id)) continue;
+      auto column = MakeColumnForBindingOnExprSource(expr_sql, vb->id);
+      if (!column->source.has_value()) {
+        // Not found as an already-projected column anywhere in expr_sql — recover it by
+        // tracing which base-table argument position `vb->id` was actually bound to.
+        if (auto found = FindColumnForVariableViaBaseTable(expr_sql, node->expr, vb->id)) {
+          column = found;
+        }
+      }
+      binding_cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, vb->id));
+      existing_aliases.insert(vb->id);
+    }
+    expr_select->columns.insert(expr_select->columns.begin(), binding_cols.begin(), binding_cols.end());
+  }
 
   auto expr_source = std::make_shared<sql::ast::Source>(expr_sql, GenerateTableAlias());
   node->expr->sql_expression = expr_source;
