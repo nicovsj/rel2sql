@@ -3092,7 +3092,6 @@ bool Translator::TryEmitDateYearExistential(const std::shared_ptr<RelExistential
   if (!TryEmitDateYearLiftPairConjunction(conj)) return false;
 
   auto inner_srcable = ExpectSourceable(conj->sql_expression);
-  auto subquery = std::make_shared<sql::ast::Source>(inner_srcable, GenerateTableAlias());
   auto inner_select = std::dynamic_pointer_cast<sql::ast::Select>(inner_srcable);
   if (!inner_select) return false;
 
@@ -3105,7 +3104,12 @@ bool Translator::TryEmitDateYearExistential(const std::shared_ptr<RelExistential
   }
   if (!exported) return false;
 
-  node->sql_expression = subquery;
+  // node->sql_expression must hold a Sourceable (as every other RelFormula translation does) —
+  // inner_srcable (the Select BuildDateYearPartialAppSelect already built, with the right
+  // columns/aliases) already *is* that; wrapping it in a Source (a FROM-clause alias binding,
+  // not itself a Sourceable) here was the bug: ExpectSourceable on a caller's node->sql_expression
+  // would later fail to downcast it back, since Source doesn't inherit from Sourceable.
+  node->sql_expression = inner_srcable;
   return true;
 }
 
