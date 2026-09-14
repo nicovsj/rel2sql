@@ -633,3 +633,49 @@ Everything listed in Round 2's "still open" section remains open, plus:
   it references is nested too deep to be in scope. Distinct from the fixed AST-sharing bug (this
   one is about naming/scope of an *output projection*, not about a missing join), not yet
   root-caused.
+
+### Second fix this round: `FlattenerOptimizer` flattened scalar aggregate subqueries (unblocked Q15)
+
+Q15's `def result_s_suppkey(suppkey): revenue[suppkey] = max[revenue]` produced
+`WHERE T0.A1 = (MAX(T1.A2))` — a bare aggregate call directly in a `WHERE` clause, which DuckDB
+rejects (matches the original manifest note exactly). Traced this to the **optimizer**, not the
+translator: `Translator::Visit(RelBuiltinAggregateExpr)` (`max[revenue]`, no `GROUP BY` since it
+aggregates the whole relation) correctly produces `SELECT MAX(A2) AS A1 FROM revenue` — confirmed
+by comparing against `-u` (unoptimized) output, which has the aggregate properly wrapped in a CTE.
+The bug is in `FlattenerOptimizer::CanFlattenSubquery` (`src/optimizer/flattener_optimizer.cc`):
+it only refused to flatten a subquery when `group_by.has_value()`, so a *scalar* (ungrouped)
+aggregate subquery — one row, no `GROUP BY`, but still a real aggregate over its own independent
+`FROM` — was treated as flattenable like any plain projection. Flattening merges the subquery's
+`FROM` into the outer query and substitutes its column reference with the raw aggregate
+expression; for a scalar aggregate this changes an independent whole-relation aggregation into a
+(syntactically invalid) correlated one.
+
+**Fix**: added `FlattenerOptimizer::HasAggregateColumn` (recursively checks a `Select`'s projected
+terms for a `Function` — the AST node for aggregate calls — through `Operation`/`ParenthesisTerm`
+wrapping) and refuse to flatten when it's true, mirroring the existing `group_by.has_value()`
+check. Committed as `38e5bbb`.
+
+This was a **real, exercised bug**, not just a latent gap: two existing `test_translation.cc`
+tests (`ComparisonPartialAppl`, `ComparisonNotEqualPartialAppl`) had the buggy output
+(`WHERE (SUM(T1.A1)) > 0`) baked into their `EXPECT_EQ` string and used
+`OPT_EXPECT_EQ_NO_DUCKDB` specifically to avoid running that (invalid) SQL through DuckDB — the
+per-test comment said as much ("Avoid DuckDB execution: the unoptimized SQL is correct but
+verbose"). Both updated to the corrected output and switched to `OPT_EXPECT_EQ` (which does
+execute), and now pass for real.
+
+**Q15's `execute_empty` now passes** (manifest updated) but real (SF0.01) results are still wrong
+— returns 0 rows instead of the reference's 1. Traced this to yet another, separate bug: in
+`Translator::Visit(RelComparison)`'s `cover`/CTE-building loop (`src/sql/translator.cc` ~3352+),
+the domain for the lifted `_x0` (standing for `revenue[suppkey]`) resolves through `DomainToSql`
+to `revenue`'s **key** column (`suppkey`) instead of its **value** column (`total_revenue`) — the
+same "`IntensionalDomain` picks the wrong column because a partial application's SQL carries a
+key column ahead of the value column" issue diagnosed (but not safely fixed) for Q3/Q4/Q5 in
+Round 2. Re-applying that round's verified-safe `IntensionalDomain` narrowing patch on top of this
+fix *does* correct the column (`T0.A2` instead of `T0.A1`) but introduces a new, different bug: a
+spurious `T0.A1 = T0.A2` self-equality condition appears in the `WHERE` clause (0 rows either
+way) — something about wrapping the domain's `Sourceable` in an extra `Source`/alias layer breaks
+whatever reference-equality-based deduplication normally keeps two different bound variables'
+CTEs from being conflated. Reverted again rather than ship a new bug in place of an old one. Net:
+the `IntensionalDomain` narrowing patch remains diagnosed-but-unsafe across two independent
+attempts now (Q3/Q4/Q5 in Round 2 broke Q12; Q15 in Round 3 introduces this spurious condition) —
+worth a from-scratch redesign rather than a third attempt at patching the same call site.
