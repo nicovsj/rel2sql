@@ -128,16 +128,16 @@
     "8": {
       "execute_empty": "skip",
       "rewrite": "ok",
-      "stderr_contains": "E104",
+      "stderr_contains": "E102",
       "translate": "fail",
-      "translate_note": "blocked by the date_year-in-comparison regression (see Q9) and, once that is fixed, by division-by-a-non-constant-variable in market_share (see Q14); default_value's Pattern E rewrite is applied and correct but cannot be exercised"
+      "translate_note": "the date_year-in-comparison regression (see Q9) is now fixed; Q8 now fails exactly where it was already predicted to once that happened \u2014 division-by-a-non-constant-variable in market_share (see Q14, DivisorIsSafe rejects any non-constant divisor). default_value's Pattern E rewrite is applied and correct but cannot be exercised."
     },
     "9": {
-      "execute_empty": "skip",
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-14): ALGERIA's 7 rows (one per year 1992-1998) match the reference exactly. Root cause found: TryEmitDateYearExistential assigned a sql::ast::Source (a FROM-clause alias wrapper, not itself a Sourceable) directly to node->sql_expression, so any later ExpectSourceable on this existential's result threw E104 \u2014 fixed by assigning the underlying Select there instead. execute_empty now succeeds.",
+      "execute_empty": "ok",
       "rewrite": "ok",
-      "stderr_contains": "E104",
-      "translate": "fail",
-      "translate_note": "newly-discovered regression (not in original plan, not in original manifest which claimed translate:ok): `date_year[R[k]]` used as an equality operand produces invalid/dangling-alias SQL or an outright E104 depending on shape; tests/test_translation.cc's own TpchQ9* tests currently fail at HEAD for the same reason"
+      "translate": "ok"
     }
   }
 }
