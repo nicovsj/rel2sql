@@ -243,7 +243,14 @@ std::any RelASTBuilder::visitChainedComparison(psr::ChainedComparisonContext* ct
     RelCompOp op = ParseCompOp(comps[i]->getText());
     auto cmp = std::make_shared<RelComparison>(left, op, right);
     SetCtx(cmp.get(), ctx);
-    left = cmp->rhs;
+    // Build an independent copy of the shared middle term for the next comparison's lhs
+    // rather than aliasing cmp->rhs: later passes (e.g. TermRewriter) mutate term nodes
+    // in place, and two comparisons aliasing the same node would have the first
+    // comparison's rewrite silently consume the term before the second ever sees it.
+    if (i + 1 < n) {
+      auto left_any = visit(rhs_ctx);
+      left = Cast<RelTerm>(left_any);
+    }
     if (!acc) {
       acc = std::move(cmp);
     } else {
