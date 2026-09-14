@@ -72,7 +72,7 @@
       "rewrite": "ok",
       "translate": "ok",
       "unoptimized": true,
-      "unoptimized_note": "optimizer segfaults on this query's wide (8-column) double reverse_sort family at default optimization"
+      "unoptimized_note": "was: optimizer segfaults on this query's wide (8-column) double reverse_sort family at default optimization. That segfault (an iterator-invalidation bug in SelfJoinOptimizer::Visit) is fixed. Still kept unoptimized: with the crash gone, the optimized path now hits the same dangling-table-alias bug as execute_empty_note, one layer earlier than the unoptimized path does."
     },
     "20": {
       "execute_empty": "ok",
