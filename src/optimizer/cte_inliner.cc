@@ -119,8 +119,13 @@ bool CTEInliner::TryReplaceSimpleWildcardCTE(const std::shared_ptr<Source>& cte,
     }
   }
 
-  // Create a replacer that handles both source name and column name replacements
-  SourceAndColumnReplacer replacer(cte->Alias(), new_source, term_map, false);
+  // Create a replacer that handles both source name and column name replacements.
+  // replace_alias=true: a bare "E0.col" reference sitting in a SELECT list with no
+  // explicit alias picks up its printed name implicitly from the Column it wraps: once
+  // that Column is swapped for the underlying table's real column name (e.g. "A1"), any
+  // *outer* reference built against the CTE's original (logical) column name goes stale.
+  // Adding the explicit alias preserves that name through the substitution.
+  SourceAndColumnReplacer replacer(cte->Alias(), new_source, term_map, true);
   base_expr_->Accept(replacer);
 
   return true;
@@ -155,8 +160,9 @@ bool CTEInliner::TryReplaceGeneralCTE(const std::shared_ptr<Source>& cte, const 
     }
   }
 
-  // Create a replacer that handles both source name and column name replacements
-  SourceAndColumnReplacer replacer(cte->Alias(), new_source, column_map, false);
+  // Create a replacer that handles both source name and column name replacements.
+  // replace_alias=true: see TryReplaceSimpleWildcardCTE's comment above.
+  SourceAndColumnReplacer replacer(cte->Alias(), new_source, column_map, true);
   base_expr_->Accept(replacer);
 
   return true;
