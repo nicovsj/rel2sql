@@ -127,6 +127,11 @@ tasks:
     cmds:
       - bazel test --config=default //benchmarks/TPCH:tpch_pipeline_test
 
+  tpch:gen-manifest:
+    desc: Regenerate manifest_data.h from manifest.json (run after editing manifest.json)
+    cmds:
+      - python3 scripts/gen_tpch_manifest_cc.py
+
   tpch:translate:
     desc: "Rewrite + translate one query, print SQL to stdout (no DB needed): task tpch:translate -- 13"
     cmds:

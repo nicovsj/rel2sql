@@ -97,14 +97,14 @@
       "translate": "ok"
     },
     "4": {
-      "execute_empty": "fail",
-      "execute_empty_note": "codegen bug: DuckDB type mismatch (BIGINT vs TIMESTAMP) in generated comparison, pre-existing and unrelated to this session's query rewrites",
+      "execute_empty": "ok",
+      "execute_empty_note": "was blocked by a TermRewriter AST-node-sharing bug (chained comparisons aliased the shared middle term, silently dropping the o_orderdate join) \u2014 fixed in RelASTBuilder::visitChainedComparison. execute_empty now succeeds, but real (non-empty) results are still WRONG: exists((num) | l_commitdate[o,num] < l_receiptdate[o,num]) inside the count body doesn't deduplicate its own witness variable, inflating counts ~2.6x. That is a separate, still-open bug in the translator's lifted-partial-application exists/conjunction special-casing.",
       "rewrite": "ok",
       "translate": "ok"
     },
     "5": {
       "execute_empty": "fail",
-      "execute_empty_note": "codegen bug: DuckDB type mismatch (BIGINT vs TIMESTAMP), same class as Q3/Q4",
+      "execute_empty_note": "codegen bug: unaffected by this session's chained-comparison fix (still fails); first error is now 'Referenced table T14 not found' \u2014 a scoping bug in how a chained-comparison-bound variable (lower/upper) gets carried as an output column through nested joins, same symptom class as Q7, not yet root-caused",
       "rewrite": "ok",
       "translate": "ok"
     },
@@ -115,7 +115,7 @@
     },
     "7": {
       "execute_empty": "fail",
-      "execute_empty_note": "codegen bug: dangling table alias, same root cause as the date_year regression (see Q9)",
+      "execute_empty_note": "codegen bug: dangling table alias, same root cause as the date_year regression (see Q9). Unaffected by this session's chained-comparison fix (still fails; first error is now 'Referenced table T14 not found', a scoping bug in how a chained-comparison-bound variable like lower/upper gets carried as an output column through nested joins \u2014 same symptom class seen in Q5, not yet root-caused)",
       "rewrite": "ok",
       "translate": "ok"
     },
