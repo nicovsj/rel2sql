@@ -763,3 +763,31 @@ named "A3"` — the "dangling table alias (stale `GenerateTableAlias` reference)
 already names for Q2. `"unoptimized": true` stays in place; the segfault specifically is fixed and
 verified (full `task test` clean, same 6-test baseline, `tpch_pipeline_test` green), but Q2 needs
 the same dangling-alias root-cause work as Q3/Q7/Q21 before it can drop the override.
+
+## New tool: `ScopeValidator` (`src/optimizer/scope_validator.{h,cc}`, `c0eb0f2`)
+
+Three of this round's four fixes (`CTEInliner`, the flattener's scalar-aggregate case, the
+chained-comparison AST sharing) were the same failure shape underneath: some pass rewrites a
+`Column` by string-matching against a source alias, gets it wrong, and produces AST that's
+syntactically well-formed but references something no longer in scope. That's exactly what makes
+this bug family expensive to trace — it surfaces (if at all) as a confusing DuckDB binder error
+several passes and sometimes several queries downstream of whichever rewrite actually broke it.
+
+`ScopeValidator` is a `Optimizer::Optimize()`-time invariant check (runs once, right after
+`RebindDanglingSelectColumns`, so after the whole pipeline including alias renumbering) that walks
+every `Column` reference and verifies: (1) its source alias is a `FROM` source or visible CTE in
+scope at that point in the tree — CTE visibility accumulates down through nested subqueries the
+way `WITH` scoping actually works, table-alias visibility doesn't; (2) where the source is
+transparent enough to introspect (a plain `Select`, or anything with explicit `def_columns` like a
+CTE), the column *name* is genuinely one of that source's exposed columns. Deliberately permissive
+past that: a `Table` with unknown attribute names, a `Union`, anything with a wildcard column —
+skip the name check rather than risk a false positive. Throws `TranslationException`
+(`ErrorCode::DANGLING_COLUMN_REFERENCE`, E902) naming the exact column and alias.
+
+Verified zero false positives across the full `test_translation` suite and all 22 TPC-H queries.
+It immediately caught the real, pre-existing Q3/Q5/Q7/Q21 dangling-alias bug — previously silent
+through `translate` and only surfacing as a DuckDB error at `execute_empty` — now a precise E902 at
+`translate` time. Manifest updated to match (`translate: fail`, `stderr_contains: "E902"`); this
+doesn't fix that bug, it just catches it earlier and names it precisely, which is the point: the
+next time a rewrite introduces this shape of bug, it should fail loudly and locally instead of
+costing another multi-hour trace like Q5/Q7's "Referenced table T14 not found" did this round.
