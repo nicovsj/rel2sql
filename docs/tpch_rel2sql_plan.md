@@ -679,3 +679,55 @@ CTEs from being conflated. Reverted again rather than ship a new bug in place of
 the `IntensionalDomain` narrowing patch remains diagnosed-but-unsafe across two independent
 attempts now (Q3/Q4/Q5 in Round 2 broke Q12; Q15 in Round 3 introduces this spurious condition) —
 worth a from-scratch redesign rather than a third attempt at patching the same call site.
+
+### Third fix this round: `CTEInliner` silently renamed a CTE's logical column on inline (unblocked Q19, and 10 of the 16 "pre-existing" `test_translation` failures)
+
+Q19's `def ship_mode(o, l, shipmode): l_shipmode(o, l, shipmode) and (shipmode = "AIR" or
+shipmode = "AIR REG")` produced `WHERE T0.A3 = T3.shipmode` where `T3` (the OR's UNION) had no
+`shipmode` column at all — its actual columns were aliased `A3`. Confirmed via `-u` (unoptimized)
+output that the **translator** builds this correctly: `WITH E0(o, l, shipmode) AS (...), E1(o, l,
+shipmode) AS (...) ... (SELECT E0.shipmode FROM E0 WHERE E0.shipmode = 'AIR' UNION SELECT
+E1.shipmode FROM E1 WHERE E1.shipmode = 'AIR REG') AS T4 ... WHERE T3.shipmode = T4.shipmode` —
+both CTEs and every reference are consistently named. The bug is introduced by **`CTEInliner`**
+(`src/optimizer/cte_inliner.cc`): when it inlines a CTE like `E0(o,l,shipmode)`, it builds a
+`column_map` from the CTE's *logical* names (`"shipmode"`) to the underlying table's *physical*
+names (`"A3"`) and uses `SourceAndColumnReplacer` to rewrite every `E0.shipmode` reference to
+`new_source.A3`. That correctly fixes up references *elsewhere* in the tree — but the bare,
+unaliased `SELECT E0.shipmode` inside each UNION branch gets its own *printed* column name from
+whatever `Column` it wraps; once that `Column` becomes `new_source.A3`, the branch's own output
+silently renames itself from `shipmode` to `A3`, and nothing had been done to keep the *outer*
+`T4.shipmode` reference in sync. `SourceAndColumnReplacer` (`src/optimizer/replacers.h`) already
+has the exact mechanism for this — a `replace_alias` constructor flag that, when a substitution
+lands in a `TermSelectable` with no existing alias, sets that alias to the *original* (logical)
+name — but both of `CTEInliner`'s call sites passed `replace_alias=false`, while the two other
+call sites that use the default (`flattener_optimizer.cc`, `constant_optimizer.cc`) get it right
+for free.
+
+**Fix**: flip both `CTEInliner` call sites to `replace_alias=true`. Committed as `a8af889`.
+
+This turned out to be **the most impactful fix of the session by far**: it resolved TPC-H Q19's
+`execute_empty` (manifest updated; real SF0.01 results are still wrong — a huge negative `int128`
+instead of the reference's positive decimal revenue, a separate, not-yet-investigated bug) *and*
+fixed 10 of the 16 `test_translation` failures that Round 1/2 had catalogued as "pre-existing,
+unrelated to this session's changes": `ComparisonOperators1-5`, `ComparisonStringLiteral`,
+`NegativeLiteral1-3`, `FloatLiteral`. These weren't edge cases — they're basic comparison/literal
+translation tests, and they were failing because their expected SQL (asserted via `OPT_EXPECT_EQ`,
+which **does** execute against DuckDB) depended on a CTE-inlined column reference staying valid.
+The `test_translation` baseline is now **6** failures, not 16:
+`TpchQ9RewrittenProgramOptimized`, `TpchQ9FullExistsOptimized`, `TpchQ9ResultDefOptimized`,
+`TpchQ9SumBodyOptimized`, `BuiltinDateYearOnPartialApplication`, `EdgeCase1` — all pre-existing,
+all unrelated to CTE inlining (the Q9 group is the known `date_year`-in-comparison regression;
+`EdgeCase1` and `BuiltinDateYearOnPartialApplication` are separate, already-catalogued gaps).
+
+### Still open after this round
+
+Everything in Round 2's "still open" list, minus nothing (Q15's flattener fix and Q19's CTE-alias
+fix don't fully resolve either query — see their `execute_empty_note`s in manifest.json for the
+specific remaining bug in each), plus:
+- The `exists`-in-aggregate-body dedup bug (blocks true Q4 correctness).
+- Q5/Q7's `"Referenced table T14 not found"` scoping bug (not yet root-caused).
+- Q15's wrong-column-then-spurious-condition bug in `Visit(RelComparison)`'s domain/CTE
+  resolution for a partial application with a bound key (not yet root-caused; the
+  `IntensionalDomain` narrowing patch is diagnosed-but-unsafe, see above).
+- Q19's wrong real-data result (huge negative `int128` vs. the reference's positive decimal) —
+  not yet investigated at all; distinct from the now-fixed column-naming bug.
