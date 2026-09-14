@@ -92,11 +92,10 @@
       "translate": "ok"
     },
     "3": {
-      "execute_empty": "skip",
+      "execute_empty": "ok",
+      "execute_empty_note": "was blocked by FindAggregateThresholdPattern mistaking an unrelated date filter (o_orderdate[ok] < target_date) for the revenue aggregate's own threshold, since target_date is itself an IDB \u2014 corrupted the query into comparing revenue against target_date and dropped the real join, which ScopeValidator caught as a dangling alias. Fixed by requiring the threshold comparison's value_var to match the aggregate's real exported variable. Also benefits from the l_extendedprice/l_discount value-column fix (see translator.cc history). execute_empty now succeeds and real (SF0.01) results are much closer to correct \u2014 the top row (orderkey 450, revenue 205447.4232) exactly matches the reference \u2014 but several higher-revenue orders the reference includes are still missing. Not yet root-caused.",
       "rewrite": "ok",
-      "stderr_contains": "E902",
-      "translate": "fail",
-      "translate_note": "now caught at translate time by the new ScopeValidator optimizer pass (column 'T117.orderdate' references an alias not visible here) instead of surfacing later as a DuckDB type-mismatch error at execute_empty \u2014 same pre-existing dangling-alias bug, just diagnosed earlier and more precisely. Not yet root-caused."
+      "translate": "ok"
     },
     "4": {
       "execute_empty": "ok",
