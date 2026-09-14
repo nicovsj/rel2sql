@@ -564,16 +564,16 @@ TEST_F(TranslationTest, ChainedComparison) {
 
 // Partial application as a comparison operand: aggregate vs. constant.
 TEST_F(TranslationTest, ComparisonPartialAppl) {
-  // Avoid DuckDB execution: the unoptimized SQL is correct but verbose, and downstream
-  // optimizers do not yet simplify aggregate-equality CTE patterns cleanly.
-  OPT_EXPECT_EQ_NO_DUCKDB(TranslateProgram("def output { (x): A(x) and sum[A] > 0 }"),
-                          "SELECT DISTINCT T0.A1 AS A1 FROM A AS T0, A AS T1 WHERE (SUM(T1.A1)) > 0;");
+  OPT_EXPECT_EQ(TranslateProgram("def output { (x): A(x) and sum[A] > 0 }"),
+                "SELECT DISTINCT T0.A1 AS A1 FROM A AS T0, (SELECT SUM(T1.A1) AS A1 FROM A AS T1) AS T2 WHERE T2.A1 "
+                "> 0;");
 }
 
 // Partial application on lhs of `!=` (Q21 idiom: `l_suppkey[…] != v`).
 TEST_F(TranslationTest, ComparisonNotEqualPartialAppl) {
-  OPT_EXPECT_EQ_NO_DUCKDB(TranslateProgram("def output { (x): A(x) and sum[A] != 5 }"),
-                          "SELECT DISTINCT T0.A1 AS A1 FROM A AS T0, A AS T1 WHERE (SUM(T1.A1)) != 5;");
+  OPT_EXPECT_EQ(TranslateProgram("def output { (x): A(x) and sum[A] != 5 }"),
+                "SELECT DISTINCT T0.A1 AS A1 FROM A AS T0, (SELECT SUM(T1.A1) AS A1 FROM A AS T1) AS T2 WHERE T2.A1 "
+                "!= 5;");
 }
 
 // Partial application as operand of arithmetic inside an equality.

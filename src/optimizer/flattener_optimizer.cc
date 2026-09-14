@@ -1,5 +1,7 @@
 #include "flattener_optimizer.h"
 
+#include <functional>
+
 #include "replacers.h"
 
 namespace rel2sql {
@@ -120,10 +122,36 @@ bool FlattenerOptimizer::CanFlattenSubquery(const std::shared_ptr<Source>& sourc
   if (!select_subquery) return false;
   if (select_subquery->ctes_are_recursive) return false;
   if (select_subquery->group_by.has_value()) return false;
+  // A scalar (ungrouped) aggregate subquery — e.g. `SELECT MAX(x) FROM t` with no GROUP
+  // BY — computes one value over its own, independent FROM. Flattening would merge that
+  // FROM into the outer query and substitute the bare aggregate call in its place, turning
+  // an independent aggregation into a correlated one (and producing invalid SQL, since an
+  // aggregate function can't appear bare outside a SELECT/HAVING list).
+  if (HasAggregateColumn(select_subquery)) return false;
   // Subqueries with FROM: flatten by inlining inner sources
   if (select_subquery->from.has_value()) return true;
   // Constant-only subqueries (no FROM): flatten by inlining the constant
   return CanFlattenConstantSubquery(source);
+}
+
+bool FlattenerOptimizer::HasAggregateColumn(const std::shared_ptr<Select>& select) {
+  std::function<bool(const std::shared_ptr<Term>&)> term_has_aggregate =
+      [&](const std::shared_ptr<Term>& term) -> bool {
+    if (!term) return false;
+    if (std::dynamic_pointer_cast<Function>(term)) return true;
+    if (auto op = std::dynamic_pointer_cast<Operation>(term)) {
+      return term_has_aggregate(op->lhs) || term_has_aggregate(op->rhs);
+    }
+    if (auto paren = std::dynamic_pointer_cast<ParenthesisTerm>(term)) {
+      return term_has_aggregate(paren->term);
+    }
+    return false;
+  };
+  for (const auto& column : select->columns) {
+    auto term_selectable = std::dynamic_pointer_cast<TermSelectable>(column);
+    if (term_selectable && term_has_aggregate(term_selectable->term)) return true;
+  }
+  return false;
 }
 
 bool FlattenerOptimizer::CanFlattenConstantSubquery(const std::shared_ptr<Source>& source) {
