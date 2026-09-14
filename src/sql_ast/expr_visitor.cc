@@ -63,6 +63,12 @@ void ExpressionVisitor::Visit(DateExtractTerm& date_extract_term) {
   if (date_extract_term.arg) Visit(*date_extract_term.arg);
 }
 
+void ExpressionVisitor::Visit(SubstringTerm& substring_term) {
+  if (substring_term.str) Visit(*substring_term.str);
+  if (substring_term.start) Visit(*substring_term.start);
+  if (substring_term.len) Visit(*substring_term.len);
+}
+
 void ExpressionVisitor::Visit(VerbatimTerm&) {}
 
 void ExpressionVisitor::Visit(TermSelectable& term_selectable) { Visit(*term_selectable.term); }

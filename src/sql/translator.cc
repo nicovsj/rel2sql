@@ -4216,7 +4216,12 @@ std::shared_ptr<sql::ast::Term> Translator::RelExprToSqlTerm(RelNode& node, cons
     throw TranslationException("RelExprToSqlTerm: expected a Select expression", ErrorCode::UNKNOWN_BINARY_OPERATOR,
                                SourceLocation(0, 0));
   }
-  auto ts = std::dynamic_pointer_cast<sql::ast::TermSelectable>(sel->columns[0]);
+  // BuildFullApplSql projects "param order then remaining base columns" (see there): for a
+  // partial application with a bound key (e.g. c_phone[c]), columns[0] is the key ("c"), not
+  // the value the expression actually denotes as a scalar term — that's always the last
+  // column. For an arity-1 expression with no bound params (a literal, a 0-ary def, ...)
+  // there's only one column, so this is unchanged from taking columns[0].
+  auto ts = std::dynamic_pointer_cast<sql::ast::TermSelectable>(sel->columns.back());
   if (!ts || !ts->term) {
     throw TranslationException("RelExprToSqlTerm: expected TermSelectable column", ErrorCode::UNKNOWN_BINARY_OPERATOR,
                                SourceLocation(0, 0));
@@ -4368,8 +4373,10 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBuiltinSubst
   auto s = RelExprToSqlTerm(*node, node->str, from_sources);
   auto st = RelExprToSqlTerm(*node, node->start, from_sources);
   auto ln = RelExprToSqlTerm(*node, node->len, from_sources);
-  auto vt = std::make_shared<sql::ast::VerbatimTerm>(
-      fmt::format("SUBSTRING(({0}) FROM ({1}) FOR ({2}))", s->ToString(), st->ToString(), ln->ToString()));
+  // Structured args (not a stringified VerbatimTerm) so later optimizer passes — subquery
+  // flattening, alias renumbering, dangling-column rebinding — can see and rewrite any
+  // Column reference inside `s`/`st`/`ln` when the source it points to gets renamed/promoted.
+  auto vt = std::make_shared<sql::ast::SubstringTerm>(s, st, ln);
   auto cols = std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(vt, "A1")};
   node->sql_expression = from_sources.empty() ? std::make_shared<sql::ast::Select>(cols, false)
                                               : std::make_shared<sql::ast::Select>(
