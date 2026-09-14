@@ -23,11 +23,11 @@ struct QueryManifestEntry {
 inline constexpr std::array<QueryManifestEntry, 22> kManifestEntries = {
     QueryManifestEntry{1, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
     QueryManifestEntry{2, "ok", "ok", "fail", "with_defs", 60, true, "", ""},
-    QueryManifestEntry{3, "ok", "ok", "fail", "with_defs", 60, false, "", ""},
+    QueryManifestEntry{3, "ok", "fail", "skip", "with_defs", 60, false, "E902", ""},
     QueryManifestEntry{4, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{5, "ok", "ok", "fail", "with_defs", 60, false, "", ""},
+    QueryManifestEntry{5, "ok", "fail", "skip", "with_defs", 60, false, "E902", ""},
     QueryManifestEntry{6, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{7, "ok", "ok", "fail", "with_defs", 60, false, "", ""},
+    QueryManifestEntry{7, "ok", "fail", "skip", "with_defs", 60, false, "E902", ""},
     QueryManifestEntry{8, "ok", "fail", "skip", "with_defs", 60, false, "E104", ""},
     QueryManifestEntry{9, "ok", "fail", "skip", "with_defs", 60, false, "E104", ""},
     QueryManifestEntry{10, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
@@ -41,7 +41,7 @@ inline constexpr std::array<QueryManifestEntry, 22> kManifestEntries = {
     QueryManifestEntry{18, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
     QueryManifestEntry{19, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
     QueryManifestEntry{20, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{21, "ok", "ok", "fail", "with_defs", 60, false, "", ""},
+    QueryManifestEntry{21, "ok", "fail", "skip", "with_defs", 60, false, "E902", ""},
     QueryManifestEntry{22, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
 };
 

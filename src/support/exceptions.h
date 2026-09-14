@@ -38,7 +38,8 @@ enum class ErrorCode {
 
   // Internal/infra errors (E900+)
   INTERNAL_ERROR = 900,
-  NOT_IMPLEMENTED = 901
+  NOT_IMPLEMENTED = 901,
+  DANGLING_COLUMN_REFERENCE = 902
 };
 
 // Base exception class for all rel2sql errors

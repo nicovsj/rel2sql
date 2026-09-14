@@ -80,10 +80,11 @@
       "translate": "ok"
     },
     "21": {
-      "execute_empty": "fail",
-      "execute_empty_note": "codegen bug: dangling table alias inside sub_query2's NOT IN subquery, same GenerateTableAlias class of bug as Q7/Q22",
+      "execute_empty": "skip",
       "rewrite": "ok",
-      "translate": "ok"
+      "stderr_contains": "E902",
+      "translate": "fail",
+      "translate_note": "now caught at translate time by the new ScopeValidator optimizer pass (column 'T106.o1' references an alias not visible here) instead of surfacing later at execute_empty \u2014 same pre-existing dangling-alias bug inside sub_query2's NOT IN subquery, same GenerateTableAlias class of bug as Q3/Q5/Q7, just diagnosed earlier. Not yet root-caused."
     },
     "22": {
       "execute_empty": "ok",
@@ -91,10 +92,11 @@
       "translate": "ok"
     },
     "3": {
-      "execute_empty": "fail",
-      "execute_empty_note": "codegen bug: DuckDB type mismatch (HUGEINT vs DATE) in generated comparison, pre-existing and unrelated to this session's query rewrites",
+      "execute_empty": "skip",
       "rewrite": "ok",
-      "translate": "ok"
+      "stderr_contains": "E902",
+      "translate": "fail",
+      "translate_note": "now caught at translate time by the new ScopeValidator optimizer pass (column 'T117.orderdate' references an alias not visible here) instead of surfacing later as a DuckDB type-mismatch error at execute_empty \u2014 same pre-existing dangling-alias bug, just diagnosed earlier and more precisely. Not yet root-caused."
     },
     "4": {
       "execute_empty": "ok",
@@ -103,10 +105,11 @@
       "translate": "ok"
     },
     "5": {
-      "execute_empty": "fail",
-      "execute_empty_note": "codegen bug: unaffected by this session's chained-comparison fix (still fails); first error is now 'Referenced table T14 not found' \u2014 a scoping bug in how a chained-comparison-bound variable (lower/upper) gets carried as an output column through nested joins, same symptom class as Q7, not yet root-caused",
+      "execute_empty": "skip",
       "rewrite": "ok",
-      "translate": "ok"
+      "stderr_contains": "E902",
+      "translate": "fail",
+      "translate_note": "now caught at translate time by the new ScopeValidator optimizer pass (column 'T14.A1' references an alias not visible here) instead of surfacing later as 'Referenced table T14 not found' at execute_empty \u2014 same pre-existing dangling-alias bug (a chained-comparison-bound variable like lower/upper carried as an output column through nested joins), same symptom class as Q7, just diagnosed earlier. Not yet root-caused."
     },
     "6": {
       "execute_empty": "ok",
@@ -114,10 +117,11 @@
       "translate": "ok"
     },
     "7": {
-      "execute_empty": "fail",
-      "execute_empty_note": "codegen bug: dangling table alias, same root cause as the date_year regression (see Q9). Unaffected by this session's chained-comparison fix (still fails; first error is now 'Referenced table T14 not found', a scoping bug in how a chained-comparison-bound variable like lower/upper gets carried as an output column through nested joins \u2014 same symptom class seen in Q5, not yet root-caused)",
+      "execute_empty": "skip",
       "rewrite": "ok",
-      "translate": "ok"
+      "stderr_contains": "E902",
+      "translate": "fail",
+      "translate_note": "now caught at translate time by the new ScopeValidator optimizer pass (column 'T14.A1' references an alias not visible here) instead of surfacing later as 'Referenced table T14 not found' at execute_empty \u2014 same pre-existing dangling-alias bug (a chained-comparison-bound variable like lower/upper carried as an output column through nested joins), same symptom class as Q5, just diagnosed earlier. Not yet root-caused."
     },
     "8": {
       "execute_empty": "skip",
