@@ -33,16 +33,16 @@ inline constexpr std::array<QueryManifestEntry, 22> kManifestEntries = {
     QueryManifestEntry{10, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
     QueryManifestEntry{11, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
     QueryManifestEntry{12, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{13, "ok", "ok", "fail", "with_defs", 60, false, "", ""},
+    QueryManifestEntry{13, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
     QueryManifestEntry{14, "ok", "fail", "skip", "with_defs", 60, false, "E102", ""},
     QueryManifestEntry{15, "ok", "ok", "fail", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{16, "ok", "ok", "fail", "with_defs", 60, false, "", ""},
+    QueryManifestEntry{16, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
     QueryManifestEntry{17, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
     QueryManifestEntry{18, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
     QueryManifestEntry{19, "ok", "ok", "fail", "with_defs", 60, false, "", ""},
     QueryManifestEntry{20, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
     QueryManifestEntry{21, "ok", "ok", "fail", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{22, "ok", "ok", "fail", "with_defs", 60, false, "", ""},
+    QueryManifestEntry{22, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
 };
 
 }  // namespace rel2sql::tpch_pipeline

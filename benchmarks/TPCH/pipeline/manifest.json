@@ -27,8 +27,7 @@
       "translate": "ok"
     },
     "13": {
-      "execute_empty": "fail",
-      "execute_empty_note": "codegen bug: not(like_match(...)) inside an aggregate filter compiles to a NOT IN subquery with the wrong column count",
+      "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
     },
@@ -46,8 +45,7 @@
       "translate": "ok"
     },
     "16": {
-      "execute_empty": "fail",
-      "execute_empty_note": "same not(like_match(...)) subquery-column-count codegen bug as Q13, now reached because the target_size(...) fact-table rewrite avoids the separate MergeWith OR-chain hang",
+      "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
     },
@@ -88,8 +86,7 @@
       "translate": "ok"
     },
     "22": {
-      "execute_empty": "fail",
-      "execute_empty_note": "codegen bug: dangling table alias in c_country_code's generated view, same GenerateTableAlias class of bug as Q7/Q21",
+      "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
     },
