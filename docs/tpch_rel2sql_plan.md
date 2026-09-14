@@ -731,3 +731,35 @@ specific remaining bug in each), plus:
   `IntensionalDomain` narrowing patch is diagnosed-but-unsafe, see above).
 - Q19's wrong real-data result (huge negative `int128` vs. the reference's positive decimal) —
   not yet investigated at all; distinct from the now-fixed column-naming bug.
+
+### Fourth fix this round: `SelfJoinOptimizer` crashed on a wide multi-way join (Q2's optimizer segfault)
+
+Q2 (`double reverse_sort` over an 8-column relation) had a `"unoptimized": true` override in the
+manifest since before this session, with the note "optimizer segfaults on this query's wide
+(8-column) double reverse_sort family at default optimization." Reproduced under `lldb` with a
+`-c dbg` build: `EXC_BAD_ACCESS` inside `BaseOptimizer::Visit(Expression&)`, called from
+`SelfJoinOptimizer::Visit(Select&)`, called from `Optimizer::Visit(Select&)`'s *first*
+`self_join_optimizer_.Visit(expression)` call (before `CTEInliner` even runs). Added a temporary
+debug print in the FROM-sources loop and confirmed the vector genuinely contained a **null**
+`shared_ptr<Source>` by the time the crashing iteration was reached — not just a `Source` with a
+null `sourceable`.
+
+Root cause: `SelfJoinOptimizer::Visit(Select& select)`
+(`src/optimizer/self_join_optimizer.cc`) walked `select.from.value()->sources` with a
+range-based `for` loop while recursively visiting each source's own nested subquery. For Q2's
+shape, one of those recursive visits ends up mutating that *same* sources vector elsewhere in
+the tree — most likely a `Select` object reachable through more than one `Source` (an aliased/
+shared subtree) — reallocating its buffer. The range-based loop's cached `begin()`/`end()` then
+point at freed memory; continuing iteration on those stale iterators reads that memory back as
+null entries, and dereferencing one segfaults in the generic visitor's virtual dispatch. Switching
+the loop to index-based (`select.from.value()->sources[idx]`, re-checking `.size()` fresh every
+iteration) makes a reentrant mutation observable instead of walking off a stale iterator, and the
+crash reproduced no faster than immediately — after the fix, Q2 translates and *optimizes*
+cleanly with no `-u` override needed to avoid crashing. Committed as `3172236`.
+
+**This did not flip Q2's manifest status.** With the crash gone, the *optimized* path now hits a
+different, already-documented bug instead: `Binder Error: Values list "T0" does not have a column
+named "A3"` — the "dangling table alias (stale `GenerateTableAlias` reference)" issue the manifest
+already names for Q2. `"unoptimized": true` stays in place; the segfault specifically is fixed and
+verified (full `task test` clean, same 6-test baseline, `tpch_pipeline_test` green), but Q2 needs
+the same dangling-alias root-cause work as Q3/Q7/Q21 before it can drop the override.
