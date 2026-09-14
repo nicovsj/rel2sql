@@ -42,10 +42,19 @@ std::shared_ptr<Column> ExtractSingleColumnFromTerm(const std::shared_ptr<Term>&
 }  // namespace
 
 void SelfJoinOptimizer::Visit(Select& select) {
-  // First navigate depth-first through possible subqueries in FROM statements
+  // First navigate depth-first through possible subqueries in FROM statements.
+  // Iterate by re-fetching select.from.value()->sources[idx] each step (rather than a
+  // range-based for, which caches begin()/end() once) — visiting a nested subquery here can
+  // recursively trigger a mutation of this same sources vector elsewhere in the tree (e.g. a
+  // shared/aliased Select reachable through more than one Source), and a cached iterator left
+  // dangling by that reallocation reads freed memory back as null shared_ptrs. Wide multi-way
+  // joins (e.g. TPC-H Q2's double reverse_sort) reliably hit this and crashed.
   if (select.from.has_value()) {
-    for (auto& source : select.from.value()->sources) {
-      Visit(*source);
+    size_t idx = 0;
+    while (idx < select.from.value()->sources.size()) {
+      auto source = select.from.value()->sources[idx];
+      if (source) Visit(*source);
+      ++idx;
     }
   }
   // Then try to eliminate redundant self-joins
