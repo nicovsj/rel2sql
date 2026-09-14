@@ -554,3 +554,82 @@ safely fixed yet. Blocks Q3, Q4, Q5.
 - Q19: a `UNION` subquery's column alias doesn't match the outer join's reference. Not
   investigated.
 - Q2: optimizer segfault at default optimization (works with `-u`). Not investigated.
+
+## Round 3 (2026-09-14) — found and fixed the real Q3/Q4/Q5 root cause; one bug fixed, one new one found
+
+Round 2 diagnosed the Q3/Q4/Q5 type-mismatch symptom down to *an* `IntensionalDomain`
+column-indexing bug but couldn't safely fix it (both attempted patches broke the Q12
+regression-guard test). This round went one level deeper and found the actual root cause,
+upstream of all of that: `RelASTBuilder::visitChainedComparison` (`src/rel_ast/rel_ast_builder.cc`)
+desugars `a <= b < c` into two `RelComparison` nodes that **alias the same underlying AST
+object** for the shared middle term `b` (`left = cmp->rhs;` — a shared_ptr copy, not a value
+copy). `TermRewriter::Visit(RelComparison)` (`src/rewriter/term_rewriter.cc`) lifts a
+partial-application-as-term operand by mutating the term **in place** — `term = std::move(id)`,
+where `term` is a reference straight into the shared node's own field. Walking through the
+first comparison's `rhs` (`RelParenthesisTerm -> RelExprAsTerm`) replaces that shared node's
+inner term with a fresh `RelIDTerm` (e.g. `_x0`) as a side effect; the second comparison, whose
+`lhs` points at that *same* object, then sees a bare `_x0` instead of the `RelExprAsTerm` it
+needs, so its own lift silently no-ops (`lifted.empty()`). The result: `o_orderdate[o]`'s
+existential (with its join back to `o`) only got built for the *first* half of the chain, and the
+second half became a free reference to `_x0` — a variable that only exists inside the first
+half's own existential scope — which is exactly why `o_orderdate` ended up unjoined
+("cross-joined") in the final SQL, and why the previous round's `IntensionalDomain` patch (a
+downstream *symptom* fix, narrowing to the wrong column) could never actually be correct: there
+was no bug in which column `IntensionalDomain` picked, there was a missing join upstream of it.
+
+**Fix** (`RelASTBuilder::visitChainedComparison`): instead of aliasing `cmp->rhs` for the next
+comparison's `lhs`, re-run `visit(rhs_ctx)` against the same ANTLR parse context to build a
+second, independent AST subtree. `RelASTBuilder` has no per-context memoization (checked), so
+this is safe and cheap — it's exactly what building two separate `term`s from the same source
+text would look like if the user had written `b` out twice. Committed as `ee7b332`. Verified: same
+16 pre-existing `test_translation` failures before/after, `TpchQ12PartialAppFlatten` still passes,
+`tpch_pipeline_test` all green.
+
+**Concrete impact measured this round** (translated each of Q3/Q4/Q5/Q7/Q21 before/after against
+a fresh copy of `benchmarks/TPCH/data/tpch_sf001.duckdb` — the fix's benefit doesn't show up
+uniformly because each of these queries has at least one *other*, unrelated bug still blocking
+it):
+- **Q4**: `execute_empty` now genuinely passes (manifest updated) — `o_orderdate` is correctly
+  joined to `o` in the generated SQL. But seeing real (non-empty) data against the SF0.01
+  database exposed a **second, previously-invisible bug** (see below) that makes Q4's actual
+  results wrong, ~2.6x too high. This was unreachable before because the query never produced
+  syntactically valid SQL in the first place.
+- **Q3, Q7**: still fail `execute_empty`, unaffected in outcome (same "fail" as before) — but the
+  *shape* of the first error changed for Q7 (see below). Q3 additionally still hits the
+  original, unrelated `HUGEINT`-vs-`DATE` comparison bug as its first error.
+- **Q5**: still fails `execute_empty`, but its first error changed shape from a type mismatch to
+  `Binder Error: Referenced table "T14" not found!`.
+- **Q21**: unaffected — Q21 doesn't use a chained comparison at all, so this fix was never
+  expected to reach it; still blocked by its own documented dangling-alias bug in
+  `sub_query2`'s `NOT IN` subquery.
+
+### New bug found: `exists(...)` nested in an aggregate body's formula doesn't deduplicate its own witness variable
+
+Q4's real (SF0.01) results are `[247, 289, 303, 251, 349]` per `o_orderpriority` where the
+reference SQL gives `[93, 103, 109, 102, 128]` — every bucket inflated by roughly the same
+~2.6x factor. Root cause: `count[(o): ... and exists((num) | l_commitdate[o,num] <
+l_receiptdate[o,num])]` should count each qualifying order `o` once, with `num` purely a
+witness — but the generated SQL exposes `l_commitdate`/`l_receiptdate` joined directly on
+`(o, num)` (i.e. **both** columns, not just `o`) straight into the aggregate's outer join, so an
+order with N matching lineitems gets counted N times instead of once. The generic
+`Translator::Visit(RelExistential)` path (`src/sql/translator.cc:3622`) *does* correctly wrap its
+result in a `SELECT DISTINCT <free_variables only>` (dropping bound witnesses like `num`) — but
+that path isn't the one that actually fires here. One of the special-case
+lifted-partial-application patterns further up in `Visit(RelConjunction)`/`Visit(RelExistential)`
+(`TryEmitLiftedPartialApp*` / `IsTermRewriterLiftedBindingConjunction`, `src/sql/translator.cc`
+~1458–1547 and ~3630–3700) intercepts this shape first and inlines the comparison's base tables
+directly without dropping the witness variable(s) afterward. Not yet root-caused to a specific
+function — flagged here for a future session. Likely affects any TPC-H query whose aggregate body
+conjoins an `exists(...)` with a bound variable beyond the ones it shares with the outer scope
+(Q4 confirmed; worth checking Q21/Q22's `NOT EXISTS` shapes too, though those look structurally
+different since they're negated).
+
+### Still open after this round
+
+Everything listed in Round 2's "still open" section remains open, plus:
+- The `exists`-in-aggregate-body dedup bug above (blocks true Q4 correctness).
+- Q5/Q7's `"Referenced table T14 not found"` scoping bug — a chained-comparison-bound variable
+  (`lower`/`upper`) being carried as a named output column through a join tree where the alias
+  it references is nested too deep to be in scope. Distinct from the fixed AST-sharing bug (this
+  one is about naming/scope of an *output projection*, not about a missing join), not yet
+  root-caused.
