@@ -61,8 +61,8 @@
       "translate": "ok"
     },
     "19": {
-      "execute_empty": "fail",
-      "execute_empty_note": "codegen bug: ship_mode's OR-of-equality-on-a-bound-variable lowers to a UNION subquery whose column alias doesn't match the outer join's column reference",
+      "execute_empty": "ok",
+      "execute_empty_note": "was blocked by CTEInliner dropping a CTE's logical column name (\"shipmode\") when inlining an unaliased reference, so ship_mode's UNION branches ended up named inconsistently (\"shipmode\" vs \"A3\") \u2014 fixed in CTEInliner (replace_alias=true at both call sites). execute_empty now succeeds, but real (non-empty) results are still WRONG (huge negative int128 instead of the reference's positive decimal revenue) \u2014 a separate, not-yet-investigated bug.",
       "rewrite": "ok",
       "translate": "ok"
     },
