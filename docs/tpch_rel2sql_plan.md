@@ -852,3 +852,37 @@ every other query in the "still open" lists above (Q4, Q15, Q19's remaining corr
 Q8/Q9/Q14's translate failures, Q5/Q7/Q21/Q2's dangling-alias family) should be re-examined in a
 future round now that this foundational bug is fixed — some may turn out to have been entirely
 explained by it.
+
+## Round 5 (2026-09-14) — Q9's date_year regression, root cause and fix
+
+Picked the highest-leverage remaining item: `date_year`, responsible for 4 of the 6 remaining
+`test_translation` failures (`TpchQ9*`) plus `BuiltinDateYearOnPartialApplication`, and for Q9's
+`translate: fail`. Root-caused with an `lldb` **C++ exception breakpoint**
+(`break set -E C++`) rather than a function-entry breakpoint on `ExpectSourceable` — the latter is
+misleading here since `ExpectSourceable` is called constantly throughout translation and a plain
+breakpoint just stops on the *first* call, not the one that throws.
+
+**Bug**: `TryEmitDateYearExistential` (the special case that fires for `exists(z |
+{date_year[R[k]]}(z) and year_var = z)`, i.e. exactly what `date_year[...]` used as a comparison
+operand desugars to after `TermRewriter` lifts it) built its result correctly as a `Select`, then
+wrapped that `Select` in a `sql::ast::Source` — a FROM-clause alias binding, not itself a
+`Sourceable` — before assigning it to `node->sql_expression`. Every other `RelFormula`
+translation assigns a `Sourceable` there; this one didn't. The bug stayed invisible as long as
+nothing downstream called `ExpectSourceable` on this particular existential's result — which is
+exactly what happens once it's embedded in a larger conjunction (Q9's whole shape: `date_year[...]
+and exists(...)`), where the generic `Visit(RelConjunction)` path does call `ExpectSourceable` on
+both sides.
+
+**Fix**: don't wrap — `inner_srcable` (the already-correct `Select`) *is* the `Sourceable` this
+function needs to return. One-line change, `2f045d9`.
+
+**Impact**: `test_translation`'s regression baseline drops from 6 to 1 (only `EdgeCase1` remains,
+unrelated). Q9 now translates, executes, and was verified against real SF0.01 data — ALGERIA's 7
+rows (1992-1998) match the reference exactly. Q8 still fails `translate`, but now for exactly the
+reason its own manifest note already predicted it would once Q9's blocker cleared: Q14's
+division-by-a-non-constant-variable safety-inference gap (`E102` instead of `E104` now — confirms
+the prediction was correct, not a new problem). Manifest updated accordingly.
+
+**Still open**: `EdgeCase1` (the one remaining `test_translation` failure, not yet investigated
+this round), Q14's division-by-variable gap (which now also blocks Q8), and everything else in the
+"still open" lists above.
