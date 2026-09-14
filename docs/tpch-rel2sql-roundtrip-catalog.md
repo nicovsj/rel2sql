@@ -1,4 +1,4 @@
-## Status as of 2026-09-11 (supersedes the stale claims below)
+## Status as of 2026-09-14 (supersedes the stale claims below)
 
 Everything below this section predates a session that got `rel2sql_bin` building and actually ran
 all 22 queries through the pipeline. Treat the rest of this file as historical narrative, not
@@ -6,19 +6,22 @@ current status. Current status:
 
 - Source of truth: [`benchmarks/TPCH/pipeline/manifest.json`](../benchmarks/TPCH/pipeline/manifest.json)
   (machine-checked by `bazel test //benchmarks/TPCH:tpch_pipeline_test`) and
-  [`docs/tpch_rel2sql_plan.md`](tpch_rel2sql_plan.md) (source-grounded rewrite rationale, now
-  verified against a real build — see its own file:line citations and the "verified" notes added
-  during this session).
+  [`docs/tpch_rel2sql_plan.md`](tpch_rel2sql_plan.md) (source-grounded rewrite rationale, verified
+  against a real build — see its own file:line citations, "Verification notes", and "Round 2"
+  sections).
 - **19 of 22 queries now translate** (`translate: ok`): 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 15,
   16, 17, 18, 19, 20, 21, 22. Only 8, 9, 14 still fail to translate.
-- Of those 19, **8 also execute cleanly on empty tables** (`execute_empty: ok`): 1, 6, 10, 11, 12,
-  17, 18, 20. The other 11 (2, 3, 4, 5, 7, 13, 15, 16, 19, 21, 22) translate without error but the
-  generated SQL fails in DuckDB — these are **pre-existing SQL-codegen bugs in the translator**
-  (dangling table aliases, `not(like_match(...))` inside an aggregate filter producing a
-  multi-column `NOT IN` subquery, `MAX(...)` emitted directly in a `WHERE` clause, an
-  OR-of-string-equality lowered to a `UNION` subquery with a mismatched column alias, and DuckDB
-  type mismatches on date comparisons), **not** language gaps fixable by rewriting the `.rel`
-  source. See each query's `execute_empty_note` in `manifest.json` for specifics.
+- Of those 19, **11 also execute cleanly on empty tables** (`execute_empty: ok`): 1, 6, 10, 11, 12,
+  13, 16, 17, 18, 20, 22. Query-level rewrites plus four genuine rel2sql C++ fixes (see the plan
+  doc's "Round 2" section) got Q13/16/22 there. The other 8 (2, 3, 4, 5, 7, 15, 19, 21) translate
+  without error but the generated SQL fails in DuckDB — these are **pre-existing SQL-codegen bugs
+  in the translator**, each root-caused to varying depth in the plan doc (dangling table aliases
+  in Q7/Q21 — same symptom as a bug already fixed for Q22's `substring`, but a different trigger,
+  not yet found; a column-indexing bug in chained-comparison domain handling for Q3/Q4/Q5, found
+  and fixed but reverted because the fix broke a previously-passing query — see "Round 2"; `MAX(...)`
+  emitted directly in a `WHERE` clause for Q15; a `UNION` subquery column-alias mismatch for Q19),
+  **not** language gaps fixable by rewriting the `.rel` source. See each query's
+  `execute_empty_note` in `manifest.json` for specifics.
 - **The "EDB binding" explanation this file gives below for Q19/Q21 is wrong and stale.** Both
   queries translate and reach `execute_empty` today; Q19 additionally needed a rewrite for two
   *separate* gaps the original plan didn't anticipate: (a) `param <= l_quantity[o,l] <= param+10`
