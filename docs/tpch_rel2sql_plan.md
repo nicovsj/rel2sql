@@ -791,3 +791,64 @@ through `translate` and only surfacing as a DuckDB error at `execute_empty` — 
 doesn't fix that bug, it just catches it earlier and names it precisely, which is the point: the
 next time a rewrite introduces this shape of bug, it should fail loudly and locally instead of
 costing another multi-hour trace like Q5/Q7's "Referenced table T14 not found" did this round.
+
+## Round 4 (2026-09-14) — root-caused Q3's dangling alias; found a foundational value-column bug affecting nearly every query
+
+Used `ScopeValidator`'s precise error (`column 'T117.orderdate' references an alias not visible
+here`) to root-cause Q3 directly instead of tracing DuckDB errors by hand. Built a minimal repro
+(`o_orderdate(ok,orderdate) and o_orderdate[ok] < target_date and revenue = sum[...]`) and found
+two independent bugs, both committed as `2b7a56b`:
+
+**Bug 1 — `FindAggregateThresholdPattern` misdetection.** This function (used by
+`Visit(RelFormulaAbstraction)` to recognize a `value = agg[...] and value CMP idb`-shaped
+formula, e.g. for `count[shipmode] > 5`-style patterns) walked the formula tree in a single pass,
+inferring `value_var` from whichever `var CMP idb` comparison it saw *first* — with no check that
+`var` had anything to do with the aggregate export equality found elsewhere. For Q3,
+`o_orderdate[ok] < target_date` (a plain date filter, unrelated to the revenue aggregate) got
+misdetected as the pattern's threshold comparison, purely because `target_date` (a 0-ary
+`@inline def`) is also classified as an IDB. This corrupted the whole query: `revenue` ended up
+compared directly against `target_date` (`WHERE T4.revenue < T5.A1` in the generated SQL), and
+the real `o_orderdate`/`o_shippriority` join was dropped from the query entirely — which is
+exactly what `ScopeValidator` caught (a `SELECT` referencing a table never joined in). Fixed by
+splitting into two passes: find the aggregate's real `value_var` first, then only accept a
+threshold comparison that references that specific variable.
+
+**Bug 2 — lifted-atom params bind to the wrong (key, not value) column.** `Visit(RelFullApplication)`
+assumed a `RelFullApplication`'s params align 1:1 with its base's own columns starting at
+position 1. True for a direct relation reference (`o_orderdate(ok, orderdate)`), false when the
+base is a TermRewriter-lifted `{inner}(z)` wrapping a partial application — e.g.
+`{l_extendedprice[o,num]}(_x1)`, which is exactly what `l_extendedprice[o,num] * (1 -
+l_discount[o,num])` desugars to. The wrapped partial application's own translation carries its
+"key" columns (o, num) ahead of its value column (`BuildFullApplSql`'s own documented "param
+order then remaining base columns" convention) — so the single param `_x1` was silently binding
+to column 1 (`o`, the order key) instead of the value. **This is the root cause of every TPC-H
+query computing `l_revenue`/`l_charge` (`l_extendedprice[o,num] * (1 - l_discount[o,num])`,
+TPC-H's single most common expression) producing garbage** — confirmed present in already-"passing"
+queries too (Q1, Q10, ...), just never caught because `execute_empty` only checks for crashes, not
+correctness. `DomainToSql`'s `IntensionalDomain` case had the identical bug for the same
+underlying reason, on a separate code path (an arithmetic term like `_x1 * (1 - _x2)` resolves
+each operand's own domain through here). Both fixed: `Visit(RelFullApplication)` now offsets
+every param's base-column index to the trailing columns when the base is wider than the params
+supplied (`CollectApplParams` gained an `index_offset` parameter), and `IntensionalDomain`
+narrows to its trailing `arity` columns the same way. **This is the same narrowing fix that was
+investigated and reverted in Round 2/3 as "not needed for Q4/Q15's specific repros"** — turns out
+it's needed for this far more common shape; Round 2/3 just hadn't hit a repro that required it.
+
+Verified extensively given the blast radius (touches `Visit(RelFullApplication)`, used by nearly
+every query): full `task test` clean (same 6 pre-existing `test_translation` failures),
+`tpch_pipeline_test` shows only Q3 changing status, zero regressions across all 22 queries'
+execute_empty/translate manifest status. Used `git stash` to confirm results against real SF0.01
+data are not regressions: `Q6`'s revenue now matches the reference *exactly* (`1193053.2253`),
+`Q12`'s one produced row matches the reference row exactly, `Q3`'s top result (orderkey 450,
+revenue `205447.4232`) exactly matches the reference, and `Q10` changed from nonsensical negative
+`int128` garbage to a correctly-shaped positive decimal (confirmed via `git stash` to the
+pre-session baseline that the garbage predates this round, not a regression it introduced).
+
+**Still open**: Q3 itself is not fully correct yet — several higher-revenue orders present in the
+reference are missing from our top-10 (not yet root-caused, likely a filtering/join-completeness
+gap independent of the two bugs above). Q10 similarly still doesn't match the reference despite
+the value-column fix resolving its revenue computation. Given the scope of what Bug 2 touches,
+every other query in the "still open" lists above (Q4, Q15, Q19's remaining correctness gaps,
+Q8/Q9/Q14's translate failures, Q5/Q7/Q21/Q2's dangling-alias family) should be re-examined in a
+future round now that this foundational bug is fixed — some may turn out to have been entirely
+explained by it.
