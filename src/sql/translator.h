@@ -94,7 +94,11 @@ class Translator : public BaseRelVisitor {
     std::vector<std::tuple<size_t, std::shared_ptr<sql::ast::Source>, RelNode*>> non_term_param_slots;
   };
 
-  FullApplParamSlots CollectApplParams(RelNode& node, const std::vector<std::shared_ptr<RelApplParam>>& params);
+  // index_offset shifts every param's 1-based base-column index (e.g. for a base whose own
+  // translation carries index_offset leading "key" columns ahead of the columns these params
+  // actually correspond to — see Visit(RelFullApplication)'s RelExprApplBase handling).
+  FullApplParamSlots CollectApplParams(RelNode& node, const std::vector<std::shared_ptr<RelApplParam>>& params,
+                                       size_t index_offset = 0);
 
   // Build SQL term for a variable from a param slot column using term_linear_coeffs (column holds a*x+b, result is x).
   std::shared_ptr<sql::ast::Term> MakeTermForVariableFromParamSlotRel(

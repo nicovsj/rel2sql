@@ -677,9 +677,10 @@ std::shared_ptr<sql::ast::Sourceable> Translator::GetBaseSourceableFromApplBase(
 }
 
 Translator::FullApplParamSlots Translator::CollectApplParams(RelNode& node,
-                                                             const std::vector<std::shared_ptr<RelApplParam>>& params) {
+                                                             const std::vector<std::shared_ptr<RelApplParam>>& params,
+                                                             size_t index_offset) {
   FullApplParamSlots slots;
-  size_t param_idx = 0;
+  size_t param_idx = index_offset;
 
   for (const auto& param : params) {
     // param_idx must track the argument's true 1-based position in the base relation
@@ -1260,6 +1261,26 @@ std::shared_ptr<sql::ast::Sourceable> Translator::DomainToSql(const Domain& doma
       throw TranslationException("DomainToSql: IntensionalDomain inner did not produce a Sourceable",
                                  ErrorCode::UNKNOWN_BINARY_OPERATOR, SourceLocation(0, 0));
     }
+    // intl->node's own translation may carry "key" columns ahead of its actual value column(s)
+    // — BuildFullApplSql's "param order then remaining base columns" convention (the same
+    // reason Visit(RelFullApplication) offsets its own param lookups for a wrapped base). This
+    // domain represents a *single* bound variable's value, so when the translated node is wider
+    // than that (one column), narrow to its trailing arity columns rather than handing back
+    // extra columns the caller only declared one name for.
+    size_t logical_arity = intl->node->arity;
+    size_t total_cols = GetArityForSourceable(sourceable);
+    if (logical_arity > 0 && total_cols > logical_arity) {
+      auto src = std::make_shared<sql::ast::Source>(sourceable, GenerateTableAlias());
+      std::vector<std::shared_ptr<sql::ast::Selectable>> cols;
+      size_t start = total_cols - logical_arity;
+      for (size_t i = 0; i < logical_arity; ++i) {
+        std::string col_name = GetColumnNameForSourceable(sourceable, start + i + 1);
+        auto col = std::make_shared<sql::ast::Column>(col_name, src);
+        cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, fmt::format("A{}", i + 1)));
+      }
+      auto from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{src});
+      return std::make_shared<sql::ast::Select>(cols, from, false);
+    }
     return sourceable;
   }
 
@@ -1446,7 +1467,26 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelFullAppli
   };
   auto ra_source = std::make_shared<sql::ast::Source>(base_sourceable, GenerateTableAlias());
 
-  auto slots = CollectApplParams(*node, node->params);
+  // When the base is a wrapped expression (e.g. a TermRewriter-lifted `{inner}(z)` atom over a
+  // partial application, like `{l_extendedprice[o,num]}(_x1)`), the wrapped expr's own
+  // translation carries "key" columns ahead of its actual value column(s) — BuildFullApplSql's
+  // "param order then remaining base columns" convention. This atom's own params always bind to
+  // the *value* portion, so when the base is wider than the params supplied here, offset every
+  // param's base-column index to land on the trailing columns instead of the leading ones
+  // (which are the key columns, e.g. the order key) — while still leaving those leading columns
+  // in base_sourceable so BuildFullApplSql's "remaining base columns" pass still exposes them
+  // (the outer conjunction's join needs them, since VariablesVisitor already counted them as
+  // this atom's free variables).
+  size_t index_offset = 0;
+  if (dynamic_cast<RelExprApplBase*>(node->base.get())) {
+    size_t total_cols = GetArityForSourceable(base_sourceable);
+    size_t needed = node->params.size();
+    if (needed > 0 && total_cols > needed) {
+      index_offset = total_cols - needed;
+    }
+  }
+
+  auto slots = CollectApplParams(*node, node->params, index_offset);
 
   auto parts = BuildFullApplSql(slots, ra_source, base_sourceable, column_name_for_index);
 
@@ -2162,64 +2202,44 @@ std::optional<AggregateExportMatch> FindAggregateExportEquality(const std::share
 
 std::optional<AggregateThresholdPattern> FindAggregateThresholdPattern(const RelContext& ctx,
                                                                        const std::shared_ptr<RelNode>& root) {
+  // Pass 1: find the aggregate export equality (e.g. "revenue = sum[...]") anywhere in the tree.
+  // This determines the *real* value_var a threshold comparison (pass 2) must reference. A
+  // single combined walk previously guessed at value_var from whichever qualifying "var CMP idb"
+  // comparison it encountered first, with no way to check that "var" had anything to do with the
+  // aggregate — for TPC-H Q3, an unrelated date filter ("o_orderdate[ok] < target_date", by this
+  // point rewritten to "_xN < target_date") was mistaken for the aggregate's own threshold simply
+  // because target_date is also an IDB, corrupting `revenue`'s translation with a bogus
+  // "revenue < target_date" comparison and leaving the real date/orderdate join out of the query
+  // entirely.
   std::optional<AggregateExportMatch> agg_match;
-  std::optional<AggregateThresholdPattern> thresh_match;
-  std::string value_var;
-
-  std::function<void(const std::shared_ptr<RelNode>&)> walk = [&](const std::shared_ptr<RelNode>& node) {
-    if (!node) return;
-    if (!agg_match) {
-      if (auto found = FindAggregateExportEquality(node)) {
-        agg_match = found;
-        value_var = found->value_var;
-      }
+  std::function<void(const std::shared_ptr<RelNode>&)> find_agg = [&](const std::shared_ptr<RelNode>& node) {
+    if (!node || agg_match) return;
+    if (auto found = FindAggregateExportEquality(node)) {
+      agg_match = found;
+      return;
     }
+    for (const auto& ch : node->Children()) find_agg(ch);
+  };
+  find_agg(root);
+  if (!agg_match) return std::nullopt;
+
+  // Pass 2: find a comparison between the aggregate's own exported value_var and an IDB.
+  const std::string value_var = agg_match->value_var;
+  std::optional<AggregateThresholdPattern> thresh_match;
+  std::function<void(const std::shared_ptr<RelNode>&)> find_thresh = [&](const std::shared_ptr<RelNode>& node) {
+    if (!node || thresh_match) return;
     if (auto cmp = std::dynamic_pointer_cast<RelComparison>(node)) {
       std::string idb;
       sql::ast::CompOp op;
-      if (value_var.empty()) {
-        auto infer_idb = [&](const std::shared_ptr<RelTerm>& term) -> std::string {
-          if (auto* id = dynamic_cast<RelIDTerm*>(term.get())) {
-            return ctx.IsIDB(id->id) ? id->id : "";
-          }
-          if (auto* eat = dynamic_cast<RelExprAsTerm*>(term.get())) {
-            if (auto partial = std::dynamic_pointer_cast<RelPartialApplication>(eat->inner)) {
-              if (auto* id_base = dynamic_cast<RelIDApplBase*>(partial->base.get())) {
-                return ctx.IsIDB(id_base->id) ? id_base->id : "";
-              }
-            }
-          }
-          return "";
-        };
-        auto* lhs = dynamic_cast<RelIDTerm*>(cmp->lhs.get());
-        auto* rhs = dynamic_cast<RelIDTerm*>(cmp->rhs.get());
-        const std::string idb_rhs = infer_idb(cmp->rhs);
-        const std::string idb_lhs = infer_idb(cmp->lhs);
-        if (lhs && !idb_rhs.empty() &&
-            (cmp->op == RelCompOp::GT || cmp->op == RelCompOp::GTE || cmp->op == RelCompOp::LT ||
-             cmp->op == RelCompOp::LTE)) {
-          value_var = lhs->id;
-        } else if (rhs && !idb_lhs.empty() &&
-                   (cmp->op == RelCompOp::GT || cmp->op == RelCompOp::GTE || cmp->op == RelCompOp::LT ||
-                    cmp->op == RelCompOp::LTE)) {
-          value_var = rhs->id;
-        }
-      }
-      if (!value_var.empty() && !thresh_match && ExtractValueVsIdbComparison(*cmp, ctx, value_var, idb, op)) {
-        thresh_match = AggregateThresholdPattern{value_var, nullptr, idb, op};
+      if (ExtractValueVsIdbComparison(*cmp, ctx, value_var, idb, op)) {
+        thresh_match = AggregateThresholdPattern{value_var, agg_match->agg, idb, op};
+        return;
       }
     }
-    for (const auto& ch : node->Children()) {
-      walk(ch);
-    }
+    for (const auto& ch : node->Children()) find_thresh(ch);
   };
-
-  walk(root);
-  if (!agg_match || !thresh_match) return std::nullopt;
-  AggregateThresholdPattern out = *thresh_match;
-  out.agg = agg_match->agg;
-  out.value_var = agg_match->value_var;
-  return out;
+  find_thresh(root);
+  return thresh_match;
 }
 
 }  // namespace
