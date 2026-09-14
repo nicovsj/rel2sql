@@ -133,6 +133,13 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
     ReplaceTermSlot(date_extract_term.arg);
   }
 
+  void Visit(SubstringTerm& substring_term) override {
+    ExpressionVisitor::Visit(substring_term);
+    ReplaceTermSlot(substring_term.str);
+    ReplaceTermSlot(substring_term.start);
+    ReplaceTermSlot(substring_term.len);
+  }
+
   void Visit(CaseWhen& case_when) override {
     // Manually recurse so we can rewrite each term slot.
     for (auto& [condition, term] : case_when.cases) {

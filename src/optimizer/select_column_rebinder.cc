@@ -110,6 +110,13 @@ class WhereColumnSubstitutor : public ExpressionVisitor {
     SubstituteTerm(date_extract_term.arg);
   }
 
+  void Visit(SubstringTerm& substring_term) override {
+    ExpressionVisitor::Visit(substring_term);
+    SubstituteTerm(substring_term.str);
+    SubstituteTerm(substring_term.start);
+    SubstituteTerm(substring_term.len);
+  }
+
  private:
   void SubstituteTerm(std::shared_ptr<Term>& term) {
     if (auto col = std::dynamic_pointer_cast<Column>(term)) {

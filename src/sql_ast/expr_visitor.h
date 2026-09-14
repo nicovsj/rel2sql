@@ -24,6 +24,7 @@ class Operation;
 class ParenthesisTerm;
 class Function;
 class DateExtractTerm;
+class SubstringTerm;
 class VerbatimTerm;
 class TermSelectable;
 class ComparisonCondition;
@@ -64,6 +65,7 @@ class ExpressionVisitor {
   virtual void Visit(ParenthesisTerm& parenthesis_term);
   virtual void Visit(Function& function);
   virtual void Visit(DateExtractTerm& date_extract_term);
+  virtual void Visit(SubstringTerm& substring_term);
   virtual void Visit(VerbatimTerm& verbatim_term);
   virtual void Visit(TermSelectable& term_selectable);
   virtual void Visit(ComparisonCondition& comparison_condition);

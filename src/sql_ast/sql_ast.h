@@ -606,6 +606,30 @@ class DateExtractTerm : public Term {
   }
 };
 
+/** SUBSTRING(str FROM start FOR len) with structured args so optimizers can rewrite column refs. */
+class SubstringTerm : public Term {
+ public:
+  std::shared_ptr<Term> str;
+  std::shared_ptr<Term> start;
+  std::shared_ptr<Term> len;
+
+  SubstringTerm(std::shared_ptr<Term> str, std::shared_ptr<Term> start, std::shared_ptr<Term> len)
+      : str(std::move(str)), start(std::move(start)), len(std::move(len)) {}
+
+  std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* o = dynamic_cast<const SubstringTerm*>(&other);
+    return o && *str == *o->str && *start == *o->start && *len == *o->len;
+  }
+
+  std::string ToString() const override {
+    return fmt::format("SUBSTRING(({}) FROM ({}) FOR ({}))", str->ToString(), start->ToString(), len->ToString());
+  }
+};
+
 /** SQL fragment emitted verbatim (e.g. DATE '...', INTERVAL ..., CAST(... AS DATE)). */
 class VerbatimTerm : public Term {
  public:
