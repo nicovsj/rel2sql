@@ -15,6 +15,11 @@ tasks:
     cmds:
       - bazel build --config=default //:rel2sql_shared
 
+  build-bin:
+    desc: Build the rel2sql_bin CLI (bazel-bin/rel2sql_bin)
+    cmds:
+      - bazel build --config=default //:rel2sql_bin
+
   test:
     desc: Run C++ library tests (bazel test //...)
     cmds:
@@ -121,6 +126,12 @@ tasks:
     desc: Bazel test //benchmarks/TPCH:tpch_pipeline_test (rewrite, translate, DuckDB empty execute)
     cmds:
       - bazel test --config=default //benchmarks/TPCH:tpch_pipeline_test
+
+  tpch:translate:
+    desc: "Rewrite + translate one query, print SQL to stdout (no DB needed): task tpch:translate -- 13"
+    cmds:
+      - bazel build --config=default //:rel2sql_bin
+      - python3 scripts/tpch_rewrite.py {{.CLI_ARGS}} | bazel-bin/rel2sql_bin -e benchmarks/TPCH/rel/tpch_edb.edb
 
   tpch:build-db:
     desc: Generate TPC-H DuckDB (default SF 0.01 -> tpch_sf001.duckdb; pass --sf/--output)
