@@ -12,6 +12,7 @@
     },
     "10": {
       "execute_empty": "ok",
+      "execute_empty_note": "newly-discovered (2026-09-14, not previously checked against real data): does not match the reference \u2014 wrong set of customers/revenue entirely, not just a value-formatting difference. The Round 4 lifted-atom value-column fix corrected revenue from nonsensical negative int128 garbage to a correctly-shaped positive decimal (confirmed via git stash that the garbage predates this session), but a separate, unrelated filtering/join bug remains. Not yet root-caused.",
       "rewrite": "ok",
       "translate": "ok"
     },
@@ -39,8 +40,9 @@
       "translate_note": "newly-discovered gap (not in original plan): safety inference never grounds a variable through an equality whose RHS divides by another variable (src/preprocessing/safety_inferrer.cc DivisorIsSafe rejects any non-constant divisor); 100 * promo_revenue / all_revenue has no query-level rewrite that avoids this"
     },
     "15": {
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-14): exact match with the reference row-for-row, including total_revenue (1161099.4636). Was blocked by FlattenerOptimizer flattening a scalar aggregate subquery (fixed), then by the Round 4 lifted-atom value-column bug affecting revenue[suppkey]'s domain resolution (fixed) \u2014 both now resolved.",
       "execute_empty": "ok",
-      "execute_empty_note": "was blocked by FlattenerOptimizer flattening a scalar (ungrouped) aggregate subquery, inlining max[...] bare into a WHERE clause \u2014 fixed in FlattenerOptimizer::CanFlattenSubquery. execute_empty now succeeds, but real (non-empty) results are still WRONG (0 rows on SF0.01 data instead of 1): the domain-to-SQL machinery used by Visit(RelComparison)'s cover/CTE loop resolves revenue[suppkey]'s domain to its key column instead of its value column, and narrowing to the value column (verified-safe IntensionalDomain fix from the Q3/Q4/Q5 investigation) introduces a separate spurious self-equality condition. Not yet root-caused.",
       "rewrite": "ok",
       "translate": "ok"
     },
@@ -61,8 +63,9 @@
       "translate": "ok"
     },
     "19": {
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-14): exact match with the reference (revenue 22923.0280). Was blocked by CTEInliner dropping a CTE's logical column name (fixed), then by the Round 4 lifted-atom value-column bug (fixed) \u2014 both now resolved.",
       "execute_empty": "ok",
-      "execute_empty_note": "was blocked by CTEInliner dropping a CTE's logical column name (\"shipmode\") when inlining an unaliased reference, so ship_mode's UNION branches ended up named inconsistently (\"shipmode\" vs \"A3\") \u2014 fixed in CTEInliner (replace_alias=true at both call sites). execute_empty now succeeds, but real (non-empty) results are still WRONG (huge negative int128 instead of the reference's positive decimal revenue) \u2014 a separate, not-yet-investigated bug.",
       "rewrite": "ok",
       "translate": "ok"
     },
