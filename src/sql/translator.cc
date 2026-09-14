@@ -682,12 +682,17 @@ Translator::FullApplParamSlots Translator::CollectApplParams(RelNode& node,
   size_t param_idx = 0;
 
   for (const auto& param : params) {
+    // param_idx must track the argument's true 1-based position in the base relation
+    // (including wildcards, which are skipped below but still occupy a column), so it's
+    // incremented unconditionally here rather than only when a slot is actually produced.
+    // Otherwise a wildcard before a real argument shifts every later argument's index left
+    // by one, binding it to the wrong base-table column (e.g. R(_, x) would bind x to
+    // column 1 instead of column 2).
+    param_idx++;
     if (!param || param->IsWildcard()) continue;
 
     auto expr = param->GetExpr();
     if (!expr) continue;
-
-    param_idx++;
 
     auto term = std::dynamic_pointer_cast<RelTerm>(expr);
 
@@ -1741,6 +1746,25 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelNegation>
   Visit(node->formula);
   auto formula_sourceable = ExpectSourceable(node->formula->sql_expression);
   auto formula_source = std::make_shared<sql::ast::Source>(formula_sourceable, GenerateTableAlias());
+  // The NOT IN subquery below is `SELECT * FROM formula_source`, relying on formula_source's
+  // own column list (already narrowed to the formula's free variables, e.g. o_custkey(_, c)
+  // exposes only "c", not o_custkey's full arity). An unqualified Wildcard has no fixed column
+  // set of its own — it re-expands against whatever the current FROM sources are — so if the
+  // flattener later inlines formula_source (promoting its own wider-arity inner sources, e.g.
+  // the o_custkey table itself, directly into this FROM), the wildcard would silently pick up
+  // those extra columns and the NOT IN would no longer type-check/match. Only guard against
+  // that when formula_source is actually a narrowing projection over a wider source — plain
+  // "not D(x)" style formulas (arity already matches) flatten fine and should keep doing so.
+  if (auto formula_select = std::dynamic_pointer_cast<sql::ast::Select>(formula_sourceable);
+      formula_select && formula_select->from.has_value()) {
+    size_t underlying_arity = 0;
+    for (const auto& src : formula_select->from.value()->sources) {
+      if (src && src->sourceable) underlying_arity += GetArityForSourceable(src->sourceable);
+    }
+    if (underlying_arity != formula_select->columns.size()) {
+      formula_source->inhibit_subquery_flatten = true;
+    }
+  }
   node->formula->sql_expression = formula_source;
 
   const std::set<std::string>& fv = node->formula->free_variables;
