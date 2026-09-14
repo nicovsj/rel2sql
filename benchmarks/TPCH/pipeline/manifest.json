@@ -39,8 +39,8 @@
       "translate_note": "newly-discovered gap (not in original plan): safety inference never grounds a variable through an equality whose RHS divides by another variable (src/preprocessing/safety_inferrer.cc DivisorIsSafe rejects any non-constant divisor); 100 * promo_revenue / all_revenue has no query-level rewrite that avoids this"
     },
     "15": {
-      "execute_empty": "fail",
-      "execute_empty_note": "codegen bug: max[...] compiled directly into a WHERE clause (\"WHERE T0.A1 = (MAX(T1.A2))\") instead of a subquery; DuckDB rejects bare aggregates in WHERE",
+      "execute_empty": "ok",
+      "execute_empty_note": "was blocked by FlattenerOptimizer flattening a scalar (ungrouped) aggregate subquery, inlining max[...] bare into a WHERE clause \u2014 fixed in FlattenerOptimizer::CanFlattenSubquery. execute_empty now succeeds, but real (non-empty) results are still WRONG (0 rows on SF0.01 data instead of 1): the domain-to-SQL machinery used by Visit(RelComparison)'s cover/CTE loop resolves revenue[suppkey]'s domain to its key column instead of its value column, and narrowing to the value column (verified-safe IntensionalDomain fix from the Q3/Q4/Q5 investigation) introduces a separate spurious self-equality condition. Not yet root-caused.",
       "rewrite": "ok",
       "translate": "ok"
     },
