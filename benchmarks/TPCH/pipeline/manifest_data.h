@@ -41,7 +41,7 @@ inline constexpr std::array<QueryManifestEntry, 22> kManifestEntries = {
     QueryManifestEntry{18, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
     QueryManifestEntry{19, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
     QueryManifestEntry{20, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{21, "ok", "fail", "skip", "with_defs", 60, false, "E902", ""},
+    QueryManifestEntry{21, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
     QueryManifestEntry{22, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
 };
 

@@ -342,6 +342,11 @@ std::shared_ptr<sql::ast::Column> FindColumnForVariableViaBaseTable(const std::s
   if (!select || !select->from.has_value()) return nullptr;
   for (const auto& src : select->from.value()->sources) {
     if (!src || !src->sourceable) continue;
+    // A source with inhibit_subquery_flatten stays a deliberately isolated subquery (e.g. the
+    // NOT EXISTS body's own copy in Visit(RelUniversal), kept separate so the flattener can't
+    // merge it with the outer copy) — it won't be flattened away, so a column found inside it
+    // is not actually visible from outside its own scope. Don't search into it.
+    if (src->inhibit_subquery_flatten) continue;
     if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(src->sourceable)) {
       if (auto pos = FindArgPositionForVariable(rel_expr, table->name, var)) {
         return std::make_shared<sql::ast::Column>(table->GetAttributeName(static_cast<int>(*pos) - 1), src);
@@ -350,6 +355,36 @@ std::shared_ptr<sql::ast::Column> FindColumnForVariableViaBaseTable(const std::s
     if (auto found = FindColumnForVariableViaBaseTable(src->sourceable, rel_expr, var)) return found;
   }
   return nullptr;
+}
+
+// Ensures every variable free in `rel_node` that FindColumnForVariableViaBaseTable can recover is
+// actually projected as a named output column of `sql_expr`. Needed before treating `sql_expr` as
+// a joinable relation by variable name (e.g. EqualityShorthandRel): even with the "key columns"
+// propagated forward at the point of translation (see ExtractScalarSqlTerm/its ExtractYear
+// caller), an intermediate merge step (the lift-application wrapper, a conjunction merge, ...)
+// can still fail to carry a variable's name through by the time a sibling atom needs to resolve
+// it here. A naive "resolve this variable's column name on this source" lookup in that case
+// falls back to guessing the bare variable name — a column reference that doesn't actually exist.
+// That dangling reference doesn't get caught by ScopeValidator; the optimizer's dangling-column
+// rebinder silently "fixes" it by pointing it at any other in-scope column with a matching name,
+// producing a tautological self-join instead of the intended one.
+void ProjectMissingFreeVariables(const std::shared_ptr<RelNode>& rel_node,
+                                 const std::shared_ptr<sql::ast::Sourceable>& sql_expr) {
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(sql_expr);
+  if (!select || !rel_node) return;
+  std::unordered_set<std::string> existing_aliases;
+  for (const auto& col : select->columns) {
+    if (auto* ts = dynamic_cast<const sql::ast::TermSelectable*>(col.get())) {
+      if (ts->alias.has_value()) existing_aliases.insert(*ts->alias);
+    }
+  }
+  for (const auto& var : rel_node->free_variables) {
+    if (existing_aliases.count(var)) continue;
+    auto found = FindColumnForVariableViaBaseTable(sql_expr, rel_node, var);
+    if (!found) continue;
+    select->columns.push_back(std::make_shared<sql::ast::TermSelectable>(found, var));
+    existing_aliases.insert(var);
+  }
 }
 
 void CollectIdbTermSources(const std::shared_ptr<RelTerm>& term, const RelContext& ctx,
@@ -1110,6 +1145,11 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelCondition>& 
   if (!lhs_sql || !rhs_sql) {
     throw NotImplementedException("SQLVisitorRel: condition expr requires Sourceable lhs and rhs");
   }
+
+  // EqualityShorthandRel below joins lhs and rhs on every variable free in both. Make sure that's
+  // actually possible first (see ProjectMissingFreeVariables).
+  ProjectMissingFreeVariables(node->lhs, lhs_sql);
+  ProjectMissingFreeVariables(node->rhs, rhs_sql);
 
   auto lhs_source = std::make_shared<sql::ast::Source>(lhs_sql, GenerateTableAlias());
   auto rhs_source = std::make_shared<sql::ast::Source>(rhs_sql, GenerateTableAlias());
@@ -3427,6 +3467,22 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelCompariso
 
   for (const auto& bound : cover.bounds) {
     if (!bound.domain) continue;
+    // node->safety.SmallCover() can return bounds covering the broader safety context, not just
+    // this comparison's own free variables (e.g. a `y = _x0` comparison left behind by
+    // TermRewriter lifting `y = date_year[l_shipdate[o,num]]` still carries a SmallCover bound
+    // for {o,num} via the sibling atom that grounds them elsewhere in the same conjunction).
+    // Skip a bound that doesn't even intersect node->free_variables: building a domain source
+    // for it here has nothing to attach a join condition to (free_var_sources below only takes
+    // vars that ARE free in node), so it ends up orphaned in the FROM clause — an unconstrained
+    // extra relation that silently inflates the result via a cartesian product.
+    bool relevant = false;
+    for (const auto& var : bound.variables) {
+      if (node->free_variables.count(var)) {
+        relevant = true;
+        break;
+      }
+    }
+    if (!relevant) continue;
     auto domain_sql = DomainToSql(*bound.domain);
     std::set<std::string> bound_vars(bound.variables.begin(), bound.variables.end());
     std::vector<std::string> def_cols(bound.variables.begin(), bound.variables.end());
@@ -3775,6 +3831,18 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelExistenti
 
   auto inner_expr = node->formula->sql_expression;
   auto inner_srcable = ExpectSourceable(inner_expr);
+
+  // A free variable of node->formula isn't necessarily an output column of inner_srcable yet
+  // (see ProjectMissingFreeVariables). Recover and project those before exposing them below.
+  // Scoped to a RelConjunction formula (the TermRewriter-lifted `{inner}(z) and y=z` shape this
+  // targets) rather than every RelFormula: RelUniversal's own translation wraps its inner select
+  // in two Source copies (subquery_outer/subquery_inner) specifically to keep the flattener from
+  // merging them, so a column recovered by searching into that nesting would reference a scope
+  // the flattener deliberately keeps isolated -- unlike a plain conjunction's per-atom wrapping,
+  // which the flattener reliably collapses back to one level.
+  if (std::dynamic_pointer_cast<RelConjunction>(node->formula)) {
+    ProjectMissingFreeVariables(node->formula, inner_srcable);
+  }
 
   auto subquery = std::make_shared<sql::ast::Source>(inner_srcable, GenerateTableAlias());
 
@@ -4282,7 +4350,10 @@ Translator::ScalarSqlTerm Translator::ExtractScalarSqlTerm(RelNode& node, const 
         throw TranslationException("ExtractScalarSqlTerm: expected TermSelectable", ErrorCode::UNKNOWN_BINARY_OPERATOR,
                                    SourceLocation(0, 0));
       }
-      ScalarSqlTerm out{ts->term, {}, {}};
+      ScalarSqlTerm out{ts->term, {}, {}, {}};
+      for (size_t i = 0; i < col_idx; ++i) {
+        out.extra_columns.push_back(sel->columns[i]);
+      }
       if (sel->from.has_value()) {
         for (auto& s : sel->from.value()->sources) {
           out.from_sources.push_back(s);
@@ -4415,8 +4486,12 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBuiltinDateE
     if (node->args.size() != 1) return node;
     auto scalar = ExtractScalarSqlTerm(*node, node->args[0]);
     auto extract = std::make_shared<sql::ast::DateExtractTerm>(sql::ast::DateExtractTerm::Part::Year, scalar.term);
-    auto cols =
-        std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(extract, "A1")};
+    // Keep the established "key columns first, value last" convention (BuildFullApplSql /
+    // ExtractScalarSqlTerm's own "use the value column" pick) so the variables that produced
+    // this year value (e.g. o/num in date_year[l_shipdate[o,num]]) stay exposed as real output
+    // columns here, instead of getting silently dropped along with the discarded key columns.
+    auto cols = scalar.extra_columns;
+    cols.push_back(std::make_shared<sql::ast::TermSelectable>(extract, "A1"));
     if (scalar.from_sources.empty()) {
       node->sql_expression = std::make_shared<sql::ast::Select>(cols, false);
     } else {

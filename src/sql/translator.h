@@ -154,6 +154,14 @@ class Translator : public BaseRelVisitor {
     std::shared_ptr<sql::ast::Term> term;
     std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
     std::shared_ptr<sql::ast::Condition> where;
+    // The "bound vars" columns of a partial application (e.g. o/num in l_shipdate[o,num]) that
+    // come before the value column ExtractScalarSqlTerm picks out. A caller wrapping this term in
+    // its own SELECT (e.g. date_year[l_shipdate[o,num]]'s EXTRACT(YEAR FROM ...)) should also
+    // project these alongside its own value column, so the variables that produced this scalar
+    // stay exposed as real output columns at every level -- letting the existing "remaining base
+    // columns" convention (BuildFullApplSql) carry them the rest of the way up, instead of a
+    // sibling atom that shares one of these variables silently losing its join.
+    std::vector<std::shared_ptr<sql::ast::Selectable>> extra_columns;
   };
   ScalarSqlTerm ExtractScalarSqlTerm(RelNode& node, const std::shared_ptr<RelExpr>& expr);
 

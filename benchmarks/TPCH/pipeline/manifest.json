@@ -83,11 +83,11 @@
       "translate": "ok"
     },
     "21": {
-      "execute_empty": "skip",
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): exact match with the reference (Supplier#000000074, numwait 9). Fixed as a side effect of the Round 6/7 Q7 fixes (ExtractScalarSqlTerm propagating a wrapped partial application's key columns, plus the scoped free-variable recovery in Visit(RelCondition)/Visit(RelExistential)) \u2014 sub_query2's NOT IN subquery shared the same underlying dangling-alias mechanism as Q5/Q7.",
+      "execute_empty": "ok",
       "rewrite": "ok",
-      "stderr_contains": "E902",
-      "translate": "fail",
-      "translate_note": "now caught at translate time by the new ScopeValidator optimizer pass (column 'T106.o1' references an alias not visible here) instead of surfacing later at execute_empty \u2014 same pre-existing dangling-alias bug inside sub_query2's NOT IN subquery, same GenerateTableAlias class of bug as Q3/Q5/Q7, just diagnosed earlier. Not yet root-caused."
+      "translate": "ok"
     },
     "22": {
       "execute_empty": "ok",
@@ -120,8 +120,9 @@
       "translate": "ok"
     },
     "7": {
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): exact match with the reference, all 4 rows (FRANCE/GERMANY and GERMANY/FRANCE, 1995 and 1996, revenue matching to the cent). Was blocked by the dangling-alias bug (see translate_note), then by a separate tautological self-join in shipment_volume (T4.num = T4.num AND T4.o = T4.o where a real join to the date_year-lifted l_shipdate table should be, plus an orphaned unused l_revenue table) that turned SELECT * FROM result into a cartesian product hanging on real data \u2014 both now fixed. Root cause of the second bug: ExtractScalarSqlTerm (shared by every builtin call, e.g. date_year[...]) discarded a wrapped partial application's own key/binding columns (e.g. o/num in l_shipdate[o,num]), keeping only its value term; downstream code resolving a shared free variable's column name on that builtin's translated select found nothing and silently guessed the bare variable name, which the optimizer's dangling-column rebinder then \"fixed\" into a self-referential tautology instead of a real join. Fixed in two parts: (1) ExtractScalarSqlTerm now also returns the discarded key columns, and RelBuiltinDateExpr's ExtractYear projects them alongside its own value column, following the existing \"key columns first, value last\" convention so they propagate upward through the normal channels; (2) where that still isn't enough (an intermediate merge step can still fail to carry the name through), Visit(RelCondition)/Visit(RelExistential) recover a missing free variable's column by tracing back to the base table that actually produced it (FindColumnForVariableViaBaseTable), scoped to a RelConjunction formula and to sources not marked inhibit_subquery_flatten to avoid reaching into a scope the flattener deliberately keeps isolated (verified via TranslationTest.NestedQuantifiers2, a RelUniversal case that regressed and required this scoping). A third, unrelated bug found along the way: Visit(RelComparison) built a domain-grounding source for every SmallCover bound regardless of relevance to that comparison's own free variables, leaving an orphaned unconstrained l_extendedprice source in Q7's case \u2014 fixed by skipping bounds that don't intersect node->free_variables.",
       "execute_empty": "ok",
-      "execute_empty_note": "translation's dangling-alias failure is fixed (see translate_note), but a separate, still-open bug remains: the generated shipment_volume subquery contains a tautological self-join (T4.num = T4.num AND T4.o = T4.o) where a real join to the date_year-lifted l_shipdate table should be, plus an orphaned unused l_revenue table \u2014 a cartesian product against real (non-empty) SF0.01 data. Confirmed by hand (2026-09-15): CREATE VIEW statements succeed quickly, but SELECT * FROM result never returns (killed after 90s). execute_empty itself still passes since empty tables make the missing join condition harmless. Traced to ParseDateYearPartialAppExtract's `appl_params.size() != 1` restriction: Q7's date_year[l_shipdate[o,num]] supplies two params (arity-3 l_shipdate), so it falls through to a generic path distinct from Q9's working single-key case. Not yet root-caused.",
       "rewrite": "ok",
       "translate": "ok",
       "translate_note": "root cause found: CollectRelIdTermNames/ComputeAggregateGroupKeys treated bare 0-ary-relation references used directly as comparison operands (e.g. lower/upper in `lower <= l_shipdate[o,num] < upper`) the same as genuine free variables, leaking a nested translation's own alias into the caller's group-by/binding-column list as an out-of-scope column \u2014 same root cause as Q5. Fixed by distinguishing the two via actual usage (an id seen as an application argument is a real variable; one never used that way is a bare relation reference) rather than by free_variables, which is not reliably populated for every nested sub-expression scope."
