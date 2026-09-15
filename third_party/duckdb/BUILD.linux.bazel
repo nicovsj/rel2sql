@@ -9,5 +9,9 @@ cc_import(
         "duckdb.hpp",
     ],
     includes = ["."],
-    static_library = "libduckdb_static.a",
+    # The prebuilt libduckdb_static.a from the official Linux release is missing the
+    # fastpforlib bitpacking translation unit (undefined references to
+    # duckdb_fastpforlib::internal::__fastpackNN), so link the shared library instead,
+    # mirroring the macOS config. The shared library ships in the same release archive.
+    shared_library = "libduckdb.so",
 )
