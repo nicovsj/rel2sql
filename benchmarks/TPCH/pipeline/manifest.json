@@ -107,11 +107,12 @@
       "translate": "ok"
     },
     "5": {
-      "execute_empty": "skip",
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): all 5 nation rows match the reference exactly (revenue values match to the cent, e.g. VIETNAM 1000926.6999, CHINA 740210.7570, JAPAN 660651.2425, INDONESIA 566379.5276, INDIA 422874.6844).",
+      "execute_empty": "ok",
       "rewrite": "ok",
-      "stderr_contains": "E902",
-      "translate": "fail",
-      "translate_note": "now caught at translate time by the new ScopeValidator optimizer pass (column 'T14.A1' references an alias not visible here) instead of surfacing later as 'Referenced table T14 not found' at execute_empty \u2014 same pre-existing dangling-alias bug (a chained-comparison-bound variable like lower/upper carried as an output column through nested joins), same symptom class as Q7, just diagnosed earlier. Not yet root-caused."
+      "translate": "ok",
+      "translate_note": "root cause found: CollectRelIdTermNames/ComputeAggregateGroupKeys treated bare 0-ary-relation references used directly as comparison operands (e.g. lower/upper in `lower <= o_orderdate[o] < upper`) the same as genuine free variables, leaking a nested translation's own alias into the caller's group-by/binding-column list as an out-of-scope column \u2014 same root cause as Q7. Fixed by distinguishing the two via actual usage (an id seen as an application argument, e.g. `l_shipdate[o,num]`'s o/num, is a real variable; one never used that way is a bare relation reference) rather than by free_variables, which is not reliably populated for every nested sub-expression scope."
     },
     "6": {
       "execute_empty": "ok",
@@ -119,11 +120,11 @@
       "translate": "ok"
     },
     "7": {
-      "execute_empty": "skip",
+      "execute_empty": "ok",
+      "execute_empty_note": "translation's dangling-alias failure is fixed (see translate_note), but a separate, still-open bug remains: the generated shipment_volume subquery contains a tautological self-join (T4.num = T4.num AND T4.o = T4.o) where a real join to the date_year-lifted l_shipdate table should be, plus an orphaned unused l_revenue table \u2014 a cartesian product against real (non-empty) SF0.01 data. Confirmed by hand (2026-09-15): CREATE VIEW statements succeed quickly, but SELECT * FROM result never returns (killed after 90s). execute_empty itself still passes since empty tables make the missing join condition harmless. Traced to ParseDateYearPartialAppExtract's `appl_params.size() != 1` restriction: Q7's date_year[l_shipdate[o,num]] supplies two params (arity-3 l_shipdate), so it falls through to a generic path distinct from Q9's working single-key case. Not yet root-caused.",
       "rewrite": "ok",
-      "stderr_contains": "E902",
-      "translate": "fail",
-      "translate_note": "now caught at translate time by the new ScopeValidator optimizer pass (column 'T14.A1' references an alias not visible here) instead of surfacing later as 'Referenced table T14 not found' at execute_empty \u2014 same pre-existing dangling-alias bug (a chained-comparison-bound variable like lower/upper carried as an output column through nested joins), same symptom class as Q5, just diagnosed earlier. Not yet root-caused."
+      "translate": "ok",
+      "translate_note": "root cause found: CollectRelIdTermNames/ComputeAggregateGroupKeys treated bare 0-ary-relation references used directly as comparison operands (e.g. lower/upper in `lower <= l_shipdate[o,num] < upper`) the same as genuine free variables, leaking a nested translation's own alias into the caller's group-by/binding-column list as an out-of-scope column \u2014 same root cause as Q5. Fixed by distinguishing the two via actual usage (an id seen as an application argument is a real variable; one never used that way is a bare relation reference) rather than by free_variables, which is not reliably populated for every nested sub-expression scope."
     },
     "8": {
       "execute_empty": "skip",

@@ -217,6 +217,8 @@ std::string BindingBareName(const std::string& var) {
   return var;
 }
 
+// Collects every plain-identifier term name in the tree, except leading-underscore names
+// (TermRewriter-internal fresh variables).
 void CollectRelIdTermNames(const std::shared_ptr<RelNode>& node, std::unordered_set<std::string>& out) {
   if (!node) return;
   if (auto* id = dynamic_cast<RelIDTerm*>(node.get())) {
@@ -227,17 +229,59 @@ void CollectRelIdTermNames(const std::shared_ptr<RelNode>& node, std::unordered_
   }
 }
 
-std::set<std::string> ComputeAggregateGroupKeys(const std::shared_ptr<RelExpr>& body) {
+// Collects every id that appears anywhere as an *argument* to some application (e.g. "part" and
+// "supplier" in `ps_supplycost[part, supplier]`), as opposed to a bare standalone term (e.g.
+// "lower" in `lower <= x`, which refers directly to a defined 0-ary relation rather than being
+// passed as an argument to anything). This distinguishes genuine variable occurrences from bare
+// relation references even when their names collide (e.g. Q11's "part", both a bound
+// aggregate-group variable used as `ps_supplycost[part, supplier]`'s argument AND the name of the
+// `part` EDB relation) without depending on free_variables, which is not populated for every
+// nested sub-expression scope.
+void CollectApplicationArgIds(const std::shared_ptr<RelNode>& node, std::unordered_set<std::string>& out) {
+  if (!node) return;
+  if (auto* appl = dynamic_cast<RelFullApplication*>(node.get())) {
+    for (const auto& p : appl->params) {
+      CollectRelIdTermNames(p, out);
+    }
+  } else if (auto* partial = dynamic_cast<RelPartialApplication*>(node.get())) {
+    for (const auto& p : partial->params) {
+      CollectRelIdTermNames(p, out);
+    }
+  }
+  for (const auto& ch : node->Children()) {
+    CollectApplicationArgIds(ch, out);
+  }
+}
+
+// True if `id` should be excluded from a CollectRelIdTermNames-derived id set: it's a relation
+// name (a bare identifier like "lower" in `lower <= x < upper` refers to a defined 0-ary
+// relation, not a free variable — treating it as one pulls its own nested translation's alias
+// into the caller's column list as a "group key"/"binding column" that's out of scope there, the
+// root cause of a whole family of TPC-H dangling-alias bugs, e.g. Q5/Q7's chained-comparison
+// bound variables leaking through) *and* it was never used as an application argument anywhere in
+// `expr` — some variable names legitimately collide with relation names (e.g. Q11's "part", both
+// a bound aggregate-group variable and the name of the `part` EDB relation); `arg_ids` tells the
+// two apart by how the identifier is actually used, not by name.
+bool IsRelationNameNotFreeVariable(const std::string& id, const RelContext& ctx,
+                                   const std::unordered_set<std::string>& arg_ids) {
+  return ctx.IsRelation(id) && !arg_ids.count(id);
+}
+
+std::set<std::string> ComputeAggregateGroupKeys(const std::shared_ptr<RelExpr>& body, const RelContext& ctx) {
   if (auto abs = std::dynamic_pointer_cast<RelExprAbstraction>(body)) {
     std::unordered_set<std::string> mentioned;
     CollectRelIdTermNames(abs->expr, mentioned);
+    std::unordered_set<std::string> arg_ids;
+    CollectApplicationArgIds(abs->expr, arg_ids);
     std::unordered_set<std::string> binding_ids;
     for (const auto& b : abs->bindings) {
       if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) binding_ids.insert(vb->id);
     }
     std::set<std::string> keys;
     for (const auto& id : mentioned) {
-      if (!binding_ids.count(id)) keys.insert(id);
+      if (binding_ids.count(id)) continue;
+      if (IsRelationNameNotFreeVariable(id, ctx, arg_ids)) continue;
+      keys.insert(id);
     }
     if (!keys.empty()) return keys;
   }
@@ -942,8 +986,11 @@ std::shared_ptr<sql::ast::Select> Translator::VisitAggregateBindingsExpr(const s
     }
     std::unordered_set<std::string> extra_ids;
     CollectRelIdTermNames(abs->expr, extra_ids);
+    std::unordered_set<std::string> extra_arg_ids;
+    CollectApplicationArgIds(abs->expr, extra_arg_ids);
     for (const auto& id : extra_ids) {
       if (binding_ids.count(id) || existing_aliases.count(id)) continue;
+      if (IsRelationNameNotFreeVariable(id, context_, extra_arg_ids)) continue;
       auto column = MakeColumnForBindingOnExprSource(expr_sql, id);
       binding_cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, id));
       existing_aliases.insert(id);
@@ -969,7 +1016,7 @@ std::shared_ptr<sql::ast::Select> Translator::VisitAggregateBindingsExpr(const s
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> group_cols;
   std::set<std::string> group_keys = abs->free_variables;
-  if (group_keys.empty()) group_keys = ComputeAggregateGroupKeys(abs);
+  if (group_keys.empty()) group_keys = ComputeAggregateGroupKeys(abs, context_);
   for (const auto& var : group_keys) {
     const std::string col_name = ResolveOutputColumnNameForVariableOnSource(subquery, var);
     auto column = std::make_shared<sql::ast::Column>(col_name, subquery);
@@ -1396,7 +1443,7 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelFormulaAbstr
     auto thresh_col = std::make_shared<sql::ast::Column>("A1", thresh_src);
     auto cond = std::make_shared<sql::ast::ComparisonCondition>(value_col, pattern->thresh_op, thresh_col);
     std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
-    for (const auto& var : ComputeAggregateGroupKeys(pattern->agg->body)) {
+    for (const auto& var : ComputeAggregateGroupKeys(pattern->agg->body, context_)) {
       if (var == pattern->value_var) continue;
       auto col_name = ResolveOutputColumnNameForVariableOnSource(inner_src, var);
       auto col = std::make_shared<sql::ast::Column>(col_name, inner_src);
@@ -2413,7 +2460,7 @@ std::shared_ptr<sql::ast::Select> Translator::EmitAggregateExportSelect(
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
   std::set<std::string> group_keys = agg_expr->body->free_variables;
-  if (group_keys.empty()) group_keys = ComputeAggregateGroupKeys(agg_expr->body);
+  if (group_keys.empty()) group_keys = ComputeAggregateGroupKeys(agg_expr->body, context_);
   for (const auto& var : group_keys) {
     auto col_name = ResolveOutputColumnNameForVariableOnSource(wrapped, var);
     auto col = std::make_shared<sql::ast::Column>(col_name, wrapped);
@@ -2478,7 +2525,7 @@ std::shared_ptr<sql::ast::Expression> Translator::TryEmitAggregateEqualityWithId
   auto cond = std::make_shared<sql::ast::ComparisonCondition>(value_col, thresh_op, thresh_col);
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
-  for (const auto& var : ComputeAggregateGroupKeys(agg->body)) {
+  for (const auto& var : ComputeAggregateGroupKeys(agg->body, context_)) {
     if (var == value_var) continue;
     auto col_name = ResolveOutputColumnNameForVariableOnSource(inner_src, var);
     auto col = std::make_shared<sql::ast::Column>(col_name, inner_src);
