@@ -71,12 +71,11 @@
       "translate": "ok"
     },
     "2": {
-      "execute_empty": "fail",
-      "execute_empty_note": "codegen bug: dangling table alias (stale GenerateTableAlias reference) surfaces once translation succeeds",
+      "execute_empty": "ok",
+      "execute_empty_note": "was blocked by a dangling-alias bug in Visit(RelFormulaAbstraction) (see translate_note) \u2014 now fixed, and the query runs fully optimized (no longer needs the unoptimized workaround). newly-discovered (2026-09-15, not previously reachable): real (non-empty) SF0.01 results are still WRONG \u2014 only 2 of the reference's 4 rows are returned (partkeys 249 and 1015 match exactly; 1634 and 323 are missing). Not yet root-caused; likely in the min[supplycost[p]] / reverse_sort ranking logic, unrelated to the dangling-alias fix.",
       "rewrite": "ok",
       "translate": "ok",
-      "unoptimized": true,
-      "unoptimized_note": "was: optimizer segfaults on this query's wide (8-column) double reverse_sort family at default optimization. That segfault (an iterator-invalidation bug in SelfJoinOptimizer::Visit) is fixed. Still kept unoptimized: with the crash gone, the optimized path now hits the same dangling-table-alias bug as execute_empty_note, one layer earlier than the unoptimized path does."
+      "translate_note": "root cause found: RelContextBuilder::AddVar silently refuses to register a variable whose name collides with a known relation (`if (idb_.count(var) || edb_.count(var)) return;`) \u2014 Q2's supplycost(part, supplier, suppcost) binds \"part\"/\"supplier\" as genuine variables, but since those names are also EDB relations, VariablesVisitor never marks them free, so the conjunction body never projects them as columns. Visit(RelFormulaAbstraction) then blindly built Column(vb->id, formula_source) assuming every binding was projected by name; when the wrapping subquery got flattened away, the never-actually-existing \"part\"/\"supplier\" column references were left dangling (ScopeValidator: column references an alias not visible here). Fixed by porting Visit(RelExprAbstraction)'s existing recovery pattern (FindColumnForVariableViaBaseTable, tracing which base-table argument position a binding was actually bound to) to Visit(RelFormulaAbstraction), scoped to a RelConjunction formula to avoid reaching into a RelUniversal's deliberately-unmergeable nested subquery (TranslationTest.WeirdEdgeCase1 regressed and required this scoping, same reasoning as Round 7's Visit(RelExistential) fix)."
     },
     "20": {
       "execute_empty": "ok",

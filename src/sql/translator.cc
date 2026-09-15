@@ -1499,6 +1499,41 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelFormulaAbstr
 
   auto formula_sql = ExpectSourceable(node->formula->sql_expression);
 
+  // A binding variable free in node->formula isn't necessarily exposed as a same-named output
+  // column of formula_sql — most obviously when the variable's name collides with a relation
+  // name (e.g. Q2's `(part, supplier, suppcost): ps_supplycost(part, supplier, suppcost) and
+  // ...`): RelContextBuilder::AddVar silently refuses to register a variable whose name is
+  // already a known relation, so VariablesVisitor never marks it as free here and the
+  // conjunction's own translation never projects it. The binding-column construction below
+  // blindly assumes formula_source exposes every binding by name, so recover it first by tracing
+  // which base-table argument position it was actually bound to, mirroring
+  // Visit(RelExprAbstraction)'s identical handling.
+  // Scoped to a RelConjunction formula, same reasoning as the analogous ProjectMissingFreeVariables
+  // guard in Visit(RelExistential) (see there): FindColumnForVariableViaBaseTable recurses into
+  // nested subqueries, and a RelUniversal's own translation wraps its inner select in two Source
+  // copies kept deliberately unmergeable by the flattener — recovering a column by searching into
+  // that nesting produced a dangling reference (TranslationTest.WeirdEdgeCase1's `tfa` case) since
+  // that subquery is never flattened away by design.
+  if (std::dynamic_pointer_cast<RelConjunction>(node->formula)) {
+    if (auto formula_select = std::dynamic_pointer_cast<sql::ast::Select>(formula_sql)) {
+      std::unordered_set<std::string> existing_aliases;
+      for (const auto& col : formula_select->columns) {
+        const auto* ts = dynamic_cast<const sql::ast::TermSelectable*>(col.get());
+        if (ts && ts->alias.has_value()) existing_aliases.insert(*ts->alias);
+      }
+      std::vector<std::shared_ptr<sql::ast::Selectable>> recovered_cols;
+      for (const auto& b : node->bindings) {
+        auto* vb = dynamic_cast<RelVarBinding*>(b.get());
+        if (!vb || existing_aliases.count(vb->id)) continue;
+        if (auto found = FindColumnForVariableViaBaseTable(formula_sql, node->formula, vb->id)) {
+          recovered_cols.push_back(std::make_shared<sql::ast::TermSelectable>(found, vb->id));
+          existing_aliases.insert(vb->id);
+        }
+      }
+      formula_select->columns.insert(formula_select->columns.begin(), recovered_cols.begin(), recovered_cols.end());
+    }
+  }
+
   std::vector<std::shared_ptr<sql::ast::Source>> ctes;
   bool ctes_are_recursive = false;
   std::shared_ptr<sql::ast::Source> formula_source = BuildBindingsFormulaSource(
