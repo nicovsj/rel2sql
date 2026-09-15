@@ -33,11 +33,12 @@
       "translate": "ok"
     },
     "14": {
-      "execute_empty": "skip",
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): exact match with the reference (promo_revenue 15.48654581228407).",
+      "execute_empty": "ok",
       "rewrite": "ok",
-      "stderr_contains": "E102",
-      "translate": "fail",
-      "translate_note": "newly-discovered gap (not in original plan): safety inference never grounds a variable through an equality whose RHS divides by another variable (src/preprocessing/safety_inferrer.cc DivisorIsSafe rejects any non-constant divisor); 100 * promo_revenue / all_revenue has no query-level rewrite that avoids this"
+      "translate": "ok",
+      "translate_note": "root cause found: safety inference's DivisorIsSafe rejected any divisor containing a RelIDTerm regardless of whether it denoted a genuine row-level variable needing grounding or a bare reference to a 0-ary relation (e.g. all_revenue in 100 * promo_revenue / all_revenue) -- VariablesVisitor only populates a RelIDTerm's `variables` for an actual variable, so an id with none is safe to divide by (a deterministic value computed once, not per row). Fixed by checking `variables` instead of node type, and giving TermToDomain a case for a bare 0-ary relation reference (DefinedDomain). Also generalized to allow dividing by a variable whose bound is itself functionally-determined (an aggregate-application witness, e.g. Q8's market_share) while still rejecting one bound to a raw multi-row EDB/IDB column (preserving SafetyTest.CompositionalDivByVariableFails's original guarantee) -- see Q8."
     },
     "15": {
       "compare_local": "verified",
@@ -128,11 +129,12 @@
       "translate_note": "root cause found: CollectRelIdTermNames/ComputeAggregateGroupKeys treated bare 0-ary-relation references used directly as comparison operands (e.g. lower/upper in `lower <= l_shipdate[o,num] < upper`) the same as genuine free variables, leaking a nested translation's own alias into the caller's group-by/binding-column list as an out-of-scope column \u2014 same root cause as Q5. Fixed by distinguishing the two via actual usage (an id seen as an application argument is a real variable; one never used that way is a bare relation reference) rather than by free_variables, which is not reliably populated for every nested sub-expression scope."
     },
     "8": {
-      "execute_empty": "skip",
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): exact match with the reference (1995: 0.0, 1996: 0.0 \u2014 SF0.01 has no BRAZIL line items in these years, so both years correctly show zero market share).",
+      "execute_empty": "ok",
       "rewrite": "ok",
-      "stderr_contains": "E102",
-      "translate": "fail",
-      "translate_note": "the date_year-in-comparison regression (see Q9) is now fixed; Q8 now fails exactly where it was already predicted to once that happened \u2014 division-by-a-non-constant-variable in market_share (see Q14, DivisorIsSafe rejects any non-constant divisor). default_value's Pattern E rewrite is applied and correct but cannot be exercised."
+      "translate": "ok",
+      "translate_note": "market_share[o_year]'s divisor (sum[lineitem_vol_all[o_year]]) is a full aggregate expression, not a bare 0-ary relation reference like Q14's all_revenue \u2014 TermRewriter lifts it into an aggregate-application witness variable (e.g. _x17) grounded via ComputeRelAbsApplicationSafety's IntensionalDomain/Projection bound. Fixed alongside Q14 by having DivisorIsSafe recognize this shape (DomainIsFunctionallyDetermined: for whatever already-bound outer variables produced it, the aggregate evaluates to exactly one row) as safe to divide by, distinct from and still rejecting a variable bound to a raw multi-row EDB/IDB column."
     },
     "9": {
       "compare_local": "verified",

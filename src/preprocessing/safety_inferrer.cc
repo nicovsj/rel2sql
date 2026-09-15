@@ -98,29 +98,69 @@ bool ConstantDomainIsZero(const Domain& domain) {
       cd->value);
 }
 
-bool TermContainsId(const RelTerm* term) {
-  if (!term) return false;
-  if (dynamic_cast<const RelIDTerm*>(term) != nullptr) return true;
-  if (const auto* op = dynamic_cast<const RelOpTerm*>(term)) {
-    return TermContainsId(op->lhs.get()) || TermContainsId(op->rhs.get());
-  }
-  if (const auto* par = dynamic_cast<const RelParenthesisTerm*>(term)) {
-    return TermContainsId(par->term.get());
+// True if `domain` represents a single, functionally-determined value rather than a genuine
+// multi-row column range — peels through Projection wrapping to check for an IntensionalDomain
+// at the base, the shape ComputeRelAbsApplicationSafety produces for an aggregate-application
+// witness (e.g. `_x17` in `{sum[...]}( _x17)`): for whatever already-bound outer variables
+// produced it, the aggregate evaluates to exactly one row, unlike a raw EDB/IDB-backed
+// DefinedDomain, which can independently range over many rows.
+bool DomainIsFunctionallyDetermined(const Domain& domain) {
+  if (dynamic_cast<const IntensionalDomain*>(&domain)) return true;
+  if (dynamic_cast<const ConstantDomain*>(&domain)) return true;
+  if (const auto* proj = dynamic_cast<const Projection*>(&domain)) {
+    return proj->domain && DomainIsFunctionallyDetermined(*proj->domain);
   }
   return false;
 }
 
-// Divisor must be a compile-time constant expression (no column variables).
-bool DivisorIsSafe(const RelTerm* divisor) { return divisor != nullptr && !TermContainsId(divisor); }
+// Forward declaration: DivisorIsSafe and TermToDomain are mutually recursive through an
+// arithmetic divisor term, e.g. `x / (a / b)`.
+std::optional<std::unique_ptr<Domain>> TermToDomain(const RelTerm* term, const BoundSet& safety,
+                                                    const RelContextBuilder& container);
+
+// A divisor is safe if it can't independently range over many rows the way a raw EDB/IDB column
+// variable can (see SafetyTest.CompositionalDivByVariableFails: `x/y=z` must not ground `z` when
+// `y` ranges over a whole relation `S(y)`, since z would then take on many values simultaneously
+// rather than one determined by whatever already grounds x): a compile-time constant, a bare
+// 0-ary relation reference (its own single deterministic value), or a variable grounded via an
+// aggregate-application witness (DomainIsFunctionallyDetermined) are all safe; a variable bound
+// to a raw table column is not.
+bool DivisorIsSafe(const RelTerm* divisor, const BoundSet& safety, const RelContextBuilder& container) {
+  if (!divisor) return false;
+  if (const auto* id = dynamic_cast<const RelIDTerm*>(divisor)) {
+    if (id->variables.empty()) return container.IsRelation(id->id);
+    if (id->variables.size() != 1) return false;
+    auto dom = GetProjectedDomainForVariable(safety, *id->variables.begin());
+    return dom != std::nullopt && DomainIsFunctionallyDetermined(**dom);
+  }
+  if (dynamic_cast<const RelNumTerm*>(divisor)) return true;
+  if (const auto* par = dynamic_cast<const RelParenthesisTerm*>(divisor)) {
+    return DivisorIsSafe(par->term.get(), safety, container);
+  }
+  if (const auto* op = dynamic_cast<const RelOpTerm*>(divisor)) {
+    return DivisorIsSafe(op->lhs.get(), safety, container) && DivisorIsSafe(op->rhs.get(), safety, container);
+  }
+  return false;
+}
 
 // Build a domain for a term from already-bounded variables (ADD/SUB/MUL/DIV on domains).
 // Fails for non-compositional terms or division by a variable / zero.
-std::optional<std::unique_ptr<Domain>> TermToDomain(const RelTerm* term, const BoundSet& safety) {
+std::optional<std::unique_ptr<Domain>> TermToDomain(const RelTerm* term, const BoundSet& safety,
+                                                    const RelContextBuilder& container) {
   if (!term) return std::nullopt;
 
   if (const auto* id = dynamic_cast<const RelIDTerm*>(term)) {
-    if (id->variables.size() != 1) return std::nullopt;
-    return GetProjectedDomainForVariable(safety, *id->variables.begin());
+    if (id->variables.size() == 1) {
+      return GetProjectedDomainForVariable(safety, *id->variables.begin());
+    }
+    // VariablesVisitor only populates a RelIDTerm's `variables` for an actual variable (see
+    // VariablesVisitor::Visit(RelIDTerm)) — an id with none is a bare reference to a 0-ary
+    // relation (e.g. an `@inline def all_revenue[]: sum[...]`), which is its own domain: the
+    // deterministic, single set of values it can take, computed once rather than per row.
+    if (id->variables.empty() && container.IsRelation(id->id)) {
+      return std::make_unique<DefinedDomain>(id->id, static_cast<size_t>(container.GetArity(id->id)));
+    }
+    return std::nullopt;
   }
 
   if (const auto* num = dynamic_cast<const RelNumTerm*>(term)) {
@@ -140,26 +180,26 @@ std::optional<std::unique_ptr<Domain>> TermToDomain(const RelTerm* term, const B
   }
 
   if (const auto* par = dynamic_cast<const RelParenthesisTerm*>(term)) {
-    return TermToDomain(par->term.get(), safety);
+    return TermToDomain(par->term.get(), safety, container);
   }
 
   const auto* op = dynamic_cast<const RelOpTerm*>(term);
   if (!op || !op->lhs || !op->rhs) return std::nullopt;
 
-  auto lhs_dom = TermToDomain(op->lhs.get(), safety);
+  auto lhs_dom = TermToDomain(op->lhs.get(), safety, container);
   if (!lhs_dom) return std::nullopt;
 
   switch (op->op) {
     case RelTermOp::ADD:
     case RelTermOp::SUB:
     case RelTermOp::MUL: {
-      auto rhs_dom = TermToDomain(op->rhs.get(), safety);
+      auto rhs_dom = TermToDomain(op->rhs.get(), safety, container);
       if (!rhs_dom) return std::nullopt;
       return std::make_unique<DomainOperation>(std::move(*lhs_dom), std::move(*rhs_dom), op->op);
     }
     case RelTermOp::DIV: {
-      if (!DivisorIsSafe(op->rhs.get())) return std::nullopt;
-      auto rhs_dom = TermToDomain(op->rhs.get(), safety);
+      if (!DivisorIsSafe(op->rhs.get(), safety, container)) return std::nullopt;
+      auto rhs_dom = TermToDomain(op->rhs.get(), safety, container);
       if (!rhs_dom || ConstantDomainIsZero(**rhs_dom)) return std::nullopt;
       return std::make_unique<DomainOperation>(std::move(*lhs_dom), std::move(*rhs_dom), RelTermOp::DIV);
     }
@@ -262,7 +302,7 @@ std::optional<std::unique_ptr<Domain>> InferDomainFromAffineEquality(RelComparis
 
 // Compositional equality: xj = T where xj is a bare ID and T uses only bounded variables.
 std::optional<std::pair<std::string, std::unique_ptr<Domain>>> InferDomainFromCompositionalEquality(
-    RelComparison* node) {
+    RelComparison* node, const RelContextBuilder& container) {
   std::set<std::string> unbound_vars = UnboundVariablesInComparison(*node);
   if (unbound_vars.size() != 1) return std::nullopt;
 
@@ -284,7 +324,7 @@ std::optional<std::pair<std::string, std::unique_ptr<Domain>>> InferDomainFromCo
     if (!node->safety.bound_variables.count(v)) return std::nullopt;
   }
 
-  auto domain = TermToDomain(expr, node->safety);
+  auto domain = TermToDomain(expr, node->safety, container);
   if (!domain) return std::nullopt;
   return std::make_pair(xj, std::move(*domain));
 }
@@ -455,7 +495,7 @@ class SafetyComputeVisitor : public BaseRelVisitor {
     }
 
     // 2) Compositional inference: z = f(bounded vars) with f built from +,-,*,/ (constant divisor only).
-    if (auto comp = InferDomainFromCompositionalEquality(node.get())) {
+    if (auto comp = InferDomainFromCompositionalEquality(node.get(), *container_)) {
       InsertInferredBound(node.get(), comp->first, std::move(comp->second));
     }
 
