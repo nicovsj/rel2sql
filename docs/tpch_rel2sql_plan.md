@@ -1106,3 +1106,72 @@ matches exactly (`promo_revenue` 15.48654581228407); Q8 matches exactly too (199
 
 **Still open**: Q2's dangling-alias error (`T114.part`, unchanged, not investigated), `EdgeCase1`,
 and everything else in the "still open" lists above.
+
+## Round 9 (2026-09-15) — Q2's dangling-alias root cause, and a foundational name-collision bug
+
+Picked up Q2 — the last remaining `translate`/`execute_empty` failure. Minimized with the
+scratchpad technique (working around several raw-grammar surprises along the way: the CLI binary
+parses only the raw ANTLR grammar, `def NAME { ... }` braces required, no `NAME(params): body`
+sugar and no `.field` chaining — both are `scripts/tpch_rewrite.py`-level rewrites applied before
+the file ever reaches `rel2sql_bin`) down to:
+
+```
+def mycost { (part, supplier, suppcost):
+    ps_supplycost(part, supplier, suppcost) and
+    ( r_name[n_regionkey[s_nationkey[supplier]]] ) = "EUROPE"
+}
+def result { (v1): exists((s in supplier, p in part) |
+        v1 = ps_supplycost[p, s] and
+        ps_supplycost[p, s] = min[mycost[p]]
+    ) }
+```
+
+— which reproduced `T16.part`/`T16.supplier` referencing an alias absent from `mycost`'s own
+rendered FROM clause. Root-caused with `ScopeValidator` temporarily disabled (to inspect the raw
+SQL) plus targeted `fprintf` tracing across several layers (`Visit(RelFormulaAbstraction)`,
+`FlattenerOptimizer::TryFlattenSubquery`/`CanFlattenSubquery`, `BuildTermMap`) to rule out AST-node
+sharing between `mycost`'s own definition and its reuse inside `min[mycost[p]]` (confirmed via
+pointer tracing that `Visit(RelFormulaAbstraction)` runs exactly once per def — that hypothesis was
+wrong) before finding the real cause one layer deeper.
+
+**Bug**: `RelContextBuilder::AddVar` — `if (idb_.count(var) || edb_.count(var)) return;` — silently
+refuses to register a variable name that's already a known relation. `part`/`supplier` are both
+TPC-H EDB relations *and* `mycost`'s own binding-variable names; since `AddVar("part")` no-ops,
+`IsVar("part")` returns false everywhere in the program, so `VariablesVisitor::Visit(RelIDTerm)`
+never marks it free — the conjunction body's own translated SELECT never projects "part"/"supplier"
+as columns at all (confirmed by tracing `BuildTermMap`'s output for the flattened subquery: only
+`{suppcost}`, not `{part, supplier, suppcost}`). `Visit(RelFormulaAbstraction)`'s binding-column
+construction (`Column(vb->id, formula_source)`) blindly assumed every binding was projected by
+name and never checked — so once the wrapping subquery got flattened away by the optimizer
+(hoisting its sources up, replacing references via a term-name lookup that simply has no entry for
+"part"), the reference was left pointing at the now-discarded subquery's alias. This is the same
+*class* of bug — a bound variable's name colliding with a relation name, causing something
+downstream to wrongly treat it as "not a real variable" — that Q5/Q7 (Round 6, `lower`/`upper`) and
+Q11 (Round 6, `part` in `ComputeAggregateGroupKeys`) hit; this is its root, in `RelContextBuilder`
+itself, rather than a downstream translator symptom. Fixing `AddVar` at the source was considered
+but rejected as too high-risk/wide-blast-radius for this session (the "var vs relation" ambiguity
+is relied on elsewhere in ways not fully audited); fixed at the same layer as the other instances
+instead.
+
+**Fix**: ported `Visit(RelExprAbstraction)`'s existing recovery pattern —
+`FindColumnForVariableViaBaseTable`, tracing which base-table argument position a binding was
+actually bound to, independent of whether `VariablesVisitor` marked it free — into
+`Visit(RelFormulaAbstraction)`, which lacked it. Scoped to a `RelConjunction` formula, exactly
+matching Round 7's `Visit(RelExistential)` fix and for the identical reason: unscoped, it also
+tried to recover through a `RelUniversal`'s own translation, which deliberately wraps its inner
+select in two non-mergeable `Source` copies — reaching into that nesting produced a *new* dangling
+reference (regressed `TranslationTest.WeirdEdgeCase1`'s `tfa` case) since that subquery is never
+flattened away by design.
+
+**Impact**: `task test` clean (only `EdgeCase1` remains). Q2 now translates and executes fully
+*optimized* — the `unoptimized: true` workaround (originally added for an unrelated
+`SelfJoinOptimizer` segfault, fixed earlier this session) is no longer needed and was removed from
+the manifest. Verified against real SF0.01 data: **not yet correct** — only 2 of the reference's 4
+rows come back (partkeys 249 and 1015 match exactly; 1634 and 323 are missing). This is a
+newly-reachable, separate bug (Q2 never got this far before), likely in the
+`min[supplycost[p]]`/`reverse_sort` ranking logic — flagged in the manifest, not investigated this
+round.
+
+**Still open**: the newly-found Q2 real-data ranking gap, `EdgeCase1`, and everything else in the
+"still open" lists above. All 22 queries now translate and execute without error for the first time
+this session.
