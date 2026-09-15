@@ -886,3 +886,68 @@ the prediction was correct, not a new problem). Manifest updated accordingly.
 **Still open**: `EdgeCase1` (the one remaining `test_translation` failure, not yet investigated
 this round), Q14's division-by-variable gap (which now also blocks Q8), and everything else in the
 "still open" lists above.
+
+## Round 6 (2026-09-15) — Q5/Q7's dangling-alias root cause, and a false lead on Q11
+
+Picked up the dangling-alias family (Q2/Q5/Q7/Q21) next. Q5 and Q7 share a symptom: ScopeValidator
+throws on a column referencing an alias like `T14.A1` that's genuinely out of scope. Root-caused
+with the scratchpad-minimization technique — `q5repro3.rel` isolates the trigger to a
+chained-comparison over 0-ary `@inline` relations:
+
+```
+def lower { parse_date["1994-01-01", "Y-m-d"] }
+def upper { date_add[parse_date["1994-01-01", "Y-m-d"], ^Year[1]] }
+def result { sum[[o]: l_extendedprice[o, 1] where lower <= ( o_orderdate[o] ) < upper] }
+```
+
+**Bug**: `ComputeAggregateGroupKeys`/the `extra_ids` loop in `VisitAggregateBindingsExpr` (both
+built on `CollectRelIdTermNames`, a blind tree walk collecting every bare identifier) never
+distinguished a genuine free variable from a bare reference to a 0-ary relation like `lower`/
+`upper` used directly as a comparison operand — both parse identically as a `RelIDTerm`. Treating
+`lower`/`upper` as group keys / binding columns pulled their own nested translation's alias into
+the caller's column list, where it's out of scope.
+
+**First fix attempt (reverted)**: exclude any id where `ctx.IsRelation(id)` is true. This fixed
+Q5/Q7 but broke `TpchQ11AggregateThreshold.RewrittenResultGroupsByPart` — Q11's aggregate is
+grouped by `part`, a variable name that collides with the `part` EDB relation, so the blanket
+filter wrongly excluded it too (missing `GROUP BY`).
+
+**Second attempt (also reverted)**: only exclude when `ctx.IsRelation(id)` *and* `id` isn't in
+`expr->free_variables` (computed by `VariablesVisitor`, in principle the scope-correct source of
+truth). Reasoned this should let `part` through since it's genuinely free at that scope. It didn't
+— Q11 regressed *worse*, into a hard ScopeValidator throw (`T198.part` not visible) instead of the
+original missing-`GROUP BY` assertion failure. Added `fprintf`-based debug tracing directly inside
+`ComputeAggregateGroupKeys` to settle the contradiction between the reasoning and the empirical
+result: `expr->free_variables` printed as **empty** for the exact sub-expression scope in question.
+`free_variables` is not populated reliably for every nested sub-expression node — it's scope-correct
+where it *is* populated, but not a safe existence check on its own.
+
+**Actual fix**: stopped relying on `free_variables` for this distinction entirely. Added
+`CollectApplicationArgIds`, a tree walk that collects every id appearing as an actual argument to
+an application (`RelFullApplication` or `RelPartialApplication`'s `params`) anywhere in the
+expression — e.g. `part`/`supplier` in `ps_supplycost[part, supplier]`. An id used that way is
+necessarily a real variable, regardless of name collision with a relation. An id that matches a
+relation name but was *never* used as an application argument (e.g. `lower`/`upper`, always bare
+comparison operands, never `lower[...]`) is a bare relation reference, not a variable. This
+required handling both `RelFullApplication` (formula-level atoms) and `RelPartialApplication`
+(the value-producing form used inside arithmetic, e.g. Q11's `ps_supplycost[part,supplier] *
+ps_availqty[part,supplier]`) — missing the latter was why the first debug pass showed `arg_ids={}`
+even for Q11's genuinely-argument-position `part`.
+
+**Impact**: `task test` clean (only the pre-existing unrelated `EdgeCase1` failure remains); Q11
+still passes. Q5 and Q7 both now translate successfully — `tpch_pipeline_test` no longer expects
+`E902` for either. Verified against real SF0.01 data: Q5 matches the reference exactly (all 5
+nations). Q7 translates and its `execute_empty` stage passes, but running it against real data
+hangs — a **separate, pre-existing** bug: the generated `shipment_volume` subquery has a
+tautological self-join (`T4.num = T4.num AND T4.o = T4.o`) where a real join to the
+date_year-lifted `l_shipdate` table should be, plus an orphaned unused `l_revenue` table, causing a
+cartesian product against non-empty data. Traced (not yet fixed) to
+`ParseDateYearPartialAppExtract`'s `appl_params.size() != 1` restriction: Q9's
+`date_year[o_orderdate[ok]]` supplies one param and hits the working single-key special case;
+Q7's `date_year[l_shipdate[o,num]]` supplies two (arity-3 `l_shipdate`), falls through to a
+different, buggy generic path. Committed as `bffeb06`.
+
+**Still open**: Q7's tautological-join bug (separate from the dangling-alias fix above), Q2 and
+Q21's dangling-alias errors (`T114.part`, `T118.o1` — not yet investigated, may or may not share
+Q5/Q7's root cause), `EdgeCase1`, Q14's division-by-variable gap, and everything else in the "still
+open" lists above.
