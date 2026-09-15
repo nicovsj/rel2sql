@@ -1053,3 +1053,56 @@ and passing; manifest updated for both Q7 and Q21.
 **Still open**: Q2's dangling-alias error (`T114.part`) — checked after this round's fixes and
 confirmed unchanged (same error, not touched by this mechanism, so likely a different root cause),
 `EdgeCase1`, Q14's division-by-variable gap, and everything else in the "still open" lists above.
+
+## Round 8 (2026-09-15) — Q8/Q14's division-by-variable gap, root cause and fix
+
+Picked the highest-leverage remaining `translate: fail`: Q14's `DivisorIsSafe` gap, which the
+manifest already flagged as also blocking Q8 once reached.
+
+**Q14**: `def result[]: 100 * promo_revenue / all_revenue`, where `promo_revenue` and
+`all_revenue` are both `@inline def`s (0-ary, scalar `sum[...]` results). `DivisorIsSafe`
+rejected any divisor whose term tree contained a `RelIDTerm` node at all — but `VariablesVisitor`
+only populates a `RelIDTerm`'s `variables` set for an actual row-level variable
+(`VariablesVisitor::Visit(RelIDTerm)` checks `builder_->IsVar(id)` first); a bare identifier that
+resolves to a relation instead gets an empty `variables` set. `DivisorIsSafe`'s dynamic-type check
+couldn't tell "genuine unbound column variable" from "bare 0-ary relation reference" apart — the
+exact same class of bug fixed for Q5/Q7 in Round 6/7 (`lower`/`upper` mistaken for free
+variables), just in the safety inferrer instead of the translator. Fixed by checking
+`id->variables.empty()` instead of the node's dynamic type, and giving `TermToDomain` a new case:
+a bare 0-ary relation reference is its own domain (`DefinedDomain(id, arity)`) — a deterministic
+value computed once, not per row.
+
+**Q8**: same manifest-predicted symptom, but `market_share[o_year]`'s divisor
+(`sum[lineitem_vol_all[o_year]]`) is a full aggregate *expression*, not a named 0-ary relation —
+Q14's fix didn't touch it (confirmed: Q14 fixed, Q8 still threw the identical `E102` on the exact
+same witness-variable shape). TermRewriter lifts the aggregate into its own witness variable
+(e.g. `_x17`), grounded via the pre-existing `ComputeRelAbsApplicationSafety`
+(`IntensionalDomain` wrapped in a `Projection`) — a completely different, already-working
+mechanism from the Q14 case. `DivisorIsSafe` still rejected it purely because the divisor term
+*is* now a genuine bound variable (`id->variables = {"_x17"}`).
+
+First attempt: drop the `DivisorIsSafe` gate entirely, matching how ADD/SUB/MUL already work (no
+separate pre-check beyond "can `TermToDomain` build a domain for this operand at all"). This fixed
+both Q8 and Q14, but broke `SafetyTest.CompositionalDivByVariableFails` — a test *deliberately*
+asserting that `R(x) and S(y) and x/y=z` must **not** ground `z` when `y` ranges over a whole
+relation `S(y)`. That's a real, distinct concern from Q8's case: `y` here is a genuine multi-row
+EDB column (many possible values simultaneously), so `z = x/y` doesn't have one determined value
+the way Q8's `_x17` does (fixed once the aggregate's own group-by inputs are fixed). Blindly
+dropping the gate can't tell these apart.
+
+**Actual fix**: kept `DivisorIsSafe`, made it context-aware (`safety`, `RelContextBuilder`) instead
+of a pure syntactic check, and gave it three safe cases: a compile-time constant, a bare 0-ary
+relation reference, or a variable whose *bound domain* is itself "functionally determined"
+(`DomainIsFunctionallyDetermined`: peels `Projection` wrapping to check for an `IntensionalDomain`
+at the base — precisely the shape `ComputeRelAbsApplicationSafety` produces for an
+aggregate-application witness, and nothing else produces). A variable bound to a raw
+`DefinedDomain` (an EDB/IDB table column, `ComputeIDApplicationSafety`'s shape for a plain atom
+like `S(y)`) still fails — preserving the test's original guarantee exactly.
+
+**Impact**: `task test` clean (only the pre-existing unrelated `EdgeCase1` failure remains). Q14
+and Q8 both now translate, execute, and were verified by hand against real SF0.01 data: Q14
+matches exactly (`promo_revenue` 15.48654581228407); Q8 matches exactly too (1995: 0.0, 1996: 0.0
+— SF0.01 genuinely has no BRAZIL line items in either year). Manifest updated for both.
+
+**Still open**: Q2's dangling-alias error (`T114.part`, unchanged, not investigated), `EdgeCase1`,
+and everything else in the "still open" lists above.
