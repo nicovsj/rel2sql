@@ -6,28 +6,37 @@
   },
   "queries": {
     "1": {
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): exact match with the reference (all 4 l_returnflag/l_linestatus rows).",
       "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
     },
     "10": {
+      "compare_local": "known_bug",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): confirmed still wrong (20/20 rows returned but values don't match). See execute_empty_note.",
       "execute_empty": "ok",
       "execute_empty_note": "newly-discovered (2026-09-14, not previously checked against real data): does not match the reference \u2014 wrong set of customers/revenue entirely, not just a value-formatting difference. The Round 4 lifted-atom value-column fix corrected revenue from nonsensical negative int128 garbage to a correctly-shaped positive decimal (confirmed via git stash that the garbage predates this session), but a separate, unrelated filtering/join bug remains. Not yet root-caused.",
       "rewrite": "ok",
       "translate": "ok"
     },
     "11": {
-      "compare_local": "optional",
+      "compare_local": "known_bug",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): substantially wrong \u2014 returns 1997 rows (nearly every part) with implausibly large values (e.g. 492988877525.70) vs the reference's single row. The `> threshold` HAVING-style filter does not appear to be constraining the result at all. Not yet root-caused; was marked optional/deprioritized and had never actually been checked against real data before now.",
       "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
     },
     "12": {
+      "compare_local": "known_bug",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): the MAIL row matches the reference exactly (64,86), but the SHIP row is missing entirely (1 row returned vs the reference's 2). Likely a two-branch shipmode filter (IN/OR) dropping one branch. Not yet root-caused.",
       "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
     },
     "13": {
+      "compare_local": "known_bug",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): wrong \u2014 the same c_count value appears multiple times with different custdist counts (e.g. c_count=2 appears as both 2 and 30 and 32), which shouldn't happen for a proper count-of-counts aggregation. 32 rows returned matches the reference's row count, so this was masked by a naive row-count check. Consistent with the previously-suspected (never confirmed) reverse_sort binding-order issue.",
       "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
@@ -48,17 +57,22 @@
       "translate": "ok"
     },
     "16": {
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): exact match with the reference (all 296 rows), once accounting for the leading rank column result's own definition deliberately includes (`def result(i,b,t,s,c): ...`) that the reference SQL doesn't project.",
       "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
     },
     "17": {
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): exact match with the reference.",
       "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
     },
     "18": {
-      "compare_local": "optional",
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): exact match with the reference (both rows), once accounting for the leading rank column result's own definition deliberately includes that the reference SQL doesn't project.",
       "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
@@ -71,6 +85,8 @@
       "translate": "ok"
     },
     "2": {
+      "compare_local": "known_bug",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): confirmed still wrong (2/4 rows). See execute_empty_note.",
       "execute_empty": "ok",
       "execute_empty_note": "was blocked by a dangling-alias bug in Visit(RelFormulaAbstraction) (see translate_note) \u2014 now fixed, and the query runs fully optimized (no longer needs the unoptimized workaround). newly-discovered (2026-09-15, not previously reachable): real (non-empty) SF0.01 results are still WRONG \u2014 only 2 of the reference's 4 rows are returned (partkeys 249 and 1015 match exactly; 1634 and 323 are missing). Not yet root-caused; likely in the min[supplycost[p]] / reverse_sort ranking logic, unrelated to the dangling-alias fix.",
       "rewrite": "ok",
@@ -78,6 +94,8 @@
       "translate_note": "root cause found: RelContextBuilder::AddVar silently refuses to register a variable whose name collides with a known relation (`if (idb_.count(var) || edb_.count(var)) return;`) \u2014 Q2's supplycost(part, supplier, suppcost) binds \"part\"/\"supplier\" as genuine variables, but since those names are also EDB relations, VariablesVisitor never marks them free, so the conjunction body never projects them as columns. Visit(RelFormulaAbstraction) then blindly built Column(vb->id, formula_source) assuming every binding was projected by name; when the wrapping subquery got flattened away, the never-actually-existing \"part\"/\"supplier\" column references were left dangling (ScopeValidator: column references an alias not visible here). Fixed by porting Visit(RelExprAbstraction)'s existing recovery pattern (FindColumnForVariableViaBaseTable, tracing which base-table argument position a binding was actually bound to) to Visit(RelFormulaAbstraction), scoped to a RelConjunction formula to avoid reaching into a RelUniversal's deliberately-unmergeable nested subquery (TranslationTest.WeirdEdgeCase1 regressed and required this scoping, same reasoning as Round 7's Visit(RelExistential) fix)."
     },
     "20": {
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): exact match with the reference.",
       "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
@@ -90,17 +108,23 @@
       "translate": "ok"
     },
     "22": {
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): exact match with the reference (all 7 rows).",
       "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
     },
     "3": {
+      "compare_local": "known_bug",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): confirmed still wrong (10/10 rows returned but different orderkeys/revenue than the reference, beyond the already-noted rank-column difference). See execute_empty_note.",
       "execute_empty": "ok",
       "execute_empty_note": "was blocked by FindAggregateThresholdPattern mistaking an unrelated date filter (o_orderdate[ok] < target_date) for the revenue aggregate's own threshold, since target_date is itself an IDB \u2014 corrupted the query into comparing revenue against target_date and dropped the real join, which ScopeValidator caught as a dangling alias. Fixed by requiring the threshold comparison's value_var to match the aggregate's real exported variable. Also benefits from the l_extendedprice/l_discount value-column fix (see translator.cc history). execute_empty now succeeds and real (SF0.01) results are much closer to correct \u2014 the top row (orderkey 450, revenue 205447.4232) exactly matches the reference \u2014 but several higher-revenue orders the reference includes are still missing. Not yet root-caused.",
       "rewrite": "ok",
       "translate": "ok"
     },
     "4": {
+      "compare_local": "known_bug",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): confirmed still wrong \u2014 all 5 o_orderpriority rows come back but each count is inflated roughly 2.7-2.8x (e.g. 247 vs 93, 289 vs 103), matching the already-noted witness-variable dedup bug.",
       "execute_empty": "ok",
       "execute_empty_note": "was blocked by a TermRewriter AST-node-sharing bug (chained comparisons aliased the shared middle term, silently dropping the o_orderdate join) \u2014 fixed in RelASTBuilder::visitChainedComparison. execute_empty now succeeds, but real (non-empty) results are still WRONG: exists((num) | l_commitdate[o,num] < l_receiptdate[o,num]) inside the count body doesn't deduplicate its own witness variable, inflating counts ~2.6x. That is a separate, still-open bug in the translator's lifted-partial-application exists/conjunction special-casing.",
       "rewrite": "ok",
@@ -115,6 +139,8 @@
       "translate_note": "root cause found: CollectRelIdTermNames/ComputeAggregateGroupKeys treated bare 0-ary-relation references used directly as comparison operands (e.g. lower/upper in `lower <= o_orderdate[o] < upper`) the same as genuine free variables, leaking a nested translation's own alias into the caller's group-by/binding-column list as an out-of-scope column \u2014 same root cause as Q7. Fixed by distinguishing the two via actual usage (an id seen as an application argument, e.g. `l_shipdate[o,num]`'s o/num, is a real variable; one never used that way is a bare relation reference) rather than by free_variables, which is not reliably populated for every nested sub-expression scope."
     },
     "6": {
+      "compare_local": "verified",
+      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): exact match with the reference.",
       "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
