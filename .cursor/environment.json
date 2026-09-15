@@ -1,0 +1,4 @@
+{
+  "name": "Rel2SQL",
+  "install": "bash .cursor/install.sh"
+}
