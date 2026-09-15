@@ -951,3 +951,105 @@ different, buggy generic path. Committed as `bffeb06`.
 Q21's dangling-alias errors (`T114.part`, `T118.o1` — not yet investigated, may or may not share
 Q5/Q7's root cause), `EdgeCase1`, Q14's division-by-variable gap, and everything else in the "still
 open" lists above.
+
+## Round 7 (2026-09-15) — Q7's tautological-join bug, root cause and fix; Q21 fixed as a side effect
+
+Also hit a real environment problem this round, unrelated to rel2sql itself: macOS upgraded to
+27.0 mid-session, which shipped a new `MacOSX27.0.sdk` whose `.tbd` stub files use an architecture
+spec (`arm64e.x1`) the currently installed linker doesn't understand, plus a too-low default
+`-mmacosx-version-min` for some C++23 stdlib availability annotations. Fixed by pinning
+`-mmacosx-version-min=14.0` and the link-step `-isysroot` to the already-working `MacOSX14.5.sdk`
+in `~/.bazelrc` (machine-local, not the repo — `.bazelrc`'s existing `build:macos` config already
+pins the *compile*-step SDK correctly; only the link step needed the same treatment). Safe to
+remove once Xcode Command Line Tools / Homebrew LLVM are back in sync with the OS SDK.
+
+Picked up Q7's tautological self-join, flagged but not root-caused at the end of Round 6.
+Minimized with the scratchpad technique down to:
+
+```
+def result { sum[[o, num, y]:
+    l_extendedprice[o, num] where
+    y = date_year[l_shipdate[o, num]]
+]
+}
+```
+
+which reproduced both symptoms: `WHERE T0.A1 = T0.A1 AND T0.A2 = T0.A2` (comparing the
+`l_extendedprice` atom to itself) and an orphaned, unconstrained second `l_extendedprice` source.
+
+**Bug 1 (the tautology)**: `date_year[l_shipdate[o,num]]`'s translation runs through
+`ExtractScalarSqlTerm` (shared by every builtin call on a partial application — `date_year`,
+`substring`, decimal casts, arithmetic, ...), which picks out `l_shipdate[o,num]`'s own translated
+select's *last* column (the shipdate value) as the scalar term, and discards the preceding
+columns — the `o`/`num` key columns that named the variables the value came from. `date_year`'s
+own translated SELECT ends up with a single column (the extracted year), never exposing `o`/`num`
+by name. When the outer `l_extendedprice[o,num] where y=date_year[...]` conjunction
+(`Visit(RelCondition)`) then tries to join its two sides on every shared free variable
+(`EqualityShorthandRel`), it can't find `o`/`num` as real columns on the `date_year` side, so
+`ResolveOutputColumnNameForVariableOnSource` falls back to guessing the bare variable name — a
+column reference (`rhs_source.o`) that doesn't actually exist. That dangling reference isn't
+caught by ScopeValidator; a later optimizer pass (the dangling-column rebinder) silently "fixes"
+it by pointing it at whichever *other* in-scope column happens to share that name — which is
+`l_extendedprice`'s own `o` column, i.e. exactly the same source on both sides of the equality.
+Confirmed via targeted `fprintf` tracing directly in `EqualityShorthandRel`.
+
+**Bug 2 (the orphan)**: `Visit(RelComparison)`'s generic path builds a "domain grounding" CTE
+source for *every* bound in `node->safety.SmallCover()`, without checking whether that bound's
+variables even intersect the comparison node's own `free_variables`. `SmallCover()` can return
+bounds covering the broader safety context, not just this node — the `y = _x0` comparison
+TermRewriter leaves behind after lifting `date_year[...]` still carries a SmallCover bound for
+`{o,num}` via the sibling atom that grounds them elsewhere in the same conjunction, even though
+`y = _x0` itself has nothing to do with `o`/`num`. That bound got a domain source unconditionally,
+which — having no free-variable overlap to attach a join condition to — sat in the FROM clause
+fully unconstrained. Confirmed via `typeid`-tagged tracing across all five `DomainToSql(bound.domain)`
+call sites in the file to find which one fired.
+
+**Fix**:
+1. `ExtractScalarSqlTerm` now also returns the discarded key columns (`ScalarSqlTerm::extra_columns`);
+   `RelBuiltinDateExpr`'s `ExtractYear` branch projects them alongside its own value column,
+   following the existing "key columns first, value last" convention (the same one
+   `BuildFullApplSql`/`ExtractScalarSqlTerm` itself already rely on), so a variable that produced a
+   builtin's value stays exposed as a real output column instead of silently dropped.
+2. That alone wasn't sufficient — an intermediate merge step (the TermRewriter lift-application
+   wrapper, or the conjunction merge) can still fail to carry the name the rest of the way up. Added
+   `ProjectMissingFreeVariables`, called from `Visit(RelCondition)` and (scoped to a
+   `RelConjunction` formula) `Visit(RelExistential)`'s generic fallback: for each free variable not
+   already a named output column, recover it by tracing back to the base table that actually
+   produced it (`FindColumnForVariableViaBaseTable`, pre-existing, previously only used in
+   `Visit(RelExprAbstraction)`).
+   - First attempt applied this unconditionally in `Visit(RelExistential)` and regressed
+     `TranslationTest.NestedQuantifiers2` (a `forall` inside an `exists`): `FindColumnForVariableViaBaseTable`
+     recurses into arbitrarily nested subqueries, and a `RelUniversal`'s own translation
+     deliberately keeps two copies of its inner select in *separate*, non-mergeable subqueries
+     (`subquery_outer`/`subquery_inner`, one marked `inhibit_subquery_flatten` — see Round 2's
+     `NestedQuantifiers3`-adjacent fix) specifically so the flattener can't merge them. Recovering a
+     column from inside that nesting and exposing it at the outer level produced a *new* dangling
+     reference (`Table alias 'T1' is referenced but does not exist`), since that subquery never
+     gets flattened away by design.
+   - Added an `inhibit_subquery_flatten` check to `FindColumnForVariableViaBaseTable` itself (don't
+     search into a source marked that way) — necessary but not sufficient, since `subquery_outer`
+     itself isn't marked and the regression persisted.
+   - Root cause of *why* it's safe for Q7 but not for the Universal case: in Q7's chain, every
+     intermediate wrapping select is used exactly once and reliably gets flattened away by
+     `FlattenerOptimizer`, making the recovered reference valid in the final SQL. The Universal's
+     `subquery_outer` wraps the *same* underlying select object that `subquery_inner` also wraps
+     (deliberately, to compare them) — that reuse is precisely what blocks flattening, and there's
+     no cheap local signal for "is this select referenced from multiple places" at the point
+     `ProjectMissingFreeVariables` runs. Rather than trying to detect that generally, scoped the
+     `Visit(RelExistential)` call to fire only when `node->formula` is a `RelConjunction` — exactly
+     the TermRewriter-lifted `{inner}(z) and y=z` shape this targets, never a `RelUniversal`.
+3. `Visit(RelComparison)`'s domain-grounding loop now skips a `SmallCover` bound whose variables
+   don't intersect the comparison's own `free_variables`.
+
+**Impact**: `task test` clean (only the pre-existing unrelated `EdgeCase1` failure remains,
+confirmed via `git stash` at the start of this round). Verified by hand against real SF0.01 data:
+Q7 now matches the reference exactly (all 4 rows) and returns instantly — it previously hung
+indefinitely (killed after 90s) once the dangling-alias fix from Round 6 let it reach execution.
+Q21 — flagged since Round 3 as sharing Q5/Q7's dangling-alias symptom class but never
+root-caused — turned out to hit this exact mechanism and is now fixed as a side effect; verified
+against real data too (Supplier#000000074, numwait 9, exact match). `tpch_pipeline_test` updated
+and passing; manifest updated for both Q7 and Q21.
+
+**Still open**: Q2's dangling-alias error (`T114.part`) — checked after this round's fixes and
+confirmed unchanged (same error, not touched by this mechanism, so likely a different root cause),
+`EdgeCase1`, Q14's division-by-variable gap, and everything else in the "still open" lists above.
