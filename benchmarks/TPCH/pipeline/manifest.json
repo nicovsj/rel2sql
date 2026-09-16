@@ -21,15 +21,15 @@
       "translate": "ok"
     },
     "11": {
-      "compare_local": "known_bug",
-      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): substantially wrong \u2014 returns 1997 rows (nearly every part) with implausibly large values (e.g. 492988877525.70) vs the reference's single row. The `> threshold` HAVING-style filter does not appear to be constraining the result at all. Not yet root-caused; was marked optional/deprioritized and had never actually been checked against real data before now.",
+      "compare_local": "verified",
+      "compare_local_note": "verified against SF0.01 real data (2026-09-16): exact match, 1 row (partkey 1376, value 13271249.89). Fixed by the binding-shadow marker (same root cause as Q2): 'part'/'supplier' are bound variables whose names collide with EDB relations, so they were translated as relation arguments and the nation filter was never correlated to the supplier being aggregated. Note the threshold fraction is scale-factor-dependent (spec: 0.0001/SF); scripts/tpch_rewrite.py now uses the SF0.01 value 0.01, matching benchmarks/TPCH/sql/q11.sql.",
       "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
     },
     "12": {
-      "compare_local": "known_bug",
-      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): the MAIL row matches the reference exactly (64,86), but the SHIP row is missing entirely (1 row returned vs the reference's 2). Likely a two-branch shipmode filter (IN/OR) dropping one branch. Not yet root-caused.",
+      "compare_local": "verified",
+      "compare_local_note": "verified against SF0.01 real data (2026-09-16): exact match, both rows (MAIL 64/86, SHIP 61/96). The previously-missing SHIP row was caused by duplicate defs being dropped: Q12 expresses a union as two defs of the same name (`def selected_shipmode[]: \"MAIL\"` then `... \"SHIP\"`), and ArityVisitor stashed the second body in RelDef::multiple_defs, a field nothing ever read, so only the first alternative survived.",
       "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"
@@ -85,8 +85,8 @@
       "translate": "ok"
     },
     "2": {
-      "compare_local": "known_bug",
-      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): confirmed still wrong (2/4 rows). See execute_empty_note.",
+      "compare_local": "verified",
+      "compare_local_note": "verified against SF0.01 real data (2026-09-16): exact match, all 4 rows (ignoring the leading rank column the .rel projects from reverse_sort). The previously-reported 2-of-4-rows bug is fixed by the binding-shadow marker: 'supplier'/'part' are bound variables whose names also name EDBs, so AddVar refused to register them and they were translated as relation arguments (full-table domain joins) instead of variables.",
       "execute_empty": "ok",
       "execute_empty_note": "was blocked by a dangling-alias bug in Visit(RelFormulaAbstraction) (see translate_note) \u2014 now fixed, and the query runs fully optimized (no longer needs the unoptimized workaround). newly-discovered (2026-09-15, not previously reachable): real (non-empty) SF0.01 results are still WRONG \u2014 only 2 of the reference's 4 rows are returned (partkeys 249 and 1015 match exactly; 1634 and 323 are missing). Not yet root-caused; likely in the min[supplycost[p]] / reverse_sort ranking logic, unrelated to the dangling-alias fix.",
       "rewrite": "ok",

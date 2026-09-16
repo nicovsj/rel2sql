@@ -1175,3 +1175,89 @@ round.
 **Still open**: the newly-found Q2 real-data ranking gap, `EdgeCase1`, and everything else in the
 "still open" lists above. All 22 queries now translate and execute without error for the first time
 this session.
+
+## Round 10 (2026-09-16) — the name-collision root cause, fixed lexically; Q11 and Q2 correct
+
+**Symptom**: Q11 returned 1997 rows (nearly every part) instead of the reference's single row, with
+implausible values; the `> threshold` filter constrained nothing. Q2 returned only 2 of the
+reference's 4 rows (Round 9's newly-found gap).
+
+**Root cause**: the collision documented in Round 9 — `RelContextBuilder::AddVar` silently refuses
+to register a variable whose name is already a known relation — but tracked to where it actually
+does the damage. In Q11, `part` and `supplier` are bound variables (`def result {(part, v): ...}`,
+`sum[[supplier]: ...]`) whose names are also EDBs. Because `AddVar` dropped them, `IsVar` was false
+for them everywhere, and two things followed. First, `VariablesVisitor` never marked them free, so
+every mechanism keyed on `free_variables` skipped them. Second, and the actual source of the wrong
+numbers, `CollectApplParams` classifies an argument as a *relation* argument when
+`context_.IsRelation(id)` holds: `ps_supplycost[part, supplier]` was therefore translated as a
+domain join against the full `part` and `supplier` tables rather than as two bound variables. The
+argument's own value was never projected under its name, so the nation filter
+(`n_name[s_nationkey[supplier]] = "GERMANY"`) could not be correlated with the supplier being
+aggregated — it degenerated into an uncorrelated existence check, and the sum ran over every
+part/supplier pair.
+
+Removing `AddVar`'s guard outright — the "fix it at the source" option Round 9 considered and
+rejected — was tried and measured: it breaks 19 of the 22 queries plus `test_rel_ast` and
+`test_translation`. The ambiguity is real and the guard is load-bearing; a bare `B(A, x)` genuinely
+does mean the relation `A` (`TranslationTest.FullApplication8`).
+
+**Fix**: disambiguate *lexically* instead of globally. A new preprocessing pass
+(`src/preprocessing/binding_shadow_marker.{h,cc}`) walks the AST carrying a scope stack of names
+bound by enclosing binders (the four node types with `bindings`: `RelExprAbstraction`,
+`RelFormulaAbstraction`, `RelExistential`, `RelUniversal`, counted so nested rebinding is handled)
+and sets `RelIDTerm::shadows_relation` on any id that is both a known relation and bound in scope.
+Two consumers read it: `VariablesVisitor::Visit(RelIDTerm)` now marks such an id free, and
+`CollectApplParams` routes it to the term slots rather than the relation slots. Everything
+downstream that already keys on `free_variables` then works unchanged. `B(A, x)` is untouched
+because `A` is bound by nothing.
+
+**Impact**: full suite green. Verified against real SF0.01 data, **Q11 and Q2 now match the
+reference exactly** — Q11 at 1 row (partkey 1376, value 13271249.89), Q2 at all 4 rows. 17 of 22
+queries now match exactly, up from 15; no query regressed. Q11's threshold fraction is the one
+scale-factor-dependent TPC-H parameter (spec: `0.0001/SF`), and `scripts/tpch_rewrite.py` had the
+SF 1 value while the data and `benchmarks/TPCH/sql/q11.sql` are SF 0.01; it now uses `0.01`, so the
+comparison is apples-to-apples.
+
+Also fixed: `TranslationTest.EdgeCase1`, red since the commit that introduced its expectation
+(`170ebb4`). The expectation was simply never correct — the translator's output there is stable
+across every commit since and is semantically right (same result set, verified in DuckDB; it just
+lacks a redundant fourth copy of `B` joined on a tautology). The expectation was corrected.
+
+**Still open**: Q3, Q4, Q10, Q12, Q13 real-data mismatches (all pre-existing, none related to this
+round's root cause). Separately, the translation of a term like `z = x-y` still materialises the
+term by cross-joining extra copies of the source relation rather than projecting the expression
+directly — harmless for correctness (the witness always exists) but needless work, visible in
+`EdgeCase1`'s expected SQL.
+
+## Round 11 (2026-09-16) — Q12's dropped union branch: duplicate defs were parsed and discarded
+
+**Symptom**: Q12 returned only the MAIL row (exactly right at 64/86) and no SHIP row — 1 row where
+the reference has 2.
+
+**Root cause**: Q12 expresses a two-element set as two defs of the same name, deliberately, because
+the benchmark's Rel sources avoid brace-unions (see the comment in `queries/12.rel`):
+
+```
+@inline def selected_shipmode[]: "@@1"
+@inline def selected_shipmode[]: "@@2"
+```
+
+`ArityVisitor::Visit(RelProgram)` detected the duplicate, pushed the second body onto
+`RelDef::multiple_defs`, and disabled that def. But nothing ever read `multiple_defs` — the field
+was written in exactly one place and read in none, so the second alternative was parsed, stored,
+and silently discarded. `selected_shipmode` translated to `SELECT DISTINCT 'MAIL' AS A1`, and every
+SHIP lineitem was filtered out. The MAIL row matching the reference exactly is what made this look
+like a subtle aggregation bug rather than a whole missing branch.
+
+**Fix**: fold the duplicate into the first def instead of stashing it — `def X {a}` followed by
+`def X {b}` means the same thing as `def X {a; b}`, so the second body's alternatives are moved
+into the first def's `RelUnion` and everything downstream (arity, variable analysis, the
+literal-union translation) handles it as the one union it always was. The alternatives are *moved*,
+not copied, because every other pass walks all defs including disabled ones and would otherwise
+process the same nodes twice; for the same reason the fold is skipped for a def already disabled,
+since `ArityVisitor` runs twice per pipeline. The dead `multiple_defs` field was removed.
+
+**Impact**: full suite green. Q12 now matches the reference exactly (MAIL 64/86, SHIP 61/96). 18 of
+22 queries match exactly on real SF0.01 data, up from 17; no query regressed.
+
+**Still open**: Q3, Q4, Q10, Q13 real-data mismatches.
