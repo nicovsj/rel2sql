@@ -1306,3 +1306,43 @@ the churn.
 **Still open**: Q3, Q10, Q13. Q3 and Q10 both return the right row count with wrong values over a
 `reverse_sort` top-N ranking, and Q13's count-of-counts repeats the same c_count with different
 custdist values, so a shared ranking/ordering cause is plausible.
+
+## Round 13 (2026-09-16) — Q3/Q10's top-N: a window that ordered by constants
+
+**Symptom**: Q3 and Q10 each returned the right number of rows with the wrong contents. Q3's
+revenues (74k, 55k, 90k) looked like *typical* orders rather than the reference's top ones
+(241k-267k), which is the tell: the aggregation was fine and the selection was not.
+
+Confirming that took one query — re-aggregating the reference's own revenue for the orderkeys we
+returned reproduced our numbers exactly (29958 -> 74209.7300, 32128 -> 96799.6636, ...). So the
+revenue sum was already correct, and only the choice of which 10 of the 138 qualifying orders to
+keep was wrong.
+
+**Root cause**: `final_sort` emitted
+
+```sql
+ROW_NUMBER() OVER (ORDER BY 1 DESC, 2 DESC, 3 DESC, 4 DESC)
+```
+
+Positional ordinals only mean "the nth select item" in a statement's top-level ORDER BY. Inside a
+window's OVER clause they are ordinary constant expressions, so this ordered every row by the same
+four constants -- no ordering at all -- and ROW_NUMBER handed out arbitrary ranks. `result` then
+kept `i <= 10`, i.e. 10 arbitrary rows. The outer `ORDER BY T0.A1 DESC, ...` on the same select
+sorted the *output* correctly, which is why the result looked plausibly shaped and hid the problem.
+
+**Fix**: `BuildWindowOrderBySql` renders the window's ORDER BY from the same column references the
+select's own ORDER BY already uses. The names are written unqualified on purpose: the clause ends
+up inside a `VerbatimTerm`, which `TableAliasRenumberer` cannot rewrite, so naming the source alias
+would leave a stale reference once aliases are renumbered. The window's select always has exactly
+one FROM source, so bare names are unambiguous -- and they resolve against that source even when an
+output alias of the same select shares the name, which is the case here (the ROW_NUMBER is itself
+aliased A1). That behaviour was checked against DuckDB rather than assumed.
+
+**Impact**: full suite green, with no golden-string churn at all. Q3 and Q10 both match the
+reference exactly, in the right order. 21 of 22 queries now match on real SF0.01 data, up from 19.
+The rank column of every other ranked query (Q2, Q5, Q16, Q18, Q21) is now meaningful too: it had
+been arbitrary all along, and the comparison only passed because it was being ignored. Q5's ranks
+now reproduce the reference's revenue-descending order exactly.
+
+**Still open**: Q13 only — its count-of-counts repeats the same c_count with differing custdist,
+which is not a ranking problem.

@@ -13,8 +13,8 @@
       "translate": "ok"
     },
     "10": {
-      "compare_local": "known_bug",
-      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): confirmed still wrong (20/20 rows returned but values don't match). See execute_empty_note.",
+      "compare_local": "verified",
+      "compare_local_note": "verified against SF0.01 real data (2026-09-16): exact match, all 20 rows (ignoring the leading rank column). Fixed by the same window-ordering fix as Q3.",
       "execute_empty": "ok",
       "execute_empty_note": "newly-discovered (2026-09-14, not previously checked against real data): does not match the reference \u2014 wrong set of customers/revenue entirely, not just a value-formatting difference. The Round 4 lifted-atom value-column fix corrected revenue from nonsensical negative int128 garbage to a correctly-shaped positive decimal (confirmed via git stash that the garbage predates this session), but a separate, unrelated filtering/join bug remains. Not yet root-caused.",
       "rewrite": "ok",
@@ -115,8 +115,8 @@
       "translate": "ok"
     },
     "3": {
-      "compare_local": "known_bug",
-      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): confirmed still wrong (10/10 rows returned but different orderkeys/revenue than the reference, beyond the already-noted rank-column difference). See execute_empty_note.",
+      "compare_local": "verified",
+      "compare_local_note": "verified against SF0.01 real data (2026-09-16): exact match, all 10 rows in the right order (ignoring the leading rank column the .rel projects). The revenue aggregation was always correct -- the per-order sums matched the reference exactly for the orders we returned -- but ROW_NUMBER's window ordered by positional ordinals, which inside OVER are constants, so the rank was arbitrary and `i <= 10` kept 10 arbitrary orders out of the 138 qualifying.",
       "execute_empty": "ok",
       "execute_empty_note": "was blocked by FindAggregateThresholdPattern mistaking an unrelated date filter (o_orderdate[ok] < target_date) for the revenue aggregate's own threshold, since target_date is itself an IDB \u2014 corrupted the query into comparing revenue against target_date and dropped the real join, which ScopeValidator caught as a dangling alias. Fixed by requiring the threshold comparison's value_var to match the aggregate's real exported variable. Also benefits from the l_extendedprice/l_discount value-column fix (see translator.cc history). execute_empty now succeeds and real (SF0.01) results are much closer to correct \u2014 the top row (orderkey 450, revenue 205447.4232) exactly matches the reference \u2014 but several higher-revenue orders the reference includes are still missing. Not yet root-caused.",
       "rewrite": "ok",
