@@ -1,10 +1,12 @@
 // cspell:ignore GTEST
 #include <gtest/gtest.h>
 
+#include <cstring>
 #include <regex>
 
 #include "api/translate.h"
 #include "duckdb_exec.h"
+#include "generator/duckdb_session.h"
 #include "optimizer/cte_inliner.h"
 #include "optimizer/self_join_optimizer.h"
 #include "optimizer/validating_optimizer.h"
@@ -274,29 +276,40 @@ TEST_F(TranslationTest, PartialApplicationSharingVariables4) {
 }
 
 TEST_F(TranslationTest, AggregateExpression1) {
-  OPT_EXPECT_EQ(TranslateExpression("sum[A]"), "SELECT SUM(T0.A1) AS A1 FROM A AS T0");
+  OPT_EXPECT_EQ(TranslateExpression("sum[A]"),
+                "SELECT SUM(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1");
 }
 
 TEST_F(TranslationTest, AggregateExpression2) {
-  OPT_EXPECT_EQ(TranslateExpression("average[A]"), "SELECT AVG(T0.A1) AS A1 FROM A AS T0");
+  OPT_EXPECT_EQ(TranslateExpression("average[A]"),
+                "SELECT AVG(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1");
 }
 
 TEST_F(TranslationTest, AggregateExpression3) {
-  OPT_EXPECT_EQ(TranslateExpression("min[A]"), "SELECT MIN(T0.A1) AS A1 FROM A AS T0");
+  OPT_EXPECT_EQ(TranslateExpression("min[A]"),
+                "SELECT MIN(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1");
 }
 
 TEST_F(TranslationTest, AggregateExpression4) {
-  OPT_EXPECT_EQ(TranslateExpression("max[A]"), "SELECT MAX(T0.A1) AS A1 FROM A AS T0");
+  OPT_EXPECT_EQ(TranslateExpression("max[A]"),
+                "SELECT MAX(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1");
 }
 
 TEST_F(TranslationTest, AggregateExpression5) {
-  OPT_EXPECT_EQ(TranslateExpression("max[B[x]]"), "SELECT T0.A1 AS x, MAX(T0.A2) AS A1 FROM B AS T0 GROUP BY T0.A1");
+  OPT_EXPECT_EQ(TranslateExpression("max[B[x]]"),
+                "SELECT T1.x, MAX(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0) AS T1 "
+                "GROUP BY T1.x");
+}
+
+TEST_F(TranslationTest, AggregatePartialApplicationAverage) {
+  OPT_EXPECT_EQ(TranslateExpression("average[E[x]]"),
+                "SELECT T1.x, AVG(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS x, T0.A2 AS A1 FROM E AS T0) AS T1 "
+                "GROUP BY T1.x");
 }
 
 TEST_F(TranslationTest, RelationalAbstraction1) {
   OPT_EXPECT_EQ(TranslateExpression("{(1,2); (3,4)}"),
-                "SELECT CASE WHEN I0.i = 1 THEN 1 WHEN I0.i = 2 THEN 3 END AS A1, CASE WHEN I0.i = 1 THEN 2 WHEN I0.i "
-                "= 2 THEN 4 END AS A2 FROM (VALUES (1), (2)) AS I0(i)");
+                "SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2)");
 }
 
 TEST_F(TranslationTest, BindingExpression1) {
@@ -321,14 +334,14 @@ TEST_F(TranslationTest, BindingFormula1) {
 TEST_F(TranslationTest, BindingFormula2) {
   OPT_EXPECT_EQ(
       TranslateExpression("(x): {B[1]}(x) or B(x,1)"),
-      "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1 UNION SELECT T4.A1 AS A1 FROM B AS T4 WHERE T4.A2 = 1");
+      "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1 UNION SELECT T3.A1 AS A1 FROM B AS T3 WHERE T3.A2 = 1");
 }
 
 TEST_F(TranslationTest, BindingFormula3) {
   OPT_EXPECT_EQ(
       TranslateExpression("(x) : {B[1]; B[3]}(x)"),
-      "SELECT CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T3.A2 END AS A1 FROM B AS T0, B AS T3, (VALUES "
-      "(1), (2)) AS I0(i) WHERE T0.A1 = 1 AND T3.A1 = 3");
+      "SELECT T4.A1 AS A1 FROM (SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1 UNION SELECT T2.A2 AS A1 FROM B AS "
+      "T2 WHERE T2.A1 = 3) AS T4");
 }
 
 TEST_F(TranslationTest, BindingFormula4) {
@@ -367,7 +380,7 @@ TEST_F(TranslationTest, MultipleDefs2) {
   OPT_EXPECT_EQ(TranslateProgram("def R {(1, 2); (3, 4)} \n def S {R[1]} \n def T {R[3]}"),
                 "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (3, 4)) AS "
                 "T0(A1, A2));\n\nCREATE OR REPLACE VIEW S AS (SELECT DISTINCT T1.A2 AS A1 FROM R AS T1 WHERE T1.A1 = "
-                "1);\n\nCREATE OR REPLACE VIEW T AS (SELECT DISTINCT T4.A2 AS A1 FROM R AS T4 WHERE T4.A1 = 3);");
+                "1);\n\nCREATE OR REPLACE VIEW T AS (SELECT DISTINCT T3.A2 AS A1 FROM R AS T3 WHERE T3.A1 = 3);");
 }
 
 TEST_F(TranslationTest, MultipleDefs3) {
@@ -434,7 +447,7 @@ TEST_F(TranslationTest, RecursiveDisjunctTooManyCallsRejected) {
 
 TEST_F(TranslationTest, FullApplicationOnExpression2) {
   OPT_EXPECT_EQ(TranslateExpression("{ (x,y) : B(x,y) } where B(1,2) "),
-                "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, B AS T3 WHERE T3.A1 = 1 AND T3.A2 = 2");
+                "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, B AS T2 WHERE T2.A1 = 1 AND T2.A2 = 2");
 }
 
 TEST_F(TranslationTest, FullApplicationOnExpression3) {
@@ -444,16 +457,16 @@ TEST_F(TranslationTest, FullApplicationOnExpression3) {
 TEST_F(TranslationTest, FullApplicationOnExpression4) {
   OPT_EXPECT_EQ(
       TranslateDefinition("def Q { B[1] ; B[2] }"),
-      "CREATE OR REPLACE VIEW Q AS (SELECT DISTINCT CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T3.A2 END "
-      "AS A1 FROM B AS T0, B AS T3, (VALUES (1), (2)) AS I0(i) WHERE T0.A1 = 1 AND T3.A1 = 2);");
+      "CREATE OR REPLACE VIEW Q AS (SELECT DISTINCT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1 UNION SELECT DISTINCT "
+      "T2.A2 AS A1 FROM B AS T2 WHERE T2.A1 = 2);");
 }
 
 TEST_F(TranslationTest, FullApplicationOnExpression5) {
   OPT_EXPECT_EQ(
       TranslateExpression("{B[y];E[y]} where y > 1}"),
-      "WITH E0(y) AS (SELECT T4.A1 AS A1 FROM B AS T4 UNION SELECT T7.A1 AS A1 FROM E AS T7) SELECT T0.A1 AS y, "
-      "CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T2.A2 END AS A1 FROM B AS T0, E AS T2, (VALUES (1), "
-      "(2)) AS I0(i), E0 WHERE T0.A1 = E0.y AND T0.A1 = T2.A1 AND E0.y > 1");
+      "WITH E0(y) AS (SELECT T2.A1 AS A1 FROM B AS T2 UNION SELECT T5.A1 AS A1 FROM E AS T5) SELECT T8.y, T8.A1 "
+      "FROM (SELECT T0.A1 AS y, T0.A2 AS A1 FROM B AS T0 UNION SELECT T1.A1 AS y, T1.A2 AS A1 FROM E AS T1) AS T8, "
+      "E0 WHERE T8.y = E0.y AND E0.y > 1");
 }
 
 TEST_F(TranslationTest, FullApplicationOnExpression6) {
@@ -466,7 +479,10 @@ TEST_F(TranslationTest, FullApplicationOnExpression7) {
                 "SELECT T0.A2 AS y, T0.A1 AS A1 FROM B AS T0, B AS T1 WHERE T0.A2 = T1.A1 AND T0.A1 = T1.A2");
 }
 
-TEST_F(TranslationTest, FullApplication7) { OPT_EXPECT_EQ(TranslateFormula("{1}(x)"), "SELECT 1 AS x"); }
+TEST_F(TranslationTest, FullApplication7) {
+  OPT_EXPECT_EQ(TranslateFormula("{1}(x)"),
+                "SELECT T1.A1 AS x FROM (SELECT DISTINCT T0.A1 AS A1 FROM (VALUES (1)) AS T0(A1)) AS T1");
+}
 
 TEST_F(TranslationTest, FullApplication8) {
   OPT_EXPECT_EQ(TranslateFormula("B(A,x)"), "SELECT T0.A2 AS x FROM B AS T0, A AS T1 WHERE T0.A1 = T1.A1");
@@ -596,6 +612,13 @@ TEST_F(TranslationTest, NegationFormula4) {
       "AND T1.A1 NOT IN (SELECT DISTINCT * FROM A AS T9)");
 }
 
+// not H(y,x) must test (y,x) against H, not alphabetically ordered (x,y).
+TEST_F(TranslationTest, NegationSwappedBinaryArgs) {
+  OPT_EXPECT_EQ(TranslateFormula("B(x,y) and not H(y,x)"),
+                "SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0 WHERE (T0.A2, T0.A1) NOT IN (SELECT DISTINCT * FROM H "
+                "AS T1)");
+}
+
 TEST_F(TranslationTest, NestedQuantifiers1) {
   OPT_EXPECT_EQ(TranslateFormula("exists ((y) | exists ((z) | C(x, y, z)))"), "SELECT T0.A1 AS x FROM C AS T0");
 }
@@ -649,8 +672,8 @@ TEST_F(TranslationTest, PartialApplicationOnExpression1) {
 // DuckDB: N/A — literal tuple subqueries lack A1/A2 column names expected by the projection.
 TEST_F(TranslationTest, PartialApplicationOnExpression2) {
   OPT_EXPECT_EQ(TranslateExpression("{(1,2);(3,4)}[1]"),
-                "SELECT CASE WHEN I0.i = 1 THEN 2 WHEN I0.i = 2 THEN 4 END AS A1 FROM (VALUES (1), (2)) AS "
-                "I0(i) WHERE (CASE WHEN I0.i = 1 THEN 1 WHEN I0.i = 2 THEN 3 END) = 1");
+                "SELECT T1.A2 AS A1 FROM (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (3, 4)) AS "
+                "T0(A1, A2)) AS T1 WHERE T1.A1 = 1");
 }
 
 TEST_F(TranslationTest, FullApplicationOnExpression1) {
@@ -660,33 +683,35 @@ TEST_F(TranslationTest, FullApplicationOnExpression1) {
 TEST_F(TranslationTest, AggregateExpression6) {
   OPT_EXPECT_EQ(
       TranslateExpression("sum[{(1,2);(3,4)}]"),
-      "SELECT SUM((CASE WHEN I0.i = 1 THEN 2 WHEN I0.i = 2 THEN 4 END)) AS A1 FROM (VALUES (1), (2)) AS I0(i)");
+      "SELECT SUM(T1.A2) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (3, 4)) AS "
+      "T0(A1, A2)) AS T1");
 }
 
 TEST_F(TranslationTest, AggregateExpression7) {
   OPT_EXPECT_EQ(TranslateExpression("max[{(1);(2);(3)}]"),
-                "SELECT MAX((CASE WHEN I0.i = 1 THEN 1 WHEN I0.i = 2 THEN 2 WHEN I0.i = 3 THEN 3 END)) AS A1 FROM "
-                "(VALUES (1), (2), (3)) AS I0(i)");
+                "SELECT MAX(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM (VALUES (1), (2), (3)) AS T0(A1)) AS "
+                "T1");
 }
 
-TEST_F(TranslationTest, RelationalAbstraction2) { OPT_EXPECT_EQ(TranslateExpression("{1}"), "SELECT 1 AS A1"); }
+TEST_F(TranslationTest, RelationalAbstraction2) {
+  OPT_EXPECT_EQ(TranslateExpression("{1}"), "SELECT DISTINCT T0.A1 AS A1 FROM (VALUES (1)) AS T0(A1)");
+}
 
-TEST_F(TranslationTest, RelationalAbstraction3) { OPT_EXPECT_EQ(TranslateExpression("{(1)}"), "SELECT 1 AS A1"); }
+TEST_F(TranslationTest, RelationalAbstraction3) {
+  OPT_EXPECT_EQ(TranslateExpression("{(1)}"), "SELECT DISTINCT T0.A1 AS A1 FROM (VALUES (1)) AS T0(A1)");
+}
 
 TEST_F(TranslationTest, RelationalAbstraction4) {
-  OPT_EXPECT_EQ(TranslateExpression("{(1,2)}"), "SELECT 1 AS A1, 2 AS A2");
+  OPT_EXPECT_EQ(TranslateExpression("{(1,2)}"),
+                "SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2)) AS T0(A1, A2)");
 }
 
 TEST_F(TranslationTest, RelationalAbstraction5) {
-  OPT_EXPECT_EQ(
-      TranslateExpression("{1;2;3}"),
-      "SELECT CASE WHEN I0.i = 1 THEN 1 WHEN I0.i = 2 THEN 2 WHEN I0.i = 3 THEN 3 END AS A1 FROM (VALUES (1), "
-      "(2), (3)) AS I0(i)");
+  OPT_EXPECT_EQ(TranslateExpression("{1;2;3}"), "SELECT DISTINCT T0.A1 AS A1 FROM (VALUES (1), (2), (3)) AS T0(A1)");
 }
 
 TEST_F(TranslationTest, RelationalAbstraction6) {
-  OPT_EXPECT_EQ(TranslateExpression("{(1);(2)}"),
-                "SELECT CASE WHEN I0.i = 1 THEN 1 WHEN I0.i = 2 THEN 2 END AS A1 FROM (VALUES (1), (2)) AS I0(i)");
+  OPT_EXPECT_EQ(TranslateExpression("{(1);(2)}"), "SELECT DISTINCT T0.A1 AS A1 FROM (VALUES (1), (2)) AS T0(A1)");
 }
 
 TEST_F(TranslationTest, FormulaBindings1) {
@@ -869,8 +894,8 @@ TEST_F(TranslationTest, NamedAttributesAggregate) {
   default_edb_map["R"] = RelationInfo({"student_id", "grade"});
   OPT_EXPECT_EQ(
       TranslateDefinition("def S {max[R[x]]}"),
-      "CREATE OR REPLACE VIEW S AS (SELECT DISTINCT T0.student_id AS x, MAX(T0.grade) AS A1 FROM R AS T0 GROUP "
-      "BY T0.student_id);");
+      "CREATE OR REPLACE VIEW S AS (SELECT DISTINCT T1.x, MAX(T1.A1) AS A1 FROM (SELECT DISTINCT T0.student_id AS "
+      "x, T0.grade AS A1 FROM R AS T0) AS T1 GROUP BY T1.x);");
 }
 
 TEST_F(TranslationTest, SingleNamedAttribute) {
@@ -907,8 +932,28 @@ TEST_F(TranslationTest, SelfComposition) {
 TEST_F(TranslationTest, FirstTransitivityComposition) {
   OPT_EXPECT_EQ(
       TranslateExpression("(x, y): B(x, y) or exists((z) | B(x, z) and B(z, y))"),
-      "SELECT T6.x AS A1, T6.y AS A2 FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0 UNION SELECT T1.A1 AS x, "
-      "T2.A2 AS y FROM B AS T1, B AS T2 WHERE T1.A2 = T2.A1) AS T6");
+      "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0 UNION SELECT T1.A1 AS A1, T2.A2 AS A2 FROM B AS T1, B AS T2 "
+      "WHERE T1.A2 = T2.A1");
+}
+
+TEST_F(TranslationTest, UnionColumnAlignmentSwappedBindings) {
+  auto unoptimized = GetSQLFromExpr("(x, y): B(x, y) or B(y, x)", default_edb_map);
+  ASSERT_TRUE(unoptimized) << "translation failed";
+  EXPECT_EQ(unoptimized->ToString(),
+            "SELECT T2.x AS A1, T2.y AS A2 FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0 UNION SELECT "
+            "T1.A2 AS x, T1.A1 AS y FROM B AS T1) AS T2");
+  OPT_EXPECT_EQ(TranslateExpression("(x, y): B(x, y) or B(y, x)"),
+                "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0 UNION SELECT T1.A2 AS A1, T1.A1 AS A2 FROM B AS T1");
+}
+
+TEST_F(TranslationTest, UnionColumnAlignmentWithJoin) {
+  RelationMap edb = CreateDefaultEDBMap();
+  edb["F"] = RelationInfo(2);
+  edb["D"] = RelationInfo(2);
+  OPT_EXPECT_EQ_EDB(
+      edb, ApplyValidatingOptimizer(GetSQLFromExpr("(x, y): exists((u) | F(x, u) and D(u, y)) or B(y, x)", edb)),
+      "SELECT T0.A1 AS A1, T1.A2 AS A2 FROM F AS T0, D AS T1 WHERE T0.A2 = T1.A1 UNION SELECT "
+      "T5.A2 AS A1, T5.A1 AS A2 FROM B AS T5");
 }
 
 TEST_F(TranslationTest, SimpleReferenceDefinition) {
@@ -918,6 +963,31 @@ TEST_F(TranslationTest, SimpleReferenceDefinition) {
 
 TEST_F(TranslationTest, ExistentialNotBoundingAllVariables) {
   OPT_EXPECT_EQ(TranslateFormula("exists((y) | A(x) and D(y))"), "SELECT T0.A1 AS x FROM A AS T0, D AS T1");
+}
+
+TEST_F(TranslationTest, ConjunctionOfExistentialsWithSameBoundName) {
+  // Each exists binds its own y; they must not be equated when the conjuncts are joined.
+  const std::string sql = TranslateFormula("exists((y) | A(x)) and exists((y) | D(x))");
+  ASSERT_FALSE(sql.empty());
+  ::rel2sql::testing::AssertExecutesInDuckDB(sql, default_edb_map);
+}
+
+TEST_F(TranslationTest, UnionPartialAppsWhenOneBranchIsEmpty) {
+  // Union branches are independent: an empty B[10] must not zero out rows from B[2].
+  default_edb_map["B"] = RelationInfo(2);
+  const std::string sql = TranslateExpression("{B[10]; B[2]}");
+  ASSERT_FALSE(sql.empty());
+
+  testing::DuckDbConnection db;
+  testing::ApplyEdbDdl(db.con, default_edb_map);
+  testing::RunQueryOrFail(db.con, "INSERT INTO \"B\" VALUES (2, 3), (2, 7)", "INSERT");
+
+  duckdb_result result;
+  memset(&result, 0, sizeof(result));
+  ASSERT_EQ(duckdb_query(db.con, sql.c_str(), &result), DuckDBSuccess) << duckdb_result_error(&result) << "\nSQL:\n"
+                                                                       << sql;
+  EXPECT_EQ(duckdb_row_count(&result), 2) << sql;
+  duckdb_destroy_result(&result);
 }
 
 TEST_F(TranslationTest, RecursiveDefinition) {
