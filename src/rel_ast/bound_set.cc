@@ -289,17 +289,35 @@ std::pair<std::vector<size_t>, std::vector<size_t>> BoundSet::GreedySmallCover(
 //    so we prefer P's over S's.
 // For small k+r we enumerate all 2^(k+r) assignments and pick a feasible solution with minimum cost;
 // for larger instances we use a greedy set cover with the same costs (1 for P, k+1 for S).
+std::vector<std::reference_wrapper<const Bound>> BoundSet::SortedBounds() const {
+  std::vector<std::reference_wrapper<const Bound>> sorted_bounds(bounds.begin(), bounds.end());
+  std::sort(sorted_bounds.begin(), sorted_bounds.end(),
+            [](const Bound& a, const Bound& b) { return a.ToString() < b.ToString(); });
+  return sorted_bounds;
+}
+
 BoundSet BoundSet::SmallCover() const {
   if (bounds.empty()) {
     return BoundSet(std::unordered_set<Bound>{}, bound_variables);
   }
 
+  // `bounds` is an unordered_set, so this method's own iteration order over it is unspecified by
+  // the standard and differs by standard library (observed: libc++ vs libstdc++ hash the same
+  // Bound values into a different visitation order). That order becomes each bound's P/S index
+  // below, and the exact-cover search a few lines down (SolveSmallCoverExact) picks the first
+  // minimum-cost mask it finds -- so whichever bound happens to land at the lowest index wins any
+  // tie between equally-cheap covers, silently, per platform. SortedBounds() imposes a
+  // deterministic, platform-independent order first, making that index assignment -- and so every
+  // tie it feeds into -- reproducible instead of leaving it to affect which join (or whether one
+  // at all) ends up in the generated SQL.
+  auto sorted_bounds = SortedBounds();
+
   std::vector<std::reference_wrapper<const Bound>> P_bounds;
   std::vector<std::reference_wrapper<const Bound>> S_bounds;
   P_bounds.reserve(bounds.size());
   S_bounds.reserve(bounds.size());
-  for (const auto& bound : bounds) {
-    if (dynamic_cast<const Projection*>(bound.domain.get()) != nullptr)
+  for (const auto& bound : sorted_bounds) {
+    if (dynamic_cast<const Projection*>(bound.get().domain.get()) != nullptr)
       P_bounds.push_back(bound);
     else
       S_bounds.push_back(bound);

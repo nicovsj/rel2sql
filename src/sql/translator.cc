@@ -1835,7 +1835,7 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelDisjuncti
   std::vector<std::shared_ptr<sql::ast::Source>> cte_sources;
   std::vector<std::pair<std::shared_ptr<sql::ast::Source>, std::set<std::string>>> cte_source_var_pairs;
 
-  for (const auto& bound : cover.bounds) {
+  for (const Bound& bound : cover.SortedBounds()) {
     bool has_sym_diff_var = false;
     for (const auto& var : bound.variables) {
       if (sym_diff.count(var)) {
@@ -1967,7 +1967,7 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelNegation>
   std::vector<std::shared_ptr<sql::ast::Source>> cte_sources;
   std::vector<std::pair<std::shared_ptr<sql::ast::Source>, std::set<std::string>>> cte_source_var_pairs;
 
-  for (const auto& bound : cover.bounds) {
+  for (const Bound& bound : cover.SortedBounds()) {
     if (!bound.domain) continue;
     auto domain_sql = DomainToSql(*bound.domain);
     std::set<std::string> bound_vars(bound.variables.begin(), bound.variables.end());
@@ -2928,7 +2928,7 @@ bool Translator::TryEmitLiftedPartialAppValueComparison(const std::shared_ptr<Re
 
   BoundSet cover = node->safety.SmallCover();
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> term_sources;
-  for (const auto& bound : cover.bounds) {
+  for (const Bound& bound : cover.SortedBounds()) {
     if (!bound.domain) continue;
     auto domain_sql = DomainToSql(*bound.domain);
     std::set<std::string> bound_vars(bound.variables.begin(), bound.variables.end());
@@ -2996,7 +2996,7 @@ bool Translator::TryEmitLiftedPartialAppVariableEquality(const std::shared_ptr<R
 
   BoundSet cover = node->safety.SmallCover();
   bool domain_matches = false;
-  for (const auto& bound : cover.bounds) {
+  for (const Bound& bound : cover.SortedBounds()) {
     if (!bound.domain) continue;
     if (std::find(bound.variables.begin(), bound.variables.end(), export_id->id) == bound.variables.end()) {
       continue;
@@ -3524,7 +3524,7 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelCompariso
   std::vector<std::pair<std::shared_ptr<sql::ast::Source>, std::set<std::string>>> cte_source_var_pairs;
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> free_var_sources;
 
-  for (const auto& bound : cover.bounds) {
+  for (const Bound& bound : cover.SortedBounds()) {
     if (!bound.domain) continue;
     // node->safety.SmallCover() can return bounds covering the broader safety context, not just
     // this comparison's own free variables (e.g. a `y = _x0` comparison left behind by
@@ -4627,7 +4627,7 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelBuiltinLi
       std::vector<std::shared_ptr<sql::ast::Source>> cte_sources;
       std::vector<std::pair<std::shared_ptr<sql::ast::Source>, std::set<std::string>>> cte_source_var_pairs;
       std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> free_var_sources;
-      for (const auto& bound : cover.bounds) {
+      for (const Bound& bound : cover.SortedBounds()) {
         if (!bound.domain) continue;
         auto domain_sql = DomainToSql(*bound.domain);
         std::set<std::string> bound_vars(bound.variables.begin(), bound.variables.end());

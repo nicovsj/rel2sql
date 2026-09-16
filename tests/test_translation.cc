@@ -847,8 +847,8 @@ TEST_F(TranslationTest, InferrableVariableConjunction3) {
 
 TEST_F(TranslationTest, InferrableVariableMultivariate) {
   OPT_EXPECT_EQ(TranslateExpression("z = x + y + 1 and B(x, y)"),
-                "SELECT T2.A1 AS x, T2.A2 AS y, (T0.A2 + 1) + T1.A1 AS z FROM B AS T0, B AS T1, B AS T2 WHERE ((T0.A2 "
-                "+ 1) + T1.A1) = T2.A1 + T2.A2 + 1");
+                "SELECT T0.A1 AS x, T0.A2 AS y, (T1.A2 + 1) + T2.A1 AS z FROM B AS T0, B AS T1, B AS T2 WHERE ((T1.A2 "
+                "+ 1) + T2.A1) = T0.A1 + T0.A2 + 1");
 }
 
 TEST_F(TranslationTest, NegativeLiteral1) {
