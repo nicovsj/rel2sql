@@ -1640,6 +1640,17 @@ bool Translator::IsTermRewriterLiftedBindingConjunction(const RelConjunction& no
   auto* param_id = dynamic_cast<RelIDTerm*>(param->expr.get());
   if (!param_id) return false;
 
+  // A genuine, user-written relation membership check has exactly this same shape --
+  // `A(x) and x = 5` matches "one-param application conjoined with a comparison on that same
+  // variable" every bit as well as an actual lifted witness does. The two are only
+  // distinguishable by the variable's origin: TermRewriter::FreshVarName() names every witness it
+  // introduces "_x<N>", so requiring that prefix here is what actually restricts this function to
+  // its own documented case (`{agg}(z) and z > c`, TermRewriter output only) rather than also
+  // matching ordinary application-and-comparison conjunctions that happen to share its shape --
+  // for which the speculative handlers below would translate the conjunction as the comparison
+  // alone, silently dropping the application's own membership constraint.
+  if (param_id->id.empty() || param_id->id[0] != '_') return false;
+
   auto matches_param = [&](const std::shared_ptr<RelTerm>& term) {
     auto* id = AsPeeledIdTerm(term);
     return id && id->id == param_id->id;
