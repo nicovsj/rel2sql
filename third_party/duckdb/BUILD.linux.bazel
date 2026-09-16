@@ -2,6 +2,16 @@ load("@rules_cc//cc:cc_import.bzl", "cc_import")
 
 package(default_visibility = ["//visibility:public"])
 
+# Linked as the shared library, not libduckdb_static.a. In this v1.2.2 Linux release, the static
+# archive is missing the actual object code for several of DuckDB's vendored dependencies:
+# `nm libduckdb_static.a` shows every duckdb_re2::RE2 and duckdb::PostgresParser symbol as
+# undefined ('U'), i.e. genuinely not compiled into the archive anywhere, not merely a link-order
+# problem -- forcing every object in with alwayslink (tried first) does not help, because the
+# defining object files simply are not there. libduckdb.so, from the same release, is a complete,
+# self-contained build: `nm -D libduckdb.so` has zero undefined dynamic symbols outside libc/
+# libstdc++/the GCC ABI, i.e. it does statically link its own vendored dependencies in, just not
+# into the separately-shipped .a. macOS's release (BUILD.macos.bazel) does not have this problem
+# and still links the static library.
 cc_import(
     name = "duckdb",
     hdrs = [
@@ -9,14 +19,5 @@ cc_import(
         "duckdb.hpp",
     ],
     includes = ["."],
-    static_library = "libduckdb_static.a",
-    # This one .a bundles DuckDB plus its vendored dependencies (yyjson, zstd, re2, utf8proc,
-    # postgres_parser, ...) as several unity-build object files, and some of those files reference
-    # symbols defined only in other files of the same archive. GNU ld resolves a static archive in
-    # a single left-to-right pass, pulling in a member only when something already-included still
-    # has an unresolved reference to it; that leaves these internal, archive-to-itself references
-    # unresolved and fails the link with "undefined reference" for symbols the archive does define.
-    # alwayslink pulls in every object file regardless, sidestepping the single-pass scan entirely.
-    # Not needed on macOS (Apple's linker/lld handle this scan differently) but harmless there.
-    alwayslink = True,
+    shared_library = "libduckdb.so",
 )
