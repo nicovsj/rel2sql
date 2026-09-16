@@ -123,8 +123,8 @@
       "translate": "ok"
     },
     "4": {
-      "compare_local": "known_bug",
-      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): confirmed still wrong \u2014 all 5 o_orderpriority rows come back but each count is inflated roughly 2.7-2.8x (e.g. 247 vs 93, 289 vs 103), matching the already-noted witness-variable dedup bug.",
+      "compare_local": "verified",
+      "compare_local_note": "verified against SF0.01 real data (2026-09-16): exact match, all 5 rows (93/103/109/102/128). The counts were previously inflated by a non-constant factor (2.66x, 2.81x, ...) because exists((num) | ...) translated to a select that projected its bound variable and did not deduplicate, so joining it repeated each order once per qualifying lineitem and COUNT counted lineitems instead of orders.",
       "execute_empty": "ok",
       "execute_empty_note": "was blocked by a TermRewriter AST-node-sharing bug (chained comparisons aliased the shared middle term, silently dropping the o_orderdate join) \u2014 fixed in RelASTBuilder::visitChainedComparison. execute_empty now succeeds, but real (non-empty) results are still WRONG: exists((num) | l_commitdate[o,num] < l_receiptdate[o,num]) inside the count body doesn't deduplicate its own witness variable, inflating counts ~2.6x. That is a separate, still-open bug in the translator's lifted-partial-application exists/conjunction special-casing.",
       "rewrite": "ok",

@@ -1261,3 +1261,48 @@ since `ArityVisitor` runs twice per pipeline. The dead `multiple_defs` field was
 22 queries match exactly on real SF0.01 data, up from 17; no query regressed.
 
 **Still open**: Q3, Q4, Q10, Q13 real-data mismatches.
+
+## Round 12 (2026-09-16) — Q4's inflated counts: an existential that never quantified anything away
+
+**Symptom**: Q4 returned all 5 priority rows with every count inflated, but by a *non-constant*
+factor — 247 vs 93, 289 vs 103, 349 vs 128. A constant factor would suggest a plain duplicated
+join; a factor that varies per group points at something whose multiplicity varies per row.
+
+**Root cause**: `exists((num) | l_commitdate[o, num] < l_receiptdate[o, num])` translated to
+
+```sql
+(SELECT T11.A1 AS o, T11.A2 AS num FROM l_commitdate AS T11, l_receiptdate AS T12
+ WHERE T11.A1 = T12.A1 AND T11.A2 = T12.A2 AND T11.A3 < T12.A3) AS T13
+```
+
+one row per qualifying *lineitem*, still projecting the bound `num`. Joined to the per-order
+conjuncts and counted with `COUNT(1)`, that counts qualifying lineitems rather than orders, and the
+number of qualifying lineitems per order differs by priority group — hence the varying factor.
+`exists((y) | F(x, y))` denotes the *set* of x, so the bound variables must be projected away and
+the result deduplicated; `Visit(RelExistential)` did the first but not the second.
+
+Until now an outer `SELECT DISTINCT` at the definition boundary masked this everywhere it
+appeared. Q4 is the first query to feed such a select into a `count`, where multiplicity is read
+before any dedup happens.
+
+**Fix**: the existential's select is emitted `DISTINCT`. That alone is not enough — the flattener
+would inline it into the parent and drop the dedup again, so `CanFlattenSubquery` now accounts for
+`is_distinct`. Refusing outright costs real query quality (it left an extra subquery level wherever
+an existential appeared, and turned `EdgeCase1` into a five-source query with a CTE), so instead
+the flattener inlines a DISTINCT subquery only where the parent is free to discard duplicates
+itself — no GROUP BY, no aggregate, no LIMIT — and carries the DISTINCT up to that parent. Where
+the parent does read multiplicity, the subquery stays nested and keeps its own DISTINCT.
+
+Note the flattener dropping a subquery's DISTINCT was a latent correctness bug in its own right,
+independent of existentials; it only had no way to fire before, because nothing emitted a DISTINCT
+subquery for it to flatten.
+
+**Impact**: full suite green. Q4 matches the reference exactly (93/103/109/102/128). 19 of 22
+queries match exactly on real SF0.01 data, up from 18; no query regressed. 29 golden strings in
+`test_translation` were updated; the diff was verified mechanically to consist of nothing but
+inserted `DISTINCT` tokens — no replacements or deletions — so no behaviour change could hide in
+the churn.
+
+**Still open**: Q3, Q10, Q13. Q3 and Q10 both return the right row count with wrong values over a
+`reverse_sort` top-N ranking, and Q13's count-of-counts repeats the same c_count with different
+custdist values, so a shared ranking/ordering cause is plausible.
