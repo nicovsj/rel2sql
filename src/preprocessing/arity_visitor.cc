@@ -1,5 +1,7 @@
 #include "preprocessing/arity_visitor.h"
 
+#include <iterator>
+
 #include "sql/aggregate_map.h"
 #include "support/exceptions.h"
 
@@ -23,14 +25,24 @@ std::shared_ptr<RelProgram> ArityVisitor::Visit(const std::shared_ptr<RelProgram
   defs_by_id_.clear();
   for (auto& def : node->defs) {
     if (!def) continue;
+    // This pass runs more than once and a folded-away duplicate stays in node->defs, so skip it
+    // rather than folding it again.
+    if (def->disabled) continue;
     std::string id = def->name;
     auto it = defs_by_id_.find(id);
     if (it != defs_by_id_.end()) {
-      // Duplicate def: add body to first def's multiple_defs, disable this one
-      if (!it->second.empty() && it->second[0]->body) {
-        it->second[0]->multiple_defs.push_back(def->body);
+      // Duplicate def: `def X {a}` followed by `def X {b}` means the same as `def X {a; b}`, so
+      // move this body's alternatives into the first def's union and disable this one. They are
+      // moved rather than copied because every other pass walks all defs, disabled included, and
+      // would otherwise process the same nodes twice.
+      if (!it->second.empty() && it->second[0]->body && def->body) {
+        auto& target = it->second[0]->body->exprs;
+        auto& source = def->body->exprs;
+        target.insert(target.end(), std::make_move_iterator(source.begin()), std::make_move_iterator(source.end()));
+        source.clear();
       }
       def->disabled = true;
+      continue;
     }
     defs_by_id_[id].push_back(def);
   }

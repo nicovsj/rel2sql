@@ -615,8 +615,6 @@ struct RelDef : RelNode {
   std::string name;
   std::shared_ptr<RelUnion> body;
 
-  std::vector<std::shared_ptr<RelUnion>> multiple_defs;
-
   RelDef(std::string name, std::shared_ptr<RelUnion> body) : name(std::move(name)), body(std::move(body)) {}
 
   std::string ToString() const override;
