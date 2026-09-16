@@ -1264,8 +1264,8 @@ TEST_F(TranslationTest, BindingEquality) { OPT_EXPECT_EQ(TranslateExpression("(x
 
 TEST_F(TranslationTest, EdgeCase1) {
   OPT_EXPECT_EQ(TranslateExpression("(x,y,z): B(x,y+1) and z = x-y"),
-                "SELECT T0.A1 AS A1, T0.A2 - 1 AS A2, T1.A1 + ((T2.A2 - 1) * -1) AS A3 FROM B AS T0, B AS T1, B AS T2, "
-                "B AS T3 WHERE (T0.A2 - 1) = (T3.A2 - 1) AND (T1.A1 + ((T2.A2 - 1) * -1)) = T0.A1 - (T3.A2 - 1)");
+                "SELECT T0.A1 AS A1, T0.A2 - 1 AS A2, T1.A1 + ((T2.A2 - 1) * -1) AS A3 FROM B AS T0, B AS T1, B AS T2 "
+                "WHERE (T1.A1 + ((T2.A2 - 1) * -1)) = T0.A1 - (T0.A2 - 1)");
 }
 
 TEST_F(TranslationTest, GeneratedTableAliasesAreDensePerStatement) {
