@@ -6,6 +6,7 @@
 #include <unordered_set>
 
 #include "preprocessing/arity_visitor.h"
+#include "preprocessing/binding_shadow_marker.h"
 #include "preprocessing/builtin_resolver.h"
 #include "preprocessing/ids_visitor.h"
 #include "preprocessing/lit_visitor.h"
@@ -212,6 +213,8 @@ std::shared_ptr<RelNode> RelContextBuilder::RunPipeline(std::shared_ptr<RelNode>
 
   ArityVisitor arity_visitor2(this);
   arity_visitor2.Visit(root);
+
+  MarkBindingShadowedIds(root, *this);
 
   VariablesVisitor vars_visitor(this);
   vars_visitor.Visit(root);

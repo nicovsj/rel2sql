@@ -34,7 +34,7 @@ std::shared_ptr<RelUnion> VariablesVisitor::Visit(const std::shared_ptr<RelUnion
 }
 
 std::shared_ptr<RelTerm> VariablesVisitor::Visit(const std::shared_ptr<RelIDTerm>& node) {
-  if (builder_->IsVar(node->id)) {
+  if (builder_->IsVar(node->id) || node->shadows_relation) {
     node->free_variables.insert(node->id);
     node->variables.insert(node->id);
   }

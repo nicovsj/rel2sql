@@ -790,7 +790,9 @@ Translator::FullApplParamSlots Translator::CollectApplParams(RelNode& node,
 
     if (id_term) {
       // If the ID term is a relation, get the expression from the relation and make a sourceable.
-      if (context_.IsRelation(id_term->id)) {
+      // An id an enclosing binder also binds is that variable here, not the relation it collides
+      // with (see RelIDTerm::shadows_relation), so it belongs in the term slots below instead.
+      if (context_.IsRelation(id_term->id) && !id_term->shadows_relation) {
         auto rel_expr = GetExpressionFromID(node, id_term->id, true);
         auto rel_sourceable = ExpectSourceable(rel_expr);
 

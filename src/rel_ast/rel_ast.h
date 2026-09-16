@@ -187,6 +187,11 @@ struct RelUnion : RelExpr {
 struct RelIDTerm : RelTerm {
   std::string id;
 
+  // This id names a known relation, but an enclosing binder also binds it as a variable, so here
+  // it is that variable. RelContextBuilder::AddVar refuses to register such a name (the relation
+  // wins globally), so IsVar can't tell them apart; MarkBindingShadowedIds decides it lexically.
+  bool shadows_relation = false;
+
   explicit RelIDTerm(std::string id) : id(std::move(id)) {}
 
   std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
