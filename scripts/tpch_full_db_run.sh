@@ -53,7 +53,14 @@ if [[ $COMPARE -eq 1 ]]; then
   EXTRA+=(--compare)
 fi
 
-if [[ $# -eq 0 && " ${EXTRA[*]} " != *" --all "* ]]; then
+if [[ " ${EXTRA[*]} " == *" --all "* ]]; then
+  # tpch_runner itself loops over every manifest query for --all and ignores --query, so hand it
+  # off directly rather than looping here -- looping over "$@" below would do nothing at all,
+  # since --all is typically passed with no query numbers following it.
+  exec "$RUNNER" "${EXTRA[@]}"
+fi
+
+if [[ $# -eq 0 ]]; then
   set -- 18
 fi
 
