@@ -19,4 +19,4 @@ jobs:
         uses: bazelbuild/setup-bazelisk@v3
 
       - name: Run Bazel tests (native)
-        run: bazel test //... --config=default
+        run: bazel test //... --config=default --test_output=errors
