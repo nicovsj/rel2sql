@@ -132,6 +132,11 @@ tasks:
     cmds:
       - python3 scripts/gen_tpch_manifest_cc.py
 
+  tpch:manifest-summary:
+    desc: "Print manifest.json as a table (rewrite/translate/execute/compare per query): add --notes for full notes"
+    cmds:
+      - python3 scripts/tpch_manifest_summary.py {{.CLI_ARGS}}
+
   tpch:translate:
     desc: "Rewrite + translate one query, print SQL to stdout (no DB needed): task tpch:translate -- 13"
     cmds:
