@@ -51,10 +51,13 @@ def temp(ck, custdist):
     or
     (customer(ck) and custdist = 0 and not exists((c2) | matched(ck, c2)))
 
+// cust_dist comes first because the reverse_sort chain below sorts on the leading column, and
+// this query orders by custdist descending. Every other sorted query (Q2, Q3, Q5, Q16, Q18, Q21)
+// puts its sort key first here for the same reason.
 @vectorized
-def unsorted_result[custdist]: count[(customer_key): temp(customer_key, custdist)]
+def unsorted_result(cust_dist, c_count): cust_dist = count[(customer_key): temp(customer_key, c_count)]
 
-def inside_rev_sort[custdist]: reverse_sort[unsorted_result[custdist]]
+def inside_rev_sort[cust_dist]: reverse_sort[unsorted_result[cust_dist]]
 def final_sort[]: reverse_sort[inside_rev_sort]
 
 @vectorized
