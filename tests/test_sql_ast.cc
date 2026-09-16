@@ -412,7 +412,7 @@ TEST(SQLPrintingTest, CTEs) {
 
   auto ss1 = std::make_shared<Select>(std::vector<std::shared_ptr<Selectable>>{a1}, f1);
 
-  auto cte = std::make_shared<Source>(ss1, std::make_shared<Alias>("S1", std::vector<std::string>{"A1"}), true);
+  auto cte = std::make_shared<Source>(ss1, std::make_shared<AliasClause>("S1", std::vector<std::string>{"A1"}), true);
 
   auto c4 = std::make_shared<Column>("A1", cte);
 

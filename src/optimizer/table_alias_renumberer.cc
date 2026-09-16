@@ -185,13 +185,13 @@ class AliasApplier {
  private:
   void ApplySource(Source& source);
   void ApplySources(const std::vector<std::shared_ptr<Source>>& sources);
-  void QueueRename(const std::shared_ptr<Alias>& alias);
+  void QueueRename(const std::shared_ptr<AliasClause>& alias);
 
   const std::unordered_map<std::string, std::string>& rename_map_;
-  std::vector<std::pair<std::shared_ptr<Alias>, std::string>> pending_renames_;
+  std::vector<std::pair<std::shared_ptr<AliasClause>, std::string>> pending_renames_;
 };
 
-void AliasApplier::QueueRename(const std::shared_ptr<Alias>& alias) {
+void AliasApplier::QueueRename(const std::shared_ptr<AliasClause>& alias) {
   if (!alias) return;
   auto it = rename_map_.find(alias->name);
   if (it == rename_map_.end() || it->second == alias->name) return;

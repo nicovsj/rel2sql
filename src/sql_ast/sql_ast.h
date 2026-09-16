@@ -110,21 +110,27 @@ class Query : public Sourceable {
   void AbsorbCTEsFrom(const std::vector<std::shared_ptr<Sourceable>>& sourceables);
 };
 
-class Alias : public Expression {
+// The `AS name(col1, col2, ...)` clause attached to a FROM source. Named AliasClause, not Alias,
+// because Source already declares a virtual `std::string Alias() const` accessor for the alias
+// name of any Sourceable (Table, Select, Union, ...) — GCC's strict C++ name-lookup treats reusing
+// "Alias" for both the class and that later member declaration as changing the meaning of the name
+// within Source's scope and rejects it outright (Clang accepts it, which is how this went
+// unnoticed locally); see the commit that renamed this class.
+class AliasClause : public Expression {
  public:
   std::string name;
   std::vector<std::string> columns;
 
-  Alias(std::string name) : name(name) {}
+  AliasClause(std::string name) : name(name) {}
 
-  Alias(std::string name, std::vector<std::string> columns) : name(name), columns(columns) {}
+  AliasClause(std::string name, std::vector<std::string> columns) : name(name), columns(columns) {}
 
   std::ostream& Print(std::ostream& os) const override { return os << Access(); }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
   bool Equals(const Expression& other) const override {
-    const auto* other_alias = dynamic_cast<const Alias*>(&other);
+    const auto* other_alias = dynamic_cast<const AliasClause*>(&other);
     if (!other_alias) return false;
     return name == other_alias->name && columns == other_alias->columns;
   }
@@ -151,7 +157,7 @@ class Alias : public Expression {
 class Source : public Expression {
  public:
   std::shared_ptr<Sourceable> sourceable;
-  std::optional<std::shared_ptr<Alias>> alias;
+  std::optional<std::shared_ptr<AliasClause>> alias;
   std::vector<std::string> def_columns;
   bool is_subquery;
   bool is_cte;
@@ -176,12 +182,12 @@ class Source : public Expression {
   Source(std::shared_ptr<Sourceable> sourceable, std::string alias_name, bool is_cte = false,
          const std::vector<std::string>& def_columns = {})
       : sourceable(sourceable),
-        alias(std::make_shared<sql::ast::Alias>(alias_name)),
+        alias(std::make_shared<sql::ast::AliasClause>(alias_name)),
         def_columns(def_columns),
         is_subquery(CheckIsSubquery(sourceable)),
         is_cte(is_cte) {}
 
-  Source(std::shared_ptr<Sourceable> sourceable, std::shared_ptr<Alias> alias, bool is_cte = false,
+  Source(std::shared_ptr<Sourceable> sourceable, std::shared_ptr<AliasClause> alias, bool is_cte = false,
          const std::vector<std::string>& def_columns = {})
       : sourceable(sourceable),
         alias(alias),

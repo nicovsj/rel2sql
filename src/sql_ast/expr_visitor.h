@@ -13,7 +13,7 @@ class Selectable;
 class Condition;
 class Term;
 
-class Alias;
+class AliasClause;
 class Source;
 class Table;
 class Values;
@@ -54,7 +54,7 @@ class ExpressionVisitor {
   virtual void Visit(Term& term);
 
   // Derived classes
-  virtual void Visit(Alias& alias);
+  virtual void Visit(AliasClause& alias);
   virtual void Visit(Source& source);
   virtual void Visit(Table& table);
   virtual void Visit(Values& values);

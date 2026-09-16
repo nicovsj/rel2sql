@@ -543,7 +543,7 @@ std::shared_ptr<sql::ast::Expression> Translator::BuildLiteralRelationAbstractio
   for (size_t i = 1; i <= arity; ++i) {
     column_names.push_back(fmt::format("A{}", i));
   }
-  auto alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias(), column_names);
+  auto alias = std::make_shared<sql::ast::AliasClause>(GenerateTableAlias(), column_names);
   auto source = std::make_shared<sql::ast::Source>(values_expr, alias);
   auto from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{source});
   // Explicit A1, A2, ... like RelProduct: SELECT * does not reliably expose VALUES column names to outer references
@@ -605,7 +605,7 @@ std::shared_ptr<RelUnion> Translator::Visit(const std::shared_ptr<RelUnion>& nod
   }
 
   auto values_expr = std::make_shared<sql::ast::Values>(index_values);
-  auto values_alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias("I"), std::vector<std::string>{"i"});
+  auto values_alias = std::make_shared<sql::ast::AliasClause>(GenerateTableAlias("I"), std::vector<std::string>{"i"});
   auto values_source = std::make_shared<sql::ast::Source>(values_expr, values_alias);
   from_sources.push_back(values_source);
 
@@ -4367,7 +4367,7 @@ std::shared_ptr<sql::ast::Source> Translator::CreateTableSource(const std::strin
                                                                                        : ("A" + std::to_string(i + 1)));
     }
     table = std::make_shared<sql::ast::Table>(table_name, edb_info->arity, attribute_names);
-    auto alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias());
+    auto alias = std::make_shared<sql::ast::AliasClause>(GenerateTableAlias());
     return std::make_shared<sql::ast::Source>(table, alias);
   }
   table = std::make_shared<sql::ast::Table>(table_name, context_.GetArity(table_name));

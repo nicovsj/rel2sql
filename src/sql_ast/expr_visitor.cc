@@ -25,7 +25,7 @@ void ExpressionVisitor::Visit(Term& term) { term.Accept(*this); }
 
 //
 
-void ExpressionVisitor::Visit(Alias& _) {}
+void ExpressionVisitor::Visit(AliasClause& _) {}
 
 void ExpressionVisitor::Visit(Source& source) {
   Visit(*source.sourceable);
