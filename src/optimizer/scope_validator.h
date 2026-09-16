@@ -1,6 +1,8 @@
 #ifndef SCOPE_VALIDATOR_H
 #define SCOPE_VALIDATOR_H
 
+#include <memory>
+#include <string>
 #include <unordered_set>
 #include <vector>
 

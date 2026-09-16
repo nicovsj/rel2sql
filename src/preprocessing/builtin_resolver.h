@@ -2,6 +2,7 @@
 #define PREPROCESSING_BUILTIN_RESOLVER_H
 
 #include <memory>
+#include <utility>
 
 #include "rel_ast/rel_ast_visitor.h"
 #include "rel_ast/rel_context_builder.h"
