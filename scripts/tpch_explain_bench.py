@@ -2,13 +2,19 @@
 """Multi-run EXPLAIN (ANALYZE, FORMAT JSON) for reference vs rel2sql TPC-H SQL.
 
 Requires TPCH_DUCKDB_PATH (or --db) with data from scripts/tpch_build_duckdb.py.
-Writes artifacts under benchmarks/TPCH/out/explain/q{N}/.
-Re-running a query removes that query's previous output directory first.
+Writes artifacts under benchmarks/TPCH/out/explain/q{N}/, then regenerates
+benchmarks/TPCH/out/explain/summary.csv from every query benchmarked so far (not just
+the ones just run) -- see tpch_explain_summary_csv.py, or `task tpch:explain-summary`.
+
+Omit the query numbers to benchmark every query the manifest marks translate: ok
+(all 22, normally). Each query's translation and each arm's DuckDB session are bounded by
+--query-timeout-sec (default 300s): a hang (this has happened -- see the tpch:emit-sql:no-q16
+task) fails and skips just that query rather than blocking every query after it forever.
 
 Example:
   export TPCH_DUCKDB_PATH="$(pwd)/benchmarks/TPCH/data/tpch_sf100.duckdb"
-  task tpch:emit-sql -- 18
   python3 scripts/tpch_explain_bench.py 18 --runs 10 --warmup 2
+  python3 scripts/tpch_explain_bench.py               # all 22, default --runs/--warmup
 """
 from __future__ import annotations
 
@@ -30,6 +36,7 @@ REF_SQL_DIR = ROOT / "benchmarks/TPCH/sql"
 GEN_SQL_DIR = ROOT / "benchmarks/TPCH/out/sql"
 OUT_EXPLAIN = ROOT / "benchmarks/TPCH/out/explain"
 EMIT_SCRIPT = ROOT / "scripts/tpch_emit_sql.sh"
+DEFAULT_MANIFEST = ROOT / "benchmarks/TPCH/pipeline/manifest.json"
 
 GEN_RESULT_QUERY = "SELECT * FROM result"
 
@@ -60,23 +67,41 @@ def parse_json_stream(text: str) -> list[Any]:
     return objs
 
 
+# Conventional "command timed out" exit code (matches GNU timeout(1)), so a timeout return value
+# is never mistaken for a real DuckDB exit code and flows through the same `if rc != 0: raise
+# RuntimeError(...)` handling every caller already has for a genuine failure.
+TIMEOUT_RC = 124
+
+
 def run_duckdb_session(
     db_path: pathlib.Path,
     statements: list[str],
     *,
     duckdb: str,
     json_output: bool,
+    timeout_sec: float | None = None,
 ) -> tuple[list[Any], str, int]:
-    """Run statements on one DuckDB connection; return parsed JSON objects if json_output."""
+    """Run statements on one DuckDB connection; return parsed JSON objects if json_output.
+
+    `statements` is usually every warmup + measured run for one arm sent as one session, so
+    timeout_sec bounds that whole batch, not a single EXPLAIN ANALYZE -- size it accordingly.
+    Without a timeout, a single pathological query plan (this has happened before: see the
+    tpch:emit-sql:no-q16 task, "MergeWith on long OR chains can hang") blocks this call, and
+    everything after it, forever.
+    """
     cmd = [duckdb, str(db_path)]
     if json_output:
         cmd.append("-json")
-    proc = subprocess.run(
-        cmd,
-        input="\n".join(statements) + "\n",
-        capture_output=True,
-        text=True,
-    )
+    try:
+        proc = subprocess.run(
+            cmd,
+            input="\n".join(statements) + "\n",
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+        )
+    except subprocess.TimeoutExpired:
+        return [], f"timed out after {timeout_sec}s ({len(statements)} statement(s) in this session)", TIMEOUT_RC
     stderr = proc.stderr or ""
     if proc.returncode != 0:
         return [], stderr, proc.returncode
@@ -230,17 +255,21 @@ def clear_query_output_dir(out_dir: pathlib.Path) -> None:
         shutil.rmtree(out_dir)
 
 
-def ensure_translated_sql(query: int, *, duckdb: str) -> pathlib.Path:
+def ensure_translated_sql(query: int, *, duckdb: str, timeout_sec: float | None) -> pathlib.Path:
     path = GEN_SQL_DIR / f"q{query}.sql"
     if path.is_file():
         return path
     if not EMIT_SCRIPT.is_file():
         raise FileNotFoundError(f"Missing translated SQL {path} and {EMIT_SCRIPT}")
     print(f"Emitting SQL for Q{query}...", file=sys.stderr)
+    # rel2sql_bin's own optimizer has a documented hang risk independent of DuckDB (see
+    # tpch:emit-sql:no-q16: "MergeWith on long OR chains can hang"), so this needs the same
+    # guard as the EXPLAIN ANALYZE calls below, not just those.
     subprocess.run(
         [str(EMIT_SCRIPT), str(query)],
         cwd=ROOT,
         check=True,
+        timeout=timeout_sec,
     )
     if not path.is_file():
         raise FileNotFoundError(f"Emit did not create {path}")
@@ -254,13 +283,14 @@ def run_plans(
     setup_sql: str | None,
     duckdb: str,
     cold: bool,
+    timeout_sec: float | None,
 ) -> list[dict[str, Any]]:
     if cold:
         plans: list[dict[str, Any]] = []
         for stmt in explain_stmts:
             prefix = [setup_sql] if setup_sql else []
             objs, err, rc = run_duckdb_session(
-                db_path, prefix + [stmt], duckdb=duckdb, json_output=True
+                db_path, prefix + [stmt], duckdb=duckdb, json_output=True, timeout_sec=timeout_sec
             )
             if rc != 0:
                 raise RuntimeError(f"explain failed: {err}")
@@ -269,7 +299,9 @@ def run_plans(
             plans.append(objs[-1])
         return plans
 
-    objs, err, rc = run_duckdb_session(db_path, explain_stmts, duckdb=duckdb, json_output=True)
+    objs, err, rc = run_duckdb_session(
+        db_path, explain_stmts, duckdb=duckdb, json_output=True, timeout_sec=timeout_sec
+    )
     if rc != 0:
         raise RuntimeError(f"session failed: {err}")
     if len(objs) != len(explain_stmts):
@@ -287,13 +319,16 @@ def run_arm(
     runs: int,
     duckdb: str,
     cold: bool,
+    timeout_sec: float | None,
 ) -> dict[str, Any]:
     explain_stmt = explain_sql(query_sql)
     setup_ms: float | None = None
 
     if setup_sql and not cold:
         t0 = time.perf_counter()
-        _, err, rc = run_duckdb_session(db_path, [setup_sql], duckdb=duckdb, json_output=False)
+        _, err, rc = run_duckdb_session(
+            db_path, [setup_sql], duckdb=duckdb, json_output=False, timeout_sec=timeout_sec
+        )
         setup_ms = (time.perf_counter() - t0) * 1000
         if rc != 0:
             raise RuntimeError(f"{arm} setup failed: {err}")
@@ -305,6 +340,7 @@ def run_arm(
             setup_sql=setup_sql if cold else None,
             duckdb=duckdb,
             cold=cold,
+            timeout_sec=timeout_sec,
         )
 
     measured_plans = run_plans(
@@ -313,6 +349,7 @@ def run_arm(
         setup_sql=setup_sql if cold else None,
         duckdb=duckdb,
         cold=cold,
+        timeout_sec=timeout_sec,
     )
 
     times = [wall_time_seconds(p) for p in measured_plans]
@@ -418,22 +455,46 @@ def maybe_graphviz(
     *,
     duckdb: str,
     setup_sql: str | None = None,
+    timeout_sec: float | None = None,
 ) -> None:
     stmt = f"EXPLAIN (ANALYZE, FORMAT GRAPHVIZ) {strip_sql_semicolon(query_sql)};"
     stmts = ([setup_sql] if setup_sql else []) + [stmt]
-    proc = subprocess.run(
-        [duckdb, str(db_path)],
-        input="\n".join(stmts) + "\n",
-        capture_output=True,
-        text=True,
-    )
+    try:
+        proc = subprocess.run(
+            [duckdb, str(db_path)],
+            input="\n".join(stmts) + "\n",
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"  (graphviz plan timed out after {timeout_sec}s, skipping)", file=sys.stderr)
+        return
     if proc.returncode == 0 and proc.stdout.strip():
         out_path.write_text(proc.stdout)
 
 
+def default_explainable_queries(manifest_path: pathlib.Path = DEFAULT_MANIFEST) -> list[int]:
+    """Every query number the manifest marks translate: ok, in order -- the same "explainable"
+    definition tpch_explain_summary_csv.py already uses. Used when no query numbers are given, so
+    "run the benchmark" and "run it for everything that can be benchmarked" are the same command.
+    """
+    if not manifest_path.is_file():
+        return []
+    data = json.loads(manifest_path.read_text())
+    return sorted(
+        (int(n) for n, e in data.get("queries", {}).items() if e.get("translate") == "ok"),
+    )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("queries", nargs="+", type=int, help="TPC-H query number(s), e.g. 18")
+    ap.add_argument(
+        "queries",
+        nargs="*",
+        type=int,
+        help="TPC-H query number(s), e.g. 18. Omit to benchmark every query the manifest marks translate: ok.",
+    )
     ap.add_argument("--db", type=pathlib.Path, default=None, help="DuckDB file (default: TPCH_DUCKDB_PATH)")
     ap.add_argument("--warmup", type=int, default=2, help="Warmup EXPLAIN ANALYZE runs (discarded)")
     ap.add_argument("--runs", type=int, default=10, help="Measured runs per arm")
@@ -441,7 +502,19 @@ def main() -> int:
     ap.add_argument("--cold", action="store_true", help="Re-open DB each run (experimental)")
     ap.add_argument("--graphviz", action="store_true", help="Write GRAPHVIZ plans for median runs")
     ap.add_argument("--out-root", type=pathlib.Path, default=OUT_EXPLAIN, help="Output root directory")
+    ap.add_argument(
+        "--query-timeout-sec",
+        type=float,
+        default=300.0,
+        help=(
+            "Kill and skip (not abort the whole run) a query's translation or an arm's DuckDB "
+            "session if it runs longer than this. An arm's session covers all --warmup + --runs "
+            "runs in one duckdb process (unless --cold), so this bounds that whole batch, not a "
+            "single EXPLAIN ANALYZE -- size it up if you raise --runs. 0 disables the timeout."
+        ),
+    )
     args = ap.parse_args()
+    query_timeout = args.query_timeout_sec if args.query_timeout_sec > 0 else None
 
     db_env = os.environ.get("TPCH_DUCKDB_PATH", "")
     db_path = (args.db or pathlib.Path(db_env) if db_env else None)
@@ -453,8 +526,13 @@ def main() -> int:
         print(f"Missing database: {db_path}", file=sys.stderr)
         return 1
 
+    queries = args.queries or default_explainable_queries()
+    if not queries:
+        print("No queries given and none found in the manifest (translate: ok)", file=sys.stderr)
+        return 1
+
     failures = 0
-    for query in args.queries:
+    for query in queries:
         ref_path = REF_SQL_DIR / f"q{query}.sql"
         if not ref_path.is_file():
             print(f"Missing reference SQL: {ref_path}", file=sys.stderr)
@@ -462,8 +540,8 @@ def main() -> int:
             continue
 
         try:
-            gen_path = ensure_translated_sql(query, duckdb=args.duckdb)
-        except (FileNotFoundError, subprocess.CalledProcessError) as e:
+            gen_path = ensure_translated_sql(query, duckdb=args.duckdb, timeout_sec=query_timeout)
+        except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             print(f"Q{query}: {e}", file=sys.stderr)
             failures += 1
             continue
@@ -489,6 +567,7 @@ def main() -> int:
                 runs=args.runs,
                 duckdb=args.duckdb,
                 cold=args.cold,
+                timeout_sec=query_timeout,
             )
         except RuntimeError as e:
             print(f"Q{query} ref failed: {e}", file=sys.stderr)
@@ -506,6 +585,7 @@ def main() -> int:
                 runs=args.runs,
                 duckdb=args.duckdb,
                 cold=args.cold,
+                timeout_sec=query_timeout,
             )
         except RuntimeError as e:
             print(f"Q{query} gen failed: {e}", file=sys.stderr)
@@ -565,12 +645,15 @@ def main() -> int:
         )
 
         if args.graphviz:
-            maybe_graphviz(db_path, ref_sql, ref_dir / "plan_median.dot", duckdb=args.duckdb)
+            maybe_graphviz(
+                db_path, ref_sql, ref_dir / "plan_median.dot", duckdb=args.duckdb, timeout_sec=query_timeout
+            )
             maybe_graphviz(
                 db_path,
                 GEN_RESULT_QUERY,
                 gen_dir / "plan_median.dot",
                 duckdb=args.duckdb,
+                timeout_sec=query_timeout,
                 setup_sql=gen_script,
             )
 
@@ -582,7 +665,9 @@ def main() -> int:
             file=sys.stderr,
         )
 
-    if failures == 0 and args.queries:
+    # Regenerate the summary even with some failures/timeouts -- with many queries run
+    # unattended, one hang or bug shouldn't suppress the summary for everything that did succeed.
+    if queries:
         summary_script = ROOT / "scripts/tpch_explain_summary_csv.py"
         if summary_script.is_file():
             proc = subprocess.run(

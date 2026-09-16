@@ -193,6 +193,47 @@ def write_csv(rows: list[dict[str, str]], out_path: pathlib.Path) -> None:
         writer.writerows(rows)
 
 
+def print_table(rows: list[dict[str, str]]) -> None:
+    """Human-readable digest of every explainable query, run or not: the CSV has every numeric
+    column tpch_explain_bench.py records, which is the right shape for a spreadsheet but not for
+    a terminal -- this is "what happened last time I ran the benchmark," at a glance.
+    """
+
+    def fmt_row(r: dict[str, str]) -> tuple[str, str, str, str, str]:
+        q = f"Q{r['query']}"
+        if r["has_results"] != "yes":
+            return (q, "-", "-", "-", "pending (not yet run)")
+        ref_s = r["ref_median_s"]
+        gen_s = r["gen_median_s"]
+        ratio = r["gen_over_ref_median"]
+        speedup = f"{float(ratio):.1f}x slower" if ratio else "-"
+        match = "plans match" if r["plans_match"] == "yes" else "plans differ"
+        return (q, f"{float(ref_s):.4f}s" if ref_s else "-", f"{float(gen_s):.4f}s" if gen_s else "-", speedup, match)
+
+    header = ("Q#", "ref median", "gen median", "gen/ref", "plan")
+    table = [header] + [fmt_row(r) for r in rows]
+    widths = [max(len(row[i]) for row in table) for i in range(len(header))]
+
+    def print_line(row: tuple[str, ...]) -> None:
+        print("  ".join(cell.ljust(w) for cell, w in zip(row, widths)))
+
+    print_line(header)
+    print("-" * (sum(widths) + 2 * (len(widths) - 1)))
+    for row in table[1:]:
+        print_line(row)
+
+    ran = [r for r in rows if r["has_results"] == "yes"]
+    pending = len(rows) - len(ran)
+    mismatched = sum(1 for r in ran if r["plans_match"] != "yes")
+    print("-" * (sum(widths) + 2 * (len(widths) - 1)))
+    parts = [f"{len(ran)} run"]
+    if pending:
+        parts.append(f"{pending} pending")
+    if mismatched:
+        parts.append(f"{mismatched} with a different plan than the reference")
+    print(f"{len(rows)} explainable queries: " + ", ".join(parts))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
@@ -238,6 +279,7 @@ def main() -> int:
 
     out_path = args.output.resolve()
     write_csv(rows, out_path)
+    print_table(rows)
 
     with_results = sum(1 for r in rows if r["has_results"] == "yes")
     explainable = sum(1 for r in rows if r["explainable"] == "yes")
