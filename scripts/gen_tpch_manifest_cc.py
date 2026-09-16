@@ -39,7 +39,9 @@ def main() -> int:
             f'"{c_escape(e.get("execute_empty", "skip"))}", "{mode}", '
             f'{int(e.get("timeout_sec", default_timeout))}, '
             f'{"true" if unopt else "false"}, '
-            f'"{c_escape(e.get("stderr_contains", ""))}", "{c_escape(e.get("skip_reason", ""))}"'
+            f'"{c_escape(e.get("stderr_contains", ""))}", "{c_escape(e.get("skip_reason", ""))}", '
+            f'"{c_escape(e.get("compare_local", "unknown"))}", '
+            f'{int(e.get("compare_drop_leading_columns", 0))}'
             "},"
         )
 
@@ -63,6 +65,12 @@ struct QueryManifestEntry {{
   bool unoptimized;
   std::string_view stderr_contains;
   std::string_view skip_reason;
+  // "verified" means this query's values were checked against benchmarks/TPCH/sql/qN.sql on real
+  // data; only those are compared by the pipeline's compare stage.
+  std::string_view compare_local;
+  // Leading columns of our own result to drop before comparing: several queries deliberately
+  // project a rank column from reverse_sort that the plain reference SQL does not select.
+  int compare_drop_leading_columns;
 }};
 
 inline constexpr std::array<QueryManifestEntry, {len(entries)}> kManifestEntries = {{

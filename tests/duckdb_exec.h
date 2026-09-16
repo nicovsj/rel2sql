@@ -57,8 +57,11 @@ void AssertResultSetsEqual(const DuckDbResultSet& lhs, const DuckDbResultSet& rh
                            bool order_insensitive = true);
 
 // Non-gtest variant for CLI tools. Sets diff_message on failure.
+// ignore_column_names compares values only: a translated query names its outputs A1, A2, ... and
+// can never match a reference query's own column names, so requiring them to agree would reject
+// every comparison before a single value was looked at.
 bool ResultSetsEqual(const DuckDbResultSet& lhs, const DuckDbResultSet& rhs, double float_abs_tol,
-                     bool order_insensitive, std::string* diff_message);
+                     bool order_insensitive, std::string* diff_message, bool ignore_column_names = false);
 
 // Creates empty base tables for every EDB in `edb`, then runs `sql` on an in-memory DuckDB.
 // Fails the test (GoogleTest) if DDL or the query errors.

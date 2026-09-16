@@ -9,7 +9,24 @@ End-to-end benchmark harness for the Rel → SQL path used by TPC-H workloads.
 | **rewrite** | [`scripts/tpch_rewrite.py`](../../../scripts/tpch_rewrite.py) strips annotations, substitutes `@@N`, rewrites field access |
 | **translate** | [`rel2sql_bin`](../../../BUILD) with [`tpch_edb.edb`](../rel/tpch_edb.edb) |
 | **execute_empty** | Translated SQL runs on in-memory DuckDB with empty EDB tables ([`tpch_edb_duckdb_types.edb`](../rel/tpch_edb_duckdb_types.edb): `VARCHAR` on string value columns) |
-| **compare_local** | Optional: same result rows as [`benchmarks/TPCH/sql/qN.sql`](../sql/) (local only) |
+| **compare_local** | Values match [`benchmarks/TPCH/sql/qN.sql`](../sql/) on real data. Runs automatically for every query marked `"compare_local": "verified"` whenever an SF0.01 database is available (`$TPCH_DUCKDB_PATH`, else `../data/tpch_sf001.duckdb`); skipped silently when it is not, since those files are gitignored |
+
+The compare stage is the only one that looks at the values rel2sql actually produces — the others
+check that a query translates and runs, which several queries did for a long time while returning
+wrong answers. Two details it has to get right:
+
+- **Column names are ignored.** We emit `A1`, `A2`, …; the reference names its own columns. Comparing
+  names rejects every query before a single value is read.
+- **Some queries project a leading rank column** from `reverse_sort` that the plain reference SQL
+  does not select. Those set `"compare_drop_leading_columns": 1` in the manifest.
+
+Comparison sorts both sides and compares positionally, with a tight float tolerance. Both matter:
+a greedy row search pairs rows in whatever order the database happened to return them, and with a
+loose tolerance it can pair a row with a near-miss neighbour — which made the stage both flaky and
+willing to accept a count of 11 for a count of 10.
+
+Each run works on a throwaway copy of the database. The translated script creates views, and running
+it against the benchmark database itself leaves them behind for later runs to trip over.
 
 Update expectations in `manifest.json` after fixing translation, then regenerate headers:
 

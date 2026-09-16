@@ -276,8 +276,25 @@ ExecuteResult RunExecuteEmpty(const std::string& sql, const PipelinePaths& paths
   return r;
 }
 
+namespace {
+
+// Drops the first `n` columns of every row. Several queries deliberately project a leading rank
+// column from reverse_sort that the plain reference SQL does not select.
+void DropLeadingColumns(rel2sql::testing::DuckDbResultSet& rs, int n) {
+  if (n <= 0) return;
+  const size_t drop = static_cast<size_t>(n);
+  if (rs.column_names.size() >= drop) {
+    rs.column_names.erase(rs.column_names.begin(), rs.column_names.begin() + drop);
+  }
+  for (auto& row : rs.rows) {
+    if (row.size() >= drop) row.erase(row.begin(), row.begin() + drop);
+  }
+}
+
+}  // namespace
+
 CompareResult RunCompare(int query, const std::string& translated_sql, const std::string& db_path,
-                         const PipelinePaths& paths) {
+                         const PipelinePaths& paths, int drop_leading_gen_columns) {
   CompareResult r;
   auto ref_path = paths.ref_sql_dir / ("q" + std::to_string(query) + ".sql");
   if (!std::filesystem::exists(ref_path)) {
@@ -286,8 +303,27 @@ CompareResult RunCompare(int query, const std::string& translated_sql, const std
   }
   std::string ref_sql = ReadFile(ref_path);
 
+  // Work on a throwaway copy. The translated script creates views, and running it against the
+  // benchmark database itself leaves them behind for every later run to trip over.
+  std::error_code ec;
+  auto work_db = std::filesystem::temp_directory_path(ec) /
+                 ("rel2sql_tpch_q" + std::to_string(query) + "_" + std::to_string(::getpid()) + ".duckdb");
+  std::filesystem::remove(work_db, ec);
+  std::filesystem::copy_file(db_path, work_db, std::filesystem::copy_options::overwrite_existing, ec);
+  if (ec) {
+    r.message = "could not copy database " + db_path + ": " + ec.message();
+    return r;
+  }
+  struct Cleanup {
+    std::filesystem::path path;
+    ~Cleanup() {
+      std::error_code ignored;
+      std::filesystem::remove(path, ignored);
+    }
+  } cleanup{work_db};
+
   rel2sql::testing::DuckDbSession session;
-  std::string err = rel2sql::testing::OpenFileSession(&session, db_path);
+  std::string err = rel2sql::testing::OpenFileSession(&session, work_db.string());
   if (!err.empty()) {
     r.message = err;
     return r;
@@ -316,13 +352,32 @@ CompareResult RunCompare(int query, const std::string& translated_sql, const std
   }
   r.ref_rows = ref_rs.rows.size();
 
+  DropLeadingColumns(gen_rs, drop_leading_gen_columns);
+
   std::string diff;
-  if (rel2sql::testing::ResultSetsEqual(ref_rs, gen_rs, 1.0, true, &diff)) {
+  // Tolerance is tight on purpose. Every verified query reproduces the reference's values exactly,
+  // so anything looser only buys the chance of accepting a wrong answer -- at 1.0 a count of 10
+  // matches a count of 11.
+  // Column names are ignored: we always emit A1, A2, ... and the reference names its own columns.
+  constexpr double kFloatTolerance = 1e-6;
+  if (rel2sql::testing::ResultSetsEqual(ref_rs, gen_rs, kFloatTolerance, true, &diff,
+                                        /*ignore_column_names=*/true)) {
     r.success = true;
   } else {
     r.message = diff + " (ref_rows=" + std::to_string(r.ref_rows) + ", gen_rows=" + std::to_string(r.gen_rows) + ")";
   }
   return r;
+}
+
+std::optional<std::filesystem::path> ResolveComparisonDbPath(const PipelinePaths& paths) {
+  if (const char* env = std::getenv("TPCH_DUCKDB_PATH")) {
+    std::filesystem::path p(env);
+    if (std::filesystem::exists(p)) return p;
+    return std::nullopt;
+  }
+  auto def = paths.repo_root / "benchmarks/TPCH/data/tpch_sf001.duckdb";
+  if (std::filesystem::exists(def)) return def;
+  return std::nullopt;
 }
 
 std::optional<std::string> RunPipelineStages(const QueryManifestEntry& entry, const PipelinePaths& paths) {
@@ -363,6 +418,19 @@ std::optional<std::string> RunPipelineStages(const QueryManifestEntry& entry, co
   }
   if (entry.execute_empty == "ok") {
     if (!ex.success) return "Q" + q + " execute_empty: " + ex.error;
+  }
+
+  // Value comparison against the reference SQL on real data. Only queries the manifest records as
+  // verified are compared -- a known_bug entry would fail by definition. Silently skipped when no
+  // database is available: the .duckdb files are gitignored and regenerated locally, so this stage
+  // cannot be a hard requirement, but where the data is present it is the only check that looks at
+  // the values rel2sql actually produces.
+  if (entry.compare_local == "verified") {
+    auto db = ResolveComparisonDbPath(paths);
+    if (db.has_value()) {
+      auto cmp = RunCompare(entry.query, tr.sql, db->string(), paths, entry.compare_drop_leading_columns);
+      if (!cmp.success) return "Q" + q + " compare: " + cmp.message;
+    }
   }
 
   return std::nullopt;

@@ -18,31 +18,37 @@ struct QueryManifestEntry {
   bool unoptimized;
   std::string_view stderr_contains;
   std::string_view skip_reason;
+  // "verified" means this query's values were checked against benchmarks/TPCH/sql/qN.sql on real
+  // data; only those are compared by the pipeline's compare stage.
+  std::string_view compare_local;
+  // Leading columns of our own result to drop before comparing: several queries deliberately
+  // project a rank column from reverse_sort that the plain reference SQL does not select.
+  int compare_drop_leading_columns;
 };
 
 inline constexpr std::array<QueryManifestEntry, 22> kManifestEntries = {
-    QueryManifestEntry{1, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{2, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{3, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{4, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{5, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{6, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{7, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{8, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{9, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{10, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{11, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{12, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{13, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{14, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{15, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{16, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{17, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{18, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{19, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{20, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{21, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
-    QueryManifestEntry{22, "ok", "ok", "ok", "with_defs", 60, false, "", ""},
+    QueryManifestEntry{1, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 0},
+    QueryManifestEntry{2, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 1},
+    QueryManifestEntry{3, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 1},
+    QueryManifestEntry{4, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 0},
+    QueryManifestEntry{5, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 1},
+    QueryManifestEntry{6, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 0},
+    QueryManifestEntry{7, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 0},
+    QueryManifestEntry{8, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 0},
+    QueryManifestEntry{9, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 0},
+    QueryManifestEntry{10, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 1},
+    QueryManifestEntry{11, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 0},
+    QueryManifestEntry{12, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 0},
+    QueryManifestEntry{13, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 1},
+    QueryManifestEntry{14, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 0},
+    QueryManifestEntry{15, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 0},
+    QueryManifestEntry{16, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 1},
+    QueryManifestEntry{17, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 0},
+    QueryManifestEntry{18, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 1},
+    QueryManifestEntry{19, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 0},
+    QueryManifestEntry{20, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 0},
+    QueryManifestEntry{21, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 1},
+    QueryManifestEntry{22, "ok", "ok", "ok", "with_defs", 60, false, "", "", "verified", 0},
 };
 
 }  // namespace rel2sql::tpch_pipeline

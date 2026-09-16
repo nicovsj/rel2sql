@@ -13,6 +13,7 @@
       "translate": "ok"
     },
     "10": {
+      "compare_drop_leading_columns": 1,
       "compare_local": "verified",
       "compare_local_note": "verified against SF0.01 real data (2026-09-16): exact match, all 20 rows (ignoring the leading rank column). Fixed by the same window-ordering fix as Q3.",
       "execute_empty": "ok",
@@ -35,6 +36,7 @@
       "translate": "ok"
     },
     "13": {
+      "compare_drop_leading_columns": 1,
       "compare_local": "verified",
       "compare_local_note": "verified against SF0.01 real data (2026-09-16): exact match, all 32 rows, and in the reference's order (ignoring the leading rank column). The translator was never at fault here -- unsorted_result's (c_count, custdist) set already matched the reference exactly. The query source was: 13.rel was the only sorted query defining unsorted_result in the keyed form `[custdist]: count[...]`, which puts the aggregate value second, while the reverse_sort chain sorts on the leading column and result's binding expects the sort key there. Every sibling (Q2, Q3, Q5, Q16, Q18, Q21) puts its sort key first; 13.rel now does too, which fixes both the column order and the ordering.",
       "execute_empty": "ok",
@@ -57,6 +59,7 @@
       "translate": "ok"
     },
     "16": {
+      "compare_drop_leading_columns": 1,
       "compare_local": "verified",
       "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): exact match with the reference (all 296 rows), once accounting for the leading rank column result's own definition deliberately includes (`def result(i,b,t,s,c): ...`) that the reference SQL doesn't project.",
       "execute_empty": "ok",
@@ -71,6 +74,7 @@
       "translate": "ok"
     },
     "18": {
+      "compare_drop_leading_columns": 1,
       "compare_local": "verified",
       "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): exact match with the reference (both rows), once accounting for the leading rank column result's own definition deliberately includes that the reference SQL doesn't project.",
       "execute_empty": "ok",
@@ -85,6 +89,7 @@
       "translate": "ok"
     },
     "2": {
+      "compare_drop_leading_columns": 1,
       "compare_local": "verified",
       "compare_local_note": "verified against SF0.01 real data (2026-09-16): exact match, all 4 rows (ignoring the leading rank column the .rel projects from reverse_sort). The previously-reported 2-of-4-rows bug is fixed by the binding-shadow marker: 'supplier'/'part' are bound variables whose names also name EDBs, so AddVar refused to register them and they were translated as relation arguments (full-table domain joins) instead of variables.",
       "execute_empty": "ok",
@@ -101,6 +106,7 @@
       "translate": "ok"
     },
     "21": {
+      "compare_drop_leading_columns": 1,
       "compare_local": "verified",
       "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): exact match with the reference (Supplier#000000074, numwait 9). Fixed as a side effect of the Round 6/7 Q7 fixes (ExtractScalarSqlTerm propagating a wrapped partial application's key columns, plus the scoped free-variable recovery in Visit(RelCondition)/Visit(RelExistential)) \u2014 sub_query2's NOT IN subquery shared the same underlying dangling-alias mechanism as Q5/Q7.",
       "execute_empty": "ok",
@@ -115,6 +121,7 @@
       "translate": "ok"
     },
     "3": {
+      "compare_drop_leading_columns": 1,
       "compare_local": "verified",
       "compare_local_note": "verified against SF0.01 real data (2026-09-16): exact match, all 10 rows in the right order (ignoring the leading rank column the .rel projects). The revenue aggregation was always correct -- the per-order sums matched the reference exactly for the orders we returned -- but ROW_NUMBER's window ordered by positional ordinals, which inside OVER are constants, so the rank was arbitrary and `i <= 10` kept 10 arbitrary orders out of the 138 qualifying.",
       "execute_empty": "ok",
@@ -131,6 +138,7 @@
       "translate": "ok"
     },
     "5": {
+      "compare_drop_leading_columns": 1,
       "compare_local": "verified",
       "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): all 5 nation rows match the reference exactly (revenue values match to the cent, e.g. VIETNAM 1000926.6999, CHINA 740210.7570, JAPAN 660651.2425, INDONESIA 566379.5276, INDIA 422874.6844).",
       "execute_empty": "ok",

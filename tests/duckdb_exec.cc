@@ -327,15 +327,17 @@ DuckDbResultSet ExecuteQueryOnConnection(duckdb_connection con, const std::strin
 }
 
 bool ResultSetsEqual(const DuckDbResultSet& lhs, const DuckDbResultSet& rhs, double float_abs_tol,
-                     bool order_insensitive, std::string* diff_message) {
+                     bool order_insensitive, std::string* diff_message, bool ignore_column_names) {
   if (lhs.column_names.size() != rhs.column_names.size()) {
     if (diff_message) *diff_message = "column count mismatch";
     return false;
   }
-  for (size_t i = 0; i < lhs.column_names.size(); ++i) {
-    if (lhs.column_names[i] != rhs.column_names[i]) {
-      if (diff_message) *diff_message = "column name mismatch at " + std::to_string(i);
-      return false;
+  if (!ignore_column_names) {
+    for (size_t i = 0; i < lhs.column_names.size(); ++i) {
+      if (lhs.column_names[i] != rhs.column_names[i]) {
+        if (diff_message) *diff_message = "column name mismatch at " + std::to_string(i);
+        return false;
+      }
     }
   }
 
@@ -363,32 +365,38 @@ bool ResultSetsEqual(const DuckDbResultSet& lhs, const DuckDbResultSet& rhs, dou
     return true;
   }
 
-  std::vector<std::vector<std::string>> rem_r = rhs.rows;
-  for (const auto& lr : lhs.rows) {
-    bool found = false;
-    for (size_t j = 0; j < rem_r.size(); ++j) {
-      if (rem_r[j].size() != lr.size()) continue;
-      bool match = true;
-      for (size_t c = 0; c < lr.size(); ++c) {
-        if (!(lr[c] == rem_r[j][c] || ApproxEqual(lr[c], rem_r[j][c], float_abs_tol))) {
-          match = false;
-          break;
-        }
-      }
-      if (match) {
-        rem_r.erase(rem_r.begin() + static_cast<std::ptrdiff_t>(j));
-        found = true;
-        break;
-      }
+  if (lhs.rows.size() != rhs.rows.size()) {
+    if (diff_message) {
+      *diff_message =
+          "row count mismatch: " + std::to_string(lhs.rows.size()) + " vs " + std::to_string(rhs.rows.size());
     }
-    if (!found) {
-      if (diff_message) *diff_message = "lhs row not found in rhs";
+    return false;
+  }
+
+  // Sort both sides and compare positionally rather than searching for a partner for each row.
+  // A greedy search pairs rows in whatever order the database returned them, and with a non-zero
+  // tolerance it can pair a row with a near-miss neighbour instead of its real counterpart, so the
+  // verdict depends on row order that no ORDER BY pins down. Sorting first makes it deterministic.
+  auto sorted_l = lhs.rows;
+  auto sorted_r = rhs.rows;
+  std::sort(sorted_l.begin(), sorted_l.end());
+  std::sort(sorted_r.begin(), sorted_r.end());
+  for (size_t r = 0; r < sorted_l.size(); ++r) {
+    if (sorted_l[r].size() != sorted_r[r].size()) {
+      if (diff_message) *diff_message = "width mismatch at sorted row " + std::to_string(r);
       return false;
     }
-  }
-  if (!rem_r.empty()) {
-    if (diff_message) *diff_message = "extra rows in rhs";
-    return false;
+    for (size_t c = 0; c < sorted_l[r].size(); ++c) {
+      const std::string& a = sorted_l[r][c];
+      const std::string& b = sorted_r[r][c];
+      if (!(a == b || ApproxEqual(a, b, float_abs_tol))) {
+        if (diff_message) {
+          *diff_message = "cell mismatch at sorted row " + std::to_string(r) + " col " + std::to_string(c) + ": '" + a +
+                          "' vs '" + b + "'";
+        }
+        return false;
+      }
+    }
   }
   return true;
 }

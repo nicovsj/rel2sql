@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
       std::cerr << "translate: " << tr.error << "\n";
       return 1;
     }
-    auto cmp = rel2sql::tpch_pipeline::RunCompare(q, tr.sql, db, paths);
+    auto cmp = rel2sql::tpch_pipeline::RunCompare(q, tr.sql, db, paths, entry->compare_drop_leading_columns);
     if (!cmp.success) {
       std::cerr << "compare: " << cmp.message << "\n";
       return 1;

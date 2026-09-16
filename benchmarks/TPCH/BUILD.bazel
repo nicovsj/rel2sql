@@ -31,7 +31,15 @@ cc_test(
         "rel/tpch_edb_duckdb_date_types.edb",
         "//:rel2sql_bin",
         "//scripts:tpch_rewrite.py",
-    ],
+        # Generated locally and gitignored, so this glob is usually empty. When the database is
+        # present the compare stage runs against it; otherwise that stage skips itself.
+    ] + glob(
+        ["data/*.duckdb"],
+        allow_empty = True,
+    ) + glob(
+        ["sql/*.sql", "rel/queries/*.rel", "rel/*.rel"],
+        allow_empty = True,
+    ),
     tags = [
         "tpch",
     ],
