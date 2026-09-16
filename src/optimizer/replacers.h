@@ -128,6 +128,18 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
     ReplaceTermSlot(function.arg);
   }
 
+  void Visit(DateExtractTerm& date_extract_term) override {
+    ExpressionVisitor::Visit(date_extract_term);
+    ReplaceTermSlot(date_extract_term.arg);
+  }
+
+  void Visit(SubstringTerm& substring_term) override {
+    ExpressionVisitor::Visit(substring_term);
+    ReplaceTermSlot(substring_term.str);
+    ReplaceTermSlot(substring_term.start);
+    ReplaceTermSlot(substring_term.len);
+  }
+
   void Visit(CaseWhen& case_when) override {
     // Manually recurse so we can rewrite each term slot.
     for (auto& [condition, term] : case_when.cases) {
@@ -171,12 +183,10 @@ class SourceAndColumnReplacer : public ExpressionVisitor {
       return;
     }
     auto found = term_map_.find(column.name);
-    if (found != term_map_.end()) {
-      auto found_column = std::dynamic_pointer_cast<Column>(found->second);
-
-      if (!found_column) return;
-
-      column = *found_column;
+    if (found == term_map_.end()) return;
+    if (auto found_column = std::dynamic_pointer_cast<Column>(found->second)) {
+      column.name = found_column->name;
+      column.source = found_column->source;
     }
   }
 

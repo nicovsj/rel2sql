@@ -1,0 +1,88 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Shipping Modes and Order Priority Query (Q12)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+The Shipping Modes and Order Priority Query counts, by ship mode, for lineitems
+actually received by customers in a given year, the number of lineitems
+belonging to orders for which the l_receiptdate exceeds the l_commitdate for two
+different specified ship modes. Only lineitems that were actually shipped before
+the l_commitdate are con- sidered. The late lineitems are partitioned into two
+groups, those with priority URGENT or HIGH, and those with a priority other than
+URGENT or HIGH.
+*/
+
+
+/*
+:x
+:o
+select
+    l_shipmode,
+    sum(case
+        when o_orderpriority = '1-URGENT'
+            or o_orderpriority = '2-HIGH'
+            then 1
+        else 0
+    end) as high_line_count,
+    sum(case
+        when o_orderpriority <> '1-URGENT'
+            and o_orderpriority <> '2-HIGH'
+            then 1
+        else 0
+    end) as low_line_count
+from
+    orders,
+    lineitem
+where
+    o_orderkey = l_orderkey
+    and l_shipmode in ('@@1', '@@2')
+    and l_commitdate < l_receiptdate
+    and l_shipdate < l_commitdate
+    and l_receiptdate >= date '@@3'
+    and l_receiptdate < date '@@3' + interval '1' year
+group by
+    l_shipmode
+order by
+    l_shipmode;
+:n -1
+*/
+@vectorized def lower[]: parse_date["@@3", "Y-m-d"]
+
+@vectorized def upper[]: date_add[parse_date["@@3", "Y-m-d"], ^Year[1]]
+
+// The TPCH infrastructure right now is really bad with curlies.
+// Thus, no clean way for unions.
+@inline def selected_shipmode[]: "@@1"
+@inline def selected_shipmode[]: "@@2"
+
+@inline
+def selected_lineitems(o, num): exists((mode) |
+    l_shipmode(o, num, mode) and
+    selected_shipmode(mode) and
+    l_commitdate[o, num] < l_receiptdate[o, num] and
+    l_shipdate[o, num] < l_commitdate[o, num] and
+    lower <= l_receiptdate[o, num] < upper
+)
+
+@inline
+def high_line[shipmode]: count[(o, num):
+    selected_lineitems(o, num) and
+    (priority_urgent(o) or priority_high(o)) and
+    l_shipmode[o, num] = shipmode
+]
+
+@inline
+def low_line[shipmode]: count[(o, num):
+    selected_lineitems(o, num) and
+    not priority_urgent(o) and
+    not priority_high(o) and
+    l_shipmode[o, num] = shipmode
+]
+
+// @vectorized : this is *NOT* vectorized because we deliberately skip the join-tree
+// optimization for cheap queries. The query is slightly slower if we use the vectorizer
+// here due to a couple of intermediates.
+def result[shipmode]: (high_line[shipmode], low_line[shipmode])

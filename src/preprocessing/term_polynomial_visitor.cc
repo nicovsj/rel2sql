@@ -1,5 +1,6 @@
 #include "preprocessing/term_polynomial_visitor.h"
 
+#include <stdexcept>
 #include <variant>
 
 namespace rel2sql {
@@ -149,6 +150,15 @@ std::shared_ptr<RelTerm> TermPolynomialVisitor::Visit(const std::shared_ptr<RelP
     node->term_linear_coeffs = node->term->term_linear_coeffs;
   }
   return node;
+}
+
+std::shared_ptr<RelTerm> TermPolynomialVisitor::Visit(const std::shared_ptr<RelStringTerm>& node) {
+  MarkInvalid(node.get());
+  return node;
+}
+
+std::shared_ptr<RelTerm> TermPolynomialVisitor::Visit(const std::shared_ptr<RelExprAsTerm>&) {
+  throw std::logic_error("TermPolynomialVisitor: RelExprAsTerm leaked past TermRewriter");
 }
 
 }  // namespace rel2sql

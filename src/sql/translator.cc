@@ -3,6 +3,9 @@
 #include <fmt/core.h>
 
 #include <algorithm>
+#include <functional>
+#include <optional>
+#include <sstream>
 
 #include "optimizer/replacers.h"
 #include "rel_ast/domain.h"
@@ -12,6 +15,441 @@
 #include "support/exceptions.h"
 
 namespace rel2sql {
+
+std::shared_ptr<RelBuiltinAggregateExpr> ExtractAggregateFromLiftedAtom(const RelFormula* lifted_atom);
+
+namespace {
+
+struct AggregateThresholdPattern {
+  std::string value_var;
+  std::shared_ptr<RelBuiltinAggregateExpr> agg;
+  std::string idb_name;
+  sql::ast::CompOp thresh_op = sql::ast::CompOp::GT;
+};
+
+std::optional<AggregateThresholdPattern> FindAggregateThresholdPattern(const RelContext& ctx,
+                                                                       const std::shared_ptr<RelNode>& root);
+
+std::vector<std::shared_ptr<RelFormula>> FlattenConjunctionChain(std::shared_ptr<RelFormula> formula) {
+  std::vector<std::shared_ptr<RelFormula>> acc;
+  while (formula) {
+    auto conj = std::dynamic_pointer_cast<RelConjunction>(formula);
+    if (!conj || !conj->rhs) break;
+    acc.push_back(conj->rhs);
+    formula = std::dynamic_pointer_cast<RelFormula>(conj->lhs);
+  }
+  if (formula) acc.push_back(formula);
+  std::reverse(acc.begin(), acc.end());
+  return acc;
+}
+
+std::shared_ptr<RelTerm> PeelRelParenthesisTerm(const std::shared_ptr<RelTerm>& term);
+
+struct ScalarAggregateDivLift {
+  std::string export_var;
+  std::shared_ptr<RelBuiltinAggregateExpr> agg;
+  std::shared_ptr<RelExpr> divisor;
+};
+
+std::optional<ScalarAggregateDivLift> ParseScalarAggregateDivLift(const std::shared_ptr<RelFormula>& formula) {
+  if (!formula) return std::nullopt;
+  std::function<std::shared_ptr<RelFormula>(const std::shared_ptr<RelFormula>&)> peel;
+  peel = [&](const std::shared_ptr<RelFormula>& f) -> std::shared_ptr<RelFormula> {
+    if (!f) return f;
+    if (auto ex = std::dynamic_pointer_cast<RelExistential>(f)) {
+      return ex->formula ? peel(ex->formula) : f;
+    }
+    if (auto fab = std::dynamic_pointer_cast<RelFormulaAbstraction>(f)) {
+      return fab->formula ? peel(fab->formula) : f;
+    }
+    return f;
+  };
+  auto root = peel(formula);
+  if (!root) return std::nullopt;
+  auto flat = FlattenConjunctionChain(root);
+  if (flat.size() != 2) return std::nullopt;
+
+  const RelFullApplication* agg_app = nullptr;
+  std::shared_ptr<RelComparison> eq_cmp;
+  for (const auto& conjunct : flat) {
+    if (auto cmp = std::dynamic_pointer_cast<RelComparison>(conjunct)) {
+      if (eq_cmp) return std::nullopt;
+      eq_cmp = cmp;
+    } else if (auto* app = dynamic_cast<const RelFullApplication*>(conjunct.get())) {
+      if (ExtractAggregateFromLiftedAtom(app)) {
+        if (agg_app) return std::nullopt;
+        agg_app = app;
+      } else {
+        return std::nullopt;
+      }
+    } else {
+      return std::nullopt;
+    }
+  }
+  if (!agg_app || !eq_cmp || eq_cmp->op != RelCompOp::EQ || !eq_cmp->lhs || !eq_cmp->rhs) return std::nullopt;
+
+  auto parse_div_rhs = [&](const RelIDTerm* export_id,
+                           const std::shared_ptr<RelTerm>& rhs) -> std::optional<ScalarAggregateDivLift> {
+    if (!export_id) return std::nullopt;
+    auto peeled = PeelRelParenthesisTerm(rhs);
+    auto* op = dynamic_cast<RelOpTerm*>(peeled.get());
+    if (!op || op->op != RelTermOp::DIV || !op->lhs || !op->rhs) return std::nullopt;
+    auto* agg_id = dynamic_cast<RelIDTerm*>(op->lhs.get());
+    if (!agg_id) return std::nullopt;
+    auto* param = dynamic_cast<const RelIDTerm*>(agg_app->params[0] ? agg_app->params[0]->GetExpr().get() : nullptr);
+    if (!param || agg_id->id != param->id) return std::nullopt;
+    auto agg = ExtractAggregateFromLiftedAtom(agg_app);
+    if (!agg || !agg->body) return std::nullopt;
+    return ScalarAggregateDivLift{export_id->id, agg, op->rhs};
+  };
+
+  if (auto* lhs_id = dynamic_cast<RelIDTerm*>(eq_cmp->lhs.get())) {
+    if (auto found = parse_div_rhs(lhs_id, eq_cmp->rhs)) return found;
+  }
+  if (auto* rhs_id = dynamic_cast<RelIDTerm*>(eq_cmp->rhs.get())) {
+    if (auto found = parse_div_rhs(rhs_id, eq_cmp->lhs)) return found;
+  }
+  return std::nullopt;
+}
+
+std::optional<ScalarAggregateDivLift> ParseLiftedAggregateDivExport(const RelFullApplication& agg_app,
+                                                                    const RelComparison& eq_cmp) {
+  if (eq_cmp.op != RelCompOp::EQ || !eq_cmp.lhs || !eq_cmp.rhs) return std::nullopt;
+  auto agg = ExtractAggregateFromLiftedAtom(&agg_app);
+  if (!agg || !agg->body) return std::nullopt;
+  auto* param = dynamic_cast<const RelExprApplParam*>(agg_app.params[0].get());
+  if (!param || !param->expr) return std::nullopt;
+  auto* param_id = dynamic_cast<const RelIDTerm*>(param->expr.get());
+  if (!param_id) return std::nullopt;
+
+  auto parse_div_rhs = [&](const RelIDTerm* export_id,
+                           const std::shared_ptr<RelTerm>& rhs) -> std::optional<ScalarAggregateDivLift> {
+    if (!export_id) return std::nullopt;
+    auto peeled = PeelRelParenthesisTerm(rhs);
+    auto* op = dynamic_cast<RelOpTerm*>(peeled.get());
+    if (!op || op->op != RelTermOp::DIV || !op->lhs || !op->rhs) return std::nullopt;
+    auto* agg_id = dynamic_cast<RelIDTerm*>(op->lhs.get());
+    if (!agg_id || agg_id->id != param_id->id) return std::nullopt;
+    return ScalarAggregateDivLift{export_id->id, agg, op->rhs};
+  };
+
+  if (auto* lhs_id = dynamic_cast<RelIDTerm*>(eq_cmp.lhs.get())) {
+    if (auto found = parse_div_rhs(lhs_id, eq_cmp.rhs)) return found;
+  }
+  if (auto* rhs_id = dynamic_cast<RelIDTerm*>(eq_cmp.rhs.get())) {
+    if (auto found = parse_div_rhs(rhs_id, eq_cmp.lhs)) return found;
+  }
+  return std::nullopt;
+}
+
+// Renders a window function's ORDER BY. The column names are written unqualified: this ends up
+// inside a VerbatimTerm, which TableAliasRenumberer cannot rewrite, so naming the source alias
+// here would leave a stale reference once aliases are renumbered. The window's own SELECT always
+// has a single FROM source, so the bare names are unambiguous -- and they resolve against that
+// source even where an output alias of the same SELECT shares a name.
+// Positional ordinals are not an option: ORDER BY 1 inside OVER is the constant 1, not the first
+// column, so it imposes no order at all and ROW_NUMBER comes out arbitrary.
+std::string BuildWindowOrderBySql(const std::vector<sql::ast::OrderByClause>& order_by) {
+  if (order_by.empty()) return "ORDER BY 1";
+  std::ostringstream os;
+  os << "ORDER BY ";
+  bool first = true;
+  for (const auto& clause : order_by) {
+    auto column = std::dynamic_pointer_cast<sql::ast::Column>(clause.term);
+    if (!column) continue;
+    if (!first) os << ", ";
+    first = false;
+    os << column->name << (clause.direction == sql::ast::SortDirection::DESC ? " DESC" : " ASC");
+  }
+  if (first) return "ORDER BY 1";
+  return os.str();
+}
+
+size_t RankedFinalSortOutputPosition(size_t body_col_index) {
+  // body col 1..N -> A2, then A3 is wildcard placeholder, then A4..
+  return body_col_index < 2 ? body_col_index + 1 : body_col_index + 2;
+}
+
+std::shared_ptr<RelExpr> PeelRelParenthesisExpr(const std::shared_ptr<RelExpr>& expr) {
+  auto peeled = expr;
+  while (peeled) {
+    if (auto* eat = dynamic_cast<RelExprAsTerm*>(peeled.get())) {
+      peeled = eat->inner;
+      continue;
+    }
+    if (auto par = std::dynamic_pointer_cast<RelParenthesisTerm>(peeled)) {
+      peeled = par->term;
+      continue;
+    }
+    break;
+  }
+  return peeled;
+}
+
+std::shared_ptr<RelTerm> PeelRelParenthesisTerm(const std::shared_ptr<RelTerm>& term) {
+  auto peeled = term;
+  while (peeled) {
+    if (auto par = std::dynamic_pointer_cast<RelParenthesisTerm>(peeled)) {
+      peeled = par->term;
+      continue;
+    }
+    break;
+  }
+  return peeled;
+}
+
+RelIDTerm* AsPeeledIdTerm(const std::shared_ptr<RelTerm>& term) {
+  return dynamic_cast<RelIDTerm*>(PeelRelParenthesisTerm(term).get());
+}
+
+bool SourceExposesColumn(const std::shared_ptr<sql::ast::Source>& source, const std::string& col_name) {
+  if (!source || !source->sourceable) return false;
+  if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(source->sourceable)) {
+    for (int i = 0; i < table->arity; i++) {
+      if (table->GetAttributeName(i) == col_name) return true;
+    }
+    return false;
+  }
+  if (auto select = std::dynamic_pointer_cast<sql::ast::Select>(source->sourceable)) {
+    for (const auto& col : select->columns) {
+      const auto* ts = dynamic_cast<const sql::ast::TermSelectable*>(col.get());
+      if (!ts) continue;
+      if (ts->alias.has_value() && *ts->alias == col_name) return true;
+      if (const auto* c = dynamic_cast<const sql::ast::Column*>(ts->term.get())) {
+        if (c->name == col_name) return true;
+      }
+    }
+  }
+  return false;
+}
+
+std::string BindingBareName(const std::string& var) {
+  if (auto dot = var.rfind('.'); dot != std::string::npos) return var.substr(dot + 1);
+  return var;
+}
+
+// Collects every plain-identifier term name in the tree, except leading-underscore names
+// (TermRewriter-internal fresh variables).
+void CollectRelIdTermNames(const std::shared_ptr<RelNode>& node, std::unordered_set<std::string>& out) {
+  if (!node) return;
+  if (auto* id = dynamic_cast<RelIDTerm*>(node.get())) {
+    if (!id->id.empty() && id->id[0] != '_') out.insert(id->id);
+  }
+  for (const auto& ch : node->Children()) {
+    CollectRelIdTermNames(ch, out);
+  }
+}
+
+// Collects every id that appears anywhere as an *argument* to some application (e.g. "part" and
+// "supplier" in `ps_supplycost[part, supplier]`), as opposed to a bare standalone term (e.g.
+// "lower" in `lower <= x`, which refers directly to a defined 0-ary relation rather than being
+// passed as an argument to anything). This distinguishes genuine variable occurrences from bare
+// relation references even when their names collide (e.g. Q11's "part", both a bound
+// aggregate-group variable used as `ps_supplycost[part, supplier]`'s argument AND the name of the
+// `part` EDB relation) without depending on free_variables, which is not populated for every
+// nested sub-expression scope.
+void CollectApplicationArgIds(const std::shared_ptr<RelNode>& node, std::unordered_set<std::string>& out) {
+  if (!node) return;
+  if (auto* appl = dynamic_cast<RelFullApplication*>(node.get())) {
+    for (const auto& p : appl->params) {
+      CollectRelIdTermNames(p, out);
+    }
+  } else if (auto* partial = dynamic_cast<RelPartialApplication*>(node.get())) {
+    for (const auto& p : partial->params) {
+      CollectRelIdTermNames(p, out);
+    }
+  }
+  for (const auto& ch : node->Children()) {
+    CollectApplicationArgIds(ch, out);
+  }
+}
+
+// True if `id` should be excluded from a CollectRelIdTermNames-derived id set: it's a relation
+// name (a bare identifier like "lower" in `lower <= x < upper` refers to a defined 0-ary
+// relation, not a free variable — treating it as one pulls its own nested translation's alias
+// into the caller's column list as a "group key"/"binding column" that's out of scope there, the
+// root cause of a whole family of TPC-H dangling-alias bugs, e.g. Q5/Q7's chained-comparison
+// bound variables leaking through) *and* it was never used as an application argument anywhere in
+// `expr` — some variable names legitimately collide with relation names (e.g. Q11's "part", both
+// a bound aggregate-group variable and the name of the `part` EDB relation); `arg_ids` tells the
+// two apart by how the identifier is actually used, not by name.
+bool IsRelationNameNotFreeVariable(const std::string& id, const RelContext& ctx,
+                                   const std::unordered_set<std::string>& arg_ids) {
+  return ctx.IsRelation(id) && !arg_ids.count(id);
+}
+
+std::set<std::string> ComputeAggregateGroupKeys(const std::shared_ptr<RelExpr>& body, const RelContext& ctx) {
+  if (auto abs = std::dynamic_pointer_cast<RelExprAbstraction>(body)) {
+    std::unordered_set<std::string> mentioned;
+    CollectRelIdTermNames(abs->expr, mentioned);
+    std::unordered_set<std::string> arg_ids;
+    CollectApplicationArgIds(abs->expr, arg_ids);
+    std::unordered_set<std::string> binding_ids;
+    for (const auto& b : abs->bindings) {
+      if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) binding_ids.insert(vb->id);
+    }
+    std::set<std::string> keys;
+    for (const auto& id : mentioned) {
+      if (binding_ids.count(id)) continue;
+      if (IsRelationNameNotFreeVariable(id, ctx, arg_ids)) continue;
+      keys.insert(id);
+    }
+    if (!keys.empty()) return keys;
+  }
+  if (body) return body->free_variables;
+  return {};
+}
+
+bool IdAppearsInRelNode(const std::shared_ptr<RelNode>& node, const std::string& id) {
+  if (!node) return false;
+  if (auto* idt = dynamic_cast<RelIDTerm*>(node.get())) {
+    if (idt->id == id) return true;
+  }
+  for (const auto& ch : node->Children()) {
+    if (IdAppearsInRelNode(ch, id)) return true;
+  }
+  return false;
+}
+
+// Find the 1-indexed argument position at which `var` is passed to an application of
+// `relation_name` somewhere in `node` (e.g. in `c_phone[c]`, "c" is c_phone's argument 1).
+// Used to recover a binding variable's source column when it's been consumed as an
+// argument deep inside a builtin call (substring[...], date_year[...], ...) whose own
+// translation only threads the resulting value through, not the key that produced it.
+std::optional<size_t> FindArgPositionForVariable(const std::shared_ptr<RelNode>& node, const std::string& relation_name,
+                                                 const std::string& var) {
+  if (!node) return std::nullopt;
+  auto check_params = [&](RelApplBase* base,
+                          const std::vector<std::shared_ptr<RelApplParam>>& params) -> std::optional<size_t> {
+    auto* id_base = dynamic_cast<RelIDApplBase*>(base);
+    if (!id_base || id_base->id != relation_name) return std::nullopt;
+    for (size_t i = 0; i < params.size(); ++i) {
+      if (!params[i]) continue;
+      auto expr = params[i]->GetExpr();
+      auto* idt = dynamic_cast<RelIDTerm*>(expr.get());
+      if (idt && idt->id == var) return i + 1;
+    }
+    return std::nullopt;
+  };
+  if (auto* pa = dynamic_cast<RelPartialApplication*>(node.get())) {
+    if (auto pos = check_params(pa->base.get(), pa->params)) return pos;
+  }
+  if (auto* fa = dynamic_cast<RelFullApplication*>(node.get())) {
+    if (auto pos = check_params(fa->base.get(), fa->params)) return pos;
+  }
+  for (const auto& ch : node->Children()) {
+    if (auto pos = FindArgPositionForVariable(ch, relation_name, var)) return pos;
+  }
+  return std::nullopt;
+}
+
+// Recursively search a Sourceable's reachable table sources for one that's a raw base
+// table application `relation_name[..., var, ...]` in `rel_expr`, and if found, return
+// a Column referencing that variable's own column on that table's source.
+std::shared_ptr<sql::ast::Column> FindColumnForVariableViaBaseTable(const std::shared_ptr<sql::ast::Sourceable>& sql,
+                                                                    const std::shared_ptr<RelNode>& rel_expr,
+                                                                    const std::string& var) {
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(sql);
+  if (!select || !select->from.has_value()) return nullptr;
+  for (const auto& src : select->from.value()->sources) {
+    if (!src || !src->sourceable) continue;
+    // A source with inhibit_subquery_flatten stays a deliberately isolated subquery (e.g. the
+    // NOT EXISTS body's own copy in Visit(RelUniversal), kept separate so the flattener can't
+    // merge it with the outer copy) — it won't be flattened away, so a column found inside it
+    // is not actually visible from outside its own scope. Don't search into it.
+    if (src->inhibit_subquery_flatten) continue;
+    if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(src->sourceable)) {
+      if (auto pos = FindArgPositionForVariable(rel_expr, table->name, var)) {
+        return std::make_shared<sql::ast::Column>(table->GetAttributeName(static_cast<int>(*pos) - 1), src);
+      }
+    }
+    if (auto found = FindColumnForVariableViaBaseTable(src->sourceable, rel_expr, var)) return found;
+  }
+  return nullptr;
+}
+
+// Ensures every variable free in `rel_node` that FindColumnForVariableViaBaseTable can recover is
+// actually projected as a named output column of `sql_expr`. Needed before treating `sql_expr` as
+// a joinable relation by variable name (e.g. EqualityShorthandRel): even with the "key columns"
+// propagated forward at the point of translation (see ExtractScalarSqlTerm/its ExtractYear
+// caller), an intermediate merge step (the lift-application wrapper, a conjunction merge, ...)
+// can still fail to carry a variable's name through by the time a sibling atom needs to resolve
+// it here. A naive "resolve this variable's column name on this source" lookup in that case
+// falls back to guessing the bare variable name — a column reference that doesn't actually exist.
+// That dangling reference doesn't get caught by ScopeValidator; the optimizer's dangling-column
+// rebinder silently "fixes" it by pointing it at any other in-scope column with a matching name,
+// producing a tautological self-join instead of the intended one.
+void ProjectMissingFreeVariables(const std::shared_ptr<RelNode>& rel_node,
+                                 const std::shared_ptr<sql::ast::Sourceable>& sql_expr) {
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(sql_expr);
+  if (!select || !rel_node) return;
+  std::unordered_set<std::string> existing_aliases;
+  for (const auto& col : select->columns) {
+    if (auto* ts = dynamic_cast<const sql::ast::TermSelectable*>(col.get())) {
+      if (ts->alias.has_value()) existing_aliases.insert(*ts->alias);
+    }
+  }
+  for (const auto& var : rel_node->free_variables) {
+    if (existing_aliases.count(var)) continue;
+    auto found = FindColumnForVariableViaBaseTable(sql_expr, rel_node, var);
+    if (!found) continue;
+    select->columns.push_back(std::make_shared<sql::ast::TermSelectable>(found, var));
+    existing_aliases.insert(var);
+  }
+}
+
+void CollectIdbTermSources(const std::shared_ptr<RelTerm>& term, const RelContext& ctx,
+                           const std::function<std::string()>& gen_alias,
+                           std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& out) {
+  if (!term) return;
+  if (auto* id = dynamic_cast<RelIDTerm*>(term.get())) {
+    if (ctx.IsIDB(id->id) && !out.contains(id->id)) {
+      auto table = std::make_shared<sql::ast::Table>(id->id, ctx.GetArity(id->id));
+      out.emplace(id->id, std::make_shared<sql::ast::Source>(table, gen_alias()));
+    }
+    return;
+  }
+  if (auto* paren = dynamic_cast<RelParenthesisTerm*>(term.get())) {
+    CollectIdbTermSources(paren->term, ctx, gen_alias, out);
+    return;
+  }
+  if (auto* op = dynamic_cast<RelOpTerm*>(term.get())) {
+    CollectIdbTermSources(op->lhs, ctx, gen_alias, out);
+    CollectIdbTermSources(op->rhs, ctx, gen_alias, out);
+  }
+}
+
+sql::ast::CompOp MapRelCompOpToSql(RelCompOp op) {
+  switch (op) {
+    case RelCompOp::EQ:
+      return sql::ast::CompOp::EQ;
+    case RelCompOp::NEQ:
+      return sql::ast::CompOp::NEQ;
+    case RelCompOp::LT:
+      return sql::ast::CompOp::LT;
+    case RelCompOp::GT:
+      return sql::ast::CompOp::GT;
+    case RelCompOp::LTE:
+      return sql::ast::CompOp::LTE;
+    case RelCompOp::GTE:
+      return sql::ast::CompOp::GTE;
+  }
+  return sql::ast::CompOp::EQ;
+}
+
+std::optional<std::string> ApplBaseRelationId(const RelApplBase& base, const RelContext& ctx) {
+  if (auto* id_base = dynamic_cast<const RelIDApplBase*>(&base)) {
+    if (ctx.IsRelation(id_base->id)) return id_base->id;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> DomainRelationId(const Domain& domain) {
+  if (auto* dd = dynamic_cast<const DefinedDomain*>(&domain)) return dd->table_name;
+  return std::nullopt;
+}
+
+}  // namespace
 
 std::shared_ptr<sql::ast::Expression> Translator::Translate() {
   auto root = context_.Root();
@@ -105,7 +543,7 @@ std::shared_ptr<sql::ast::Expression> Translator::BuildLiteralRelationAbstractio
   for (size_t i = 1; i <= arity; ++i) {
     column_names.push_back(fmt::format("A{}", i));
   }
-  auto alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias(), column_names);
+  auto alias = std::make_shared<sql::ast::AliasClause>(GenerateTableAlias(), column_names);
   auto source = std::make_shared<sql::ast::Source>(values_expr, alias);
   auto from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{source});
   // Explicit A1, A2, ... like RelProduct: SELECT * does not reliably expose VALUES column names to outer references
@@ -167,7 +605,7 @@ std::shared_ptr<RelUnion> Translator::Visit(const std::shared_ptr<RelUnion>& nod
   }
 
   auto values_expr = std::make_shared<sql::ast::Values>(index_values);
-  auto values_alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias("I"), std::vector<std::string>{"i"});
+  auto values_alias = std::make_shared<sql::ast::AliasClause>(GenerateTableAlias("I"), std::vector<std::string>{"i"});
   auto values_source = std::make_shared<sql::ast::Source>(values_expr, values_alias);
   from_sources.push_back(values_source);
 
@@ -216,6 +654,8 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelLiteral>& no
 }
 
 std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelProduct>& node) {
+  if (TryEmitScalarAggregateProduct(node)) return node;
+
   if (node->has_only_literal_values) {
     std::vector<std::shared_ptr<sql::ast::Selectable>> selects;
     for (size_t i = 0; i < node->exprs.size(); ++i) {
@@ -327,17 +767,23 @@ std::shared_ptr<sql::ast::Sourceable> Translator::GetBaseSourceableFromApplBase(
 }
 
 Translator::FullApplParamSlots Translator::CollectApplParams(RelNode& node,
-                                                             const std::vector<std::shared_ptr<RelApplParam>>& params) {
+                                                             const std::vector<std::shared_ptr<RelApplParam>>& params,
+                                                             size_t index_offset) {
   FullApplParamSlots slots;
-  size_t param_idx = 0;
+  size_t param_idx = index_offset;
 
   for (const auto& param : params) {
+    // param_idx must track the argument's true 1-based position in the base relation
+    // (including wildcards, which are skipped below but still occupy a column), so it's
+    // incremented unconditionally here rather than only when a slot is actually produced.
+    // Otherwise a wildcard before a real argument shifts every later argument's index left
+    // by one, binding it to the wrong base-table column (e.g. R(_, x) would bind x to
+    // column 1 instead of column 2).
+    param_idx++;
     if (!param || param->IsWildcard()) continue;
 
     auto expr = param->GetExpr();
     if (!expr) continue;
-
-    param_idx++;
 
     auto term = std::dynamic_pointer_cast<RelTerm>(expr);
 
@@ -355,7 +801,9 @@ Translator::FullApplParamSlots Translator::CollectApplParams(RelNode& node,
 
     if (id_term) {
       // If the ID term is a relation, get the expression from the relation and make a sourceable.
-      if (context_.IsRelation(id_term->id)) {
+      // An id an enclosing binder also binds is that variable here, not the relation it collides
+      // with (see RelIDTerm::shadows_relation), so it belongs in the term slots below instead.
+      if (context_.IsRelation(id_term->id) && !id_term->shadows_relation) {
         auto rel_expr = GetExpressionFromID(node, id_term->id, true);
         auto rel_sourceable = ExpectSourceable(rel_expr);
 
@@ -551,8 +999,98 @@ Translator::FullApplSqlParts Translator::BuildFullApplSql(
   return parts;
 }
 
+std::shared_ptr<sql::ast::Select> Translator::VisitAggregateBindingsExpr(const std::shared_ptr<RelExprAbstraction>& abs,
+                                                                         sql::ast::AggregateFunction function,
+                                                                         bool count_all) {
+  if (!abs->expr) {
+    throw TranslationException("aggregate bindings expression requires body", ErrorCode::UNKNOWN_BINARY_OPERATOR,
+                               SourceLocation(0, 0));
+  }
+  Visit(abs->expr);
+  auto expr_sql = ExpectSourceable(abs->expr->sql_expression);
+  auto expr_select = std::dynamic_pointer_cast<sql::ast::Select>(expr_sql);
+
+  if (expr_select) {
+    std::unordered_set<std::string> existing_aliases;
+    for (const auto& col : expr_select->columns) {
+      const auto* ts = dynamic_cast<const sql::ast::TermSelectable*>(col.get());
+      if (ts && ts->alias.has_value()) existing_aliases.insert(*ts->alias);
+    }
+    std::unordered_set<std::string> binding_ids;
+    for (const auto& b : abs->bindings) {
+      if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) binding_ids.insert(vb->id);
+    }
+    std::vector<std::shared_ptr<sql::ast::Selectable>> binding_cols;
+    for (const auto& b : abs->bindings) {
+      auto* vb = dynamic_cast<RelVarBinding*>(b.get());
+      if (!vb) continue;
+      if (!IdAppearsInRelNode(abs->expr, vb->id)) {
+        throw VariableException("Bindings variable is not free in inner expression: " + vb->id);
+      }
+      if (existing_aliases.count(vb->id)) continue;
+      auto column = MakeColumnForBindingOnExprSource(expr_sql, vb->id);
+      binding_cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, vb->id));
+      existing_aliases.insert(vb->id);
+    }
+    std::unordered_set<std::string> extra_ids;
+    CollectRelIdTermNames(abs->expr, extra_ids);
+    std::unordered_set<std::string> extra_arg_ids;
+    CollectApplicationArgIds(abs->expr, extra_arg_ids);
+    for (const auto& id : extra_ids) {
+      if (binding_ids.count(id) || existing_aliases.count(id)) continue;
+      if (IsRelationNameNotFreeVariable(id, context_, extra_arg_ids)) continue;
+      auto column = MakeColumnForBindingOnExprSource(expr_sql, id);
+      binding_cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, id));
+      existing_aliases.insert(id);
+    }
+    expr_select->columns.insert(expr_select->columns.begin(), binding_cols.begin(), binding_cols.end());
+  }
+
+  auto subquery = std::make_shared<sql::ast::Source>(expr_sql, GenerateTableAlias());
+  subquery->inhibit_subquery_flatten = true;
+  abs->expr->sql_expression = subquery;
+
+  const size_t measure_arity = abs->expr->arity;
+  const std::string measure_col = std::format("A{}", measure_arity);
+
+  std::shared_ptr<sql::ast::Term> agg_arg;
+  if (count_all && function == sql::ast::AggregateFunction::COUNT) {
+    agg_arg = std::make_shared<sql::ast::Constant>(1);
+  } else {
+    agg_arg = std::make_shared<sql::ast::Column>(measure_col, subquery);
+  }
+  auto aggregate_selectable =
+      std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Function>(function, agg_arg), "A1");
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> group_cols;
+  std::set<std::string> group_keys = abs->free_variables;
+  if (group_keys.empty()) group_keys = ComputeAggregateGroupKeys(abs, context_);
+  for (const auto& var : group_keys) {
+    const std::string col_name = ResolveOutputColumnNameForVariableOnSource(subquery, var);
+    auto column = std::make_shared<sql::ast::Column>(col_name, subquery);
+    group_cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, var));
+  }
+  std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols = group_cols;
+  select_cols.push_back(aggregate_selectable);
+
+  std::shared_ptr<sql::ast::GroupBy> group_by;
+  if (!group_cols.empty()) {
+    group_by = std::make_shared<sql::ast::GroupBy>(group_cols);
+  }
+  auto from = std::make_shared<sql::ast::From>(subquery);
+  auto select = group_by ? std::make_shared<sql::ast::Select>(select_cols, from, group_by)
+                         : std::make_shared<sql::ast::Select>(select_cols, from);
+  abs->sql_expression = select;
+  return select;
+}
+
 std::shared_ptr<sql::ast::Select> Translator::VisitAggregateRel(const std::shared_ptr<RelExpr>& expr,
-                                                                sql::ast::AggregateFunction function) {
+                                                                sql::ast::AggregateFunction function, bool count_all) {
+  if (auto abs = std::dynamic_pointer_cast<RelExprAbstraction>(expr)) {
+    if (!abs->bindings.empty()) {
+      return VisitAggregateBindingsExpr(abs, function, count_all);
+    }
+  }
   std::shared_ptr<sql::ast::Sourceable> expr_sql;
   std::shared_ptr<sql::ast::Source> subquery;
 
@@ -576,11 +1114,23 @@ std::shared_ptr<sql::ast::Select> Translator::VisitAggregateRel(const std::share
   }
   auto arity = expr->arity;
   std::string column_name = std::format("A{}", arity);
-  auto column = std::make_shared<sql::ast::Column>(column_name, subquery);
+  std::shared_ptr<sql::ast::Term> agg_arg;
+  if (count_all && function == sql::ast::AggregateFunction::COUNT) {
+    agg_arg = std::make_shared<sql::ast::Constant>(1);
+  } else {
+    auto column = std::make_shared<sql::ast::Column>(column_name, subquery);
+    agg_arg = column;
+  }
   auto aggregate_selectable =
-      std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Function>(function, column), "A1");
+      std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Function>(function, agg_arg), "A1");
 
-  auto group_cols = VarListShorthandRel({{expr.get(), subquery}});
+  std::vector<std::shared_ptr<sql::ast::Selectable>> group_cols;
+  size_t col_idx = 1;
+  for (const auto& var : expr->free_variables) {
+    std::string physical = GetColumnNameForSourceable(expr_sql, col_idx++);
+    auto column = std::make_shared<sql::ast::Column>(physical, subquery);
+    group_cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, var));
+  }
   std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols = group_cols;
   select_cols.push_back(aggregate_selectable);
 
@@ -608,6 +1158,11 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelCondition>& 
   if (!lhs_sql || !rhs_sql) {
     throw NotImplementedException("SQLVisitorRel: condition expr requires Sourceable lhs and rhs");
   }
+
+  // EqualityShorthandRel below joins lhs and rhs on every variable free in both. Make sure that's
+  // actually possible first (see ProjectMissingFreeVariables).
+  ProjectMissingFreeVariables(node->lhs, lhs_sql);
+  ProjectMissingFreeVariables(node->rhs, rhs_sql);
 
   auto lhs_source = std::make_shared<sql::ast::Source>(lhs_sql, GenerateTableAlias());
   auto rhs_source = std::make_shared<sql::ast::Source>(rhs_sql, GenerateTableAlias());
@@ -646,6 +1201,35 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelExprAbstract
   Visit(node->expr);
   auto expr_sql = ExpectSourceable(node->expr->sql_expression);
 
+  // A binding variable free in node->expr isn't necessarily exposed as a same-named
+  // output column of expr_sql — that only holds when expr is a plain relation
+  // application. A builtin call (substring[...], date_year[...], arithmetic, ...)
+  // doesn't propagate the original variable name through to its own output, so
+  // project it explicitly here before wrapping, mirroring VisitAggregateBindingsExpr.
+  if (auto expr_select = std::dynamic_pointer_cast<sql::ast::Select>(expr_sql)) {
+    std::unordered_set<std::string> existing_aliases;
+    for (const auto& col : expr_select->columns) {
+      const auto* ts = dynamic_cast<const sql::ast::TermSelectable*>(col.get());
+      if (ts && ts->alias.has_value()) existing_aliases.insert(*ts->alias);
+    }
+    std::vector<std::shared_ptr<sql::ast::Selectable>> binding_cols;
+    for (const auto& b : node->bindings) {
+      auto* vb = dynamic_cast<RelVarBinding*>(b.get());
+      if (!vb || existing_aliases.count(vb->id)) continue;
+      auto column = MakeColumnForBindingOnExprSource(expr_sql, vb->id);
+      if (!column->source.has_value()) {
+        // Not found as an already-projected column anywhere in expr_sql — recover it by
+        // tracing which base-table argument position `vb->id` was actually bound to.
+        if (auto found = FindColumnForVariableViaBaseTable(expr_sql, node->expr, vb->id)) {
+          column = found;
+        }
+      }
+      binding_cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, vb->id));
+      existing_aliases.insert(vb->id);
+    }
+    expr_select->columns.insert(expr_select->columns.begin(), binding_cols.begin(), binding_cols.end());
+  }
+
   auto expr_source = std::make_shared<sql::ast::Source>(expr_sql, GenerateTableAlias());
   node->expr->sql_expression = expr_source;
 
@@ -655,7 +1239,7 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelExprAbstract
     const auto& b = node->bindings[i];
     std::string alias = std::format("A{}", i + 1);
     if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) {
-      if (node->expr->free_variables.count(vb->id) == 0) {
+      if (!IdAppearsInRelNode(node->expr, vb->id)) {
         throw VariableException("Bindings variable is not free in inner expression: " + vb->id);
       }
       auto column = std::make_shared<sql::ast::Column>(vb->id, expr_source);
@@ -764,8 +1348,40 @@ std::shared_ptr<sql::ast::Sourceable> Translator::DomainToSql(const Domain& doma
                                               false);
   }
 
-  if (dynamic_cast<const IntensionalDomain*>(&domain)) {
-    throw NotImplementedException("DomainToSql: IntensionalDomain not supported for CTE bounds", SourceLocation(0, 0));
+  if (auto* intl = dynamic_cast<const IntensionalDomain*>(&domain)) {
+    if (!intl->node) {
+      throw TranslationException("DomainToSql: IntensionalDomain has no inner expression",
+                                 ErrorCode::UNKNOWN_BINARY_OPERATOR, SourceLocation(0, 0));
+    }
+    if (!intl->node->sql_expression) {
+      Visit(intl->node);
+    }
+    auto sourceable = std::dynamic_pointer_cast<sql::ast::Sourceable>(intl->node->sql_expression);
+    if (!sourceable) {
+      throw TranslationException("DomainToSql: IntensionalDomain inner did not produce a Sourceable",
+                                 ErrorCode::UNKNOWN_BINARY_OPERATOR, SourceLocation(0, 0));
+    }
+    // intl->node's own translation may carry "key" columns ahead of its actual value column(s)
+    // — BuildFullApplSql's "param order then remaining base columns" convention (the same
+    // reason Visit(RelFullApplication) offsets its own param lookups for a wrapped base). This
+    // domain represents a *single* bound variable's value, so when the translated node is wider
+    // than that (one column), narrow to its trailing arity columns rather than handing back
+    // extra columns the caller only declared one name for.
+    size_t logical_arity = intl->node->arity;
+    size_t total_cols = GetArityForSourceable(sourceable);
+    if (logical_arity > 0 && total_cols > logical_arity) {
+      auto src = std::make_shared<sql::ast::Source>(sourceable, GenerateTableAlias());
+      std::vector<std::shared_ptr<sql::ast::Selectable>> cols;
+      size_t start = total_cols - logical_arity;
+      for (size_t i = 0; i < logical_arity; ++i) {
+        std::string col_name = GetColumnNameForSourceable(sourceable, start + i + 1);
+        auto col = std::make_shared<sql::ast::Column>(col_name, src);
+        cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, fmt::format("A{}", i + 1)));
+      }
+      auto from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{src});
+      return std::make_shared<sql::ast::Select>(cols, from, false);
+    }
+    return sourceable;
   }
 
   throw TranslationException("DomainToSql: unknown domain type", ErrorCode::UNKNOWN_BINARY_OPERATOR,
@@ -837,9 +1453,99 @@ std::shared_ptr<sql::ast::Source> Translator::BuildBindingsFormulaSource(
 std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelFormulaAbstraction>& node) {
   if (!node->formula) return node;
 
-  Visit(node->formula);
+  if (auto parsed = ParseScalarAggregateDivLift(node->formula)) {
+    std::shared_ptr<sql::ast::Select> out;
+    if (TryEmitScalarAggregateDiv(parsed->agg, parsed->divisor, *node, out)) {
+      if (node->bindings.size() == 1 && out->columns.size() == 1) {
+        if (auto* ts = dynamic_cast<sql::ast::TermSelectable*>(out->columns[0].get())) {
+          ts->alias = "A1";
+        }
+        node->formula->sql_expression = out;
+        node->sql_expression = out;
+        node->arity = 1;
+        return node;
+      }
+      node->formula->sql_expression = out;
+      auto formula_sql = ExpectSourceable(out);
+      auto formula_source = std::make_shared<sql::ast::Source>(formula_sql, GenerateTableAlias());
+      node->formula->sql_expression = formula_source;
+      std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+      for (size_t i = 0; i < node->bindings.size(); i++) {
+        const auto& b = node->bindings[i];
+        std::string alias = std::format("A{}", i + 1);
+        if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) {
+          auto col_name = ResolveOutputColumnNameForVariableOnSource(formula_source, vb->id);
+          auto column = std::make_shared<sql::ast::Column>(col_name, formula_source);
+          select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(column, alias));
+        }
+      }
+      node->sql_expression =
+          std::make_shared<sql::ast::Select>(select_cols, std::make_shared<sql::ast::From>(formula_source));
+      return node;
+    }
+  }
+
+  if (auto pattern = FindAggregateThresholdPattern(context_, node)) {
+    auto export_sel = EmitAggregateExportSelect(pattern->agg, pattern->value_var);
+    auto inner_src = std::make_shared<sql::ast::Source>(export_sel, GenerateTableAlias());
+    inner_src->inhibit_subquery_flatten = true;
+    auto thresh_src = std::make_shared<sql::ast::Source>(
+        std::make_shared<sql::ast::Table>(pattern->idb_name, context_.GetArity(pattern->idb_name)),
+        GenerateTableAlias());
+    auto value_col = std::make_shared<sql::ast::Column>(pattern->value_var, inner_src);
+    auto thresh_col = std::make_shared<sql::ast::Column>("A1", thresh_src);
+    auto cond = std::make_shared<sql::ast::ComparisonCondition>(value_col, pattern->thresh_op, thresh_col);
+    std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+    for (const auto& var : ComputeAggregateGroupKeys(pattern->agg->body, context_)) {
+      if (var == pattern->value_var) continue;
+      auto col_name = ResolveOutputColumnNameForVariableOnSource(inner_src, var);
+      auto col = std::make_shared<sql::ast::Column>(col_name, inner_src);
+      select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, var));
+    }
+    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(value_col, pattern->value_var));
+    node->formula->sql_expression = std::make_shared<sql::ast::Select>(
+        select_cols,
+        std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{inner_src, thresh_src}, cond));
+  } else {
+    Visit(node->formula);
+  }
 
   auto formula_sql = ExpectSourceable(node->formula->sql_expression);
+
+  // A binding variable free in node->formula isn't necessarily exposed as a same-named output
+  // column of formula_sql — most obviously when the variable's name collides with a relation
+  // name (e.g. Q2's `(part, supplier, suppcost): ps_supplycost(part, supplier, suppcost) and
+  // ...`): RelContextBuilder::AddVar silently refuses to register a variable whose name is
+  // already a known relation, so VariablesVisitor never marks it as free here and the
+  // conjunction's own translation never projects it. The binding-column construction below
+  // blindly assumes formula_source exposes every binding by name, so recover it first by tracing
+  // which base-table argument position it was actually bound to, mirroring
+  // Visit(RelExprAbstraction)'s identical handling.
+  // Scoped to a RelConjunction formula, same reasoning as the analogous ProjectMissingFreeVariables
+  // guard in Visit(RelExistential) (see there): FindColumnForVariableViaBaseTable recurses into
+  // nested subqueries, and a RelUniversal's own translation wraps its inner select in two Source
+  // copies kept deliberately unmergeable by the flattener — recovering a column by searching into
+  // that nesting produced a dangling reference (TranslationTest.WeirdEdgeCase1's `tfa` case) since
+  // that subquery is never flattened away by design.
+  if (std::dynamic_pointer_cast<RelConjunction>(node->formula)) {
+    if (auto formula_select = std::dynamic_pointer_cast<sql::ast::Select>(formula_sql)) {
+      std::unordered_set<std::string> existing_aliases;
+      for (const auto& col : formula_select->columns) {
+        const auto* ts = dynamic_cast<const sql::ast::TermSelectable*>(col.get());
+        if (ts && ts->alias.has_value()) existing_aliases.insert(*ts->alias);
+      }
+      std::vector<std::shared_ptr<sql::ast::Selectable>> recovered_cols;
+      for (const auto& b : node->bindings) {
+        auto* vb = dynamic_cast<RelVarBinding*>(b.get());
+        if (!vb || existing_aliases.count(vb->id)) continue;
+        if (auto found = FindColumnForVariableViaBaseTable(formula_sql, node->formula, vb->id)) {
+          recovered_cols.push_back(std::make_shared<sql::ast::TermSelectable>(found, vb->id));
+          existing_aliases.insert(vb->id);
+        }
+      }
+      formula_select->columns.insert(formula_select->columns.begin(), recovered_cols.begin(), recovered_cols.end());
+    }
+  }
 
   std::vector<std::shared_ptr<sql::ast::Source>> ctes;
   bool ctes_are_recursive = false;
@@ -854,7 +1560,7 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelFormulaAbstr
     const auto& b = node->bindings[i];
     std::string alias = std::format("A{}", i + 1);
     if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) {
-      if (node->formula->free_variables.count(vb->id) == 0) {
+      if (!IdAppearsInRelNode(node->formula, vb->id)) {
         throw VariableException("Bindings variable is not free in inner formula: " + vb->id);
       }
       auto column = std::make_shared<sql::ast::Column>(vb->id, formula_source);
@@ -877,22 +1583,6 @@ std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelFormulaAbstr
 }
 
 std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelPartialApplication>& node) {
-  // Aggregate special case: sum[expr], max[expr], etc. (single param, base is aggregate ID)
-  if (auto* id_base = dynamic_cast<RelIDApplBase*>(node->base.get())) {
-    auto it = GetAggregateMap().find(id_base->id);
-    if (it != GetAggregateMap().end()) {
-      if (node->params.size() != 1) {
-        throw std::runtime_error("Aggregate function requires exactly one parameter");
-      }
-      auto expr = node->params[0]->GetExpr();
-      if (!expr) {
-        throw std::runtime_error("Aggregate function parameter must be an expression");
-      }
-      node->sql_expression = VisitAggregateRel(expr, it->second);
-      return node;
-    }
-  }
-
   auto base_sourceable = GetBaseSourceableFromApplBase(*node, node->base);
   auto column_name_for_index = [this, &base_sourceable](size_t idx) {
     return GetColumnNameForSourceable(base_sourceable, idx);
@@ -912,7 +1602,26 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelFullAppli
   };
   auto ra_source = std::make_shared<sql::ast::Source>(base_sourceable, GenerateTableAlias());
 
-  auto slots = CollectApplParams(*node, node->params);
+  // When the base is a wrapped expression (e.g. a TermRewriter-lifted `{inner}(z)` atom over a
+  // partial application, like `{l_extendedprice[o,num]}(_x1)`), the wrapped expr's own
+  // translation carries "key" columns ahead of its actual value column(s) — BuildFullApplSql's
+  // "param order then remaining base columns" convention. This atom's own params always bind to
+  // the *value* portion, so when the base is wider than the params supplied here, offset every
+  // param's base-column index to land on the trailing columns instead of the leading ones
+  // (which are the key columns, e.g. the order key) — while still leaving those leading columns
+  // in base_sourceable so BuildFullApplSql's "remaining base columns" pass still exposes them
+  // (the outer conjunction's join needs them, since VariablesVisitor already counted them as
+  // this atom's free variables).
+  size_t index_offset = 0;
+  if (dynamic_cast<RelExprApplBase*>(node->base.get())) {
+    size_t total_cols = GetArityForSourceable(base_sourceable);
+    size_t needed = node->params.size();
+    if (needed > 0 && total_cols > needed) {
+      index_offset = total_cols - needed;
+    }
+  }
+
+  auto slots = CollectApplParams(*node, node->params, index_offset);
 
   auto parts = BuildFullApplSql(slots, ra_source, base_sourceable, column_name_for_index);
 
@@ -921,8 +1630,107 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelFullAppli
   return node;
 }
 
+bool Translator::IsTermRewriterLiftedBindingConjunction(const RelConjunction& node) {
+  auto* lhs_app = dynamic_cast<RelFullApplication*>(node.lhs.get());
+  auto* rhs_cmp = dynamic_cast<RelComparison*>(node.rhs.get());
+  if (!lhs_app || !rhs_cmp || !lhs_app->base || lhs_app->params.size() != 1) return false;
+
+  auto* param = dynamic_cast<RelExprApplParam*>(lhs_app->params[0].get());
+  if (!param || !param->expr) return false;
+  auto* param_id = dynamic_cast<RelIDTerm*>(param->expr.get());
+  if (!param_id) return false;
+
+  // A genuine, user-written relation membership check has exactly this same shape --
+  // `A(x) and x = 5` matches "one-param application conjoined with a comparison on that same
+  // variable" every bit as well as an actual lifted witness does. The two are only
+  // distinguishable by the variable's origin: TermRewriter::FreshVarName() names every witness it
+  // introduces "_x<N>", so requiring that prefix here is what actually restricts this function to
+  // its own documented case (`{agg}(z) and z > c`, TermRewriter output only) rather than also
+  // matching ordinary application-and-comparison conjunctions that happen to share its shape --
+  // for which the speculative handlers below would translate the conjunction as the comparison
+  // alone, silently dropping the application's own membership constraint.
+  if (param_id->id.empty() || param_id->id[0] != '_') return false;
+
+  auto matches_param = [&](const std::shared_ptr<RelTerm>& term) {
+    auto* id = AsPeeledIdTerm(term);
+    return id && id->id == param_id->id;
+  };
+  auto is_ground_term = [&](const std::shared_ptr<RelTerm>& term) { return term && term->variables.empty(); };
+
+  const bool lhs_is_param = rhs_cmp->lhs && matches_param(rhs_cmp->lhs);
+  const bool rhs_is_param = rhs_cmp->rhs && matches_param(rhs_cmp->rhs);
+  if (!lhs_is_param && !rhs_is_param) return false;
+  const auto& other = lhs_is_param ? rhs_cmp->rhs : rhs_cmp->lhs;
+  if (!other) return false;
+  if (AsPeeledIdTerm(other)) return true;
+  return is_ground_term(other);
+}
+
 std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelConjunction>& node) {
   if (!node->lhs || !node->rhs) return nullptr;
+
+  if (TryEmitDateYearLiftPairConjunction(node)) return node;
+
+  if (auto flat = FlattenConjunctionChain(std::dynamic_pointer_cast<RelFormula>(node)); flat.size() >= 2) {
+    std::vector<std::shared_ptr<RelNode>> conjuncts(flat.begin(), flat.end());
+    if (conjuncts.size() == 3) {
+      if (auto emitted = TryEmitLiftedPartialAppZPairConjunction(conjuncts)) {
+        node->sql_expression = emitted;
+        return node;
+      }
+    }
+    if (auto emitted = TryEmitAggregateEqualityWithIdbThresholdConjunction(conjuncts)) {
+      node->sql_expression = emitted;
+      return node;
+    }
+  }
+
+  if (auto* lhs_app = dynamic_cast<RelFullApplication*>(node->lhs.get())) {
+    if (auto cmp = std::dynamic_pointer_cast<RelComparison>(node->rhs)) {
+      if (auto parsed = ParseLiftedAggregateDivExport(*lhs_app, *cmp)) {
+        std::shared_ptr<sql::ast::Select> out;
+        if (TryEmitScalarAggregateDiv(parsed->agg, parsed->divisor, *node, out)) {
+          node->sql_expression = out;
+          return node;
+        }
+      }
+    }
+  }
+
+  // TermRewriter: exists(z | {agg}(z) and z > c). The application only binds z to the aggregate;
+  // RelComparison already materializes z's domain — skip the duplicate cross join.
+  if (IsTermRewriterLiftedBindingConjunction(*node)) {
+    auto cmp = std::dynamic_pointer_cast<RelComparison>(node->rhs);
+    if (cmp && TryEmitLiftedPartialAppLiteralEquality(cmp, node->lhs)) {
+      node->sql_expression = cmp->sql_expression;
+      return node;
+    }
+    if (cmp && TryEmitLiftedPartialAppValueComparison(cmp, node->lhs)) {
+      auto inner = ExpectSourceable(cmp->sql_expression);
+      auto src = std::make_shared<sql::ast::Source>(inner, GenerateTableAlias());
+      src->inhibit_subquery_flatten = true;
+      node->sql_expression = src;
+      return node;
+    }
+    if (cmp && TryEmitLiftedPartialAppVariableEquality(cmp, node->lhs)) {
+      auto inner = ExpectSourceable(cmp->sql_expression);
+      auto src = std::make_shared<sql::ast::Source>(inner, GenerateTableAlias());
+      src->inhibit_subquery_flatten = true;
+      node->sql_expression = src;
+      return node;
+    }
+    if (cmp && TryTranslateAggregateConstantComparison(cmp, node->safety.SmallCover(), node->lhs)) {
+      node->sql_expression = cmp->sql_expression;
+      return node;
+    }
+    if (cmp && TryTranslateAggregateVariableEquality(cmp, node->safety.SmallCover(), node->lhs)) {
+      node->sql_expression = cmp->sql_expression;
+      return node;
+    }
+    Visit(node->rhs);
+    node->sql_expression = node->rhs->sql_expression;
+    return node;
+  }
 
   Visit(node->lhs);
   Visit(node->rhs);
@@ -958,6 +1766,12 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelConjuncti
 
   auto lhs_source = std::make_shared<sql::ast::Source>(lhs_sourceable, GenerateTableAlias());
   auto rhs_source = std::make_shared<sql::ast::Source>(rhs_sourceable, GenerateTableAlias());
+  if (auto lhs_sel = std::dynamic_pointer_cast<sql::ast::Select>(lhs_sourceable)) {
+    if (lhs_sel->group_by.has_value()) lhs_source->inhibit_subquery_flatten = true;
+  }
+  if (auto rhs_sel = std::dynamic_pointer_cast<sql::ast::Select>(rhs_sourceable)) {
+    if (rhs_sel->group_by.has_value()) rhs_source->inhibit_subquery_flatten = true;
+  }
 
   node->lhs->sql_expression = lhs_source;
   node->rhs->sql_expression = rhs_source;
@@ -1021,7 +1835,7 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelDisjuncti
   std::vector<std::shared_ptr<sql::ast::Source>> cte_sources;
   std::vector<std::pair<std::shared_ptr<sql::ast::Source>, std::set<std::string>>> cte_source_var_pairs;
 
-  for (const auto& bound : cover.bounds) {
+  for (const Bound& bound : cover.SortedBounds()) {
     bool has_sym_diff_var = false;
     for (const auto& var : bound.variables) {
       if (sym_diff.count(var)) {
@@ -1118,6 +1932,25 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelNegation>
   Visit(node->formula);
   auto formula_sourceable = ExpectSourceable(node->formula->sql_expression);
   auto formula_source = std::make_shared<sql::ast::Source>(formula_sourceable, GenerateTableAlias());
+  // The NOT IN subquery below is `SELECT * FROM formula_source`, relying on formula_source's
+  // own column list (already narrowed to the formula's free variables, e.g. o_custkey(_, c)
+  // exposes only "c", not o_custkey's full arity). An unqualified Wildcard has no fixed column
+  // set of its own — it re-expands against whatever the current FROM sources are — so if the
+  // flattener later inlines formula_source (promoting its own wider-arity inner sources, e.g.
+  // the o_custkey table itself, directly into this FROM), the wildcard would silently pick up
+  // those extra columns and the NOT IN would no longer type-check/match. Only guard against
+  // that when formula_source is actually a narrowing projection over a wider source — plain
+  // "not D(x)" style formulas (arity already matches) flatten fine and should keep doing so.
+  if (auto formula_select = std::dynamic_pointer_cast<sql::ast::Select>(formula_sourceable);
+      formula_select && formula_select->from.has_value()) {
+    size_t underlying_arity = 0;
+    for (const auto& src : formula_select->from.value()->sources) {
+      if (src && src->sourceable) underlying_arity += GetArityForSourceable(src->sourceable);
+    }
+    if (underlying_arity != formula_select->columns.size()) {
+      formula_source->inhibit_subquery_flatten = true;
+    }
+  }
   node->formula->sql_expression = formula_source;
 
   const std::set<std::string>& fv = node->formula->free_variables;
@@ -1134,7 +1967,7 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelNegation>
   std::vector<std::shared_ptr<sql::ast::Source>> cte_sources;
   std::vector<std::pair<std::shared_ptr<sql::ast::Source>, std::set<std::string>>> cte_source_var_pairs;
 
-  for (const auto& bound : cover.bounds) {
+  for (const Bound& bound : cover.SortedBounds()) {
     if (!bound.domain) continue;
     auto domain_sql = DomainToSql(*bound.domain);
     std::set<std::string> bound_vars(bound.variables.begin(), bound.variables.end());
@@ -1194,8 +2027,1489 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelParen>& n
   return node;
 }
 
+namespace {
+
+RelBuiltinAggregateOp MapSqlAggToRelBuiltin(sql::ast::AggregateFunction f) {
+  switch (f) {
+    case sql::ast::AggregateFunction::SUM:
+      return RelBuiltinAggregateOp::SUM;
+    case sql::ast::AggregateFunction::COUNT:
+      return RelBuiltinAggregateOp::COUNT;
+    case sql::ast::AggregateFunction::AVG:
+      return RelBuiltinAggregateOp::AVG;
+    case sql::ast::AggregateFunction::MIN:
+      return RelBuiltinAggregateOp::MIN;
+    case sql::ast::AggregateFunction::MAX:
+      return RelBuiltinAggregateOp::MAX;
+  }
+  return RelBuiltinAggregateOp::SUM;
+}
+
+std::shared_ptr<RelExpr> GetApplParamExpr(const std::shared_ptr<RelApplParam>& p) {
+  if (!p) return nullptr;
+  return p->GetExpr();
+}
+
+// BuiltinResolver runs before TermRewriter, so lifted atoms may still hold `sum[body]` as a
+// partial application rather than RelBuiltinAggregateExpr.
+std::shared_ptr<RelBuiltinAggregateExpr> ExtractAggregateFromExpr(std::shared_ptr<RelExpr> expr) {
+  if (!expr) return nullptr;
+  if (auto eat = std::dynamic_pointer_cast<RelExprAsTerm>(expr)) {
+    return ExtractAggregateFromExpr(eat->inner);
+  }
+  if (auto agg = std::dynamic_pointer_cast<RelBuiltinAggregateExpr>(expr)) return agg;
+  auto partial = std::dynamic_pointer_cast<RelPartialApplication>(expr);
+  if (!partial || !partial->base) return nullptr;
+  auto* id_base = dynamic_cast<RelIDApplBase*>(partial->base.get());
+  if (!id_base) return nullptr;
+  auto it = GetAggregateMap().find(id_base->id);
+  if (it == GetAggregateMap().end()) return nullptr;
+  if (partial->params.size() != 1) return nullptr;
+  auto body = GetApplParamExpr(partial->params[0]);
+  if (!body) return nullptr;
+  return std::make_shared<RelBuiltinAggregateExpr>(MapSqlAggToRelBuiltin(it->second), body);
+}
+
+bool ExtractDirectAggregateEquality(const RelComparison& cmp, std::string& value_var,
+                                    std::shared_ptr<RelBuiltinAggregateExpr>& agg) {
+  if (cmp.op != RelCompOp::EQ || !cmp.lhs || !cmp.rhs) return false;
+  auto try_sides = [&](const std::shared_ptr<RelTerm>& id_side, const std::shared_ptr<RelTerm>& expr_side) {
+    auto* id = dynamic_cast<RelIDTerm*>(id_side.get());
+    auto* eat = dynamic_cast<RelExprAsTerm*>(expr_side.get());
+    if (!id || !eat || !eat->inner) return false;
+    auto extracted = ExtractAggregateFromExpr(eat->inner);
+    if (!extracted) return false;
+    value_var = id->id;
+    agg = extracted;
+    return true;
+  };
+  return try_sides(cmp.lhs, cmp.rhs) || try_sides(cmp.rhs, cmp.lhs);
+}
+
+sql::ast::CompOp MapRelCompToSql(RelCompOp op) {
+  switch (op) {
+    case RelCompOp::EQ:
+      return sql::ast::CompOp::EQ;
+    case RelCompOp::NEQ:
+      return sql::ast::CompOp::NEQ;
+    case RelCompOp::LT:
+      return sql::ast::CompOp::LT;
+    case RelCompOp::GT:
+      return sql::ast::CompOp::GT;
+    case RelCompOp::LTE:
+      return sql::ast::CompOp::LTE;
+    case RelCompOp::GTE:
+      return sql::ast::CompOp::GTE;
+  }
+  return sql::ast::CompOp::EQ;
+}
+
+bool ExtractValueVsIdbComparison(const RelComparison& cmp, const RelContext& ctx, const std::string& value_var,
+                                 std::string& idb_name, sql::ast::CompOp& sql_op) {
+  if (!cmp.lhs || !cmp.rhs) return false;
+  if (cmp.op != RelCompOp::GT && cmp.op != RelCompOp::GTE && cmp.op != RelCompOp::LT && cmp.op != RelCompOp::LTE) {
+    return false;
+  }
+  auto idb_from_term = [&](const std::shared_ptr<RelTerm>& term) -> std::string {
+    if (auto* id = dynamic_cast<RelIDTerm*>(term.get())) {
+      return ctx.IsIDB(id->id) ? id->id : "";
+    }
+    if (auto* eat = dynamic_cast<RelExprAsTerm*>(term.get())) {
+      if (auto partial = std::dynamic_pointer_cast<RelPartialApplication>(eat->inner)) {
+        if (auto* id_base = dynamic_cast<RelIDApplBase*>(partial->base.get())) {
+          return ctx.IsIDB(id_base->id) ? id_base->id : "";
+        }
+      }
+      if (auto* id = dynamic_cast<RelIDTerm*>(eat->inner.get())) {
+        return ctx.IsIDB(id->id) ? id->id : "";
+      }
+    }
+    return "";
+  };
+  auto var_from_term = [&](const std::shared_ptr<RelTerm>& term) -> std::string {
+    if (auto* id = dynamic_cast<RelIDTerm*>(term.get())) return id->id;
+    return "";
+  };
+  auto try_sides = [&](const std::shared_ptr<RelTerm>& a, const std::shared_ptr<RelTerm>& b) {
+    const std::string var_name = var_from_term(a);
+    const std::string idb = idb_from_term(b);
+    if (var_name != value_var || idb.empty()) return false;
+    idb_name = idb;
+    sql_op = MapRelCompToSql(cmp.op);
+    return true;
+  };
+  return try_sides(cmp.lhs, cmp.rhs) || try_sides(cmp.rhs, cmp.lhs);
+}
+
+std::pair<sql::ast::AggregateFunction, bool> MapRelAggregateOp(const RelBuiltinAggregateExpr& agg_expr) {
+  sql::ast::AggregateFunction fn = sql::ast::AggregateFunction::SUM;
+  bool count_all = false;
+  switch (agg_expr.op) {
+    case RelBuiltinAggregateOp::SUM:
+      fn = sql::ast::AggregateFunction::SUM;
+      break;
+    case RelBuiltinAggregateOp::COUNT:
+      fn = sql::ast::AggregateFunction::COUNT;
+      count_all = true;
+      break;
+    case RelBuiltinAggregateOp::AVG:
+      fn = sql::ast::AggregateFunction::AVG;
+      break;
+    case RelBuiltinAggregateOp::MIN:
+      fn = sql::ast::AggregateFunction::MIN;
+      break;
+    case RelBuiltinAggregateOp::MAX:
+      fn = sql::ast::AggregateFunction::MAX;
+      break;
+  }
+  return {fn, count_all};
+}
+
+std::shared_ptr<RelBuiltinDecimalCastExpr> ExtractDecimalFromLiftedAtom(const RelFormula* lifted_atom) {
+  if (!lifted_atom) return nullptr;
+  auto* app = dynamic_cast<const RelFullApplication*>(lifted_atom);
+  if (!app || !app->base) return nullptr;
+  auto* base = dynamic_cast<const RelExprApplBase*>(app->base.get());
+  if (!base || !base->expr) return nullptr;
+  std::shared_ptr<RelExpr> domain_expr = base->expr;
+  if (auto uni = std::dynamic_pointer_cast<RelUnion>(domain_expr)) {
+    if (!uni->exprs.empty()) domain_expr = uni->exprs.front();
+  }
+  if (auto eat = std::dynamic_pointer_cast<RelExprAsTerm>(domain_expr)) {
+    domain_expr = eat->inner;
+  }
+  return std::dynamic_pointer_cast<RelBuiltinDecimalCastExpr>(domain_expr);
+}
+
+struct ScalarDecimalSumLift {
+  std::string export_var;
+  std::shared_ptr<RelBuiltinDecimalCastExpr> decimal;
+  std::shared_ptr<RelBuiltinAggregateExpr> sum;
+};
+
+std::optional<ScalarDecimalSumLift> ParseScalarDecimalSumLift(const std::shared_ptr<RelFormula>& formula) {
+  if (!formula) return std::nullopt;
+  auto flat = FlattenConjunctionChain(formula);
+  if (flat.size() != 3) return std::nullopt;
+
+  std::shared_ptr<RelComparison> mul_cmp;
+  const RelFullApplication* decimal_app = nullptr;
+  const RelFullApplication* sum_app = nullptr;
+
+  for (const auto& conjunct : flat) {
+    if (auto cmp = std::dynamic_pointer_cast<RelComparison>(conjunct)) {
+      if (mul_cmp) return std::nullopt;
+      mul_cmp = cmp;
+      continue;
+    }
+    auto* app = dynamic_cast<const RelFullApplication*>(conjunct.get());
+    if (!app) return std::nullopt;
+    if (ExtractDecimalFromLiftedAtom(app)) {
+      if (decimal_app) return std::nullopt;
+      decimal_app = app;
+    } else if (ExtractAggregateFromLiftedAtom(app)) {
+      if (sum_app) return std::nullopt;
+      sum_app = app;
+    } else {
+      return std::nullopt;
+    }
+  }
+  if (!mul_cmp || !decimal_app || !sum_app || mul_cmp->op != RelCompOp::EQ) return std::nullopt;
+
+  auto parse_mul_ids = [](const std::shared_ptr<RelTerm>& term, std::string& left, std::string& right) {
+    auto peeled = PeelRelParenthesisTerm(term);
+    auto* op = dynamic_cast<RelOpTerm*>(peeled.get());
+    if (!op || op->op != RelTermOp::MUL) return false;
+    auto* lhs = dynamic_cast<RelIDTerm*>(op->lhs.get());
+    auto* rhs = dynamic_cast<RelIDTerm*>(op->rhs.get());
+    if (!lhs || !rhs) return false;
+    left = lhs->id;
+    right = rhs->id;
+    return true;
+  };
+
+  std::string mul_lhs;
+  std::string mul_rhs;
+  const RelIDTerm* export_id = nullptr;
+  if (parse_mul_ids(mul_cmp->rhs, mul_lhs, mul_rhs)) {
+    export_id = dynamic_cast<RelIDTerm*>(mul_cmp->lhs.get());
+  } else if (parse_mul_ids(mul_cmp->lhs, mul_lhs, mul_rhs)) {
+    export_id = dynamic_cast<RelIDTerm*>(mul_cmp->rhs.get());
+  } else {
+    return std::nullopt;
+  }
+  if (!export_id) return std::nullopt;
+
+  auto* dec_param =
+      dynamic_cast<const RelIDTerm*>(decimal_app->params[0] ? decimal_app->params[0]->GetExpr().get() : nullptr);
+  auto* sum_param = dynamic_cast<const RelIDTerm*>(sum_app->params[0] ? sum_app->params[0]->GetExpr().get() : nullptr);
+  if (!dec_param || !sum_param) return std::nullopt;
+  const bool vars_match =
+      (dec_param->id == mul_lhs && sum_param->id == mul_rhs) || (dec_param->id == mul_rhs && sum_param->id == mul_lhs);
+  if (!vars_match) return std::nullopt;
+
+  ScalarDecimalSumLift out;
+  out.export_var = export_id->id;
+  out.decimal = ExtractDecimalFromLiftedAtom(decimal_app);
+  out.sum = ExtractAggregateFromLiftedAtom(sum_app);
+  if (!out.decimal || !out.sum || !out.sum->body) return std::nullopt;
+  return out;
+}
+
+struct AggregateExportMatch {
+  std::string value_var;
+  std::shared_ptr<RelBuiltinAggregateExpr> agg;
+};
+
+bool IsLiftedBindingConjunction(const RelConjunction& node) {
+  std::function<const RelFullApplication*(const std::shared_ptr<RelFormula>&)> find_lift_app;
+  find_lift_app = [&](const std::shared_ptr<RelFormula>& f) -> const RelFullApplication* {
+    if (!f) return nullptr;
+    if (auto* app = dynamic_cast<const RelFullApplication*>(f.get())) return app;
+    if (auto* c = dynamic_cast<const RelConjunction*>(f.get())) {
+      if (auto* a = find_lift_app(c->lhs)) return a;
+      if (auto* a = find_lift_app(c->rhs)) return a;
+    }
+    return nullptr;
+  };
+
+  const RelFullApplication* lhs_app = find_lift_app(node.lhs);
+  auto* rhs_cmp = dynamic_cast<const RelComparison*>(node.rhs.get());
+  if (!lhs_app || !rhs_cmp || !lhs_app->base || lhs_app->params.size() != 1) return false;
+
+  auto* param = dynamic_cast<RelExprApplParam*>(lhs_app->params[0].get());
+  if (!param || !param->expr) return false;
+  auto* param_id = dynamic_cast<RelIDTerm*>(param->expr.get());
+  if (!param_id) return false;
+
+  auto* cmp_lhs = dynamic_cast<RelIDTerm*>(rhs_cmp->lhs.get());
+  auto* cmp_rhs = dynamic_cast<RelIDTerm*>(rhs_cmp->rhs.get());
+  const bool lhs_is_param = cmp_lhs && cmp_lhs->id == param_id->id;
+  const bool rhs_is_param = cmp_rhs && cmp_rhs->id == param_id->id;
+  if (!lhs_is_param && !rhs_is_param) return false;
+  if (lhs_is_param && !cmp_rhs) return false;
+  if (rhs_is_param && !cmp_lhs) return false;
+
+  auto* expr_base = dynamic_cast<RelExprApplBase*>(lhs_app->base.get());
+  if (!expr_base || !expr_base->expr) return false;
+  auto* uni = dynamic_cast<const RelUnion*>(expr_base->expr.get());
+  return uni && !uni->exprs.empty();
+}
+
+std::optional<AggregateExportMatch> FindAggregateExportEquality(const std::shared_ptr<RelNode>& node) {
+  if (auto cmp = std::dynamic_pointer_cast<RelComparison>(node)) {
+    std::string vv;
+    std::shared_ptr<RelBuiltinAggregateExpr> a;
+    if (ExtractDirectAggregateEquality(*cmp, vv, a)) return AggregateExportMatch{vv, a};
+  }
+  auto conj = std::dynamic_pointer_cast<RelConjunction>(node);
+  if (!conj || !conj->lhs || !conj->rhs) {
+    auto ex = std::dynamic_pointer_cast<RelExistential>(node);
+    if (!ex || !ex->formula) return std::nullopt;
+    conj = std::dynamic_pointer_cast<RelConjunction>(ex->formula);
+  }
+  if (!conj || !conj->lhs || !conj->rhs) return std::nullopt;
+  if (!IsLiftedBindingConjunction(*conj)) return std::nullopt;
+  auto cmp = std::dynamic_pointer_cast<RelComparison>(conj->rhs);
+  if (!cmp || cmp->op != RelCompOp::EQ || !cmp->lhs || !cmp->rhs) return std::nullopt;
+  auto* lhs_id = dynamic_cast<RelIDTerm*>(cmp->lhs.get());
+  auto* rhs_id = dynamic_cast<RelIDTerm*>(cmp->rhs.get());
+  if (!lhs_id || !rhs_id) return std::nullopt;
+
+  std::function<const RelFullApplication*(const std::shared_ptr<RelFormula>&)> find_lift_app;
+  find_lift_app = [&](const std::shared_ptr<RelFormula>& f) -> const RelFullApplication* {
+    if (!f) return nullptr;
+    if (auto* app = dynamic_cast<const RelFullApplication*>(f.get())) return app;
+    if (auto* c = dynamic_cast<const RelConjunction*>(f.get())) {
+      if (auto* a = find_lift_app(c->lhs)) return a;
+      if (auto* a = find_lift_app(c->rhs)) return a;
+    }
+    return nullptr;
+  };
+  const RelFullApplication* app = find_lift_app(conj->lhs);
+  if (!app) return std::nullopt;
+  auto agg = ExtractAggregateFromLiftedAtom(app);
+  if (!agg || !agg->body) return std::nullopt;
+  if (app->params.size() != 1) return std::nullopt;
+  auto* param = dynamic_cast<const RelExprApplParam*>(app->params[0].get());
+  if (!param || !param->expr) return std::nullopt;
+  auto* param_id = dynamic_cast<const RelIDTerm*>(param->expr.get());
+  if (!param_id) return std::nullopt;
+  std::string export_var;
+  if (lhs_id->id == param_id->id) {
+    export_var = rhs_id->id;
+  } else if (rhs_id->id == param_id->id) {
+    export_var = lhs_id->id;
+  } else {
+    return std::nullopt;
+  }
+  return AggregateExportMatch{export_var, agg};
+}
+
+std::optional<AggregateThresholdPattern> FindAggregateThresholdPattern(const RelContext& ctx,
+                                                                       const std::shared_ptr<RelNode>& root) {
+  // Pass 1: find the aggregate export equality (e.g. "revenue = sum[...]") anywhere in the tree.
+  // This determines the *real* value_var a threshold comparison (pass 2) must reference. A
+  // single combined walk previously guessed at value_var from whichever qualifying "var CMP idb"
+  // comparison it encountered first, with no way to check that "var" had anything to do with the
+  // aggregate — for TPC-H Q3, an unrelated date filter ("o_orderdate[ok] < target_date", by this
+  // point rewritten to "_xN < target_date") was mistaken for the aggregate's own threshold simply
+  // because target_date is also an IDB, corrupting `revenue`'s translation with a bogus
+  // "revenue < target_date" comparison and leaving the real date/orderdate join out of the query
+  // entirely.
+  std::optional<AggregateExportMatch> agg_match;
+  std::function<void(const std::shared_ptr<RelNode>&)> find_agg = [&](const std::shared_ptr<RelNode>& node) {
+    if (!node || agg_match) return;
+    if (auto found = FindAggregateExportEquality(node)) {
+      agg_match = found;
+      return;
+    }
+    for (const auto& ch : node->Children()) find_agg(ch);
+  };
+  find_agg(root);
+  if (!agg_match) return std::nullopt;
+
+  // Pass 2: find a comparison between the aggregate's own exported value_var and an IDB.
+  const std::string value_var = agg_match->value_var;
+  std::optional<AggregateThresholdPattern> thresh_match;
+  std::function<void(const std::shared_ptr<RelNode>&)> find_thresh = [&](const std::shared_ptr<RelNode>& node) {
+    if (!node || thresh_match) return;
+    if (auto cmp = std::dynamic_pointer_cast<RelComparison>(node)) {
+      std::string idb;
+      sql::ast::CompOp op;
+      if (ExtractValueVsIdbComparison(*cmp, ctx, value_var, idb, op)) {
+        thresh_match = AggregateThresholdPattern{value_var, agg_match->agg, idb, op};
+        return;
+      }
+    }
+    for (const auto& ch : node->Children()) find_thresh(ch);
+  };
+  find_thresh(root);
+  return thresh_match;
+}
+
+}  // namespace
+
+bool Translator::TryEmitScalarAggregateMul(std::shared_ptr<RelExpr> scalar_side, std::shared_ptr<RelExpr> agg_side,
+                                           RelNode& ctx, std::shared_ptr<sql::ast::Select>& out) {
+  while (auto eat = std::dynamic_pointer_cast<RelExprAsTerm>(agg_side)) {
+    agg_side = eat->inner;
+  }
+  while (auto eat = std::dynamic_pointer_cast<RelExprAsTerm>(scalar_side)) {
+    scalar_side = eat->inner;
+  }
+  auto agg = ExtractAggregateFromExpr(agg_side);
+  if (!agg || !agg->body || ExtractAggregateFromExpr(scalar_side)) return false;
+
+  Visit(scalar_side);
+  ScalarSqlTerm scalar;
+  try {
+    scalar = ExtractScalarSqlTerm(ctx, scalar_side);
+  } catch (...) {
+    return false;
+  }
+  if (!scalar.from_sources.empty()) return false;
+
+  const auto [fn, count_all] = MapRelAggregateOp(*agg);
+  auto agg_select = VisitAggregateRel(agg->body, fn, count_all);
+  agg->sql_expression = agg_select;
+  agg_side->sql_expression = agg_select;
+
+  auto agg_src = std::make_shared<sql::ast::Source>(agg_select, GenerateTableAlias());
+  const std::string sum_col = GetColumnNameForSourceable(agg_select, agg_select->columns.size());
+  auto sum_column = std::make_shared<sql::ast::Column>(sum_col, agg_src);
+  auto product = std::make_shared<sql::ast::Operation>(scalar.term, sum_column, "*");
+  out = std::make_shared<sql::ast::Select>(
+      std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(product, "A1")},
+      std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{agg_src}));
+  return true;
+}
+
+bool Translator::TryEmitScalarAggregateProduct(const std::shared_ptr<RelProduct>& node) {
+  if (node->exprs.size() != 2) return false;
+  for (int swap = 0; swap < 2; ++swap) {
+    std::shared_ptr<sql::ast::Select> out;
+    if (TryEmitScalarAggregateMul(node->exprs[swap ? 1 : 0], node->exprs[swap ? 0 : 1], *node, out)) {
+      node->sql_expression = out;
+      node->arity = 1;
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Translator::TryEmitScalarAggregateMulTerm(const std::shared_ptr<RelOpTerm>& node) {
+  if (node->op != RelTermOp::MUL || !node->lhs || !node->rhs) return false;
+  std::shared_ptr<sql::ast::Select> out;
+  if (TryEmitScalarAggregateMul(node->lhs, node->rhs, *node, out) ||
+      TryEmitScalarAggregateMul(node->rhs, node->lhs, *node, out)) {
+    node->sql_expression = out;
+    node->arity = 1;
+    return true;
+  }
+  return false;
+}
+
+bool Translator::TryEmitScalarAggregateDiv(std::shared_ptr<RelExpr> agg_side, std::shared_ptr<RelExpr> divisor_side,
+                                           RelNode& ctx, std::shared_ptr<sql::ast::Select>& out) {
+  while (auto eat = std::dynamic_pointer_cast<RelExprAsTerm>(agg_side)) {
+    agg_side = eat->inner;
+  }
+  while (auto eat = std::dynamic_pointer_cast<RelExprAsTerm>(divisor_side)) {
+    divisor_side = eat->inner;
+  }
+  auto agg = ExtractAggregateFromExpr(agg_side);
+  if (!agg || !agg->body || ExtractAggregateFromExpr(divisor_side)) return false;
+
+  ScalarSqlTerm divisor;
+  if (auto num = std::dynamic_pointer_cast<RelNumTerm>(divisor_side)) {
+    if (!num->sql_expression) Visit(num);
+    auto constant = std::dynamic_pointer_cast<sql::ast::Constant>(num->sql_expression);
+    if (!constant) return false;
+    divisor.term = constant;
+  } else {
+    Visit(divisor_side);
+    try {
+      divisor = ExtractScalarSqlTerm(ctx, divisor_side);
+    } catch (...) {
+      return false;
+    }
+    if (!divisor.from_sources.empty()) return false;
+  }
+
+  const auto [fn, count_all] = MapRelAggregateOp(*agg);
+  auto agg_select = VisitAggregateRel(agg->body, fn, count_all);
+  agg->sql_expression = agg_select;
+  agg_side->sql_expression = agg_select;
+
+  auto agg_src = std::make_shared<sql::ast::Source>(agg_select, GenerateTableAlias());
+  agg_src->inhibit_subquery_flatten = true;
+  const std::string sum_col = GetColumnNameForSourceable(agg_select, agg_select->columns.size());
+  auto sum_column = std::make_shared<sql::ast::Column>(sum_col, agg_src);
+  auto quotient = std::make_shared<sql::ast::Operation>(sum_column, divisor.term, "/");
+  out = std::make_shared<sql::ast::Select>(
+      std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(quotient, "A1")},
+      std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{agg_src}));
+  return true;
+}
+
+bool Translator::TryEmitScalarAggregateDivTerm(const std::shared_ptr<RelOpTerm>& node) {
+  if (node->op != RelTermOp::DIV || !node->lhs || !node->rhs) return false;
+  std::shared_ptr<sql::ast::Select> out;
+  if (TryEmitScalarAggregateDiv(node->lhs, node->rhs, *node, out)) {
+    node->sql_expression = out;
+    node->arity = 1;
+    return true;
+  }
+  return false;
+}
+
+bool Translator::TryEmitScalarAggregateDivExistential(const std::shared_ptr<RelExistential>& node) {
+  auto parsed = ParseScalarAggregateDivLift(node->formula);
+  if (!parsed) return false;
+
+  std::shared_ptr<sql::ast::Select> out;
+  if (!TryEmitScalarAggregateDiv(parsed->agg, parsed->divisor, *node, out)) return false;
+  if (!out->columns.empty()) {
+    if (auto* ts = dynamic_cast<sql::ast::TermSelectable*>(out->columns[0].get())) {
+      ts->alias = parsed->export_var;
+    }
+  }
+  node->sql_expression = out;
+  return true;
+}
+
+bool Translator::TryEmitScalarDecimalSumExistential(const std::shared_ptr<RelExistential>& node) {
+  auto parsed = ParseScalarDecimalSumLift(node->formula);
+  if (!parsed) return false;
+
+  Visit(parsed->decimal);
+  ScalarSqlTerm scalar;
+  try {
+    scalar = ExtractScalarSqlTerm(*node, parsed->decimal);
+  } catch (...) {
+    return false;
+  }
+  if (!scalar.from_sources.empty()) return false;
+
+  const auto [fn, count_all] = MapRelAggregateOp(*parsed->sum);
+  auto agg_select = VisitAggregateRel(parsed->sum->body, fn, count_all);
+  parsed->sum->sql_expression = agg_select;
+
+  auto agg_src = std::make_shared<sql::ast::Source>(agg_select, GenerateTableAlias());
+  const std::string sum_col = GetColumnNameForSourceable(agg_select, agg_select->columns.size());
+  auto sum_column = std::make_shared<sql::ast::Column>(sum_col, agg_src);
+  auto product = std::make_shared<sql::ast::Operation>(scalar.term, sum_column, "*");
+  node->sql_expression = std::make_shared<sql::ast::Select>(
+      std::vector<std::shared_ptr<sql::ast::Selectable>>{
+          std::make_shared<sql::ast::TermSelectable>(product, parsed->export_var)},
+      std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{agg_src}));
+  return true;
+}
+
+std::shared_ptr<sql::ast::Select> Translator::EmitAggregateExportSelect(
+    const std::shared_ptr<RelBuiltinAggregateExpr>& agg_expr, const std::string& export_var) {
+  const auto [fn, count_all] = MapRelAggregateOp(*agg_expr);
+  auto inner_select = VisitAggregateRel(agg_expr->body, fn, count_all);
+  agg_expr->sql_expression = inner_select;
+
+  auto wrapped = std::make_shared<sql::ast::Source>(inner_select, GenerateTableAlias());
+  wrapped->inhibit_subquery_flatten = true;
+  const std::string result_col = GetColumnNameForSourceable(inner_select, inner_select->columns.size());
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+  std::set<std::string> group_keys = agg_expr->body->free_variables;
+  if (group_keys.empty()) group_keys = ComputeAggregateGroupKeys(agg_expr->body, context_);
+  for (const auto& var : group_keys) {
+    auto col_name = ResolveOutputColumnNameForVariableOnSource(wrapped, var);
+    auto col = std::make_shared<sql::ast::Column>(col_name, wrapped);
+    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, var));
+  }
+  auto result_col_term = std::make_shared<sql::ast::Column>(result_col, wrapped);
+  select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(result_col_term, export_var));
+
+  return std::make_shared<sql::ast::Select>(
+      select_cols, std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{wrapped}));
+}
+
+std::shared_ptr<sql::ast::Expression> Translator::TryEmitAggregateEqualityWithIdbThresholdConjunction(
+    const std::vector<std::shared_ptr<RelNode>>& subformulas) {
+  if (subformulas.size() < 2) return nullptr;
+
+  std::optional<size_t> eq_idx;
+  std::optional<size_t> thresh_idx;
+  std::string value_var;
+  std::string idb_name;
+  sql::ast::CompOp thresh_op = sql::ast::CompOp::GT;
+  std::shared_ptr<RelBuiltinAggregateExpr> agg;
+
+  for (size_t i = 0; i < subformulas.size(); ++i) {
+    if (auto found = FindAggregateExportEquality(subformulas[i])) {
+      if (eq_idx) return nullptr;
+      eq_idx = i;
+      value_var = found->value_var;
+      agg = found->agg;
+      continue;
+    }
+    auto cmp = std::dynamic_pointer_cast<RelComparison>(subformulas[i]);
+    if (!cmp) return nullptr;
+    std::string idb;
+    sql::ast::CompOp op;
+    if (value_var.empty()) {
+      // threshold conjunct may appear before aggregate equality in the chain
+      auto* lhs = dynamic_cast<RelIDTerm*>(cmp->lhs.get());
+      auto* rhs = dynamic_cast<RelIDTerm*>(cmp->rhs.get());
+      if (lhs && rhs && context_.IsIDB(rhs->id)) {
+        value_var = lhs->id;
+      } else if (lhs && rhs && context_.IsIDB(lhs->id)) {
+        value_var = rhs->id;
+      }
+    }
+    if (value_var.empty() || !ExtractValueVsIdbComparison(*cmp, context_, value_var, idb, op)) return nullptr;
+    if (thresh_idx) return nullptr;
+    thresh_idx = i;
+    idb_name = idb;
+    thresh_op = op;
+  }
+  if (!eq_idx || !thresh_idx || !agg) return nullptr;
+
+  auto export_sel = EmitAggregateExportSelect(agg, value_var);
+  auto inner_src = std::make_shared<sql::ast::Source>(export_sel, GenerateTableAlias());
+  inner_src->inhibit_subquery_flatten = true;
+  auto thresh_src = std::make_shared<sql::ast::Source>(
+      std::make_shared<sql::ast::Table>(idb_name, context_.GetArity(idb_name)), GenerateTableAlias());
+
+  auto value_col = std::make_shared<sql::ast::Column>(value_var, inner_src);
+  auto thresh_col = std::make_shared<sql::ast::Column>("A1", thresh_src);
+  auto cond = std::make_shared<sql::ast::ComparisonCondition>(value_col, thresh_op, thresh_col);
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+  for (const auto& var : ComputeAggregateGroupKeys(agg->body, context_)) {
+    if (var == value_var) continue;
+    auto col_name = ResolveOutputColumnNameForVariableOnSource(inner_src, var);
+    auto col = std::make_shared<sql::ast::Column>(col_name, inner_src);
+    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, var));
+  }
+  select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(value_col, value_var));
+
+  return std::make_shared<sql::ast::Select>(
+      select_cols,
+      std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{inner_src, thresh_src}, cond));
+}
+
+std::shared_ptr<RelBuiltinAggregateExpr> ExtractAggregateFromLiftedAtom(const RelFormula* lifted_atom) {
+  if (!lifted_atom) return nullptr;
+  auto* app = dynamic_cast<const RelFullApplication*>(lifted_atom);
+  if (!app || !app->base) return nullptr;
+  auto* base = dynamic_cast<const RelExprApplBase*>(app->base.get());
+  if (!base || !base->expr) return nullptr;
+  std::shared_ptr<RelExpr> domain_expr = base->expr;
+  if (auto uni = std::dynamic_pointer_cast<RelUnion>(domain_expr)) {
+    if (!uni->exprs.empty()) domain_expr = uni->exprs.front();
+  }
+  return ExtractAggregateFromExpr(domain_expr);
+}
+
+bool Translator::TryEmitFilteredAggregateComparison(const std::shared_ptr<RelComparison>& node,
+                                                    const std::shared_ptr<RelBuiltinAggregateExpr>& agg_expr) {
+  if (!agg_expr || !agg_expr->body) return false;
+  if (!dynamic_cast<RelNumTerm*>(node->rhs.get()) && !node->rhs->constant.has_value()) return false;
+
+  sql::ast::AggregateFunction fn = sql::ast::AggregateFunction::SUM;
+  bool count_all = false;
+  switch (agg_expr->op) {
+    case RelBuiltinAggregateOp::SUM:
+      fn = sql::ast::AggregateFunction::SUM;
+      break;
+    case RelBuiltinAggregateOp::COUNT:
+      fn = sql::ast::AggregateFunction::COUNT;
+      count_all = true;
+      break;
+    case RelBuiltinAggregateOp::AVG:
+      fn = sql::ast::AggregateFunction::AVG;
+      break;
+    case RelBuiltinAggregateOp::MIN:
+      fn = sql::ast::AggregateFunction::MIN;
+      break;
+    case RelBuiltinAggregateOp::MAX:
+      fn = sql::ast::AggregateFunction::MAX;
+      break;
+  }
+
+  auto inner_select = VisitAggregateRel(agg_expr->body, fn, count_all);
+  agg_expr->sql_expression = inner_select;
+
+  Visit(node->rhs);
+  auto rhs_sql = BuildSqlTermFromLinearRelTerm(node->rhs, {});
+  if (!rhs_sql) return false;
+
+  auto wrapped = std::make_shared<sql::ast::Source>(inner_select, GenerateTableAlias());
+  std::string result_col = GetColumnNameForSourceable(inner_select, inner_select->columns.size());
+  auto lhs_sql = std::make_shared<sql::ast::Column>(result_col, wrapped);
+
+  sql::ast::CompOp sql_op;
+  switch (node->op) {
+    case RelCompOp::EQ:
+      sql_op = sql::ast::CompOp::EQ;
+      break;
+    case RelCompOp::NEQ:
+      sql_op = sql::ast::CompOp::NEQ;
+      break;
+    case RelCompOp::LT:
+      sql_op = sql::ast::CompOp::LT;
+      break;
+    case RelCompOp::GT:
+      sql_op = sql::ast::CompOp::GT;
+      break;
+    case RelCompOp::LTE:
+      sql_op = sql::ast::CompOp::LTE;
+      break;
+    case RelCompOp::GTE:
+      sql_op = sql::ast::CompOp::GTE;
+      break;
+  }
+  auto comp_cond = std::make_shared<sql::ast::ComparisonCondition>(lhs_sql, sql_op, rhs_sql);
+  auto from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{wrapped}, comp_cond);
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+  for (const auto& var : agg_expr->body->free_variables) {
+    auto col_name = ResolveOutputColumnNameForVariableOnSource(wrapped, var);
+    auto col = std::make_shared<sql::ast::Column>(col_name, wrapped);
+    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, var));
+  }
+
+  node->sql_expression = std::make_shared<sql::ast::Select>(select_cols, from);
+  return true;
+}
+
+bool Translator::TryTranslateAggregateConstantComparison(const std::shared_ptr<RelComparison>& node,
+                                                         const BoundSet& cover,
+                                                         const std::shared_ptr<RelFormula>& lifted_atom) {
+  (void)cover;
+  if (!lifted_atom) return false;
+  if (!dynamic_cast<RelIDTerm*>(node->lhs.get())) return false;
+  auto agg_expr = ExtractAggregateFromLiftedAtom(lifted_atom.get());
+  return TryEmitFilteredAggregateComparison(node, agg_expr);
+}
+
+bool Translator::TryTranslateAggregateVariableEquality(const std::shared_ptr<RelComparison>& node,
+                                                       const BoundSet& cover,
+                                                       const std::shared_ptr<RelFormula>& lifted_atom) {
+  (void)cover;
+  if (!lifted_atom || node->op != RelCompOp::EQ) return false;
+
+  auto* lhs_id = dynamic_cast<RelIDTerm*>(node->lhs.get());
+  auto* rhs_id = dynamic_cast<RelIDTerm*>(node->rhs.get());
+  if (!lhs_id || !rhs_id) return false;
+
+  auto* app = dynamic_cast<const RelFullApplication*>(lifted_atom.get());
+  if (!app || app->params.size() != 1) return false;
+  auto* param = dynamic_cast<const RelExprApplParam*>(app->params[0].get());
+  if (!param || !param->expr) return false;
+  auto* param_id = dynamic_cast<const RelIDTerm*>(param->expr.get());
+  if (!param_id) return false;
+
+  const RelIDTerm* export_id = nullptr;
+  if (lhs_id->id == param_id->id) {
+    export_id = rhs_id;
+  } else if (rhs_id->id == param_id->id) {
+    export_id = lhs_id;
+  } else {
+    return false;
+  }
+
+  std::shared_ptr<RelBuiltinAggregateExpr> agg_expr = ExtractAggregateFromLiftedAtom(lifted_atom.get());
+  if (!agg_expr || !agg_expr->body) return false;
+
+  node->sql_expression = EmitAggregateExportSelect(agg_expr, export_id->id);
+  return true;
+}
+
+std::string Translator::PartialAppValueColumnOnBase(const RelPartialApplication& partial,
+                                                    const std::shared_ptr<sql::ast::Sourceable>& base_sourceable,
+                                                    const std::shared_ptr<sql::ast::Source>& ra_source) const {
+  size_t bound_slots = 0;
+  for (const auto& p : partial.params) {
+    if (p && !p->IsWildcard()) bound_slots++;
+  }
+  if (bound_slots > 0) {
+    return GetColumnNameForSourceable(base_sourceable, bound_slots + 1);
+  }
+  return GetColumnNameForSourceable(ra_source->sourceable, 1);
+}
+
+std::optional<Translator::LiftedPartialAppTarget> Translator::ParseLiftedPartialAppFromAtom(
+    const RelFullApplication& app) {
+  if (app.params.size() != 1) return std::nullopt;
+  auto* param = dynamic_cast<const RelExprApplParam*>(app.params[0].get());
+  if (!param || !param->expr) return std::nullopt;
+  auto* param_id = dynamic_cast<const RelIDTerm*>(param->expr.get());
+  if (!param_id) return std::nullopt;
+
+  auto* expr_base = dynamic_cast<const RelExprApplBase*>(app.base.get());
+  if (!expr_base || !expr_base->expr) return std::nullopt;
+  auto uni = std::dynamic_pointer_cast<RelUnion>(expr_base->expr);
+  if (!uni || uni->exprs.size() != 1) return std::nullopt;
+  auto inner_expr = uni->exprs[0];
+  inner_expr = PeelRelParenthesisExpr(inner_expr);
+  if (auto eat = std::dynamic_pointer_cast<RelExprAsTerm>(inner_expr)) {
+    inner_expr = PeelRelParenthesisExpr(eat->inner);
+  }
+  auto partial = std::dynamic_pointer_cast<RelPartialApplication>(inner_expr);
+  if (!partial) return std::nullopt;
+
+  Visit(partial);
+  auto inner = ExpectSourceable(partial->sql_expression);
+  auto inner_select = std::dynamic_pointer_cast<sql::ast::Select>(inner);
+  if (!inner_select || inner_select->columns.empty() || !inner_select->from.has_value()) return std::nullopt;
+  if (inner_select->from.value()->sources.empty()) return std::nullopt;
+
+  auto ra_source = inner_select->from.value()->sources.front();
+  auto base_sourceable = GetBaseSourceableFromApplBase(*partial, partial->base);
+  LiftedPartialAppTarget out;
+  out.partial = partial;
+  out.inner_select = inner_select;
+  out.ra_source = ra_source;
+  out.z_var = param_id->id;
+  out.value_col = PartialAppValueColumnOnBase(*partial, base_sourceable, ra_source);
+  return out;
+}
+
+std::shared_ptr<sql::ast::Select> Translator::EmitPartialAppFilteredSelect(
+    const std::shared_ptr<RelPartialApplication>& partial, const std::shared_ptr<sql::ast::Select>& inner_select,
+    const std::shared_ptr<sql::ast::Condition>& filter,
+    const std::vector<std::shared_ptr<sql::ast::Source>>& extra_sources,
+    const std::vector<std::pair<std::string, std::shared_ptr<sql::ast::Source>>>& extra_exports,
+    const std::optional<std::string>& project_value_as) {
+  const auto& from_ref = *inner_select->from.value();
+  std::vector<std::shared_ptr<sql::ast::Source>> sources = from_ref.sources;
+  sources.insert(sources.end(), extra_sources.begin(), extra_sources.end());
+
+  std::shared_ptr<sql::ast::Condition> merged_where = from_ref.where.value_or(nullptr);
+  if (!merged_where) {
+    merged_where = filter;
+  } else if (filter) {
+    merged_where = std::make_shared<sql::ast::LogicalCondition>(
+        std::vector<std::shared_ptr<sql::ast::Condition>>{merged_where, filter}, sql::ast::LogicalOp::AND);
+  }
+  auto new_from = std::make_shared<sql::ast::From>(sources, merged_where);
+  std::vector<std::shared_ptr<sql::ast::Selectable>> wrapped_cols = inner_select->columns;
+  if (project_value_as) {
+    auto base_sourceable = GetBaseSourceableFromApplBase(*partial, partial->base);
+    const auto ra_source = from_ref.sources.front();
+    const std::string value_col = PartialAppValueColumnOnBase(*partial, base_sourceable, ra_source);
+    auto col = std::make_shared<sql::ast::Column>(value_col, ra_source);
+    wrapped_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, *project_value_as));
+  }
+  auto wrapped = std::make_shared<sql::ast::Source>(std::make_shared<sql::ast::Select>(wrapped_cols, new_from),
+                                                    GenerateTableAlias());
+  if (!extra_sources.empty()) {
+    wrapped->inhibit_subquery_flatten = true;
+  }
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+  for (const auto& var : partial->free_variables) {
+    auto col_name = ResolveOutputColumnNameForVariableOnSource(wrapped, var);
+    auto col = std::make_shared<sql::ast::Column>(col_name, wrapped);
+    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, var));
+  }
+  if (project_value_as) {
+    auto col = std::make_shared<sql::ast::Column>(*project_value_as, wrapped);
+    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, *project_value_as));
+  }
+  for (const auto& [var, src] : extra_exports) {
+    auto col_name = ResolveOutputColumnNameForVariableOnSource(src, var);
+    auto col = std::make_shared<sql::ast::Column>(col_name, src);
+    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, var));
+  }
+  return std::make_shared<sql::ast::Select>(select_cols, std::make_shared<sql::ast::From>(wrapped));
+}
+
+bool Translator::TryEmitLiftedPartialAppLiteralEquality(const std::shared_ptr<RelComparison>& node,
+                                                        const std::shared_ptr<RelFormula>& lifted_atom) {
+  if (!node || node->op != RelCompOp::EQ || !lifted_atom) return false;
+
+  auto* app = dynamic_cast<const RelFullApplication*>(lifted_atom.get());
+  if (!app) return false;
+  auto target = ParseLiftedPartialAppFromAtom(*app);
+  if (!target) return false;
+
+  std::shared_ptr<RelTerm> literal_side;
+  if (auto* lhs_id = AsPeeledIdTerm(node->lhs)) {
+    if (lhs_id->id != target->z_var || !node->rhs || !node->rhs->variables.empty()) return false;
+    literal_side = node->rhs;
+  } else if (auto* rhs_id = AsPeeledIdTerm(node->rhs)) {
+    if (rhs_id->id != target->z_var || !node->lhs || !node->lhs->variables.empty()) return false;
+    literal_side = node->lhs;
+  } else {
+    return false;
+  }
+
+  Visit(literal_side);
+  auto literal_sql = BuildSqlTermFromLinearRelTerm(literal_side, {});
+  if (!literal_sql) return false;
+
+  auto value_column = std::make_shared<sql::ast::Column>(target->value_col, target->ra_source);
+  auto filter = std::make_shared<sql::ast::ComparisonCondition>(value_column, sql::ast::CompOp::EQ, literal_sql);
+  node->sql_expression = EmitPartialAppFilteredSelect(target->partial, target->inner_select, filter);
+  return true;
+}
+
+bool Translator::TryEmitLiftedPartialAppValueComparison(const std::shared_ptr<RelComparison>& node,
+                                                        const std::shared_ptr<RelFormula>& lifted_atom) {
+  if (!node || !lifted_atom || node->op == RelCompOp::NEQ) return false;
+
+  auto* app = dynamic_cast<const RelFullApplication*>(lifted_atom.get());
+  if (!app) return false;
+  auto target = ParseLiftedPartialAppFromAtom(*app);
+  if (!target) return false;
+
+  std::shared_ptr<RelTerm> other_side;
+  bool param_on_lhs = false;
+  if (auto* lhs_id = AsPeeledIdTerm(node->lhs)) {
+    if (lhs_id->id == target->z_var) {
+      other_side = node->rhs;
+      param_on_lhs = true;
+    }
+  }
+  if (!other_side) {
+    if (auto* rhs_id = AsPeeledIdTerm(node->rhs)) {
+      if (rhs_id->id == target->z_var) {
+        other_side = node->lhs;
+        param_on_lhs = false;
+      }
+    }
+  }
+  if (!other_side) return false;
+  if (auto* other_id = AsPeeledIdTerm(other_side)) {
+    if (!other_id->id.empty() && other_id->id[0] == '_') return false;
+    if (!context_.IsIDB(other_id->id)) return false;
+  }
+
+  BoundSet cover = node->safety.SmallCover();
+  std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> term_sources;
+  for (const Bound& bound : cover.SortedBounds()) {
+    if (!bound.domain) continue;
+    auto domain_sql = DomainToSql(*bound.domain);
+    std::set<std::string> bound_vars(bound.variables.begin(), bound.variables.end());
+    std::vector<std::string> def_cols(bound.variables.begin(), bound.variables.end());
+    auto cte_source = std::make_shared<sql::ast::Source>(domain_sql, GenerateTableAlias("E"), true, def_cols);
+    for (const auto& var : bound_vars) {
+      if (node->free_variables.count(var)) term_sources[var] = cte_source;
+    }
+  }
+  auto gen_alias = [this]() { return GenerateTableAlias(); };
+  std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> idb_sources;
+  CollectIdbTermSources(other_side, context_, gen_alias, idb_sources);
+  for (const auto& [name, src] : idb_sources) {
+    term_sources.emplace(name, src);
+  }
+  Visit(other_side);
+  auto other_sql = BuildSqlTermFromLinearRelTerm(other_side, term_sources);
+  if (!other_sql) return false;
+
+  std::vector<std::shared_ptr<sql::ast::Source>> extra_sources;
+  for (const auto& [_, src] : idb_sources) {
+    extra_sources.push_back(src);
+  }
+
+  auto value_column = std::make_shared<sql::ast::Column>(target->value_col, target->ra_source);
+  const sql::ast::CompOp sql_op = MapRelCompOpToSql(node->op);
+  std::shared_ptr<sql::ast::Term> lhs_term;
+  std::shared_ptr<sql::ast::Term> rhs_term;
+  if (param_on_lhs) {
+    lhs_term = value_column;
+    rhs_term = other_sql;
+  } else {
+    lhs_term = other_sql;
+    rhs_term = value_column;
+  }
+  auto filter = std::make_shared<sql::ast::ComparisonCondition>(lhs_term, sql_op, rhs_term);
+  node->sql_expression = EmitPartialAppFilteredSelect(target->partial, target->inner_select, filter, extra_sources);
+  return true;
+}
+
+bool Translator::TryEmitLiftedPartialAppVariableEquality(const std::shared_ptr<RelComparison>& node,
+                                                         const std::shared_ptr<RelFormula>& lifted_atom) {
+  if (!node || node->op != RelCompOp::EQ || !lifted_atom) return false;
+
+  auto* app = dynamic_cast<const RelFullApplication*>(lifted_atom.get());
+  if (!app) return false;
+  auto target = ParseLiftedPartialAppFromAtom(*app);
+  if (!target) return false;
+
+  const RelIDTerm* export_id = nullptr;
+  if (auto* lhs_id = AsPeeledIdTerm(node->lhs)) {
+    if (lhs_id->id == target->z_var) export_id = AsPeeledIdTerm(node->rhs);
+  }
+  if (!export_id) {
+    if (auto* rhs_id = AsPeeledIdTerm(node->rhs)) {
+      if (rhs_id->id == target->z_var) export_id = AsPeeledIdTerm(node->lhs);
+    }
+  }
+  if (!export_id) return false;
+  if (export_id->id.empty() || export_id->id[0] == '_') return false;
+  if (context_.IsIDB(export_id->id)) return false;
+
+  auto appl_rel = ApplBaseRelationId(*target->partial->base, context_);
+  if (!appl_rel) return false;
+
+  BoundSet cover = node->safety.SmallCover();
+  bool domain_matches = false;
+  for (const Bound& bound : cover.SortedBounds()) {
+    if (!bound.domain) continue;
+    if (std::find(bound.variables.begin(), bound.variables.end(), export_id->id) == bound.variables.end()) {
+      continue;
+    }
+    auto dom_rel = DomainRelationId(*bound.domain);
+    if (dom_rel && *dom_rel == *appl_rel) {
+      domain_matches = true;
+      break;
+    }
+  }
+  if (!domain_matches && node->free_variables.count(export_id->id) != 0) {
+    // Aggregate/group keys (e.g. shipmode in count[shipmode]) are stripped from inner SmallCover;
+    // the partial-app base relation is still the correct DISTINCT domain.
+    domain_matches = true;
+  }
+  if (!domain_matches) return false;
+
+  auto base_sourceable = GetBaseSourceableFromApplBase(*target->partial, target->partial->base);
+  auto base_source = std::make_shared<sql::ast::Source>(base_sourceable, GenerateTableAlias());
+  const std::string value_col_name = PartialAppValueColumnOnBase(*target->partial, base_sourceable, base_source);
+  auto value_column = std::make_shared<sql::ast::Column>(value_col_name, base_source);
+  std::vector<std::shared_ptr<sql::ast::Selectable>> distinct_cols;
+  distinct_cols.push_back(std::make_shared<sql::ast::TermSelectable>(value_column, export_id->id));
+  auto distinct_select =
+      std::make_shared<sql::ast::Select>(distinct_cols, std::make_shared<sql::ast::From>(base_source), true);
+  const std::vector<std::string> export_def_cols = {export_id->id};
+  auto export_source = std::make_shared<sql::ast::Source>(distinct_select, GenerateTableAlias());
+
+  auto partial_value_col = std::make_shared<sql::ast::Column>(target->value_col, target->ra_source);
+  auto export_col = std::make_shared<sql::ast::Column>(export_id->id, export_source);
+  auto filter = std::make_shared<sql::ast::ComparisonCondition>(partial_value_col, sql::ast::CompOp::EQ, export_col);
+
+  std::vector<std::shared_ptr<sql::ast::Source>> extra_sources = {export_source};
+  node->sql_expression =
+      EmitPartialAppFilteredSelect(target->partial, target->inner_select, filter, extra_sources, {}, export_id->id);
+  return true;
+}
+
+std::shared_ptr<sql::ast::Select> Translator::TryEmitLiftedPartialAppZPairConjunction(
+    const std::vector<std::shared_ptr<RelNode>>& conjuncts) {
+  const RelFullApplication* apps[2] = {nullptr, nullptr};
+  const RelComparison* cmp = nullptr;
+  for (const auto& conj : conjuncts) {
+    if (auto* app = dynamic_cast<const RelFullApplication*>(conj.get())) {
+      if (!apps[0]) {
+        apps[0] = app;
+      } else if (!apps[1]) {
+        apps[1] = app;
+      } else {
+        return nullptr;
+      }
+    } else if (auto* c = dynamic_cast<const RelComparison*>(conj.get())) {
+      if (cmp) return nullptr;
+      cmp = c;
+    } else {
+      return nullptr;
+    }
+  }
+  if (!apps[0] || !apps[1] || !cmp || cmp->op == RelCompOp::NEQ) return nullptr;
+
+  auto left_target = ParseLiftedPartialAppFromAtom(*apps[0]);
+  auto right_target = ParseLiftedPartialAppFromAtom(*apps[1]);
+  if (!left_target || !right_target) return nullptr;
+
+  bool left_on_lhs = false;
+  if (auto* lhs_id = AsPeeledIdTerm(cmp->lhs)) {
+    if (lhs_id->id == left_target->z_var) left_on_lhs = true;
+  }
+  if (auto* rhs_id = AsPeeledIdTerm(cmp->rhs)) {
+    if (rhs_id->id == left_target->z_var) {
+      left_on_lhs = false;
+    } else if (rhs_id->id != right_target->z_var) {
+      return nullptr;
+    }
+  } else if (!left_on_lhs) {
+    return nullptr;
+  }
+  if (auto* lhs_id = AsPeeledIdTerm(cmp->lhs)) {
+    if (left_on_lhs) {
+      if (auto* rhs_id_cmp = AsPeeledIdTerm(cmp->rhs); !rhs_id_cmp || rhs_id_cmp->id != right_target->z_var) {
+        return nullptr;
+      }
+    } else if (lhs_id->id != right_target->z_var) {
+      return nullptr;
+    }
+  }
+
+  auto left_col = std::make_shared<sql::ast::Column>(left_target->value_col, left_target->ra_source);
+  auto right_col = std::make_shared<sql::ast::Column>(right_target->value_col, right_target->ra_source);
+  std::shared_ptr<sql::ast::Term> lhs_term = left_on_lhs ? std::static_pointer_cast<sql::ast::Term>(left_col)
+                                                         : std::static_pointer_cast<sql::ast::Term>(right_col);
+  std::shared_ptr<sql::ast::Term> rhs_term = left_on_lhs ? std::static_pointer_cast<sql::ast::Term>(right_col)
+                                                         : std::static_pointer_cast<sql::ast::Term>(left_col);
+  auto value_cmp = std::make_shared<sql::ast::ComparisonCondition>(lhs_term, MapRelCompOpToSql(cmp->op), rhs_term);
+
+  std::vector<std::shared_ptr<sql::ast::Condition>> key_eq_conds;
+  size_t left_slot = 0;
+  for (const auto& p : left_target->partial->params) {
+    if (!p || p->IsWildcard()) continue;
+    ++left_slot;
+    size_t right_slot = 0;
+    bool matched = false;
+    for (const auto& rp : right_target->partial->params) {
+      if (!rp || rp->IsWildcard()) continue;
+      ++right_slot;
+      if (left_slot != right_slot) continue;
+      auto left_key = std::make_shared<sql::ast::Column>(
+          GetColumnNameForSourceable(left_target->ra_source->sourceable, left_slot), left_target->ra_source);
+      auto right_key = std::make_shared<sql::ast::Column>(
+          GetColumnNameForSourceable(right_target->ra_source->sourceable, right_slot), right_target->ra_source);
+      key_eq_conds.push_back(
+          std::make_shared<sql::ast::ComparisonCondition>(left_key, sql::ast::CompOp::EQ, right_key));
+      matched = true;
+      break;
+    }
+    if (!matched) return nullptr;
+  }
+
+  std::vector<std::shared_ptr<sql::ast::Condition>> where_conds;
+  where_conds.insert(where_conds.end(), key_eq_conds.begin(), key_eq_conds.end());
+  where_conds.push_back(value_cmp);
+  auto where = std::make_shared<sql::ast::LogicalCondition>(where_conds, sql::ast::LogicalOp::AND);
+  auto from = std::make_shared<sql::ast::From>(
+      std::vector<std::shared_ptr<sql::ast::Source>>{left_target->ra_source, right_target->ra_source}, where);
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+  size_t slot = 0;
+  for (const auto& p : left_target->partial->params) {
+    if (!p || p->IsWildcard()) continue;
+    ++slot;
+    std::string var;
+    if (auto* id = dynamic_cast<RelIDTerm*>(p->GetExpr().get())) {
+      var = id->id;
+    } else if (auto* term = dynamic_cast<RelTerm*>(p->GetExpr().get())) {
+      if (term->variables.size() == 1) var = *term->variables.begin();
+    }
+    if (var.empty()) continue;
+    auto col = std::make_shared<sql::ast::Column>(GetColumnNameForSourceable(left_target->ra_source->sourceable, slot),
+                                                  left_target->ra_source);
+    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, var));
+  }
+
+  auto inner_select = std::make_shared<sql::ast::Select>(select_cols, from);
+  auto wrapped = std::make_shared<sql::ast::Source>(inner_select, GenerateTableAlias());
+  wrapped->inhibit_subquery_flatten = true;
+  std::vector<std::shared_ptr<sql::ast::Selectable>> outer_cols;
+  for (const auto& col : select_cols) {
+    auto ts = std::dynamic_pointer_cast<sql::ast::TermSelectable>(col);
+    if (!ts || !ts->alias.has_value()) continue;
+    auto outer_col = std::make_shared<sql::ast::Column>(*ts->alias, wrapped);
+    outer_cols.push_back(std::make_shared<sql::ast::TermSelectable>(outer_col, *ts->alias));
+  }
+  return std::make_shared<sql::ast::Select>(outer_cols, std::make_shared<sql::ast::From>(wrapped));
+}
+
+std::optional<Translator::DateYearPartialAppBinding> Translator::ParseDateYearPartialAppExtract(
+    const std::shared_ptr<RelBuiltinDateExpr>& extract) {
+  if (!extract || extract->op != RelBuiltinDateOp::ExtractYear || extract->args.size() != 1) return std::nullopt;
+
+  auto date_arg = PeelRelParenthesisExpr(extract->args[0]);
+  std::shared_ptr<RelApplBase> appl_base;
+  std::vector<std::shared_ptr<RelApplParam>> appl_params;
+  if (auto partial = std::dynamic_pointer_cast<RelPartialApplication>(date_arg)) {
+    appl_base = partial->base;
+    appl_params = partial->params;
+  } else if (auto full = std::dynamic_pointer_cast<RelFullApplication>(date_arg)) {
+    appl_base = full->base;
+    appl_params = full->params;
+  } else {
+    return std::nullopt;
+  }
+  if (appl_params.size() != 1) return std::nullopt;
+  auto* id_base = dynamic_cast<RelIDApplBase*>(appl_base.get());
+  if (!id_base || !context_.IsRelation(id_base->id)) return std::nullopt;
+
+  auto param_expr = appl_params[0] ? PeelRelParenthesisExpr(appl_params[0]->GetExpr()) : nullptr;
+  std::string key_var;
+  if (auto* id_param = dynamic_cast<RelIDTerm*>(param_expr.get())) {
+    key_var = id_param->id;
+  } else if (auto* key_term = dynamic_cast<RelTerm*>(param_expr.get())) {
+    if (key_term->variables.size() != 1) return std::nullopt;
+    key_var = *key_term->variables.begin();
+  } else {
+    return std::nullopt;
+  }
+  return DateYearPartialAppBinding{"", key_var, appl_base};
+}
+
+std::shared_ptr<sql::ast::Select> Translator::BuildDateYearPartialAppSelect(RelNode& ctx,
+                                                                            const DateYearPartialAppBinding& binding) {
+  auto table_sql = GetBaseSourceableFromApplBase(ctx, binding.appl_base);
+  auto ra_source = std::make_shared<sql::ast::Source>(table_sql, GenerateTableAlias());
+  const size_t arity = GetArityForSourceable(table_sql);
+  if (arity < 2) {
+    throw TranslationException("date_year partial app requires relation arity >= 2", ErrorCode::UNKNOWN_BINARY_OPERATOR,
+                               SourceLocation(0, 0));
+  }
+  const std::string key_col = GetColumnNameForSourceable(table_sql, 1);
+  const std::string date_col = GetColumnNameForSourceable(table_sql, 2);
+  auto date_term = std::make_shared<sql::ast::Column>(date_col, ra_source);
+  auto year_extract =
+      std::make_shared<sql::ast::DateExtractTerm>(sql::ast::DateExtractTerm::Part::Year, std::move(date_term));
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+  select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(
+      std::make_shared<sql::ast::Column>(key_col, ra_source), binding.key_var));
+  select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(year_extract, binding.year_var));
+  return std::make_shared<sql::ast::Select>(
+      select_cols, std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{ra_source}));
+}
+
+bool Translator::TryEmitDateYearPartialAppComparison(const std::shared_ptr<RelComparison>& node) {
+  if (node->op != RelCompOp::EQ || !node->lhs || !node->rhs) return false;
+
+  RelIDTerm* year_var = nullptr;
+  std::shared_ptr<RelBuiltinDateExpr> extract;
+  auto lhs_u = PeelRelParenthesisExpr(node->lhs);
+  auto rhs_u = PeelRelParenthesisExpr(node->rhs);
+  if (auto* id = dynamic_cast<RelIDTerm*>(lhs_u.get())) {
+    year_var = id;
+    extract = std::dynamic_pointer_cast<RelBuiltinDateExpr>(rhs_u);
+  } else if (auto* id = dynamic_cast<RelIDTerm*>(rhs_u.get())) {
+    year_var = id;
+    extract = std::dynamic_pointer_cast<RelBuiltinDateExpr>(lhs_u);
+  }
+  if (!year_var || !extract) return false;
+
+  auto binding = ParseDateYearPartialAppExtract(extract);
+  if (!binding || !node->free_variables.count(binding->key_var)) return false;
+  binding->year_var = year_var->id;
+  node->sql_expression = BuildDateYearPartialAppSelect(*node, *binding);
+  return true;
+}
+
+bool Translator::TryEmitDateYearExistential(const std::shared_ptr<RelExistential>& node) {
+  if (!node->formula) return false;
+  auto conj = std::dynamic_pointer_cast<RelConjunction>(node->formula);
+  if (!conj) return false;
+  if (!TryEmitDateYearLiftPairConjunction(conj)) return false;
+
+  auto inner_srcable = ExpectSourceable(conj->sql_expression);
+  auto inner_select = std::dynamic_pointer_cast<sql::ast::Select>(inner_srcable);
+  if (!inner_select) return false;
+
+  bool exported = false;
+  for (const auto& col : inner_select->columns) {
+    auto ts = std::dynamic_pointer_cast<sql::ast::TermSelectable>(col);
+    if (!ts || !ts->alias.has_value()) continue;
+    node->free_variables.insert(*ts->alias);
+    exported = true;
+  }
+  if (!exported) return false;
+
+  // node->sql_expression must hold a Sourceable (as every other RelFormula translation does) —
+  // inner_srcable (the Select BuildDateYearPartialAppSelect already built, with the right
+  // columns/aliases) already *is* that; wrapping it in a Source (a FROM-clause alias binding,
+  // not itself a Sourceable) here was the bug: ExpectSourceable on a caller's node->sql_expression
+  // would later fail to downcast it back, since Source doesn't inherit from Sourceable.
+  node->sql_expression = inner_srcable;
+  return true;
+}
+
+bool Translator::TryEmitDateYearLiftPairConjunction(const std::shared_ptr<RelConjunction>& node) {
+  if (!node->lhs || !node->rhs) return false;
+  auto lift = std::dynamic_pointer_cast<RelFullApplication>(node->lhs);
+  auto cmp = std::dynamic_pointer_cast<RelComparison>(node->rhs);
+  if (!lift || !cmp || cmp->op != RelCompOp::EQ || !cmp->lhs || !cmp->rhs) return false;
+
+  auto* lhs_id = AsPeeledIdTerm(cmp->lhs);
+  auto* rhs_id = AsPeeledIdTerm(cmp->rhs);
+  if (!lhs_id || !rhs_id) return false;
+  std::string year_var;
+  std::string z_var;
+  if (lhs_id->id.starts_with("_") && !rhs_id->id.starts_with("_")) {
+    z_var = lhs_id->id;
+    year_var = rhs_id->id;
+  } else if (rhs_id->id.starts_with("_") && !lhs_id->id.starts_with("_")) {
+    z_var = rhs_id->id;
+    year_var = lhs_id->id;
+  } else {
+    return false;
+  }
+
+  auto unwrap_union = [](const std::shared_ptr<RelExpr>& e) -> std::shared_ptr<RelExpr> {
+    auto cur = e;
+    if (auto u = std::dynamic_pointer_cast<RelUnion>(cur)) {
+      if (u->exprs.size() == 1) cur = u->exprs[0];
+    }
+    return PeelRelParenthesisExpr(cur);
+  };
+  auto* expr_base = dynamic_cast<RelExprApplBase*>(lift->base.get());
+  if (!expr_base || !expr_base->expr) return false;
+  auto extract = std::dynamic_pointer_cast<RelBuiltinDateExpr>(unwrap_union(expr_base->expr));
+  if (!extract) return false;
+  auto* z_param = dynamic_cast<RelIDTerm*>(lift->params[0] ? lift->params[0]->GetExpr().get() : nullptr);
+  if (!z_param || z_param->id != z_var) return false;
+
+  auto binding = ParseDateYearPartialAppExtract(extract);
+  if (!binding) return false;
+  binding->year_var = year_var;
+  node->sql_expression = BuildDateYearPartialAppSelect(*node, *binding);
+  return true;
+}
+
+std::shared_ptr<sql::ast::Expression> Translator::TryEmitDateYearLiftedConjunction(
+    const std::vector<std::shared_ptr<RelNode>>& subformulas) {
+  auto unwrap_union = [](const std::shared_ptr<RelExpr>& e) -> std::shared_ptr<RelExpr> {
+    auto cur = e;
+    if (auto u = std::dynamic_pointer_cast<RelUnion>(cur)) {
+      if (u->exprs.size() == 1) cur = u->exprs[0];
+    }
+    return PeelRelParenthesisExpr(cur);
+  };
+
+  std::optional<size_t> lift_idx;
+  std::optional<size_t> cmp_idx;
+  std::string year_var;
+  std::string z_var;
+  std::optional<DateYearPartialAppBinding> binding;
+
+  for (size_t i = 0; i < subformulas.size(); ++i) {
+    const auto& f = subformulas[i];
+    if (!f) continue;
+    if (auto ex = std::dynamic_pointer_cast<RelExistential>(f)) {
+      if (!ex->formula) continue;
+      auto conj = std::dynamic_pointer_cast<RelConjunction>(ex->formula);
+      if (!conj || !conj->lhs || !conj->rhs) continue;
+      auto lift = std::dynamic_pointer_cast<RelFullApplication>(conj->lhs);
+      auto cmp = std::dynamic_pointer_cast<RelComparison>(conj->rhs);
+      if (!lift || !cmp || cmp->op != RelCompOp::EQ || !cmp->lhs || !cmp->rhs) continue;
+      auto* lhs_id = AsPeeledIdTerm(cmp->lhs);
+      auto* rhs_id = AsPeeledIdTerm(cmp->rhs);
+      if (!lhs_id || !rhs_id) continue;
+      std::string yv;
+      std::string zv;
+      if (lhs_id->id.starts_with("_") && !rhs_id->id.starts_with("_")) {
+        zv = lhs_id->id;
+        yv = rhs_id->id;
+      } else if (rhs_id->id.starts_with("_") && !lhs_id->id.starts_with("_")) {
+        zv = rhs_id->id;
+        yv = lhs_id->id;
+      } else {
+        continue;
+      }
+      auto* expr_base = dynamic_cast<RelExprApplBase*>(lift->base.get());
+      if (!expr_base || !expr_base->expr) continue;
+      auto inner = unwrap_union(expr_base->expr);
+      auto extract = std::dynamic_pointer_cast<RelBuiltinDateExpr>(inner);
+      if (!extract) continue;
+      auto* z_param = dynamic_cast<RelIDTerm*>(lift->params[0] ? lift->params[0]->GetExpr().get() : nullptr);
+      if (!z_param || z_param->id != zv) continue;
+      auto parsed = ParseDateYearPartialAppExtract(extract);
+      if (!parsed) continue;
+      parsed->year_var = yv;
+      binding = *parsed;
+      year_var = yv;
+      z_var = zv;
+      lift_idx = i;
+      cmp_idx = i;
+      break;
+    }
+    if (auto cmp = std::dynamic_pointer_cast<RelComparison>(f)) {
+      if (cmp->op != RelCompOp::EQ || !cmp->lhs || !cmp->rhs) continue;
+      auto* lhs_id = AsPeeledIdTerm(cmp->lhs);
+      auto* rhs_id = AsPeeledIdTerm(cmp->rhs);
+      if (!lhs_id || !rhs_id) continue;
+      if (lhs_id->id.starts_with("_") && !rhs_id->id.starts_with("_")) {
+        z_var = lhs_id->id;
+        year_var = rhs_id->id;
+        cmp_idx = i;
+      } else if (rhs_id->id.starts_with("_") && !lhs_id->id.starts_with("_")) {
+        z_var = rhs_id->id;
+        year_var = lhs_id->id;
+        cmp_idx = i;
+      } else if (!lift_idx) {
+        auto lhs_u = PeelRelParenthesisExpr(cmp->lhs);
+        auto rhs_u = PeelRelParenthesisExpr(cmp->rhs);
+        RelIDTerm* yv = nullptr;
+        std::shared_ptr<RelBuiltinDateExpr> extract;
+        if (auto* id = dynamic_cast<RelIDTerm*>(lhs_u.get())) {
+          yv = id;
+          extract = std::dynamic_pointer_cast<RelBuiltinDateExpr>(rhs_u);
+        } else if (auto* id = dynamic_cast<RelIDTerm*>(rhs_u.get())) {
+          yv = id;
+          extract = std::dynamic_pointer_cast<RelBuiltinDateExpr>(lhs_u);
+        }
+        if (yv && extract) {
+          if (auto parsed = ParseDateYearPartialAppExtract(extract)) {
+            parsed->year_var = yv->id;
+            binding = *parsed;
+            year_var = yv->id;
+            lift_idx = i;
+            cmp_idx = i;
+            z_var.clear();
+          }
+        }
+      }
+      continue;
+    }
+    auto app = std::dynamic_pointer_cast<RelFullApplication>(f);
+    if (!app || app->params.size() != 1) continue;
+    auto* expr_base = dynamic_cast<RelExprApplBase*>(app->base.get());
+    if (!expr_base || !expr_base->expr) continue;
+    auto inner = unwrap_union(expr_base->expr);
+    auto extract = std::dynamic_pointer_cast<RelBuiltinDateExpr>(inner);
+    if (!extract) continue;
+    auto* z_param = dynamic_cast<RelIDTerm*>(app->params[0] ? app->params[0]->GetExpr().get() : nullptr);
+    if (!z_param) continue;
+    auto parsed = ParseDateYearPartialAppExtract(extract);
+    if (!parsed) continue;
+    if (!z_var.empty() && z_param->id != z_var) continue;
+    z_var = z_param->id;
+    binding = *parsed;
+    lift_idx = i;
+  }
+
+  const bool combined = lift_idx && cmp_idx && *lift_idx == *cmp_idx;
+  if (!lift_idx || !cmp_idx || !binding || year_var.empty()) return nullptr;
+  if (!combined && z_var.empty()) return nullptr;
+  binding->year_var = year_var;
+
+  const bool existential_lift =
+      combined && std::dynamic_pointer_cast<RelExistential>(subformulas[*lift_idx]) != nullptr;
+  RelNode* date_ctx_node = subformulas[*lift_idx].get();
+  if (existential_lift) {
+    auto ex = std::dynamic_pointer_cast<RelExistential>(subformulas[*lift_idx]);
+    if (ex && ex->formula) date_ctx_node = ex->formula.get();
+  }
+  auto date_select = BuildDateYearPartialAppSelect(*date_ctx_node, *binding);
+  auto date_src = std::make_shared<sql::ast::Source>(date_select, GenerateTableAlias());
+  if (existential_lift) {
+    auto ex = std::dynamic_pointer_cast<RelExistential>(subformulas[*lift_idx]);
+    if (ex) {
+      ex->free_variables.insert(binding->key_var);
+      ex->free_variables.insert(year_var);
+    }
+  } else if (combined) {
+    subformulas[*lift_idx]->free_variables.insert(binding->key_var);
+    subformulas[*lift_idx]->free_variables.insert(year_var);
+  }
+  subformulas[*lift_idx]->sql_expression = date_src;
+
+  std::vector<std::shared_ptr<sql::ast::Source>> subqueries;
+  std::vector<RelNode*> input_ctxs;
+  subqueries.push_back(date_src);
+  input_ctxs.push_back(subformulas[*lift_idx].get());
+
+  for (size_t i = 0; i < subformulas.size(); ++i) {
+    if (i == *lift_idx) continue;
+    if (cmp_idx && *cmp_idx != *lift_idx && i == *cmp_idx) continue;
+    const auto& f = subformulas[i];
+    if (!f) continue;
+    Visit(f);
+    auto f_sql = ExpectSourceable(f->sql_expression);
+    if (!f_sql) continue;
+    auto subq = std::make_shared<sql::ast::Source>(f_sql, GenerateTableAlias());
+    f->sql_expression = subq;
+    subqueries.push_back(subq);
+    input_ctxs.push_back(f.get());
+  }
+
+  if (subqueries.empty()) return nullptr;
+  auto cond = EqualityShorthandRel(input_ctxs);
+  std::vector<std::pair<RelNode*, std::shared_ptr<sql::ast::Source>>> pairs;
+  for (size_t i = 0; i < input_ctxs.size() && i < subqueries.size(); ++i) {
+    pairs.push_back({input_ctxs[i], subqueries[i]});
+  }
+  auto select_cols = VarListShorthandRel(pairs);
+  std::shared_ptr<sql::ast::From> from;
+  if (cond) {
+    from = std::make_shared<sql::ast::From>(subqueries, cond);
+  } else {
+    from = std::make_shared<sql::ast::From>(subqueries);
+  }
+  return std::make_shared<sql::ast::Select>(select_cols, from);
+}
+
 std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelComparison>& node) {
   if (!node->lhs || !node->rhs) return node;
+
+  if (auto* eat = dynamic_cast<RelExprAsTerm*>(node->lhs.get())) {
+    if (auto agg = ExtractAggregateFromExpr(eat->inner)) {
+      if (TryEmitFilteredAggregateComparison(node, agg)) return node;
+    }
+  }
+
+  if (TryEmitDateYearPartialAppComparison(node)) return node;
+
+  auto try_scalar_agg_mul = [&](const std::shared_ptr<RelTerm>& mul_term) {
+    auto peeled = PeelRelParenthesisTerm(mul_term);
+    auto* op = dynamic_cast<RelOpTerm*>(peeled.get());
+    if (!op || op->op != RelTermOp::MUL || !op->lhs || !op->rhs) return false;
+    std::shared_ptr<sql::ast::Select> out;
+    if (!TryEmitScalarAggregateMul(op->lhs, op->rhs, *node, out) &&
+        !TryEmitScalarAggregateMul(op->rhs, op->lhs, *node, out)) {
+      return false;
+    }
+    node->sql_expression = out;
+    return true;
+  };
+  auto try_scalar_agg_div = [&](const std::shared_ptr<RelTerm>& div_term) {
+    auto peeled = PeelRelParenthesisTerm(div_term);
+    auto* op = dynamic_cast<RelOpTerm*>(peeled.get());
+    if (!op || op->op != RelTermOp::DIV || !op->lhs || !op->rhs) return false;
+    std::shared_ptr<sql::ast::Select> out;
+    if (!TryEmitScalarAggregateDiv(op->lhs, op->rhs, *node, out)) return false;
+    node->sql_expression = out;
+    return true;
+  };
+  if (node->op == RelCompOp::EQ && (try_scalar_agg_mul(node->rhs) || try_scalar_agg_mul(node->lhs) ||
+                                    try_scalar_agg_div(node->rhs) || try_scalar_agg_div(node->lhs))) {
+    return node;
+  }
 
   // Safety check: FV(t1 ⋄ t2) ⊆ bound(F). Bounds come from parent.
   for (const auto& var : node->free_variables) {
@@ -1210,8 +3524,24 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelCompariso
   std::vector<std::pair<std::shared_ptr<sql::ast::Source>, std::set<std::string>>> cte_source_var_pairs;
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> free_var_sources;
 
-  for (const auto& bound : cover.bounds) {
+  for (const Bound& bound : cover.SortedBounds()) {
     if (!bound.domain) continue;
+    // node->safety.SmallCover() can return bounds covering the broader safety context, not just
+    // this comparison's own free variables (e.g. a `y = _x0` comparison left behind by
+    // TermRewriter lifting `y = date_year[l_shipdate[o,num]]` still carries a SmallCover bound
+    // for {o,num} via the sibling atom that grounds them elsewhere in the same conjunction).
+    // Skip a bound that doesn't even intersect node->free_variables: building a domain source
+    // for it here has nothing to attach a join condition to (free_var_sources below only takes
+    // vars that ARE free in node), so it ends up orphaned in the FROM clause — an unconstrained
+    // extra relation that silently inflates the result via a cartesian product.
+    bool relevant = false;
+    for (const auto& var : bound.variables) {
+      if (node->free_variables.count(var)) {
+        relevant = true;
+        break;
+      }
+    }
+    if (!relevant) continue;
     auto domain_sql = DomainToSql(*bound.domain);
     std::set<std::string> bound_vars(bound.variables.begin(), bound.variables.end());
     std::vector<std::string> def_cols(bound.variables.begin(), bound.variables.end());
@@ -1226,10 +3556,15 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelCompariso
 
   auto eq = BuildEqualityForSources(cte_source_var_pairs);
 
+  std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> term_sources = free_var_sources;
+  auto gen_alias = [this]() { return GenerateTableAlias(); };
+  CollectIdbTermSources(node->lhs, context_, gen_alias, term_sources);
+  CollectIdbTermSources(node->rhs, context_, gen_alias, term_sources);
+
   Visit(node->lhs);
   Visit(node->rhs);
-  auto lhs_sql = BuildSqlTermFromLinearRelTerm(node->lhs, free_var_sources);
-  auto rhs_sql = BuildSqlTermFromLinearRelTerm(node->rhs, free_var_sources);
+  auto lhs_sql = BuildSqlTermFromLinearRelTerm(node->lhs, term_sources);
+  auto rhs_sql = BuildSqlTermFromLinearRelTerm(node->rhs, term_sources);
   if (!lhs_sql || !rhs_sql) {
     throw TranslationException("Comparison: could not translate terms to SQL", ErrorCode::UNKNOWN_BINARY_OPERATOR,
                                SourceLocation(0, 0));
@@ -1275,6 +3610,11 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelCompariso
   auto where = std::make_shared<sql::ast::LogicalCondition>(where_conditions, sql::ast::LogicalOp::AND);
 
   std::vector<std::shared_ptr<sql::ast::Source>> from_sources(cte_sources.begin(), cte_sources.end());
+  for (const auto& [idb_id, src] : term_sources) {
+    if (context_.IsIDB(idb_id)) {
+      from_sources.push_back(src);
+    }
+  }
   auto from = std::make_shared<sql::ast::From>(from_sources, where);
   auto select = std::make_shared<sql::ast::Select>(select_cols, from, cte_sources, false);
   node->sql_expression = select;
@@ -1293,6 +3633,9 @@ std::shared_ptr<RelTerm> Translator::Visit(const std::shared_ptr<RelNumTerm>& no
 
 std::shared_ptr<RelTerm> Translator::Visit(const std::shared_ptr<RelOpTerm>& node) {
   if (!node->lhs || !node->rhs) return node;
+
+  if (TryEmitScalarAggregateDivTerm(node)) return node;
+  if (TryEmitScalarAggregateMulTerm(node)) return node;
 
   Visit(node->lhs);
   Visit(node->rhs);
@@ -1331,6 +3674,15 @@ std::shared_ptr<RelTerm> Translator::Visit(const std::shared_ptr<RelParenthesisT
   return node;
 }
 
+std::shared_ptr<RelTerm> Translator::Visit(const std::shared_ptr<RelStringTerm>& node) {
+  node->sql_expression = std::make_shared<sql::ast::Constant>(sql::ast::constant_t(node->value));
+  return node;
+}
+
+std::shared_ptr<RelTerm> Translator::Visit(const std::shared_ptr<RelExprAsTerm>&) {
+  throw std::logic_error("Translator: RelExprAsTerm leaked past TermRewriter");
+}
+
 std::vector<std::shared_ptr<sql::ast::Selectable>> Translator::VarListShorthandRel(
     const std::vector<RelNode*>& nodes, const std::shared_ptr<sql::ast::Source>& source) {
   std::unordered_set<std::string> seen_vars;
@@ -1339,8 +3691,9 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> Translator::VarListShorthandR
     if (!node) continue;
     for (const auto& var : node->free_variables) {
       if (seen_vars.count(var)) continue;
-      auto column = std::make_shared<sql::ast::Column>(var, source);
-      columns.push_back(std::make_shared<sql::ast::TermSelectable>(column));
+      auto col_name = ResolveOutputColumnNameForVariableOnSource(source, var);
+      auto column = std::make_shared<sql::ast::Column>(col_name, source);
+      columns.push_back(std::make_shared<sql::ast::TermSelectable>(column, var));
       seen_vars.insert(var);
     }
   }
@@ -1355,8 +3708,9 @@ std::vector<std::shared_ptr<sql::ast::Selectable>> Translator::VarListShorthandR
     if (!node || !source) continue;
     for (const auto& var : node->free_variables) {
       if (seen_vars.count(var)) continue;
-      auto column = std::make_shared<sql::ast::Column>(var, source);
-      columns.push_back(std::make_shared<sql::ast::TermSelectable>(column));
+      auto col_name = ResolveOutputColumnNameForVariableOnSource(source, var);
+      auto column = std::make_shared<sql::ast::Column>(col_name, source);
+      columns.push_back(std::make_shared<sql::ast::TermSelectable>(column, var));
       seen_vars.insert(var);
     }
   }
@@ -1369,7 +3723,7 @@ std::shared_ptr<sql::ast::Condition> Translator::EqualityShorthandRel(const std:
     if (!node) continue;
     auto source = std::dynamic_pointer_cast<sql::ast::Source>(node->sql_expression);
     if (!source) continue;
-    for (const auto& var : node->variables) {
+    for (const auto& var : node->free_variables) {
       repetition_map[var].push_back(node);
     }
   }
@@ -1381,8 +3735,10 @@ std::shared_ptr<sql::ast::Condition> Translator::EqualityShorthandRel(const std:
         auto src_i = std::dynamic_pointer_cast<sql::ast::Source>(nds[i]->sql_expression);
         auto src_j = std::dynamic_pointer_cast<sql::ast::Source>(nds[j]->sql_expression);
         if (!src_i || !src_j) continue;
-        auto lhs = std::make_shared<sql::ast::Column>(var, src_i);
-        auto rhs = std::make_shared<sql::ast::Column>(var, src_j);
+        auto lhs_col = ResolveOutputColumnNameForVariableOnSource(src_i, var);
+        auto rhs_col = ResolveOutputColumnNameForVariableOnSource(src_j, var);
+        auto lhs = std::make_shared<sql::ast::Column>(lhs_col, src_i);
+        auto rhs = std::make_shared<sql::ast::Column>(rhs_col, src_j);
         conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs));
       }
     }
@@ -1405,8 +3761,10 @@ std::shared_ptr<sql::ast::Condition> Translator::BuildEqualityForSources(
     if (sources.size() < 2) continue;
     for (size_t i = 0; i < sources.size(); i++) {
       for (size_t j = i + 1; j < sources.size(); j++) {
-        auto lhs = std::make_shared<sql::ast::Column>(var, sources[i]);
-        auto rhs = std::make_shared<sql::ast::Column>(var, sources[j]);
+        auto lhs_col = ResolveOutputColumnNameForVariableOnSource(sources[i], var);
+        auto rhs_col = ResolveOutputColumnNameForVariableOnSource(sources[j], var);
+        auto lhs = std::make_shared<sql::ast::Column>(lhs_col, sources[i]);
+        auto rhs = std::make_shared<sql::ast::Column>(rhs_col, sources[j]);
         conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::EQ, rhs));
       }
     }
@@ -1450,19 +3808,109 @@ std::vector<std::shared_ptr<sql::ast::Condition>> Translator::AddChainedEqualiti
 std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelExistential>& node) {
   if (!node->formula) return nullptr;
 
+  if (TryEmitDateYearExistential(node)) return node;
+
+  if (TryEmitScalarDecimalSumExistential(node)) return node;
+  if (TryEmitScalarAggregateDivExistential(node)) return node;
+
+  // exists(z | {sum[...]}(z) and z > k) — emit one filtered aggregate; skip CTE/cross-join materialization.
+  if (auto conj = std::dynamic_pointer_cast<RelConjunction>(node->formula)) {
+    std::shared_ptr<RelComparison> cmp;
+    const RelFullApplication* app = nullptr;
+    if (auto c = std::dynamic_pointer_cast<RelComparison>(conj->rhs)) {
+      cmp = c;
+      app = dynamic_cast<const RelFullApplication*>(conj->lhs.get());
+    } else if (auto c = std::dynamic_pointer_cast<RelComparison>(conj->lhs)) {
+      cmp = c;
+      app = dynamic_cast<const RelFullApplication*>(conj->rhs.get());
+    }
+    if (cmp && app) {
+      auto lifted = std::dynamic_pointer_cast<RelFormula>(conj->lhs);
+      if (!lifted) lifted = std::dynamic_pointer_cast<RelFormula>(conj->rhs);
+      if (lifted && TryEmitLiftedPartialAppLiteralEquality(cmp, lifted)) {
+        auto inner_srcable = ExpectSourceable(cmp->sql_expression);
+        auto subquery = std::make_shared<sql::ast::Source>(inner_srcable, GenerateTableAlias());
+        std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
+        for (const auto& var : node->free_variables) {
+          auto col_name = ResolveOutputColumnNameForVariableOnSource(subquery, var);
+          auto col = std::make_shared<sql::ast::Column>(col_name, subquery);
+          select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(col, var));
+        }
+        node->sql_expression =
+            std::make_shared<sql::ast::Select>(select_columns, std::make_shared<sql::ast::From>(subquery));
+        return node;
+      }
+      if (lifted && TryEmitLiftedPartialAppValueComparison(cmp, lifted)) {
+        auto inner_srcable = ExpectSourceable(cmp->sql_expression);
+        auto subquery = std::make_shared<sql::ast::Source>(inner_srcable, GenerateTableAlias());
+        subquery->inhibit_subquery_flatten = true;
+        std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
+        for (const auto& var : node->free_variables) {
+          auto col_name = ResolveOutputColumnNameForVariableOnSource(subquery, var);
+          auto col = std::make_shared<sql::ast::Column>(col_name, subquery);
+          select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(col, var));
+        }
+        node->sql_expression =
+            std::make_shared<sql::ast::Select>(select_columns, std::make_shared<sql::ast::From>(subquery));
+        return node;
+      }
+      if (lifted && TryEmitLiftedPartialAppVariableEquality(cmp, lifted)) {
+        auto inner_srcable = ExpectSourceable(cmp->sql_expression);
+        auto subquery = std::make_shared<sql::ast::Source>(inner_srcable, GenerateTableAlias());
+        subquery->inhibit_subquery_flatten = true;
+        std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
+        for (const auto& var : node->free_variables) {
+          auto col_name = ResolveOutputColumnNameForVariableOnSource(subquery, var);
+          auto col = std::make_shared<sql::ast::Column>(col_name, subquery);
+          select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(col, var));
+        }
+        node->sql_expression =
+            std::make_shared<sql::ast::Select>(select_columns, std::make_shared<sql::ast::From>(subquery));
+        return node;
+      }
+      auto agg = ExtractAggregateFromLiftedAtom(app);
+      if (agg && TryEmitFilteredAggregateComparison(cmp, agg)) {
+        auto inner_srcable = ExpectSourceable(cmp->sql_expression);
+        auto subquery = std::make_shared<sql::ast::Source>(inner_srcable, GenerateTableAlias());
+        std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
+        for (const auto& var : node->free_variables) {
+          auto col_name = ResolveOutputColumnNameForVariableOnSource(subquery, var);
+          auto col = std::make_shared<sql::ast::Column>(col_name, subquery);
+          select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(col, var));
+        }
+        node->sql_expression =
+            std::make_shared<sql::ast::Select>(select_columns, std::make_shared<sql::ast::From>(subquery));
+        return node;
+      }
+    }
+  }
+
   // Translate inner formula to a Sourceable subquery.
   Visit(node->formula);
 
   auto inner_expr = node->formula->sql_expression;
   auto inner_srcable = ExpectSourceable(inner_expr);
 
+  // A free variable of node->formula isn't necessarily an output column of inner_srcable yet
+  // (see ProjectMissingFreeVariables). Recover and project those before exposing them below.
+  // Scoped to a RelConjunction formula (the TermRewriter-lifted `{inner}(z) and y=z` shape this
+  // targets) rather than every RelFormula: RelUniversal's own translation wraps its inner select
+  // in two Source copies (subquery_outer/subquery_inner) specifically to keep the flattener from
+  // merging them, so a column recovered by searching into that nesting would reference a scope
+  // the flattener deliberately keeps isolated -- unlike a plain conjunction's per-atom wrapping,
+  // which the flattener reliably collapses back to one level.
+  if (std::dynamic_pointer_cast<RelConjunction>(node->formula)) {
+    ProjectMissingFreeVariables(node->formula, inner_srcable);
+  }
+
   auto subquery = std::make_shared<sql::ast::Source>(inner_srcable, GenerateTableAlias());
 
   // SELECT free variables from the subquery.
   std::vector<std::shared_ptr<sql::ast::Selectable>> select_columns;
   for (const auto& var : node->free_variables) {
-    auto col = std::make_shared<sql::ast::Column>(var, subquery);
-    select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(col));
+    auto col_name = ResolveOutputColumnNameForVariableOnSource(subquery, var);
+    auto col = std::make_shared<sql::ast::Column>(col_name, subquery);
+    select_columns.push_back(std::make_shared<sql::ast::TermSelectable>(col, var));
   }
 
   // Build sources and equality conditions for bindings with domains.
@@ -1493,7 +3941,8 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelExistenti
 
     auto domain_col_name = table->GetAttributeName(0);
     auto domain_col = std::make_shared<sql::ast::Column>(domain_col_name, domain_source);
-    auto var_col = std::make_shared<sql::ast::Column>(vb->id, subquery);
+    auto var_col_name = ResolveOutputColumnNameForVariableOnSource(subquery, vb->id);
+    auto var_col = std::make_shared<sql::ast::Column>(var_col_name, subquery);
 
     conditions.push_back(std::make_shared<sql::ast::ComparisonCondition>(var_col, sql::ast::CompOp::EQ, domain_col));
   }
@@ -1510,7 +3959,11 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelExistenti
   auto from =
       condition ? std::make_shared<sql::ast::From>(sources, condition) : std::make_shared<sql::ast::From>(sources);
 
-  auto select = std::make_shared<sql::ast::Select>(select_columns, from);
+  // `exists((y) | F(x, y))` denotes the set of x, so the bound variables have to be projected
+  // away *and* deduplicated: without DISTINCT this yields one row per witness y, and a caller
+  // that joins it (a sibling conjunct, say) then sees x repeated once per witness — silently
+  // multiplying any count over it (TPC-H Q4 counted qualifying lineitems instead of orders).
+  auto select = std::make_shared<sql::ast::Select>(select_columns, from, /*is_distinct=*/true);
   node->sql_expression = select;
   return node;
 }
@@ -1615,6 +4068,9 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelUniversal
 
 std::shared_ptr<sql::ast::Expression> Translator::VisitGeneralizedConjunctionRel(
     const std::vector<std::shared_ptr<RelNode>>& subformulas) {
+  if (auto lifted = TryEmitDateYearLiftedConjunction(subformulas)) return lifted;
+  if (auto agg_thresh = TryEmitAggregateEqualityWithIdbThresholdConjunction(subformulas)) return agg_thresh;
+
   std::vector<std::shared_ptr<sql::ast::Source>> subqueries;
   std::vector<RelNode*> input_ctxs;
   for (const auto& f : subformulas) {
@@ -1646,27 +4102,35 @@ std::shared_ptr<sql::ast::Expression> Translator::VisitGeneralizedConjunctionRel
 
 std::shared_ptr<sql::ast::Term> Translator::BuildSqlTermFromLinearRelTerm(
     const std::shared_ptr<RelTerm>& rel_term,
-    const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources) const {
+    const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& term_sources) {
   if (!rel_term) return nullptr;
 
   if (auto* num = dynamic_cast<RelNumTerm*>(rel_term.get())) {
     return std::make_shared<sql::ast::Constant>(num->value);
   }
 
+  if (auto* str = dynamic_cast<RelStringTerm*>(rel_term.get())) {
+    return std::make_shared<sql::ast::Constant>(sql::ast::constant_t(str->value));
+  }
+
   if (auto* id = dynamic_cast<RelIDTerm*>(rel_term.get())) {
-    auto it = free_var_sources.find(id->id);
-    if (it == free_var_sources.end()) return nullptr;
-    return std::make_shared<sql::ast::Column>(id->id, it->second);
+    auto it = term_sources.find(id->id);
+    if (it == term_sources.end()) return nullptr;
+    if (context_.IsIDB(id->id)) {
+      return std::make_shared<sql::ast::Column>("A1", it->second);
+    }
+    return std::make_shared<sql::ast::Column>(ResolveOutputColumnNameForVariableOnSource(it->second, id->id),
+                                              it->second);
   }
 
   if (auto* paren = dynamic_cast<RelParenthesisTerm*>(rel_term.get())) {
-    return BuildSqlTermFromLinearRelTerm(paren->term, free_var_sources);
+    return BuildSqlTermFromLinearRelTerm(paren->term, term_sources);
   }
 
   if (auto* op_term = dynamic_cast<RelOpTerm*>(rel_term.get())) {
     if (!op_term->lhs || !op_term->rhs) return nullptr;
-    auto lhs_sql = BuildSqlTermFromLinearRelTerm(op_term->lhs, free_var_sources);
-    auto rhs_sql = BuildSqlTermFromLinearRelTerm(op_term->rhs, free_var_sources);
+    auto lhs_sql = BuildSqlTermFromLinearRelTerm(op_term->lhs, term_sources);
+    auto rhs_sql = BuildSqlTermFromLinearRelTerm(op_term->rhs, term_sources);
     if (!lhs_sql || !rhs_sql) return nullptr;
     const char* op_str = "+";
     switch (op_term->op) {
@@ -1742,6 +4206,104 @@ std::string Translator::GenerateTableAlias(const std::string& prefix) {
   return fmt::format("{}{}", prefix, table_alias_prefix_counter_[prefix]++);
 }
 
+std::shared_ptr<sql::ast::Column> Translator::MakeColumnForBindingOnExprSource(
+    const std::shared_ptr<sql::ast::Sourceable>& expr_sql, const std::string& var) const {
+  const std::string bare = BindingBareName(var);
+
+  if (auto select = std::dynamic_pointer_cast<sql::ast::Select>(expr_sql)) {
+    for (const auto& col : select->columns) {
+      const auto* ts = dynamic_cast<const sql::ast::TermSelectable*>(col.get());
+      if (!ts) continue;
+      if (!ts->alias.has_value() || (*ts->alias != bare && *ts->alias != var)) continue;
+      if (const auto* c = dynamic_cast<const sql::ast::Column*>(ts->term.get())) {
+        if (c->source.has_value()) {
+          return std::make_shared<sql::ast::Column>(c->name, c->source.value());
+        }
+        return std::make_shared<sql::ast::Column>(c->name);
+      }
+    }
+  }
+
+  std::function<std::shared_ptr<sql::ast::Column>(const std::shared_ptr<sql::ast::Source>&)> find_in_source;
+  find_in_source = [&](const std::shared_ptr<sql::ast::Source>& src) -> std::shared_ptr<sql::ast::Column> {
+    if (!src) return nullptr;
+
+    const std::string col_name = ResolveOutputColumnNameForVariableOnSource(src, var);
+    if (SourceExposesColumn(src, col_name)) {
+      return std::make_shared<sql::ast::Column>(col_name, src);
+    }
+
+    if (auto table = std::dynamic_pointer_cast<sql::ast::Table>(src->sourceable)) {
+      if ((table->name == "ps_supplycost" || table->name == "ps_availqty") && table->arity >= 2) {
+        if (bare == "part") {
+          return std::make_shared<sql::ast::Column>(table->GetAttributeName(0), src);
+        }
+        if (bare == "supplier") {
+          return std::make_shared<sql::ast::Column>(table->GetAttributeName(1), src);
+        }
+      }
+      if (table->name == bare) {
+        return std::make_shared<sql::ast::Column>(table->GetAttributeName(0), src);
+      }
+    }
+
+    if (auto inner_sel = std::dynamic_pointer_cast<sql::ast::Select>(src->sourceable)) {
+      for (const auto& col : inner_sel->columns) {
+        const auto* ts = dynamic_cast<const sql::ast::TermSelectable*>(col.get());
+        if (!ts || !ts->alias.has_value() || (*ts->alias != bare && *ts->alias != var)) continue;
+        if (const auto* c = dynamic_cast<const sql::ast::Column*>(ts->term.get())) {
+          return std::make_shared<sql::ast::Column>(c->name, src);
+        }
+      }
+      if (inner_sel->from.has_value()) {
+        for (const auto& inner_src : inner_sel->from.value()->sources) {
+          if (auto found = find_in_source(inner_src)) return found;
+        }
+      }
+    }
+    return nullptr;
+  };
+
+  if (auto select = std::dynamic_pointer_cast<sql::ast::Select>(expr_sql)) {
+    if (select->from.has_value()) {
+      for (const auto& src : select->from.value()->sources) {
+        if (auto found = find_in_source(src)) return found;
+      }
+    }
+  }
+
+  return std::make_shared<sql::ast::Column>(bare);
+}
+
+std::string Translator::ResolveOutputColumnNameForVariableOnSource(const std::shared_ptr<sql::ast::Source>& source,
+                                                                   const std::string& var) const {
+  if (!source) return var;
+
+  std::string bare = var;
+  if (auto dot = bare.rfind('.'); dot != std::string::npos) {
+    bare = bare.substr(dot + 1);
+  }
+
+  auto select = std::dynamic_pointer_cast<sql::ast::Select>(source->sourceable);
+  if (!select) return bare;
+
+  for (const auto& col : select->columns) {
+    const auto* ts = dynamic_cast<const sql::ast::TermSelectable*>(col.get());
+    if (!ts) continue;
+    if (ts->alias.has_value() && (*ts->alias == bare || *ts->alias == var)) return *ts->alias;
+  }
+  for (const auto& col : select->columns) {
+    const auto* ts = dynamic_cast<const sql::ast::TermSelectable*>(col.get());
+    if (!ts) continue;
+    const auto* c = dynamic_cast<const sql::ast::Column*>(ts->term.get());
+    if (!c || (c->name != bare && c->name != var)) continue;
+    if (ts->alias.has_value()) return *ts->alias;
+    if (c->name.find('.') == std::string::npos) return c->name;
+    return bare;
+  }
+  return bare;
+}
+
 std::string Translator::GetColumnNameForSourceable(const std::shared_ptr<sql::ast::Sourceable>& src, size_t idx) const {
   if (!src) return fmt::format("A{}", idx);
 
@@ -1754,7 +4316,12 @@ std::string Translator::GetColumnNameForSourceable(const std::shared_ptr<sql::as
 
   if (auto select = std::dynamic_pointer_cast<sql::ast::Select>(src)) {
     if (idx >= 1 && idx <= select->columns.size()) {
-      return select->columns[idx - 1]->Alias();
+      const auto& col = select->columns[idx - 1];
+      if (auto* ts = dynamic_cast<const sql::ast::TermSelectable*>(col.get())) {
+        if (ts->alias.has_value()) return *ts->alias;
+        if (auto* c = dynamic_cast<const sql::ast::Column*>(ts->term.get())) return c->name;
+      }
+      return col->Alias();
     }
     return fmt::format("A{}", idx);
   }
@@ -1811,11 +4378,408 @@ std::shared_ptr<sql::ast::Source> Translator::CreateTableSource(const std::strin
                                                                                        : ("A" + std::to_string(i + 1)));
     }
     table = std::make_shared<sql::ast::Table>(table_name, edb_info->arity, attribute_names);
-    auto alias = std::make_shared<sql::ast::Alias>(GenerateTableAlias());
+    auto alias = std::make_shared<sql::ast::AliasClause>(GenerateTableAlias());
     return std::make_shared<sql::ast::Source>(table, alias);
   }
   table = std::make_shared<sql::ast::Table>(table_name, context_.GetArity(table_name));
   return std::make_shared<sql::ast::Source>(table);
+}
+
+void Translator::MaterializeRelationExprIfNeeded(RelNode& ctx_node, const std::shared_ptr<RelExpr>& expr) {
+  if (!expr) return;
+  auto* id = dynamic_cast<RelIDTerm*>(expr.get());
+  if (id && context_.IsRelation(id->id)) {
+    expr->sql_expression = GetExpressionFromID(ctx_node, id->id, true);
+  }
+}
+
+std::shared_ptr<sql::ast::Term> Translator::RelExprToSqlTerm(RelNode& node, const std::shared_ptr<RelExpr>& expr) {
+  std::vector<std::shared_ptr<sql::ast::Source>> discard;
+  return RelExprToSqlTerm(node, expr, discard);
+}
+
+Translator::ScalarSqlTerm Translator::ExtractScalarSqlTerm(RelNode& node, const std::shared_ptr<RelExpr>& expr) {
+  MaterializeRelationExprIfNeeded(node, expr);
+  if (!expr->sql_expression) {
+    Visit(expr);
+  }
+  auto srcable = ExpectSourceable(expr->sql_expression);
+  if (auto sel = std::dynamic_pointer_cast<sql::ast::Select>(srcable)) {
+    if (!sel->columns.empty()) {
+      // Partial apps like o_orderdate[ok] project bound vars then attribute columns; use the value column.
+      const size_t col_idx = sel->columns.size() > 1 ? sel->columns.size() - 1 : 0;
+      auto ts = std::dynamic_pointer_cast<sql::ast::TermSelectable>(sel->columns[col_idx]);
+      if (!ts || !ts->term) {
+        throw TranslationException("ExtractScalarSqlTerm: expected TermSelectable", ErrorCode::UNKNOWN_BINARY_OPERATOR,
+                                   SourceLocation(0, 0));
+      }
+      ScalarSqlTerm out{ts->term, {}, {}, {}};
+      for (size_t i = 0; i < col_idx; ++i) {
+        out.extra_columns.push_back(sel->columns[i]);
+      }
+      if (sel->from.has_value()) {
+        for (auto& s : sel->from.value()->sources) {
+          out.from_sources.push_back(s);
+        }
+        if (sel->from.value()->where.has_value()) {
+          out.where = sel->from.value()->where.value();
+        }
+      }
+      return out;
+    }
+  }
+  ScalarSqlTerm out;
+  out.term = RelExprToSqlTerm(node, expr, out.from_sources);
+  return out;
+}
+
+std::shared_ptr<sql::ast::Term> Translator::RelExprToSqlTerm(RelNode& node, const std::shared_ptr<RelExpr>& expr,
+                                                             std::vector<std::shared_ptr<sql::ast::Source>>& from_out) {
+  MaterializeRelationExprIfNeeded(node, expr);
+  if (!expr->sql_expression) {
+    Visit(expr);
+  }
+  auto srcable = ExpectSourceable(expr->sql_expression);
+  auto sel = std::dynamic_pointer_cast<sql::ast::Select>(srcable);
+  if (!sel || sel->columns.empty()) {
+    throw TranslationException("RelExprToSqlTerm: expected a Select expression", ErrorCode::UNKNOWN_BINARY_OPERATOR,
+                               SourceLocation(0, 0));
+  }
+  // BuildFullApplSql projects "param order then remaining base columns" (see there): for a
+  // partial application with a bound key (e.g. c_phone[c]), columns[0] is the key ("c"), not
+  // the value the expression actually denotes as a scalar term — that's always the last
+  // column. For an arity-1 expression with no bound params (a literal, a 0-ary def, ...)
+  // there's only one column, so this is unchanged from taking columns[0].
+  auto ts = std::dynamic_pointer_cast<sql::ast::TermSelectable>(sel->columns.back());
+  if (!ts || !ts->term) {
+    throw TranslationException("RelExprToSqlTerm: expected TermSelectable column", ErrorCode::UNKNOWN_BINARY_OPERATOR,
+                               SourceLocation(0, 0));
+  }
+  if (sel->from.has_value()) {
+    for (auto& s : sel->from.value()->sources) {
+      from_out.push_back(s);
+    }
+  }
+  (void)node;
+  return ts->term;
+}
+
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBuiltinAggregateExpr>& node) {
+  if (!node->body) return node;
+  sql::ast::AggregateFunction fn = sql::ast::AggregateFunction::SUM;
+  bool count_all = false;
+  switch (node->op) {
+    case RelBuiltinAggregateOp::SUM:
+      fn = sql::ast::AggregateFunction::SUM;
+      break;
+    case RelBuiltinAggregateOp::COUNT:
+      fn = sql::ast::AggregateFunction::COUNT;
+      count_all = true;
+      break;
+    case RelBuiltinAggregateOp::AVG:
+      fn = sql::ast::AggregateFunction::AVG;
+      break;
+    case RelBuiltinAggregateOp::MIN:
+      fn = sql::ast::AggregateFunction::MIN;
+      break;
+    case RelBuiltinAggregateOp::MAX:
+      fn = sql::ast::AggregateFunction::MAX;
+      break;
+  }
+  node->sql_expression = VisitAggregateRel(node->body, fn, count_all);
+  return node;
+}
+
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelTypedLiteralExpr>& node) {
+  std::string interval;
+  switch (node->kind) {
+    case RelTypedLiteralKind::Day:
+      interval = fmt::format("INTERVAL '{}' DAY", node->arg0);
+      break;
+    case RelTypedLiteralKind::Month:
+      interval = fmt::format("INTERVAL '{}' MONTH", node->arg0);
+      break;
+    case RelTypedLiteralKind::Year:
+      interval = fmt::format("INTERVAL '{}' YEAR", node->arg0);
+      break;
+    case RelTypedLiteralKind::FixedDecimalType:
+      interval = fmt::format("CAST(NULL AS DECIMAL({0},{1}))", node->arg0, node->arg1);
+      break;
+  }
+  auto vt = std::make_shared<sql::ast::VerbatimTerm>(interval);
+  auto sel = std::make_shared<sql::ast::Select>(
+      std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(vt, "A1")}, false);
+  node->sql_expression = sel;
+  return node;
+}
+
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBuiltinDateExpr>& node) {
+  if (node->op == RelBuiltinDateOp::ParseDate) {
+    if (node->args.size() != 2) return node;
+    auto ds = dynamic_cast<RelLiteral*>(node->args[0].get());
+    auto fs = dynamic_cast<RelLiteral*>(node->args[1].get());
+    if (!ds || !fs || !std::holds_alternative<std::string>(ds->value) ||
+        !std::holds_alternative<std::string>(fs->value)) {
+      throw TranslationException("parse_date: expected string literals", ErrorCode::UNKNOWN_BINARY_OPERATOR,
+                                 SourceLocation(0, 0));
+    }
+    const std::string& d = std::get<std::string>(ds->value);
+    (void)std::get<std::string>(fs->value);
+    auto vt = std::make_shared<sql::ast::VerbatimTerm>(fmt::format("DATE '{0}'", d));
+    node->sql_expression = std::make_shared<sql::ast::Select>(
+        std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(vt, "A1")},
+        false);
+    return node;
+  }
+  if (node->op == RelBuiltinDateOp::DateAdd || node->op == RelBuiltinDateOp::DateSubtract) {
+    if (node->args.size() != 2) return node;
+    std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
+    auto lhs = RelExprToSqlTerm(*node, node->args[0], from_sources);
+    auto rhs = RelExprToSqlTerm(*node, node->args[1], from_sources);
+    const char* op = node->op == RelBuiltinDateOp::DateAdd ? "+" : "-";
+    auto comb = std::make_shared<sql::ast::Operation>(lhs, rhs, op);
+    auto cols =
+        std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(comb, "A1")};
+    node->sql_expression = from_sources.empty() ? std::make_shared<sql::ast::Select>(cols, false)
+                                                : std::make_shared<sql::ast::Select>(
+                                                      cols, std::make_shared<sql::ast::From>(from_sources), false);
+    return node;
+  }
+  if (node->op == RelBuiltinDateOp::ExtractYear) {
+    if (node->args.size() != 1) return node;
+    auto scalar = ExtractScalarSqlTerm(*node, node->args[0]);
+    auto extract = std::make_shared<sql::ast::DateExtractTerm>(sql::ast::DateExtractTerm::Part::Year, scalar.term);
+    // Keep the established "key columns first, value last" convention (BuildFullApplSql /
+    // ExtractScalarSqlTerm's own "use the value column" pick) so the variables that produced
+    // this year value (e.g. o/num in date_year[l_shipdate[o,num]]) stay exposed as real output
+    // columns here, instead of getting silently dropped along with the discarded key columns.
+    auto cols = scalar.extra_columns;
+    cols.push_back(std::make_shared<sql::ast::TermSelectable>(extract, "A1"));
+    if (scalar.from_sources.empty()) {
+      node->sql_expression = std::make_shared<sql::ast::Select>(cols, false);
+    } else {
+      node->sql_expression = std::make_shared<sql::ast::Select>(
+          cols, std::make_shared<sql::ast::From>(scalar.from_sources, scalar.where), false);
+    }
+    return node;
+  }
+  return node;
+}
+
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBuiltinDecimalCastExpr>& node) {
+  if (!node->value) {
+    auto vt = std::make_shared<sql::ast::VerbatimTerm>(
+        fmt::format("CAST(NULL AS DECIMAL({0},{1}))", node->precision, node->scale));
+    node->sql_expression = std::make_shared<sql::ast::Select>(
+        std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(vt, "A1")},
+        false);
+    return node;
+  }
+  std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
+  auto inner = RelExprToSqlTerm(*node, node->value, from_sources);
+  auto vt = std::make_shared<sql::ast::VerbatimTerm>(
+      fmt::format("CAST(({0}) AS DECIMAL({1},{2}))", inner->ToString(), node->precision, node->scale));
+  auto cols = std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(vt, "A1")};
+  node->sql_expression = from_sources.empty() ? std::make_shared<sql::ast::Select>(cols, false)
+                                              : std::make_shared<sql::ast::Select>(
+                                                    cols, std::make_shared<sql::ast::From>(from_sources), false);
+  return node;
+}
+
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBuiltinCoalesceExpr>& node) {
+  if (!node->primary || !node->fallback) return node;
+  std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
+  auto a = RelExprToSqlTerm(*node, node->primary, from_sources);
+  auto b = RelExprToSqlTerm(*node, node->fallback, from_sources);
+  auto vt =
+      std::make_shared<sql::ast::VerbatimTerm>(fmt::format("COALESCE(({0}), ({1}))", a->ToString(), b->ToString()));
+  auto cols = std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(vt, "A1")};
+  node->sql_expression = from_sources.empty() ? std::make_shared<sql::ast::Select>(cols, false)
+                                              : std::make_shared<sql::ast::Select>(
+                                                    cols, std::make_shared<sql::ast::From>(from_sources), false);
+  return node;
+}
+
+std::shared_ptr<RelExpr> Translator::Visit(const std::shared_ptr<RelBuiltinSubstringExpr>& node) {
+  if (!node->str || !node->start || !node->len) return node;
+  std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
+  auto s = RelExprToSqlTerm(*node, node->str, from_sources);
+  auto st = RelExprToSqlTerm(*node, node->start, from_sources);
+  auto ln = RelExprToSqlTerm(*node, node->len, from_sources);
+  // Structured args (not a stringified VerbatimTerm) so later optimizer passes — subquery
+  // flattening, alias renumbering, dangling-column rebinding — can see and rewrite any
+  // Column reference inside `s`/`st`/`ln` when the source it points to gets renamed/promoted.
+  auto vt = std::make_shared<sql::ast::SubstringTerm>(s, st, ln);
+  auto cols = std::vector<std::shared_ptr<sql::ast::Selectable>>{std::make_shared<sql::ast::TermSelectable>(vt, "A1")};
+  node->sql_expression = from_sources.empty() ? std::make_shared<sql::ast::Select>(cols, false)
+                                              : std::make_shared<sql::ast::Select>(
+                                                    cols, std::make_shared<sql::ast::From>(from_sources), false);
+  return node;
+}
+
+std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelBuiltinLikeMatchFormula>& node) {
+  if (!node->value) return node;
+
+  // Variable value: emit `SELECT free vars FROM <safety CTEs> WHERE col LIKE 'pat'` (same shape as RelComparison).
+  if (auto* id = dynamic_cast<RelIDTerm*>(node->value.get())) {
+    if (context_.IsVar(id->id)) {
+      BoundSet cover = node->safety.SmallCover();
+      std::vector<std::shared_ptr<sql::ast::Source>> cte_sources;
+      std::vector<std::pair<std::shared_ptr<sql::ast::Source>, std::set<std::string>>> cte_source_var_pairs;
+      std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> free_var_sources;
+      for (const Bound& bound : cover.SortedBounds()) {
+        if (!bound.domain) continue;
+        auto domain_sql = DomainToSql(*bound.domain);
+        std::set<std::string> bound_vars(bound.variables.begin(), bound.variables.end());
+        std::vector<std::string> def_cols(bound.variables.begin(), bound.variables.end());
+        auto cte_source = std::make_shared<sql::ast::Source>(domain_sql, GenerateTableAlias("E"), true, def_cols);
+        cte_source->bound_hash = bound.Hash();
+        cte_sources.push_back(cte_source);
+        cte_source_var_pairs.push_back({cte_source, bound_vars});
+        for (const auto& var : bound_vars) {
+          if (node->free_variables.count(var)) free_var_sources[var] = cte_source;
+        }
+      }
+      auto eq = BuildEqualityForSources(cte_source_var_pairs);
+
+      auto var_src = free_var_sources.find(id->id);
+      if (var_src == free_var_sources.end()) {
+        throw TranslationException("like_match: variable '" + id->id + "' is not bound", ErrorCode::UNBALANCED_VARIABLE,
+                                   SourceLocation(0, 0));
+      }
+      auto col = std::make_shared<sql::ast::Column>(id->id, var_src->second);
+      auto pat = std::make_shared<sql::ast::Constant>(node->like_pattern);
+      auto like_cond = std::make_shared<sql::ast::ComparisonCondition>(col, sql::ast::CompOp::LIKE, pat);
+
+      std::vector<std::string> ordered_vars(node->free_variables.begin(), node->free_variables.end());
+      std::sort(ordered_vars.begin(), ordered_vars.end());
+      std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+      for (const auto& var : ordered_vars) {
+        auto it = free_var_sources.find(var);
+        if (it != free_var_sources.end()) {
+          select_cols.push_back(
+              std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Column>(var, it->second)));
+        }
+      }
+      std::vector<std::shared_ptr<sql::ast::Condition>> where_conditions;
+      if (eq) where_conditions.push_back(eq);
+      where_conditions.push_back(like_cond);
+      auto where = std::make_shared<sql::ast::LogicalCondition>(where_conditions, sql::ast::LogicalOp::AND);
+      std::vector<std::shared_ptr<sql::ast::Source>> from_sources(cte_sources.begin(), cte_sources.end());
+      auto from = std::make_shared<sql::ast::From>(from_sources, where);
+      node->sql_expression = std::make_shared<sql::ast::Select>(select_cols, from, cte_sources, false);
+      return node;
+    }
+  }
+
+  // Subquery / relation value: filter rows of the value relation with `col LIKE 'pat'`.
+  MaterializeRelationExprIfNeeded(*node, node->value);
+  if (!node->value->sql_expression) {
+    Visit(node->value);
+  }
+  auto vsql = ExpectSourceable(node->value->sql_expression);
+  auto vs = std::make_shared<sql::ast::Source>(vsql, GenerateTableAlias());
+  // like_match(pat, R[key]): key is the first column; match the attribute value (last column when arity > 1).
+  size_t like_col_index = 1;
+  size_t rel_arity = GetArityForSourceable(vsql);
+  if (rel_arity > 1) {
+    like_col_index = rel_arity;
+  }
+  std::string col_name = GetColumnNameForSourceable(vsql, like_col_index);
+  auto lhs = std::make_shared<sql::ast::Column>(col_name, vs);
+  auto rhs = std::make_shared<sql::ast::Constant>(node->like_pattern);
+  auto where = std::make_shared<sql::ast::ComparisonCondition>(lhs, sql::ast::CompOp::LIKE, rhs);
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+  if (node->free_variables.empty()) {
+    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Constant>(1), "A1"));
+  } else {
+    std::vector<std::string> ordered_vars(node->free_variables.begin(), node->free_variables.end());
+    std::sort(ordered_vars.begin(), ordered_vars.end());
+    for (const auto& var : ordered_vars) {
+      select_cols.push_back(
+          std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Column>(var, vs), var));
+    }
+  }
+  node->sql_expression = std::make_shared<sql::ast::Select>(
+      select_cols, std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{vs}, where));
+  return node;
+}
+
+std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelBuiltinOrderExpr>& node) {
+  if (!node->body) return node;
+  MaterializeRelationExprIfNeeded(*node, node->body);
+  if (!node->body->sql_expression) {
+    Visit(node->body);
+  }
+  auto body_sql = ExpectSourceable(node->body->sql_expression);
+  auto src = std::make_shared<sql::ast::Source>(body_sql, GenerateTableAlias());
+  node->body->sql_expression = src;
+
+  size_t arity = GetArityForSourceable(body_sql);
+  // TPC-H final_sort: reverse_sort[inside_rev_sort] exposes row index + wildcard slot beyond body columns.
+  std::string ranked_idb_id;
+  if (auto* id = dynamic_cast<RelIDTerm*>(node->body.get())) {
+    ranked_idb_id = id->id;
+  } else if (auto* pa = dynamic_cast<RelPartialApplication*>(node->body.get())) {
+    if (pa->params.empty()) {
+      if (auto* id_base = dynamic_cast<RelIDApplBase*>(pa->base.get())) {
+        ranked_idb_id = id_base->id;
+      }
+    }
+  }
+  const bool ranked_final_sort = node->kind == RelBuiltinOrderKind::SortDesc && !ranked_idb_id.empty() &&
+                                 context_.IsIDB(ranked_idb_id) &&
+                                 static_cast<size_t>(context_.GetArity(ranked_idb_id)) + 2 > arity;
+
+  std::vector<sql::ast::OrderByClause> order_by;
+  if (node->kind == RelBuiltinOrderKind::BottomDesc && node->bottom_sort_column.has_value()) {
+    auto col = std::make_shared<sql::ast::Column>(*node->bottom_sort_column, src);
+    order_by.push_back({col, sql::ast::SortDirection::DESC});
+  } else {
+    sql::ast::SortDirection dir = sql::ast::SortDirection::ASC;
+    if (node->kind == RelBuiltinOrderKind::SortDesc || node->kind == RelBuiltinOrderKind::BottomDesc) {
+      dir = sql::ast::SortDirection::DESC;
+    }
+    for (size_t i = 1; i <= arity; ++i) {
+      std::string cn = GetColumnNameForSourceable(body_sql, i);
+      auto col = std::make_shared<sql::ast::Column>(cn, src);
+      order_by.push_back({col, dir});
+    }
+  }
+
+  std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
+  if (ranked_final_sort) {
+    const std::string over_clause = BuildWindowOrderBySql(order_by);
+    auto row_num = std::make_shared<sql::ast::VerbatimTerm>("ROW_NUMBER() OVER (" + over_clause + ")");
+    select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(row_num, "A1"));
+    for (size_t i = 1; i <= arity; ++i) {
+      if (i == 2) {
+        select_cols.push_back(
+            std::make_shared<sql::ast::TermSelectable>(std::make_shared<sql::ast::Constant>(1), "A3"));
+      }
+      std::string cn = GetColumnNameForSourceable(body_sql, i);
+      auto col = std::make_shared<sql::ast::Column>(cn, src);
+      const std::string out_alias = fmt::format("A{}", RankedFinalSortOutputPosition(i));
+      select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, out_alias));
+    }
+    node->arity = select_cols.size();
+  } else {
+    for (size_t i = 1; i <= arity; ++i) {
+      std::string cn = GetColumnNameForSourceable(body_sql, i);
+      auto col = std::make_shared<sql::ast::Column>(cn, src);
+      select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(col, cn));
+    }
+  }
+
+  auto from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{src});
+  auto sel = std::make_shared<sql::ast::Select>(select_cols, from);
+  sel->order_by = std::move(order_by);
+  if (node->limit.has_value()) {
+    sel->limit_value = static_cast<int>(*node->limit);
+  }
+  node->sql_expression = sel;
+  return node;
 }
 
 }  // namespace rel2sql

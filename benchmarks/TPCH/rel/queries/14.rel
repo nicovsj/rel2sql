@@ -1,0 +1,61 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Promotion Effect Query (Q14)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+The Promotion Effect Query determines what percentage of the revenue in a given
+year and month was derived from promotional parts. The query considers only
+parts actually shipped in that month and gives the percentage. Revenue is
+defined as (l_extendedprice * (1-l_discount)).
+*/
+
+/*
+:x
+:o
+select
+    100.00 * sum(case
+        when p_type like 'PROMO%'
+            then l_extendedprice * (1 - l_discount)
+        else 0
+    end) / sum(l_extendedprice * (1 - l_discount)) as promo_revenue
+from
+    lineitem,
+    part
+where
+    l_partkey = p_partkey
+    and l_shipdate >= date '@@1'
+    and l_shipdate < date '@@1' + interval '1' month;
+:n -1
+*/
+@vectorized def lower[]: parse_date["@@1", "Y-m-d"]
+@vectorized def upper[]: date_add[parse_date["@@1", "Y-m-d"], ^Month[1]]
+
+@inline
+def selected_lineitem(o, num):
+    lower <= l_shipdate[o, num] < upper
+
+@inline
+def promo_revenue[]: sum[
+    (o, num, rev):
+        l_revenue(o, num, rev) and
+        selected_lineitem(o, num) and
+        promotional_part(l_partkey[o, num])
+]
+
+@inline
+def all_revenue[]: sum[
+    (o, num, rev):
+        l_revenue(o, num, rev) and
+        selected_lineitem(o, num)
+]
+
+// @vectorized : this is *NOT* vectorized because we deliberately skip the join-tree
+// optimization for cheap queries. The query is slightly slower if we use the vectorizer
+// here due to a couple of intermediates.
+def result[]:
+    100 * promo_revenue / all_revenue
+
+//MD: Zero-sum groups are not shown in the output

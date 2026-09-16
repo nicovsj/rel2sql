@@ -39,7 +39,7 @@ std::shared_ptr<RelApplBase> BaseRelVisitor::Visit(const std::shared_ptr<RelAppl
 std::shared_ptr<RelApplParam> BaseRelVisitor::Visit(const std::shared_ptr<RelWildcardParam>& node) { return node; }
 
 std::shared_ptr<RelApplParam> BaseRelVisitor::Visit(const std::shared_ptr<RelExprApplParam>& node) {
-  if (node->expr) Visit(node->expr);
+  if (node->expr) node->expr = Visit(node->expr);
   return node;
 }
 
@@ -158,10 +158,59 @@ std::shared_ptr<RelTerm> BaseRelVisitor::Visit(const std::shared_ptr<RelParenthe
   return node;
 }
 
+std::shared_ptr<RelTerm> BaseRelVisitor::Visit(const std::shared_ptr<RelExprAsTerm>& node) {
+  if (node->inner) node->inner = Visit(node->inner);
+  return node;
+}
+
+std::shared_ptr<RelTerm> BaseRelVisitor::Visit(const std::shared_ptr<RelStringTerm>& node) { return node; }
+
 std::shared_ptr<RelApplBase> BaseRelVisitor::Visit(const std::shared_ptr<RelIDApplBase>& node) { return node; }
 
 std::shared_ptr<RelApplBase> BaseRelVisitor::Visit(const std::shared_ptr<RelExprApplBase>& node) {
   if (node->expr) node->expr = Visit(node->expr);
+  return node;
+}
+
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelBuiltinAggregateExpr>& node) {
+  if (node->body) node->body = Visit(node->body);
+  return node;
+}
+
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelBuiltinOrderExpr>& node) {
+  if (node->body) node->body = Visit(node->body);
+  return node;
+}
+
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelBuiltinDateExpr>& node) {
+  for (auto& a : node->args) {
+    if (a) a = Visit(a);
+  }
+  return node;
+}
+
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelTypedLiteralExpr>& node) { return node; }
+
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelBuiltinDecimalCastExpr>& node) {
+  if (node->value) node->value = Visit(node->value);
+  return node;
+}
+
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelBuiltinCoalesceExpr>& node) {
+  if (node->primary) node->primary = Visit(node->primary);
+  if (node->fallback) node->fallback = Visit(node->fallback);
+  return node;
+}
+
+std::shared_ptr<RelExpr> BaseRelVisitor::Visit(const std::shared_ptr<RelBuiltinSubstringExpr>& node) {
+  if (node->str) node->str = Visit(node->str);
+  if (node->start) node->start = Visit(node->start);
+  if (node->len) node->len = Visit(node->len);
+  return node;
+}
+
+std::shared_ptr<RelFormula> BaseRelVisitor::Visit(const std::shared_ptr<RelBuiltinLikeMatchFormula>& node) {
+  if (node->value) node->value = Visit(node->value);
   return node;
 }
 

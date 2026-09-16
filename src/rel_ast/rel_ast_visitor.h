@@ -25,6 +25,14 @@ struct RelCondition;
 struct RelExprAbstraction;
 struct RelFormulaAbstraction;
 struct RelPartialApplication;
+struct RelBuiltinAggregateExpr;
+struct RelBuiltinOrderExpr;
+struct RelBuiltinDateExpr;
+struct RelTypedLiteralExpr;
+struct RelBuiltinDecimalCastExpr;
+struct RelBuiltinCoalesceExpr;
+struct RelBuiltinSubstringExpr;
+struct RelBuiltinLikeMatchFormula;
 struct RelBoolean;
 struct RelFullApplication;
 struct RelParen;
@@ -38,6 +46,8 @@ struct RelIDTerm;
 struct RelNumTerm;
 struct RelOpTerm;
 struct RelParenthesisTerm;
+struct RelExprAsTerm;
+struct RelStringTerm;
 struct RelWildcardParam;
 struct RelExprApplParam;
 struct RelIDApplBase;
@@ -75,10 +85,18 @@ class BaseRelVisitor {
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelExprAbstraction>& node);
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaAbstraction>& node);
   virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialApplication>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinAggregateExpr>& node);
+  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBuiltinOrderExpr>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinDateExpr>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelTypedLiteralExpr>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinDecimalCastExpr>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinCoalesceExpr>& node);
+  virtual std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinSubstringExpr>& node);
 
   // Formulas
   virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBoolean>& node);
   virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullApplication>& node);
+  virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBuiltinLikeMatchFormula>& node);
   virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelExistential>& node);
   virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelUniversal>& node);
   virtual std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelParen>& node);
@@ -92,6 +110,8 @@ class BaseRelVisitor {
   virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelNumTerm>& node);
   virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelOpTerm>& node);
   virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelParenthesisTerm>& node);
+  virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelExprAsTerm>& node);
+  virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelStringTerm>& node);
 
   // Appl params
   virtual std::shared_ptr<RelApplParam> Visit(const std::shared_ptr<RelWildcardParam>& node);

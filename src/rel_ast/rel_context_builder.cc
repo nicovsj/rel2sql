@@ -6,6 +6,8 @@
 #include <unordered_set>
 
 #include "preprocessing/arity_visitor.h"
+#include "preprocessing/binding_shadow_marker.h"
+#include "preprocessing/builtin_resolver.h"
 #include "preprocessing/ids_visitor.h"
 #include "preprocessing/lit_visitor.h"
 #include "preprocessing/recursion_visitor.h"
@@ -189,6 +191,11 @@ std::shared_ptr<RelNode> RelContextBuilder::RunPipeline(std::shared_ptr<RelNode>
   BindingRewriter binding_domain_rewriter;
   root = binding_domain_rewriter.Visit(root);
 
+  // Lower built-in applications (sort, count, parse_date, like_match, ...) into typed
+  // Rel AST nodes before ID/arity analysis runs, so analyzers never see unknown head names.
+  BuiltinResolver builtin_resolver(this);
+  root = builtin_resolver.Resolve(std::move(root));
+
   IDsVisitor ids_visitor(this);
   ids_visitor.Visit(root);
 
@@ -206,6 +213,8 @@ std::shared_ptr<RelNode> RelContextBuilder::RunPipeline(std::shared_ptr<RelNode>
 
   ArityVisitor arity_visitor2(this);
   arity_visitor2.Visit(root);
+
+  MarkBindingShadowedIds(root, *this);
 
   VariablesVisitor vars_visitor(this);
   vars_visitor.Visit(root);

@@ -31,7 +31,7 @@ antlr_cc_library(
 
 cc_library(
     name = "rel2sql",
-    hdrs = ["include/rel2sql/rel2sql.h"],
+    hdrs = glob(["include/rel2sql/*.h"]),
     srcs = glob([
         "src/api/*.cc",
         "src/api/*.h",

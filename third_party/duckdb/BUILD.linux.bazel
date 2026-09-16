@@ -2,6 +2,16 @@ load("@rules_cc//cc:cc_import.bzl", "cc_import")
 
 package(default_visibility = ["//visibility:public"])
 
+# Linked as the shared library, not libduckdb_static.a. In this v1.2.2 Linux release, the static
+# archive is missing the actual object code for several of DuckDB's vendored dependencies:
+# `nm libduckdb_static.a` shows every duckdb_re2::RE2 and duckdb::PostgresParser symbol as
+# undefined ('U'), i.e. genuinely not compiled into the archive anywhere, not merely a link-order
+# problem -- forcing every object in with alwayslink (tried first) does not help, because the
+# defining object files simply are not there. libduckdb.so, from the same release, is a complete,
+# self-contained build: `nm -D libduckdb.so` has zero undefined dynamic symbols outside libc/
+# libstdc++/the GCC ABI, i.e. it does statically link its own vendored dependencies in, just not
+# into the separately-shipped .a. macOS's release (BUILD.macos.bazel) does not have this problem
+# and still links the static library.
 cc_import(
     name = "duckdb",
     hdrs = [
@@ -9,5 +19,5 @@ cc_import(
         "duckdb.hpp",
     ],
     includes = ["."],
-    static_library = "libduckdb_static.a",
+    shared_library = "libduckdb.so",
 )

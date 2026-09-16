@@ -22,7 +22,11 @@ class FlattenerOptimizer : public BaseOptimizer {
   // Helper functions for subquery flattening
 
   // Check if a source can be flattened into a subquery.
-  static bool CanFlattenSubquery(const std::shared_ptr<Source>& source);
+  static bool CanFlattenSubquery(const std::shared_ptr<Source>& source, bool outer_can_absorb_distinct = false);
+
+  // Check if a select's projected columns contain an aggregate Function call anywhere
+  // (directly or nested inside an operation/parenthesis).
+  static bool HasAggregateColumn(const Select& select);
 
   // Check if a source is a constant-only subquery (SELECT const AS col [, ...] with no FROM).
   static bool CanFlattenConstantSubquery(const std::shared_ptr<Source>& source);

@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <tuple>
@@ -46,8 +47,17 @@ class Translator : public BaseRelVisitor {
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelFormulaAbstraction>& node) override;
   std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelPartialApplication>& node) override;
 
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinAggregateExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinDateExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelTypedLiteralExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinDecimalCastExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinCoalesceExpr>& node) override;
+  std::shared_ptr<RelExpr> Visit(const std::shared_ptr<RelBuiltinSubstringExpr>& node) override;
+
   // Formulas
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullApplication>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBuiltinOrderExpr>& node) override;
+  std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelBuiltinLikeMatchFormula>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelConjunction>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelDisjunction>& node) override;
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelNegation>& node) override;
@@ -61,6 +71,8 @@ class Translator : public BaseRelVisitor {
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelNumTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelOpTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelParenthesisTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelStringTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelExprAsTerm>& node) override;
 
  private:
   std::shared_ptr<sql::ast::Sourceable> TryGetTopLevelIDSelect(RelUnion* body);
@@ -82,7 +94,11 @@ class Translator : public BaseRelVisitor {
     std::vector<std::tuple<size_t, std::shared_ptr<sql::ast::Source>, RelNode*>> non_term_param_slots;
   };
 
-  FullApplParamSlots CollectApplParams(RelNode& node, const std::vector<std::shared_ptr<RelApplParam>>& params);
+  // index_offset shifts every param's 1-based base-column index (e.g. for a base whose own
+  // translation carries index_offset leading "key" columns ahead of the columns these params
+  // actually correspond to — see Visit(RelFullApplication)'s RelExprApplBase handling).
+  FullApplParamSlots CollectApplParams(RelNode& node, const std::vector<std::shared_ptr<RelApplParam>>& params,
+                                       size_t index_offset = 0);
 
   // Build SQL term for a variable from a param slot column using term_linear_coeffs (column holds a*x+b, result is x).
   std::shared_ptr<sql::ast::Term> MakeTermForVariableFromParamSlotRel(
@@ -102,12 +118,135 @@ class Translator : public BaseRelVisitor {
 
   // Build SELECT with GROUP BY and aggregate (for partial application of aggregate functions, e.g. sum[A]).
   std::shared_ptr<sql::ast::Select> VisitAggregateRel(const std::shared_ptr<RelExpr>& expr,
-                                                      sql::ast::AggregateFunction function);
+                                                      sql::ast::AggregateFunction function, bool count_all = false);
+  // `sum[[x, y]: expr where F]` — bindings are aggregated away; GROUP BY abs->free_variables.
+  std::shared_ptr<sql::ast::Select> VisitAggregateBindingsExpr(const std::shared_ptr<RelExprAbstraction>& abs,
+                                                               sql::ast::AggregateFunction function,
+                                                               bool count_all = false);
+
+  // `parse_decimal[…] * sum[[…]: body]` as one scalar SELECT (no relational product).
+  bool TryEmitScalarAggregateProduct(const std::shared_ptr<RelProduct>& node);
+  bool TryEmitScalarAggregateMulTerm(const std::shared_ptr<RelOpTerm>& node);
+  bool TryEmitScalarAggregateDivTerm(const std::shared_ptr<RelOpTerm>& node);
+
+  bool TryEmitScalarAggregateMul(std::shared_ptr<RelExpr> scalar_side, std::shared_ptr<RelExpr> agg_side, RelNode& ctx,
+                                 std::shared_ptr<sql::ast::Select>& out);
+  bool TryEmitScalarAggregateDiv(std::shared_ptr<RelExpr> agg_side, std::shared_ptr<RelExpr> divisor_side, RelNode& ctx,
+                                 std::shared_ptr<sql::ast::Select>& out);
+
+  std::shared_ptr<sql::ast::Select> EmitAggregateExportSelect(const std::shared_ptr<RelBuiltinAggregateExpr>& agg_expr,
+                                                              const std::string& export_var);
+
+  // `(part, v): v = sum[…] and v > threshold` — grouped aggregate filtered by IDB threshold.
+  std::shared_ptr<sql::ast::Expression> TryEmitAggregateEqualityWithIdbThresholdConjunction(
+      const std::vector<std::shared_ptr<RelNode>>& subformulas);
+
+  bool TryEmitScalarDecimalSumExistential(const std::shared_ptr<RelExistential>& node);
+  bool TryEmitScalarAggregateDivExistential(const std::shared_ptr<RelExistential>& node);
+
+  std::shared_ptr<sql::ast::Term> RelExprToSqlTerm(RelNode& node, const std::shared_ptr<RelExpr>& expr);
+
+  /** Like `RelExprToSqlTerm`, but also appends FROM sources from the arg's Select to `from_out`. */
+  std::shared_ptr<sql::ast::Term> RelExprToSqlTerm(RelNode& node, const std::shared_ptr<RelExpr>& expr,
+                                                   std::vector<std::shared_ptr<sql::ast::Source>>& from_out);
+
+  struct ScalarSqlTerm {
+    std::shared_ptr<sql::ast::Term> term;
+    std::vector<std::shared_ptr<sql::ast::Source>> from_sources;
+    std::shared_ptr<sql::ast::Condition> where;
+    // The "bound vars" columns of a partial application (e.g. o/num in l_shipdate[o,num]) that
+    // come before the value column ExtractScalarSqlTerm picks out. A caller wrapping this term in
+    // its own SELECT (e.g. date_year[l_shipdate[o,num]]'s EXTRACT(YEAR FROM ...)) should also
+    // project these alongside its own value column, so the variables that produced this scalar
+    // stay exposed as real output columns at every level -- letting the existing "remaining base
+    // columns" convention (BuildFullApplSql) carry them the rest of the way up, instead of a
+    // sibling atom that shares one of these variables silently losing its join.
+    std::vector<std::shared_ptr<sql::ast::Selectable>> extra_columns;
+  };
+  ScalarSqlTerm ExtractScalarSqlTerm(RelNode& node, const std::shared_ptr<RelExpr>& expr);
+
+  /** If expr is a bare EDB/IDB name, set sql_expression to a SELECT over that relation (Sourceable). */
+  void MaterializeRelationExprIfNeeded(RelNode& ctx_node, const std::shared_ptr<RelExpr>& expr);
 
   std::string GenerateTableAlias(const std::string& prefix = "T");
 
   // Return the column name for the idx-th column (1-based) of a sourceable (Table, Select, Union, etc.).
   std::string GetColumnNameForSourceable(const std::shared_ptr<sql::ast::Sourceable>& src, size_t idx) const;
+
+  // Column name exposed by a subquery source for a logical variable (SELECT list alias, not inner T.i.name).
+  std::string ResolveOutputColumnNameForVariableOnSource(const std::shared_ptr<sql::ast::Source>& source,
+                                                         const std::string& var) const;
+
+  // Binding variable column for aggregate GROUP BY when the inner expr select omits binding keys.
+  std::shared_ptr<sql::ast::Column> MakeColumnForBindingOnExprSource(
+      const std::shared_ptr<sql::ast::Sourceable>& expr_sql, const std::string& var) const;
+
+  // True when lhs is `{inner}(z)` and rhs is `z op t` from TermRewriter comparison lifting.
+  static bool IsTermRewriterLiftedBindingConjunction(const RelConjunction& node);
+
+  // `sum[body] op k` as one grouped subquery with a filtered aggregate column.
+  bool TryEmitFilteredAggregateComparison(const std::shared_ptr<RelComparison>& node,
+                                          const std::shared_ptr<RelBuiltinAggregateExpr>& agg_expr);
+
+  // `o_year = date_year[o_orderdate[ok]]`: project key + year from the EDB row (avoids broken CTE flattening).
+  bool TryEmitDateYearPartialAppComparison(const std::shared_ptr<RelComparison>& node);
+
+  struct DateYearPartialAppBinding {
+    std::string year_var;
+    std::string key_var;
+    std::shared_ptr<RelApplBase> appl_base;
+  };
+  std::optional<DateYearPartialAppBinding> ParseDateYearPartialAppExtract(
+      const std::shared_ptr<RelBuiltinDateExpr>& extract);
+  std::shared_ptr<sql::ast::Select> BuildDateYearPartialAppSelect(RelNode& ctx,
+                                                                  const DateYearPartialAppBinding& binding);
+  std::shared_ptr<sql::ast::Expression> TryEmitDateYearLiftedConjunction(
+      const std::vector<std::shared_ptr<RelNode>>& subformulas);
+  bool TryEmitDateYearLiftPairConjunction(const std::shared_ptr<RelConjunction>& node);
+  // TermRewriter wraps `o_year = date_year[partial]` in exists(z | lift and o_year=z); export key + year.
+  bool TryEmitDateYearExistential(const std::shared_ptr<RelExistential>& node);
+
+  // `sum[body] op k` after TermRewriter: translate as filtered aggregate, not CTE + wrong group column.
+  bool TryTranslateAggregateConstantComparison(const std::shared_ptr<RelComparison>& node, const BoundSet& cover,
+                                               const std::shared_ptr<RelFormula>& lifted_atom = nullptr);
+
+  // `export_var = sum[body]` after TermRewriter (`exists z | {agg}(z) and export_var = z`).
+  bool TryTranslateAggregateVariableEquality(const std::shared_ptr<RelComparison>& node, const BoundSet& cover,
+                                             const std::shared_ptr<RelFormula>& lifted_atom = nullptr);
+
+  // `exists z | {R[p]}(z) and z = literal` — filter on the projected attribute, not the join key.
+  bool TryEmitLiftedPartialAppLiteralEquality(const std::shared_ptr<RelComparison>& node,
+                                              const std::shared_ptr<RelFormula>& lifted_atom);
+
+  struct LiftedPartialAppTarget {
+    std::shared_ptr<RelPartialApplication> partial;
+    std::shared_ptr<sql::ast::Select> inner_select;
+    std::shared_ptr<sql::ast::Source> ra_source;
+    std::string value_col;
+    std::string z_var;
+  };
+  std::optional<LiftedPartialAppTarget> ParseLiftedPartialAppFromAtom(const RelFullApplication& app);
+  std::string PartialAppValueColumnOnBase(const RelPartialApplication& partial,
+                                          const std::shared_ptr<sql::ast::Sourceable>& base_sourceable,
+                                          const std::shared_ptr<sql::ast::Source>& ra_source) const;
+  std::shared_ptr<sql::ast::Select> EmitPartialAppFilteredSelect(
+      const std::shared_ptr<RelPartialApplication>& partial, const std::shared_ptr<sql::ast::Select>& inner_select,
+      const std::shared_ptr<sql::ast::Condition>& filter,
+      const std::vector<std::shared_ptr<sql::ast::Source>>& extra_sources = {},
+      const std::vector<std::pair<std::string, std::shared_ptr<sql::ast::Source>>>& extra_exports = {},
+      const std::optional<std::string>& project_value_as = std::nullopt);
+
+  // `exists z | {R[…]}(z) and bound op z` — compare the projected attribute (A3), not join keys.
+  bool TryEmitLiftedPartialAppValueComparison(const std::shared_ptr<RelComparison>& node,
+                                              const std::shared_ptr<RelFormula>& lifted_atom);
+
+  // `exists z | {R[…]}(z) and z = outer_var` when outer_var's domain is the same EDB relation.
+  bool TryEmitLiftedPartialAppVariableEquality(const std::shared_ptr<RelComparison>& node,
+                                               const std::shared_ptr<RelFormula>& lifted_atom);
+
+  // `exists z1,z2 | {R1}(z1) and {R2}(z2) and z1 op z2` — attribute–attribute compare on two partial apps.
+  std::shared_ptr<sql::ast::Select> TryEmitLiftedPartialAppZPairConjunction(
+      const std::vector<std::shared_ptr<RelNode>>& conjuncts);
 
   // Return the number of columns (arity) of a sourceable.
   size_t GetArityForSourceable(const std::shared_ptr<sql::ast::Sourceable>& src) const;
@@ -148,7 +287,7 @@ class Translator : public BaseRelVisitor {
   // For inferrable term equalities: build SQL term from a linear RelTerm given variable->source map.
   std::shared_ptr<sql::ast::Term> BuildSqlTermFromLinearRelTerm(
       const std::shared_ptr<RelTerm>& rel_term,
-      const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& free_var_sources) const;
+      const std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>>& term_sources);
 
   // Translate a Domain to a Sourceable (for building CTEs from bounds).
   std::shared_ptr<sql::ast::Sourceable> DomainToSql(const Domain& domain);

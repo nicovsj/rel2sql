@@ -34,7 +34,7 @@ std::shared_ptr<RelUnion> VariablesVisitor::Visit(const std::shared_ptr<RelUnion
 }
 
 std::shared_ptr<RelTerm> VariablesVisitor::Visit(const std::shared_ptr<RelIDTerm>& node) {
-  if (builder_->IsVar(node->id)) {
+  if (builder_->IsVar(node->id) || node->shadows_relation) {
     node->free_variables.insert(node->id);
     node->variables.insert(node->id);
   }
@@ -58,6 +58,16 @@ std::shared_ptr<RelTerm> VariablesVisitor::Visit(const std::shared_ptr<RelParent
     node->variables = node->term->variables;
     node->free_variables = node->term->free_variables;
   }
+  return node;
+}
+
+std::shared_ptr<RelTerm> VariablesVisitor::Visit(const std::shared_ptr<RelExprAsTerm>&) {
+  throw std::logic_error("VariablesVisitor: RelExprAsTerm leaked past TermRewriter");
+}
+
+std::shared_ptr<RelTerm> VariablesVisitor::Visit(const std::shared_ptr<RelStringTerm>& node) {
+  node->variables.clear();
+  node->free_variables.clear();
   return node;
 }
 
@@ -237,6 +247,87 @@ std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelCom
     node->free_variables = node->lhs->free_variables;
   }
   if (node->rhs) node->VariablesInplaceUnion(*node->rhs);
+  return node;
+}
+
+std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelBuiltinAggregateExpr>& node) {
+  if (node->body) {
+    Visit(node->body);
+    node->variables = node->body->variables;
+    node->free_variables = node->body->free_variables;
+  }
+  return node;
+}
+
+std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelBuiltinDateExpr>& node) {
+  node->variables.clear();
+  node->free_variables.clear();
+  for (auto& a : node->args) {
+    if (a) {
+      Visit(a);
+      node->VariablesInplaceUnion(*a);
+    }
+  }
+  return node;
+}
+
+std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelTypedLiteralExpr>& node) {
+  node->variables.clear();
+  node->free_variables.clear();
+  return node;
+}
+
+std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelBuiltinDecimalCastExpr>& node) {
+  if (node->value) {
+    Visit(node->value);
+    node->variables = node->value->variables;
+    node->free_variables = node->value->free_variables;
+  } else {
+    node->variables.clear();
+    node->free_variables.clear();
+  }
+  return node;
+}
+
+std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelBuiltinCoalesceExpr>& node) {
+  if (node->primary) Visit(node->primary);
+  if (node->fallback) Visit(node->fallback);
+  if (node->primary) {
+    node->variables = node->primary->variables;
+    node->free_variables = node->primary->free_variables;
+  }
+  if (node->fallback) node->VariablesInplaceUnion(*node->fallback);
+  return node;
+}
+
+std::shared_ptr<RelExpr> VariablesVisitor::Visit(const std::shared_ptr<RelBuiltinSubstringExpr>& node) {
+  if (node->str) Visit(node->str);
+  if (node->start) Visit(node->start);
+  if (node->len) Visit(node->len);
+  if (node->str) {
+    node->variables = node->str->variables;
+    node->free_variables = node->str->free_variables;
+  }
+  if (node->start) node->VariablesInplaceUnion(*node->start);
+  if (node->len) node->VariablesInplaceUnion(*node->len);
+  return node;
+}
+
+std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelBuiltinOrderExpr>& node) {
+  if (node->body) {
+    Visit(node->body);
+    node->variables = node->body->variables;
+    node->free_variables = node->body->free_variables;
+  }
+  return node;
+}
+
+std::shared_ptr<RelFormula> VariablesVisitor::Visit(const std::shared_ptr<RelBuiltinLikeMatchFormula>& node) {
+  if (node->value) {
+    Visit(node->value);
+    node->variables = node->value->variables;
+    node->free_variables = node->value->free_variables;
+  }
   return node;
 }
 

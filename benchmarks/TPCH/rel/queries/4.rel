@@ -1,0 +1,51 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Order Priority Checking Query (Q4)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+The Order Priority Checking Query counts the number of orders ordered in a given
+quarter of a given year in which at least one lineitem was received by the
+customer later than its committed date. The query lists the count of such orders
+for each order priority sorted in ascending priority order.
+*/
+
+/*
+select
+    o_orderpriority,
+    count( * ) as order_count
+from
+    orders
+where
+    o_orderdate >= date '@@1'
+    and o_orderdate < date '@@1' + interval '3' month
+    and exists (
+        select
+            *
+        from
+            lineitem
+        where
+            l_orderkey = o_orderkey
+            and l_commitdate < l_receiptdate
+    )
+group by
+    o_orderpriority
+order by
+    o_orderpriority;
+:n -1
+*/
+
+@inline def lower[]: parse_date["@@1", "Y-m-d"]
+@inline def upper[]: date_add[lower, ^Month[3]]
+
+@vectorized
+def unsorted_result[prio in orderpriority]: count[(o):
+    lower <= ( o.o_orderdate ) < upper and
+    ( o.o_orderpriority ) = prio and
+    exists((num) | l_commitdate[o, num] < l_receiptdate[o, num])
+]
+
+@vectorized
+def result[]: sort[unsorted_result]

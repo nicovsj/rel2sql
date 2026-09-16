@@ -2,6 +2,7 @@
 #define BINDING_BOUND_SET_H
 
 #include <cstdint>
+#include <functional>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -56,6 +57,15 @@ struct BoundSet {
 
   // Returns a minimal cover of this set, i.e. a set of bounds that is equivalent to this set
   BoundSet SmallCover() const;
+
+  // `bounds` is unordered, so a caller iterating it directly gets a platform-dependent order
+  // (observed: libc++ vs libstdc++ hash the same Bound values differently). That matters wherever
+  // the iteration order affects generated output — e.g. which of several bounds a variable's
+  // source column gets taken from when more than one covers it, which in turn affects alias
+  // numbering (or, before SmallCover()'s own internal ordering was fixed, could affect which
+  // table ended up in the query at all). Iterate this instead of `bounds` wherever the order is
+  // externally visible, sorted by each bound's own canonical (variables, domain) string.
+  std::vector<std::reference_wrapper<const Bound>> SortedBounds() const;
 
   // Removes projections from all bounds that match the predicate, removes bounds with empty domains,
   // and merges compatible bounds that can form a complete table.

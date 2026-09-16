@@ -10,9 +10,12 @@
 #include "cte_redundancy_optimizer.h"
 #include "expression_simplifier_optimizer.h"
 #include "flattener_optimizer.h"
+#include "scope_validator.h"
+#include "select_column_rebinder.h"
 #include "self_join_optimizer.h"
 #include "sql_ast/expr_visitor.h"
 #include "sql_ast/sql_ast.h"
+#include "table_alias_renumberer.h"
 
 namespace rel2sql {
 namespace sql::ast {
@@ -33,6 +36,9 @@ class Optimizer : public BaseOptimizer {
       }
     }
     Visit(*expr);
+    TableAliasRenumberer::Renumber(*expr);
+    RebindDanglingSelectColumns(*expr);
+    ScopeValidator::Validate(*expr);
     return expr;
   }
 

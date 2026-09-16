@@ -1,5 +1,7 @@
 #include "preprocessing/arity_visitor.h"
 
+#include <iterator>
+
 #include "sql/aggregate_map.h"
 #include "support/exceptions.h"
 
@@ -23,14 +25,24 @@ std::shared_ptr<RelProgram> ArityVisitor::Visit(const std::shared_ptr<RelProgram
   defs_by_id_.clear();
   for (auto& def : node->defs) {
     if (!def) continue;
+    // This pass runs more than once and a folded-away duplicate stays in node->defs, so skip it
+    // rather than folding it again.
+    if (def->disabled) continue;
     std::string id = def->name;
     auto it = defs_by_id_.find(id);
     if (it != defs_by_id_.end()) {
-      // Duplicate def: add body to first def's multiple_defs, disable this one
-      if (!it->second.empty() && it->second[0]->body) {
-        it->second[0]->multiple_defs.push_back(def->body);
+      // Duplicate def: `def X {a}` followed by `def X {b}` means the same as `def X {a; b}`, so
+      // move this body's alternatives into the first def's union and disable this one. They are
+      // moved rather than copied because every other pass walks all defs, disabled included, and
+      // would otherwise process the same nodes twice.
+      if (!it->second.empty() && it->second[0]->body && def->body) {
+        auto& target = it->second[0]->body->exprs;
+        auto& source = def->body->exprs;
+        target.insert(target.end(), std::make_move_iterator(source.begin()), std::make_move_iterator(source.end()));
+        source.clear();
       }
       def->disabled = true;
+      continue;
     }
     defs_by_id_[id].push_back(def);
   }
@@ -107,7 +119,7 @@ std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelExprAbstra
 
 std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelFormulaAbstraction>& node) {
   if (node->formula) Visit(node->formula);
-  node->arity = node->bindings.size();
+  node->arity = node->bindings.size() + (node->formula ? node->formula->arity : 0);
   return node;
 }
 
@@ -137,6 +149,79 @@ std::shared_ptr<RelFormula> ArityVisitor::Visit(const std::shared_ptr<RelFullApp
   return node;
 }
 
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinAggregateExpr>& node) {
+  if (node->body) Visit(node->body);
+  node->arity = 1;
+  return node;
+}
+
+std::shared_ptr<RelFormula> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinOrderExpr>& node) {
+  if (node->body) Visit(node->body);
+  size_t body_arity = node->body ? node->body->arity : 0;
+  // reverse_sort[IDB]: TPC-H final_sort adds row index (A1) and a wildcard slot (A3).
+  if (node->kind == RelBuiltinOrderKind::SortDesc && node->body) {
+    std::string idb_id;
+    if (auto* id = dynamic_cast<RelIDTerm*>(node->body.get())) {
+      idb_id = id->id;
+    } else if (auto* pa = dynamic_cast<RelPartialApplication*>(node->body.get())) {
+      if (pa->params.empty()) {
+        if (auto* id_base = dynamic_cast<RelIDApplBase*>(pa->base.get())) {
+          idb_id = id_base->id;
+        }
+      }
+    }
+    if (!idb_id.empty() && container_->IsIDB(idb_id)) {
+      const int base_arity = container_->GetArity(idb_id);
+      if (base_arity >= 2) {
+        node->arity = static_cast<size_t>(base_arity) + 2;
+        return node;
+      }
+    }
+  }
+  node->arity = body_arity;
+  return node;
+}
+
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinDateExpr>& node) {
+  for (auto& a : node->args) {
+    if (a) Visit(a);
+  }
+  node->arity = 1;
+  return node;
+}
+
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelTypedLiteralExpr>& node) {
+  node->arity = 1;
+  return node;
+}
+
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinDecimalCastExpr>& node) {
+  if (node->value) Visit(node->value);
+  node->arity = 1;
+  return node;
+}
+
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinCoalesceExpr>& node) {
+  if (node->primary) Visit(node->primary);
+  if (node->fallback) Visit(node->fallback);
+  node->arity = node->primary ? node->primary->arity : (node->fallback ? node->fallback->arity : 0);
+  return node;
+}
+
+std::shared_ptr<RelExpr> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinSubstringExpr>& node) {
+  if (node->str) Visit(node->str);
+  if (node->start) Visit(node->start);
+  if (node->len) Visit(node->len);
+  node->arity = 1;
+  return node;
+}
+
+std::shared_ptr<RelFormula> ArityVisitor::Visit(const std::shared_ptr<RelBuiltinLikeMatchFormula>& node) {
+  if (node->value) Visit(node->value);
+  node->arity = 0;
+  return node;
+}
+
 std::shared_ptr<RelTerm> ArityVisitor::Visit(const std::shared_ptr<RelIDTerm>& node) {
   auto info = container_->GetRelationInfo(node->id);
   if (info) {
@@ -160,6 +245,22 @@ std::shared_ptr<RelTerm> ArityVisitor::Visit(const std::shared_ptr<RelOpTerm>& n
 std::shared_ptr<RelTerm> ArityVisitor::Visit(const std::shared_ptr<RelParenthesisTerm>& node) {
   if (node->term) Visit(node->term);
   node->arity = node->term ? node->term->arity : 0;
+  return node;
+}
+
+std::shared_ptr<RelTerm> ArityVisitor::Visit(const std::shared_ptr<RelExprAsTerm>& node) {
+  if (node->inner) Visit(node->inner);
+  size_t inner_arity = node->inner ? node->inner->arity : 0;
+  if (inner_arity != 1) {
+    throw ArityException("Expression-as-term operand must have arity 1, got " + std::to_string(inner_arity),
+                         GetSourceLocationFromNode(node.get()));
+  }
+  node->arity = 1;
+  return node;
+}
+
+std::shared_ptr<RelTerm> ArityVisitor::Visit(const std::shared_ptr<RelStringTerm>& node) {
+  node->arity = 1;
   return node;
 }
 

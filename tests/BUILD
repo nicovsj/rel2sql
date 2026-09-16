@@ -15,7 +15,6 @@ cc_library(
 
 cc_library(
     name = "duckdb_exec",
-    testonly = True,
     srcs = ["duckdb_exec.cc"],
     hdrs = ["duckdb_exec.h"],
     includes = ["."],
@@ -30,6 +29,10 @@ cc_test(
     name = "test_translation",
     srcs = [
         "test_translation.cc",
+    ],
+    data = [
+        "//scripts:tpch_rewrite.py",
+        "//benchmarks/TPCH:rel/tpch_edb.edb",
     ],
     deps = [
         ":duckdb_exec",

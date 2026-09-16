@@ -13,7 +13,7 @@ class Selectable;
 class Condition;
 class Term;
 
-class Alias;
+class AliasClause;
 class Source;
 class Table;
 class Values;
@@ -23,6 +23,9 @@ class Constant;
 class Operation;
 class ParenthesisTerm;
 class Function;
+class DateExtractTerm;
+class SubstringTerm;
+class VerbatimTerm;
 class TermSelectable;
 class ComparisonCondition;
 class LogicalCondition;
@@ -51,7 +54,7 @@ class ExpressionVisitor {
   virtual void Visit(Term& term);
 
   // Derived classes
-  virtual void Visit(Alias& alias);
+  virtual void Visit(AliasClause& alias);
   virtual void Visit(Source& source);
   virtual void Visit(Table& table);
   virtual void Visit(Values& values);
@@ -61,6 +64,9 @@ class ExpressionVisitor {
   virtual void Visit(Operation& operation);
   virtual void Visit(ParenthesisTerm& parenthesis_term);
   virtual void Visit(Function& function);
+  virtual void Visit(DateExtractTerm& date_extract_term);
+  virtual void Visit(SubstringTerm& substring_term);
+  virtual void Visit(VerbatimTerm& verbatim_term);
   virtual void Visit(TermSelectable& term_selectable);
   virtual void Visit(ComparisonCondition& comparison_condition);
   virtual void Visit(LogicalCondition& logical_condition);

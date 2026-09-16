@@ -24,6 +24,7 @@ enum class CompOp {
   GT,
   LTE,
   GTE,
+  LIKE,
 };
 
 enum class AggregateFunction { COUNT, SUM, AVG, MIN, MAX };
@@ -109,21 +110,27 @@ class Query : public Sourceable {
   void AbsorbCTEsFrom(const std::vector<std::shared_ptr<Sourceable>>& sourceables);
 };
 
-class Alias : public Expression {
+// The `AS name(col1, col2, ...)` clause attached to a FROM source. Named AliasClause, not Alias,
+// because Source already declares a virtual `std::string Alias() const` accessor for the alias
+// name of any Sourceable (Table, Select, Union, ...) — GCC's strict C++ name-lookup treats reusing
+// "Alias" for both the class and that later member declaration as changing the meaning of the name
+// within Source's scope and rejects it outright (Clang accepts it, which is how this went
+// unnoticed locally); see the commit that renamed this class.
+class AliasClause : public Expression {
  public:
   std::string name;
   std::vector<std::string> columns;
 
-  Alias(std::string name) : name(name) {}
+  AliasClause(std::string name) : name(name) {}
 
-  Alias(std::string name, std::vector<std::string> columns) : name(name), columns(columns) {}
+  AliasClause(std::string name, std::vector<std::string> columns) : name(name), columns(columns) {}
 
   std::ostream& Print(std::ostream& os) const override { return os << Access(); }
 
   void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
 
   bool Equals(const Expression& other) const override {
-    const auto* other_alias = dynamic_cast<const Alias*>(&other);
+    const auto* other_alias = dynamic_cast<const AliasClause*>(&other);
     if (!other_alias) return false;
     return name == other_alias->name && columns == other_alias->columns;
   }
@@ -150,7 +157,7 @@ class Alias : public Expression {
 class Source : public Expression {
  public:
   std::shared_ptr<Sourceable> sourceable;
-  std::optional<std::shared_ptr<Alias>> alias;
+  std::optional<std::shared_ptr<AliasClause>> alias;
   std::vector<std::string> def_columns;
   bool is_subquery;
   bool is_cte;
@@ -175,12 +182,12 @@ class Source : public Expression {
   Source(std::shared_ptr<Sourceable> sourceable, std::string alias_name, bool is_cte = false,
          const std::vector<std::string>& def_columns = {})
       : sourceable(sourceable),
-        alias(std::make_shared<sql::ast::Alias>(alias_name)),
+        alias(std::make_shared<sql::ast::AliasClause>(alias_name)),
         def_columns(def_columns),
         is_subquery(CheckIsSubquery(sourceable)),
         is_cte(is_cte) {}
 
-  Source(std::shared_ptr<Sourceable> sourceable, std::shared_ptr<Alias> alias, bool is_cte = false,
+  Source(std::shared_ptr<Sourceable> sourceable, std::shared_ptr<AliasClause> alias, bool is_cte = false,
          const std::vector<std::string>& def_columns = {})
       : sourceable(sourceable),
         alias(alias),
@@ -581,6 +588,73 @@ class Column : public Term {
   }
 };
 
+/** EXTRACT(part FROM arg) with a structured arg so optimizers can rewrite column refs. */
+class DateExtractTerm : public Term {
+ public:
+  enum class Part { Year };
+  Part part;
+  std::shared_ptr<Term> arg;
+
+  DateExtractTerm(Part part, std::shared_ptr<Term> arg) : part(part), arg(std::move(arg)) {}
+
+  std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* o = dynamic_cast<const DateExtractTerm*>(&other);
+    return o && part == o->part && *arg == *o->arg;
+  }
+
+  std::string ToString() const override {
+    const char* part_name = part == Part::Year ? "YEAR" : "YEAR";
+    return fmt::format("EXTRACT({} FROM ({}))", part_name, arg->ToString());
+  }
+};
+
+/** SUBSTRING(str FROM start FOR len) with structured args so optimizers can rewrite column refs. */
+class SubstringTerm : public Term {
+ public:
+  std::shared_ptr<Term> str;
+  std::shared_ptr<Term> start;
+  std::shared_ptr<Term> len;
+
+  SubstringTerm(std::shared_ptr<Term> str, std::shared_ptr<Term> start, std::shared_ptr<Term> len)
+      : str(std::move(str)), start(std::move(start)), len(std::move(len)) {}
+
+  std::ostream& Print(std::ostream& os) const override { return os << ToString(); }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* o = dynamic_cast<const SubstringTerm*>(&other);
+    return o && *str == *o->str && *start == *o->start && *len == *o->len;
+  }
+
+  std::string ToString() const override {
+    return fmt::format("SUBSTRING(({}) FROM ({}) FOR ({}))", str->ToString(), start->ToString(), len->ToString());
+  }
+};
+
+/** SQL fragment emitted verbatim (e.g. DATE '...', INTERVAL ..., CAST(... AS DATE)). */
+class VerbatimTerm : public Term {
+ public:
+  std::string sql;
+
+  explicit VerbatimTerm(std::string sql) : sql(std::move(sql)) {}
+
+  std::ostream& Print(std::ostream& os) const override { return os << sql; }
+
+  void Accept(ExpressionVisitor& visitor) override { visitor.Visit(*this); }
+
+  bool Equals(const Expression& other) const override {
+    const auto* o = dynamic_cast<const VerbatimTerm*>(&other);
+    return o && sql == o->sql;
+  }
+
+  std::string ToString() const override { return sql; }
+};
+
 class Values : public Query {
  public:
   std::vector<std::vector<Constant>> values;
@@ -679,6 +753,8 @@ class ComparisonCondition : public Condition {
         return "<=";
       case CompOp::GTE:
         return ">=";
+      case CompOp::LIKE:
+        return "LIKE";
     }
   }
 
@@ -932,12 +1008,21 @@ class GroupBy : public Expression {
   }
 };
 
+enum class SortDirection { ASC, DESC };
+
+struct OrderByClause {
+  std::shared_ptr<Term> term;
+  SortDirection direction = SortDirection::ASC;
+};
+
 class Select : public Query {
  public:
   std::vector<std::shared_ptr<Selectable>> columns;
   std::optional<std::shared_ptr<From>> from;
   std::optional<std::shared_ptr<GroupBy>> group_by;
   bool is_distinct = false;
+  std::vector<OrderByClause> order_by;
+  std::optional<int> limit_value;
 
   Select(const std::vector<std::shared_ptr<Selectable>>& columns, bool is_distinct = false)
       : columns(columns), is_distinct(is_distinct) {}
@@ -988,6 +1073,21 @@ class Select : public Query {
       os << " " << *group_by.value();
     }
 
+    if (!order_by.empty()) {
+      os << " ORDER BY ";
+      for (size_t i = 0; i < order_by.size(); ++i) {
+        if (i > 0) {
+          os << ", ";
+        }
+        os << *order_by[i].term;
+        os << (order_by[i].direction == SortDirection::DESC ? " DESC" : " ASC");
+      }
+    }
+
+    if (limit_value.has_value()) {
+      os << " LIMIT " << *limit_value;
+    }
+
     return os;
   }
 
@@ -1010,6 +1110,12 @@ class Select : public Query {
     if (group_by.has_value() && other_select->group_by.has_value()) {
       if (*group_by.value() != *other_select->group_by.value()) return false;
     }
+    if (order_by.size() != other_select->order_by.size()) return false;
+    for (size_t i = 0; i < order_by.size(); ++i) {
+      if (order_by[i].direction != other_select->order_by[i].direction) return false;
+      if (*order_by[i].term != *other_select->order_by[i].term) return false;
+    }
+    if (limit_value != other_select->limit_value) return false;
     return true;
   }
 };

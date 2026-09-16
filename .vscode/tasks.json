@@ -17,6 +17,24 @@
       },
       "label": "build tool",
       "type": "shell"
+    },
+    {
+      "command": "mkdir -p .vscode/tpch_debug && python3 scripts/tpch_rewrite.py 11 > .vscode/tpch_debug/q11_full.rel && bazel build --config debug //:rel2sql_bin",
+      "label": "prepare tpch q11",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "type": "shell"
+    },
+    {
+      "command": "mkdir -p .vscode/tpch_debug && python3 scripts/tpch_rewrite.py 11 --no-defs > .vscode/tpch_debug/q11_solo.rel && bazel build --config debug //:rel2sql_bin",
+      "label": "prepare tpch q11 (solo)",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "type": "shell"
     }
   ],
   "version": "2.0.0"

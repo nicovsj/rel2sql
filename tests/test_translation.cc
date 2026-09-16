@@ -1,7 +1,11 @@
 // cspell:ignore GTEST
 #include <gtest/gtest.h>
 
+#include <cstdio>
+#include <map>
 #include <regex>
+#include <set>
+#include <sstream>
 
 #include "api/translate.h"
 #include "duckdb_exec.h"
@@ -23,6 +27,19 @@ namespace rel2sql {
 
 namespace {
 
+std::string RunTpchRewrite(int query) {
+  const std::string cmd = "python3 scripts/tpch_rewrite.py " + std::to_string(query) + " 2>/dev/null";
+  FILE* pipe = popen(cmd.c_str(), "r");
+  if (!pipe) return {};
+  std::ostringstream out;
+  char buf[4096];
+  while (std::fgets(buf, sizeof(buf), pipe) != nullptr) {
+    out << buf;
+  }
+  pclose(pipe);
+  return out.str();
+}
+
 RelContext BuildContextFromFormula(const std::string& formula, const RelationMap& edb_map) {
   auto parser = GetParser(formula);
   auto tree = parser->formula();
@@ -30,6 +47,41 @@ RelContext BuildContextFromFormula(const std::string& formula, const RelationMap
   auto root = ast_builder.BuildFromFormula(tree);
   RelContextBuilder builder(edb_map);
   return builder.Process(root);
+}
+
+RelContext BuildContextFromProgram(const std::string& program, const RelationMap& edb_map) {
+  auto parser = GetParser(program);
+  auto tree = parser->program();
+  RelASTBuilder ast_builder;
+  auto root = ast_builder.Build(tree);
+  RelContextBuilder builder(edb_map);
+  return builder.Process(root);
+}
+
+const RelDef* FindDef(const RelProgram& program, const std::string& name) {
+  for (const auto& def : program.defs) {
+    if (def && def->name == name) return def.get();
+  }
+  return nullptr;
+}
+
+std::string RunShellCapture(const char* cmd) {
+  std::ostringstream captured;
+  FILE* pipe = popen(cmd, "r");
+  if (!pipe) return {};
+  char buf[8192];
+  while (std::fgets(buf, sizeof buf, pipe) != nullptr) {
+    captured << buf;
+  }
+  pclose(pipe);
+  return captured.str();
+}
+
+std::string RepoDataPath(const std::string& relative) {
+  if (const char* src = std::getenv("TEST_SRCDIR")) {
+    return std::string(src) + "/_main/" + relative;
+  }
+  return relative;
 }
 
 }  // namespace
@@ -171,41 +223,41 @@ TEST_F(TranslationTest, DisjunctionFormula) {
 }
 
 TEST_F(TranslationTest, ExistentialFormula1) {
-  OPT_EXPECT_EQ(TranslateFormula("exists ((y) | B(x, y))"), "SELECT T0.A1 AS x FROM B AS T0");
+  OPT_EXPECT_EQ(TranslateFormula("exists ((y) | B(x, y))"), "SELECT DISTINCT T0.A1 AS x FROM B AS T0");
 }
 
 TEST_F(TranslationTest, ExistentialFormula2) {
-  OPT_EXPECT_EQ(TranslateFormula("exists ((y, z) | C(x, y, z))"), "SELECT T0.A1 AS x FROM C AS T0");
+  OPT_EXPECT_EQ(TranslateFormula("exists ((y, z) | C(x, y, z))"), "SELECT DISTINCT T0.A1 AS x FROM C AS T0");
 }
 
 TEST_F(TranslationTest, ExistentialFormula3) {
   // D must be binary here to match emitted SQL (T0.A2); default map keeps D unary for D(x)-only tests.
   default_edb_map["D"] = RelationInfo(2);
   OPT_EXPECT_EQ(TranslateFormula("exists ((y in A) | D(x, y))"),
-                "SELECT T0.A1 AS x FROM D AS T0, A AS T2 WHERE T0.A2 = T2.A1");
+                "SELECT DISTINCT T0.A1 AS x FROM D AS T0, A AS T1 WHERE T0.A2 = T1.A1");
 }
 
 TEST_F(TranslationTest, ExistentialFormula4) {
   OPT_EXPECT_EQ(TranslateFormula("exists ((y in A, z in D) | C(x, y, z))"),
-                "SELECT T0.A1 AS x FROM C AS T0, A AS T2, D AS T3 WHERE T0.A2 = T2.A1 AND T0.A3 = T3.A1");
+                "SELECT DISTINCT T0.A1 AS x FROM C AS T0, A AS T1, D AS T2 WHERE T0.A2 = T1.A1 AND T0.A3 = T2.A1");
 }
 
 TEST_F(TranslationTest, ExistentialFormula5) {
   OPT_EXPECT_EQ(TranslateFormula("exists ((y in A, z) | C(x, y, z))"),
-                "SELECT T0.A1 AS x FROM C AS T0, A AS T2 WHERE T0.A2 = T2.A1");
+                "SELECT DISTINCT T0.A1 AS x FROM C AS T0, A AS T1 WHERE T0.A2 = T1.A1");
 }
 
 TEST_F(TranslationTest, UniversalFormula1) {
   OPT_EXPECT_EQ(TranslateFormula("forall ((y in A) | B(x, y))"),
-                "SELECT T1.A1 AS x FROM B AS T1 WHERE NOT EXISTS (SELECT 1 FROM A AS T0 WHERE NOT EXISTS (SELECT 1 "
-                "FROM (SELECT T1.A1 AS x, T1.A2 AS y FROM B AS T1) AS T3 WHERE T1.A1 = T3.x AND T0.A1 = T3.y))");
+                "SELECT T0.A1 AS x FROM B AS T0 WHERE NOT EXISTS (SELECT 1 FROM A AS T1 WHERE NOT EXISTS (SELECT 1 "
+                "FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0) AS T2 WHERE T0.A1 = T2.x AND T1.A1 = T2.y))");
 }
 
 TEST_F(TranslationTest, UniversalFormula2) {
   OPT_EXPECT_EQ(TranslateFormula("forall ((y in A, z in D) | C(x, y, z))"),
-                "SELECT T2.A1 AS x FROM C AS T2 WHERE NOT EXISTS (SELECT 1 FROM A AS T0, D AS T1 WHERE NOT EXISTS "
-                "(SELECT 1 FROM (SELECT T2.A1 AS x, T2.A2 AS y, T2.A3 AS z FROM C AS T2) AS T4 WHERE T2.A1 = T4.x "
-                "AND T0.A1 = T4.y AND T1.A1 = T4.z))");
+                "SELECT T0.A1 AS x FROM C AS T0 WHERE NOT EXISTS (SELECT 1 FROM A AS T1, D AS T2 WHERE NOT EXISTS "
+                "(SELECT 1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM C AS T0) AS T3 WHERE T0.A1 = T3.x AND "
+                "T1.A1 = T3.y AND T2.A1 = T3.z))");
 }
 
 TEST_F(TranslationTest, ProductExpression) { OPT_EXPECT_EQ(TranslateExpression("(1, 2)"), "SELECT 1 AS A1, 2 AS A2"); }
@@ -243,24 +295,21 @@ TEST_F(TranslationTest, PartialApplicationMixedParams2) {
 }
 
 TEST_F(TranslationTest, PartialApplicationMixedParams3) {
-  OPT_EXPECT_EQ(
-      TranslateExpression("C[B[x], E[y]]"),
-      "SELECT T1.A1 AS x, T3.A1 AS y, T0.A3 AS A1 FROM C AS T0, B AS T1, E AS T3 WHERE T0.A1 = T1.A2 AND T0.A2 = "
-      "T3.A2");
+  OPT_EXPECT_EQ(TranslateExpression("C[B[x], E[y]]"),
+                "SELECT T1.A1 AS x, T2.A1 AS y, T0.A3 AS A1 FROM C AS T0, B AS T1, E AS T2 WHERE T0.A1 = T1.A2 AND "
+                "T0.A2 = T2.A2");
 }
 
 TEST_F(TranslationTest, PartialApplicationSharingVariables1) {
-  OPT_EXPECT_EQ(
-      TranslateExpression("C[B[x], E[x]]"),
-      "SELECT T1.A1 AS x, T0.A3 AS A1 FROM C AS T0, B AS T1, E AS T3 WHERE T0.A1 = T1.A2 AND T0.A2 = T3.A2 AND "
-      "T1.A1 = T3.A1");
+  OPT_EXPECT_EQ(TranslateExpression("C[B[x], E[x]]"),
+                "SELECT T1.A1 AS x, T0.A3 AS A1 FROM C AS T0, B AS T1, E AS T2 WHERE T0.A1 = T1.A2 AND T0.A2 = T2.A2 "
+                "AND T1.A1 = T2.A1");
 }
 
 TEST_F(TranslationTest, PartialApplicationSharingVariables2) {
-  OPT_EXPECT_EQ(
-      TranslateExpression("C[F[x, y], I[y, z]]"),
-      "SELECT T1.A1 AS x, T1.A2 AS y, T3.A2 AS z, T0.A3 AS A1 FROM C AS T0, F AS T1, I AS T3 WHERE T0.A1 = T1.A3 "
-      "AND T0.A2 = T3.A3 AND T1.A2 = T3.A1");
+  OPT_EXPECT_EQ(TranslateExpression("C[F[x, y], I[y, z]]"),
+                "SELECT T1.A1 AS x, T1.A2 AS y, T2.A2 AS z, T0.A3 AS A1 FROM C AS T0, F AS T1, I AS T2 WHERE T0.A1 = "
+                "T1.A3 AND T0.A2 = T2.A3 AND T1.A2 = T2.A1");
 }
 
 TEST_F(TranslationTest, PartialApplicationSharingVariables3) {
@@ -293,6 +342,269 @@ TEST_F(TranslationTest, AggregateExpression5) {
   OPT_EXPECT_EQ(TranslateExpression("max[B[x]]"), "SELECT T0.A1 AS x, MAX(T0.A2) AS A1 FROM B AS T0 GROUP BY T0.A1");
 }
 
+TEST_F(TranslationTest, AggregateExpressionCount) {
+  OPT_EXPECT_EQ(TranslateExpression("count[A]"), "SELECT COUNT(1) AS A1 FROM A AS T0");
+}
+
+TEST_F(TranslationTest, AggregateExpressionMeanAlias) {
+  OPT_EXPECT_EQ(TranslateExpression("mean[A]"), "SELECT AVG(T0.A1) AS A1 FROM A AS T0");
+}
+
+TEST_F(TranslationTest, BuiltinSortAsc) {
+  OPT_EXPECT_EQ(TranslateExpression("sort[A]"), "SELECT T0.A1 AS A1 FROM A AS T0 ORDER BY T0.A1 ASC");
+}
+
+TEST_F(TranslationTest, BuiltinReverseSort) {
+  OPT_EXPECT_EQ(TranslateExpression("reverse_sort[A]"), "SELECT T0.A1 AS A1 FROM A AS T0 ORDER BY T0.A1 DESC");
+}
+
+TEST_F(TranslationTest, BuiltinBottomFullApplication) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateProgram("def output { bottom(5, A, _, A1, _) }"),
+                          "SELECT DISTINCT T0.A1 AS A1 FROM A AS T0 ORDER BY T0.A1 DESC LIMIT 5;");
+}
+
+TEST_F(TranslationTest, BuiltinParseDate) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("parse_date[\"2024-01-01\", \"Y-m-d\"]"),
+                          "SELECT DATE '2024-01-01' AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinTypedLiteralDay) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("^Day[5]"), "SELECT INTERVAL '5' DAY AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinTypedLiteralMonth) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("^Month[3]"), "SELECT INTERVAL '3' MONTH AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinTypedLiteralYear) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("^Year[1]"), "SELECT INTERVAL '1' YEAR AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinTypedLiteralFixedDecimal) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("^FixedDecimal[10, 2]"), "SELECT CAST(NULL AS DECIMAL(10,2)) AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinDecimalNoValue) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("decimal[10, 2]"), "SELECT CAST(NULL AS DECIMAL(10,2)) AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinParseDecimal) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("parse_decimal[10, 2, \"1.23\"]"),
+                          "SELECT CAST(('1.23') AS DECIMAL(10,2)) AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinDateAdd) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("date_add[parse_date[\"2024-01-01\", \"Y-m-d\"], ^Day[5]]"),
+                          "SELECT DATE '2024-01-01' + INTERVAL '5' DAY AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinDateSubtract) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("date_subtract[parse_date[\"2024-01-01\", \"Y-m-d\"], ^Day[5]]"),
+                          "SELECT DATE '2024-01-01' - INTERVAL '5' DAY AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinDateYear) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("date_year[parse_date[\"2024-01-01\", \"Y-m-d\"]]"),
+                          "SELECT EXTRACT(YEAR FROM (DATE '2024-01-01')) AS A1");
+}
+
+TEST_F(TranslationTest, TpchQ9RewrittenProgramOptimized) {
+  auto tpch = ::rel2sql::testing::LoadTpchEdbForDuckDb("benchmarks/TPCH/rel/tpch_edb.edb");
+  const std::string rel = RunTpchRewrite(9);
+  ASSERT_FALSE(rel.empty()) << "scripts/tpch_rewrite.py 9 failed";
+  auto sql = GetSQLRel(rel, tpch.relations);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  const auto result_pos = out.find("VIEW result AS");
+  ASSERT_NE(result_pos, std::string::npos) << out;
+  const std::string result_sql = out.substr(result_pos);
+  EXPECT_EQ(result_sql.find(".ok = T1.A1"), std::string::npos) << result_sql;
+  EXPECT_NE(result_sql.find("T0.A1 = T1.A1"), std::string::npos) << result_sql;
+}
+
+TEST_F(TranslationTest, TpchQ9FullExistsOptimized) {
+  auto tpch = ::rel2sql::testing::LoadTpchEdbForDuckDb("benchmarks/TPCH/rel/tpch_edb.edb");
+  auto sql = GetSQLRel(
+      R"(def l_revenue { [o, num]: l_extendedprice[o, num] * (1 - l_discount[o, num]) }
+def result { (o_nation, o_year, amount): amount = sum[(ok, lk, single_amount):
+  o_year = ( date_year[o_orderdate[ok]] ) and
+  exists((pk, sk) | l_suppkey(ok, lk, sk) and l_partkey(ok, lk, pk) and
+    ( n_name[s_nationkey[sk]] ) = o_nation and
+    like_match(raw"%green%", ( p_name[pk] )) and
+    single_amount = l_revenue[ok, lk] - ps_supplycost[pk, sk] * l_quantity[ok, lk])
+] })",
+      tpch.relations);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  const auto result_pos = out.find("VIEW result AS");
+  ASSERT_NE(result_pos, std::string::npos) << out;
+  const std::string result_sql = out.substr(result_pos);
+  EXPECT_EQ(result_sql.find(".ok = T1.A1"), std::string::npos) << result_sql;
+  EXPECT_NE(result_sql.find("T0.A1 = T1.A1"), std::string::npos) << result_sql;
+}
+
+TEST_F(TranslationTest, TpchQ9ResultDefOptimized) {
+  RelationMap edb;
+  edb["o_orderdate"] = RelationInfo(2);
+  edb["l_suppkey"] = RelationInfo(3);
+  edb["l_partkey"] = RelationInfo(3);
+  auto sql = GetSQLRel(
+      "def result { (o_year, amount): amount = sum[(ok, lk): o_year = date_year[o_orderdate[ok]] and "
+      "exists((pk, sk) | l_suppkey(ok, lk, sk) and l_partkey(ok, lk, pk))] }",
+      edb);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  EXPECT_EQ(out.find("T100"), std::string::npos) << out;
+  EXPECT_NE(out.find("T0.A1 = T1.A1"), std::string::npos) << out;
+}
+
+TEST_F(TranslationTest, TpchQ9SumBodyOptimized) {
+  RelationMap edb;
+  edb["o_orderdate"] = RelationInfo(2);
+  edb["l_suppkey"] = RelationInfo(3);
+  edb["l_partkey"] = RelationInfo(3);
+  auto sql = GetSQLRel(
+      "def q9sum { sum[(ok, lk): o_year = date_year[o_orderdate[ok]] and "
+      "exists((pk, sk) | l_suppkey(ok, lk, sk) and l_partkey(ok, lk, pk))] }",
+      edb);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  EXPECT_EQ(out.find("T100"), std::string::npos) << out;
+  EXPECT_NE(out.find("T0.A1 = T1.A1"), std::string::npos) << out;
+}
+
+TEST_F(TranslationTest, BuiltinDateYearOnPartialApplication) {
+  RelationMap edb;
+  edb["o_orderdate"] = RelationInfo(2);
+  edb["l_suppkey"] = RelationInfo(3);
+  auto sql = GetSQLRel(
+      "def inner_q9 { (o_year, ok, lk, sk): o_year = date_year[o_orderdate[ok]] and l_suppkey(ok, lk, sk) }", edb);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  EXPECT_NE(out.find("EXTRACT(YEAR FROM (T0.A2))"), std::string::npos) << out;
+  EXPECT_EQ(out.find("T95"), std::string::npos) << out;
+  EXPECT_EQ(out.find("T100"), std::string::npos) << out;
+  EXPECT_NE(out.find("T0.A1 = T1.A1"), std::string::npos) << out;
+}
+
+TEST(FlattenerOptimizationTest, Q9AggregateWhereAfterPartialAppFlatten) {
+  rel2sql::RelationMap edb;
+  edb["o_orderdate"] = rel2sql::RelationInfo(2);
+  edb["l_suppkey"] = rel2sql::RelationInfo(3);
+  std::string sql =
+      "SELECT T0.A2 AS o_year, SUM(T1.A2) AS A1 "
+      "FROM (SELECT T0.A1 AS ok, T0.A2 AS A1 FROM o_orderdate AS T0) AS T100, "
+      "o_orderdate AS T0, l_suppkey AS T1 "
+      "WHERE T100.ok = T1.A1 "
+      "GROUP BY T0.A2";
+  auto expr = rel2sql::ParseSQL(sql, edb);
+  ASSERT_NE(expr, nullptr);
+  rel2sql::sql::ast::Optimizer optimizer;
+  expr = optimizer.Optimize(expr);
+  std::string result = expr->ToString();
+  EXPECT_EQ(result.find("T100"), std::string::npos) << result;
+  EXPECT_NE(result.find("T0.A1 = T1.A1"), std::string::npos) << result;
+}
+
+TEST(FlattenerOptimizationTest, PartialAppVariableAliasFlatten) {
+  rel2sql::RelationMap edb;
+  edb["o_orderdate"] = rel2sql::RelationInfo(2);
+  edb["l_suppkey"] = rel2sql::RelationInfo(3);
+  std::string sql =
+      "SELECT T4.ok AS A2, T1.A2 AS A3 FROM "
+      "(SELECT T0.A1 AS ok, T0.A2 AS A1 FROM o_orderdate AS T0) AS T4, "
+      "l_suppkey AS T1 WHERE T4.ok = T1.A1";
+  auto expr = rel2sql::ParseSQL(sql, edb);
+  ASSERT_NE(expr, nullptr);
+  rel2sql::sql::ast::FlattenerOptimizer flattener_optimizer;
+  flattener_optimizer.Visit(*expr);
+  std::string result = expr->ToString();
+  EXPECT_EQ(result.find("T4"), std::string::npos) << result;
+  EXPECT_NE(result.find("T0.A1 = T1.A1"), std::string::npos) << result;
+  if (!::testing::Test::HasFailure()) {
+    ::rel2sql::testing::AssertExecutesInDuckDB(result, edb);
+  }
+}
+
+TEST_F(TranslationTest, BuiltinDefaultValue) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("default_value[A, 0]"),
+                          "SELECT COALESCE((T0.A1), (0)) AS A1 FROM A AS T0");
+}
+
+TEST_F(TranslationTest, BuiltinSubstring) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateExpression("substring[\"hello\", 1, 3]"),
+                          "SELECT SUBSTRING(('hello') FROM (1) FOR (3)) AS A1");
+}
+
+TEST_F(TranslationTest, BuiltinLikeMatchFormula) {
+  OPT_EXPECT_EQ_NO_DUCKDB(TranslateFormula("A(x) and like_match(\"foo%\", x)"),
+                          "SELECT T0.A1 AS x FROM A AS T0 WHERE T0.A1 LIKE 'foo%'");
+}
+
+// TPC-H common def: unary def with like_match on partial application p_type[p].
+TEST_F(TranslationTest, PromotionalPartLikeMatchDef) {
+  RelationMap edb;
+  edb["p_type"] = RelationInfo(2);
+  OPT_EXPECT_EQ_NO_DUCKDB(ApplyValidatingOptimizer(GetUnoptimizedSQLRel(
+                              "def promotional_part { [p]: like_match(\"%PROMO%\", p_type[p]) }", edb)),
+                          "CREATE OR REPLACE VIEW promotional_part AS (SELECT DISTINCT T0.A1 AS A1 FROM p_type AS T0 "
+                          "WHERE T0.A2 LIKE '%PROMO%');");
+}
+
+// String literal as a term operand of a comparison (was previously rejected by the term/expr split).
+TEST_F(TranslationTest, ComparisonStringLiteral) {
+  OPT_EXPECT_EQ(TranslateFormula("A(x) and x = \"foo\""), "SELECT T0.A1 AS x FROM A AS T0 WHERE T0.A1 = 'foo'");
+}
+
+// Chained scalar comparisons (Q19 `param <= l_quantity[o,l] <= param + 10`).
+TEST_F(TranslationTest, ChainedComparison) {
+  OPT_EXPECT_EQ(TranslateFormula("A(x) and 1 <= x <= 3"),
+                "SELECT T0.A1 AS x FROM A AS T0 WHERE 1 <= T0.A1 AND T0.A1 <= 3");
+}
+
+// Partial application as a comparison operand: aggregate vs. constant.
+TEST_F(TranslationTest, ComparisonPartialAppl) {
+  OPT_EXPECT_EQ(TranslateProgram("def output { (x): A(x) and sum[A] > 0 }"),
+                "SELECT DISTINCT T0.A1 AS A1 FROM A AS T0, (SELECT SUM(T1.A1) AS A1 FROM A AS T1) AS T2 WHERE T2.A1 "
+                "> 0;");
+}
+
+// Partial application on lhs of `!=` (Q21 idiom: `l_suppkey[…] != v`).
+TEST_F(TranslationTest, ComparisonNotEqualPartialAppl) {
+  OPT_EXPECT_EQ(TranslateProgram("def output { (x): A(x) and sum[A] != 5 }"),
+                "SELECT DISTINCT T0.A1 AS A1 FROM A AS T0, (SELECT SUM(T1.A1) AS A1 FROM A AS T1) AS T2 WHERE T2.A1 "
+                "!= 5;");
+}
+
+// Partial application as operand of arithmetic inside an equality.
+TEST_F(TranslationTest, OpTermPartialAppl) {
+  // The unoptimized SQL is correct but verbose; the optimizer is currently noisy for the
+  // IntensionalDomain CTE pattern this rewrite produces. Smoke-check translation only.
+  auto sql_ast = GetUnoptimizedSQLRel("def output { [x, y]: A(x) and B[x] * 2 = y }", default_edb_map);
+  ASSERT_NE(sql_ast, nullptr);
+  const std::string sql = sql_ast->ToString();
+  EXPECT_NE(sql.find("* 2"), std::string::npos) << sql;
+  EXPECT_NE(sql.find("A AS"), std::string::npos) << sql;
+  EXPECT_NE(sql.find("B AS"), std::string::npos) << sql;
+}
+
+// Arithmetic with two partial applications (Q11 / Q17 idiom: `parse_decimal[…] * sum[…]`).
+TEST_F(TranslationTest, OpTermTwoPartialApps) {
+  auto sql_ast =
+      GetUnoptimizedSQLRel("def output { [x]: A(x) and parse_decimal[10, 2, \"0.5\"] * sum[A] = x }", default_edb_map);
+  ASSERT_NE(sql_ast, nullptr);
+  const std::string sql = sql_ast->ToString();
+  EXPECT_NE(sql.find("CAST(('0.5') AS DECIMAL(10,2))"), std::string::npos) << sql;
+  EXPECT_NE(sql.find("SUM("), std::string::npos) << sql;
+  EXPECT_NE(sql.find(" * "), std::string::npos) << sql;
+}
+
+// Regression: top-level `def output { sum[A] }` must still parse as a `RelPartialApplication`,
+// not as a term-wrapped expression (which would otherwise change downstream translation).
+TEST_F(TranslationTest, RegressionTopLevelPartialApplStaysPartial) {
+  OPT_EXPECT_EQ(TranslateProgram("def output { sum[A] }"), "SELECT DISTINCT SUM(T0.A1) AS A1 FROM A AS T0;");
+}
+
 TEST_F(TranslationTest, RelationalAbstraction1) {
   OPT_EXPECT_EQ(TranslateExpression("{(1,2); (3,4)}"),
                 "SELECT CASE WHEN I0.i = 1 THEN 1 WHEN I0.i = 2 THEN 3 END AS A1, CASE WHEN I0.i = 1 THEN 2 WHEN I0.i "
@@ -307,10 +619,9 @@ TEST_F(TranslationTest, BindingExpression1) {
 }
 
 TEST_F(TranslationTest, BindingExpressionBounded1) {
-  OPT_EXPECT_EQ(
-      TranslateExpression("[x in A, y]: C[x, y] where D(y)"),
-      "SELECT T0.A1 AS A1, T0.A2 AS A2, T0.A3 AS A3 FROM C AS T0, D AS T1, A AS T4 WHERE T0.A1 = T4.A1 AND T0.A2 "
-      "= T1.A1");
+  OPT_EXPECT_EQ(TranslateExpression("[x in A, y]: C[x, y] where D(y)"),
+                "SELECT T0.A1 AS A1, T0.A2 AS A2, T0.A3 AS A3 FROM C AS T0, D AS T1, A AS T2 WHERE T0.A1 = T2.A1 AND "
+                "T0.A2 = T1.A1");
 }
 
 TEST_F(TranslationTest, BindingFormula1) {
@@ -321,22 +632,22 @@ TEST_F(TranslationTest, BindingFormula1) {
 TEST_F(TranslationTest, BindingFormula2) {
   OPT_EXPECT_EQ(
       TranslateExpression("(x): {B[1]}(x) or B(x,1)"),
-      "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1 UNION SELECT T4.A1 AS A1 FROM B AS T4 WHERE T4.A2 = 1");
+      "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1 UNION SELECT T1.A1 AS A1 FROM B AS T1 WHERE T1.A2 = 1");
 }
 
 TEST_F(TranslationTest, BindingFormula3) {
   OPT_EXPECT_EQ(
       TranslateExpression("(x) : {B[1]; B[3]}(x)"),
-      "SELECT CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T3.A2 END AS A1 FROM B AS T0, B AS T3, (VALUES "
-      "(1), (2)) AS I0(i) WHERE T0.A1 = 1 AND T3.A1 = 3");
+      "SELECT CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T1.A2 END AS A1 FROM B AS T0, B AS T1, (VALUES "
+      "(1), (2)) AS I0(i) WHERE T0.A1 = 1 AND T1.A1 = 3");
 }
 
 TEST_F(TranslationTest, BindingFormula4) {
-  OPT_EXPECT_EQ(TranslateExpression("(x): A(x+1)"), "SELECT T0.A1 - 1 AS A1 FROM A AS T0");
+  OPT_EXPECT_EQ(TranslateExpression("(x): A(x+1)"), "SELECT DISTINCT T0.A1 - 1 AS A1 FROM A AS T0");
 }
 
 TEST_F(TranslationTest, BindingFormula5) {
-  OPT_EXPECT_EQ(TranslateExpression("(x): A(2*x+1)"), "SELECT (T1.A1 - 1) / 2 AS A1 FROM A AS T1");
+  OPT_EXPECT_EQ(TranslateExpression("(x): A(2*x+1)"), "SELECT DISTINCT (T0.A1 - 1) / 2 AS A1 FROM A AS T0");
 }
 
 TEST_F(TranslationTest, NestedBindingFormula) {
@@ -359,24 +670,23 @@ TEST_F(TranslationTest, MultipleDefs1) {
   OPT_EXPECT_EQ(
       TranslateProgram("def R {(1, 2); (3, 4)} \n def S {(1, 4); (3, 4)}"),
       "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (3, 4)) AS "
-      "T0(A1, A2));\n\nCREATE OR REPLACE VIEW S AS (SELECT DISTINCT T1.A1 AS A1, T1.A2 AS A2 FROM (VALUES (1, 4), "
-      "(3, 4)) AS T1(A1, A2));");
+      "T0(A1, A2));\n\nCREATE OR REPLACE VIEW S AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 4), "
+      "(3, 4)) AS T0(A1, A2));");
 }
 
 TEST_F(TranslationTest, MultipleDefs2) {
   OPT_EXPECT_EQ(TranslateProgram("def R {(1, 2); (3, 4)} \n def S {R[1]} \n def T {R[3]}"),
                 "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (3, 4)) AS "
-                "T0(A1, A2));\n\nCREATE OR REPLACE VIEW S AS (SELECT DISTINCT T1.A2 AS A1 FROM R AS T1 WHERE T1.A1 = "
-                "1);\n\nCREATE OR REPLACE VIEW T AS (SELECT DISTINCT T4.A2 AS A1 FROM R AS T4 WHERE T4.A1 = 3);");
+                "T0(A1, A2));\n\nCREATE OR REPLACE VIEW S AS (SELECT DISTINCT T0.A2 AS A1 FROM R AS T0 WHERE T0.A1 = "
+                "1);\n\nCREATE OR REPLACE VIEW T AS (SELECT DISTINCT T0.A2 AS A1 FROM R AS T0 WHERE T0.A1 = 3);");
 }
 
 TEST_F(TranslationTest, MultipleDefs3) {
-  OPT_EXPECT_EQ(
-      TranslateProgram("def R {(1, 2); (2, 3)} \n def S {(x,y): R(x,y) or exists((z) | R(x,z) and S(z,y))}"),
-      "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (2, 3)) AS "
-      "T0(A1, A2));\n\nCREATE OR REPLACE VIEW S AS (WITH RECURSIVE R0(A1, A2) AS (SELECT T1.A1 AS x, T1.A2 AS y FROM R "
-      "AS T1 UNION SELECT T2.A1 AS x, T3.A2 AS y FROM R AS T2, R0 AS T3 WHERE T2.A2 = T3.A1) SELECT DISTINCT R0.A1 AS "
-      "A1, R0.A2 AS A2 FROM R0);");
+  OPT_EXPECT_EQ(TranslateProgram("def R {(1, 2); (2, 3)} \n def S {(x,y): R(x,y) or exists((z) | R(x,z) and S(z,y))}"),
+                "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (2, 3)) AS "
+                "T0(A1, A2));\n\nCREATE OR REPLACE VIEW S AS (WITH RECURSIVE R0(A1, A2) AS (SELECT T0.A1 AS x, T0.A2 "
+                "AS y FROM R AS T0 UNION SELECT DISTINCT T1.A1 AS x, T2.A2 AS y FROM R AS T1, R0 AS T2 WHERE T1.A2 = "
+                "T2.A1) SELECT DISTINCT R0.A1 AS A1, R0.A2 AS A2 FROM R0);");
 }
 
 TEST_F(TranslationTest, TableDefinition) {
@@ -401,17 +711,16 @@ TEST_F(TranslationTest, BindingDisjunction) {
 
 TEST_F(TranslationTest, Composition) {
   OPT_EXPECT_EQ(TranslateExpression("(x, y) : exists( (z) | B(x, z) and E(z, y) )"),
-                "SELECT T0.A1 AS A1, T1.A2 AS A2 FROM B AS T0, E AS T1 WHERE T0.A2 = T1.A1");
+                "SELECT DISTINCT T0.A1 AS A1, T1.A2 AS A2 FROM B AS T0, E AS T1 WHERE T0.A2 = T1.A1");
 }
 
 TEST_F(TranslationTest, TransitiveClosure) {
   default_edb_map["R"] = RelationInfo(2);
 
-  OPT_EXPECT_EQ(
-      TranslateDefinition("def Q {(x,y) : R(x,y) or exists((z) | R(x,z) and Q(z,y))}"),
-      "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE R0(A1, A2) AS (SELECT T0.A1 AS x, T0.A2 AS y FROM R AS T0 "
-      "UNION SELECT T1.A1 AS x, T2.A2 AS y FROM R AS T1, R0 AS T2 WHERE T1.A2 = T2.A1) SELECT DISTINCT R0.A1 AS "
-      "A1, R0.A2 AS A2 FROM R0);");
+  OPT_EXPECT_EQ(TranslateDefinition("def Q {(x,y) : R(x,y) or exists((z) | R(x,z) and Q(z,y))}"),
+                "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE R0(A1, A2) AS (SELECT T0.A1 AS x, T0.A2 AS y FROM R AS T0 "
+                "UNION SELECT DISTINCT T1.A1 AS x, T2.A2 AS y FROM R AS T1, R0 AS T2 WHERE T1.A2 = T2.A1) SELECT "
+                "DISTINCT R0.A1 AS A1, R0.A2 AS A2 FROM R0);");
 }
 
 // DuckDB: N/A — emitted view body references columns not produced by inner subqueries (strict binders reject).
@@ -434,7 +743,7 @@ TEST_F(TranslationTest, RecursiveDisjunctTooManyCallsRejected) {
 
 TEST_F(TranslationTest, FullApplicationOnExpression2) {
   OPT_EXPECT_EQ(TranslateExpression("{ (x,y) : B(x,y) } where B(1,2) "),
-                "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, B AS T3 WHERE T3.A1 = 1 AND T3.A2 = 2");
+                "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, B AS T1 WHERE T1.A1 = 1 AND T1.A2 = 2");
 }
 
 TEST_F(TranslationTest, FullApplicationOnExpression3) {
@@ -444,21 +753,21 @@ TEST_F(TranslationTest, FullApplicationOnExpression3) {
 TEST_F(TranslationTest, FullApplicationOnExpression4) {
   OPT_EXPECT_EQ(
       TranslateDefinition("def Q { B[1] ; B[2] }"),
-      "CREATE OR REPLACE VIEW Q AS (SELECT DISTINCT CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T3.A2 END "
-      "AS A1 FROM B AS T0, B AS T3, (VALUES (1), (2)) AS I0(i) WHERE T0.A1 = 1 AND T3.A1 = 2);");
+      "CREATE OR REPLACE VIEW Q AS (SELECT DISTINCT CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T1.A2 END "
+      "AS A1 FROM B AS T0, B AS T1, (VALUES (1), (2)) AS I0(i) WHERE T0.A1 = 1 AND T1.A1 = 2);");
 }
 
 TEST_F(TranslationTest, FullApplicationOnExpression5) {
   OPT_EXPECT_EQ(
       TranslateExpression("{B[y];E[y]} where y > 1}"),
-      "WITH E0(y) AS (SELECT T4.A1 AS A1 FROM B AS T4 UNION SELECT T7.A1 AS A1 FROM E AS T7) SELECT T0.A1 AS y, "
-      "CASE WHEN I0.i = 1 THEN T0.A2 WHEN I0.i = 2 THEN T2.A2 END AS A1 FROM B AS T0, E AS T2, (VALUES (1), "
-      "(2)) AS I0(i), E0 WHERE T0.A1 = E0.y AND T0.A1 = T2.A1 AND E0.y > 1");
+      "WITH E0(y) AS (SELECT T0.A1 AS A1 FROM B AS T0 UNION SELECT T1.A1 AS A1 FROM E AS T1) SELECT T2.A1 AS y, "
+      "CASE WHEN I0.i = 1 THEN T2.A2 WHEN I0.i = 2 THEN T3.A2 END AS A1 FROM B AS T2, E AS T3, (VALUES (1), "
+      "(2)) AS I0(i), E0 WHERE T2.A1 = E0.y AND T2.A1 = T3.A1 AND E0.y > 1");
 }
 
 TEST_F(TranslationTest, FullApplicationOnExpression6) {
   OPT_EXPECT_EQ(TranslateExpression("(x,y): B(x,y) where {[z] : E(1,z)}(3)"),
-                "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, E AS T2 WHERE T2.A2 = 3 AND T2.A1 = 1");
+                "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, E AS T1 WHERE T1.A2 = 3 AND T1.A1 = 1");
 }
 
 TEST_F(TranslationTest, FullApplicationOnExpression7) {
@@ -533,14 +842,13 @@ TEST_F(TranslationTest, InferrableVariableConjunction2) {
 
 TEST_F(TranslationTest, InferrableVariableConjunction3) {
   OPT_EXPECT_EQ(TranslateExpression("x = 2 * y - 3 and A(y)"),
-                "SELECT (T6.A1 - 1.5) / 0.5 AS x, T6.A1 AS y FROM A AS T6, A AS T0 WHERE T6.A1 = T0.A1");
+                "SELECT (T0.A1 - 1.5) / 0.5 AS x, T0.A1 AS y FROM A AS T0");
 }
 
 TEST_F(TranslationTest, InferrableVariableMultivariate) {
-  OPT_EXPECT_EQ(
-      TranslateExpression("z = x + y + 1 and B(x, y)"),
-      "SELECT T0.A1 AS x, T0.A2 AS y, (T1.A2 + 1) + T5.A1 AS z FROM B AS T0, B AS T1, B AS T5 WHERE ((T1.A2 + "
-      "1) + T5.A1) = T0.A1 + T0.A2 + 1");
+  OPT_EXPECT_EQ(TranslateExpression("z = x + y + 1 and B(x, y)"),
+                "SELECT T0.A1 AS x, T0.A2 AS y, (T1.A2 + 1) + T2.A1 AS z FROM B AS T0, B AS T1, B AS T2 WHERE ((T1.A2 "
+                "+ 1) + T2.A1) = T0.A1 + T0.A2 + 1");
 }
 
 TEST_F(TranslationTest, NegativeLiteral1) {
@@ -565,11 +873,10 @@ TEST_F(TranslationTest, DisjunctionFormula2) {
 }
 
 TEST_F(TranslationTest, DisjunctionFormula3) {
-  OPT_EXPECT_EQ(
-      TranslateFormula("(A(x) or D(y)) and B(x,y)"),
-      "WITH E0(x, y) AS (SELECT T2.A1 AS A1, T2.A2 AS A2 FROM B AS T2) SELECT T6.x, T6.y FROM (SELECT DISTINCT "
-      "T0.A1 AS x, E0.y FROM A AS T0, E0 WHERE T0.A1 = E0.x UNION SELECT DISTINCT E0.x, T1.A1 AS y FROM D AS T1, "
-      "E0 WHERE T1.A1 = E0.y) AS T6, B AS T5 WHERE T6.y = T5.A2 AND T6.x = T5.A1");
+  OPT_EXPECT_EQ(TranslateFormula("(A(x) or D(y)) and B(x,y)"),
+                "WITH E0(x, y) AS (SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0) SELECT T3.x AS x, T3.y AS y FROM "
+                "(SELECT DISTINCT T1.A1 AS x, E0.y FROM A AS T1, E0 WHERE T1.A1 = E0.x UNION SELECT DISTINCT E0.x, "
+                "T2.A1 AS y FROM D AS T2, E0 WHERE T2.A1 = E0.y) AS T3, B AS T4 WHERE T3.y = T4.A2 AND T3.x = T4.A1");
 }
 
 TEST_F(TranslationTest, NegationFormula1) {
@@ -579,7 +886,7 @@ TEST_F(TranslationTest, NegationFormula1) {
 
 TEST_F(TranslationTest, NegationFormula2) {
   OPT_EXPECT_EQ(TranslateFormula("not A(x) and D(x)"),
-                "SELECT T2.A1 AS x FROM D AS T2 WHERE T2.A1 NOT IN (SELECT DISTINCT * FROM A AS T0)");
+                "SELECT T0.A1 AS x FROM D AS T0 WHERE T0.A1 NOT IN (SELECT DISTINCT * FROM A AS T1)");
 }
 
 TEST_F(TranslationTest, NegationFormula3) {
@@ -590,33 +897,33 @@ TEST_F(TranslationTest, NegationFormula3) {
 }
 
 TEST_F(TranslationTest, NegationFormula4) {
-  OPT_EXPECT_EQ(
-      TranslateFormula("A(x) and D(y) and not D(x) and not A(y)"),
-      "SELECT T0.A1 AS x, T1.A1 AS y FROM A AS T0, D AS T1 WHERE T0.A1 NOT IN (SELECT DISTINCT * FROM D AS T4) "
-      "AND T1.A1 NOT IN (SELECT DISTINCT * FROM A AS T9)");
+  OPT_EXPECT_EQ(TranslateFormula("A(x) and D(y) and not D(x) and not A(y)"),
+                "SELECT T0.A1 AS x, T1.A1 AS y FROM A AS T0, D AS T1 WHERE T0.A1 NOT IN (SELECT DISTINCT * FROM D AS "
+                "T2) AND T1.A1 NOT IN (SELECT DISTINCT * FROM A AS T3)");
 }
 
 TEST_F(TranslationTest, NestedQuantifiers1) {
-  OPT_EXPECT_EQ(TranslateFormula("exists ((y) | exists ((z) | C(x, y, z)))"), "SELECT T0.A1 AS x FROM C AS T0");
+  OPT_EXPECT_EQ(TranslateFormula("exists ((y) | exists ((z) | C(x, y, z)))"),
+                "SELECT DISTINCT T0.A1 AS x FROM C AS T0");
 }
 
 TEST_F(TranslationTest, NestedQuantifiers2) {
-  OPT_EXPECT_EQ(
-      TranslateFormula("exists ((y in A) | forall ((z in D) | C(x, y, z)))"),
-      "SELECT T1.A1 AS x FROM C AS T1, A AS T5 WHERE T1.A2 = T5.A1 AND NOT EXISTS (SELECT 1 FROM D AS T0 WHERE NOT "
-      "EXISTS (SELECT 1 FROM (SELECT T1.A1 AS x, T1.A2 AS y, T1.A3 AS z FROM C AS T1) AS T3 WHERE T1.A1 = T3.x AND "
-      "T1.A2 = T3.y AND T0.A1 = T3.z))");
+  OPT_EXPECT_EQ(TranslateFormula("exists ((y in A) | forall ((z in D) | C(x, y, z)))"),
+                "SELECT DISTINCT T0.A1 AS x FROM C AS T0, A AS T1 WHERE T0.A2 = T1.A1 AND NOT EXISTS (SELECT 1 FROM D "
+                "AS T2 WHERE NOT EXISTS (SELECT 1 FROM (SELECT T0.A1 AS x, T0.A2 AS y, T0.A3 AS z FROM C AS T0) AS T3 "
+                "WHERE T0.A1 = T3.x AND T0.A2 = T3.y AND T2.A1 = T3.z))");
 }
 
 TEST_F(TranslationTest, NestedQuantifiers3) {
-  OPT_EXPECT_EQ(TranslateFormula("forall ((y in A) | exists ((z) | C(x, y, z)))"),
-                "SELECT T1.A1 AS x FROM C AS T1 WHERE NOT EXISTS (SELECT 1 FROM A AS T0 WHERE NOT EXISTS (SELECT 1 "
-                "FROM (SELECT T1.A1 AS x, T1.A2 AS y FROM C AS T1) AS T4 WHERE T1.A1 = T4.x AND T0.A1 = T4.y))");
+  OPT_EXPECT_EQ(
+      TranslateFormula("forall ((y in A) | exists ((z) | C(x, y, z)))"),
+      "SELECT DISTINCT T0.A1 AS x FROM C AS T0 WHERE NOT EXISTS (SELECT 1 FROM A AS T1 WHERE NOT EXISTS (SELECT 1 FROM "
+      "(SELECT DISTINCT T0.A1 AS x, T0.A2 AS y FROM C AS T0) AS T2 WHERE T0.A1 = T2.x AND T1.A1 = T2.y))");
 }
 
 TEST_F(TranslationTest, NestedQuantifiers4) {
   OPT_EXPECT_EQ(TranslateFormula("exists ((y) | exists ((z) | exists ((w) | I(x, y, z) and I(y, z, w))))"),
-                "SELECT T0.A1 AS x FROM I AS T0, I AS T1 WHERE T0.A3 = T1.A2 AND T0.A2 = T1.A1");
+                "SELECT DISTINCT T0.A1 AS x FROM I AS T0, I AS T1 WHERE T0.A3 = T1.A2 AND T0.A2 = T1.A1");
 }
 
 TEST_F(TranslationTest, Conditional2) {
@@ -634,7 +941,7 @@ TEST_F(TranslationTest, Conditional4) {
 
 TEST_F(TranslationTest, NestedConditional1) {
   OPT_EXPECT_EQ(TranslateExpression("(B[x] where A(x)) where D(x)"),
-                "SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0, A AS T1, D AS T5 WHERE T0.A1 = T5.A1 AND T0.A1 = T1.A1");
+                "SELECT T0.A1 AS x, T0.A2 AS A1 FROM B AS T0, A AS T1, D AS T2 WHERE T0.A1 = T2.A1 AND T0.A1 = T1.A1");
 }
 
 TEST_F(TranslationTest, NestedConditional2) {
@@ -726,10 +1033,9 @@ TEST_F(TranslationTest, ExpressionBindings2) {
 }
 
 TEST_F(TranslationTest, ExpressionBindings3) {
-  OPT_EXPECT_EQ(
-      TranslateExpression("[x in A, y]: C[x, y] where D(y)"),
-      "SELECT T0.A1 AS A1, T0.A2 AS A2, T0.A3 AS A3 FROM C AS T0, D AS T1, A AS T4 WHERE T0.A1 = T4.A1 AND T0.A2 "
-      "= T1.A1");
+  OPT_EXPECT_EQ(TranslateExpression("[x in A, y]: C[x, y] where D(y)"),
+                "SELECT T0.A1 AS A1, T0.A2 AS A2, T0.A3 AS A3 FROM C AS T0, D AS T1, A AS T2 WHERE T0.A1 = T2.A1 AND "
+                "T0.A2 = T1.A1");
 }
 
 TEST_F(TranslationTest, ExpressionBindings4) {
@@ -740,32 +1046,33 @@ TEST_F(TranslationTest, ExpressionBindings4) {
 }
 
 TEST_F(TranslationTest, ExpressionConstantTerms1) {
-  OPT_EXPECT_EQ(TranslateExpression("B[1+2]"), "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 3");
+  OPT_EXPECT_EQ(TranslateExpression("B[1+2]"), "SELECT DISTINCT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 3");
 }
 
 TEST_F(TranslationTest, ExpressionConstantTerms2) {
-  OPT_EXPECT_EQ(TranslateExpression("B[2*(3+4)]"), "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 2 * (7)");
+  OPT_EXPECT_EQ(TranslateExpression("B[2*(3+4)]"), "SELECT DISTINCT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 2 * (7)");
 }
 
 TEST_F(TranslationTest, ParameterVariableTerms1) {
-  OPT_EXPECT_EQ(TranslateExpression("A(x+1)"), "SELECT T0.A1 - 1 AS x FROM A AS T0");
+  OPT_EXPECT_EQ(TranslateExpression("A(x+1)"), "SELECT DISTINCT T0.A1 - 1 AS x FROM A AS T0");
 }
 
 TEST_F(TranslationTest, ParameterVariableTerms2) {
-  OPT_EXPECT_EQ(TranslateExpression("A(2*x)"), "SELECT T0.A1 / 2 AS x FROM A AS T0");
+  OPT_EXPECT_EQ(TranslateExpression("A(2*x)"), "SELECT DISTINCT T0.A1 / 2 AS x FROM A AS T0");
 }
 
 TEST_F(TranslationTest, ParameterVariableTerms3) {
-  OPT_EXPECT_EQ(TranslateExpression("A(2*x-1)"), "SELECT (T1.A1 + 1) / 2 AS x FROM A AS T1");
+  OPT_EXPECT_EQ(TranslateExpression("A(2*x-1)"), "SELECT DISTINCT (T0.A1 + 1) / 2 AS x FROM A AS T0");
 }
 
 TEST_F(TranslationTest, ParameterVariableTerms4) {
-  OPT_EXPECT_EQ(TranslateExpression("A(3*(2*x-1+5*x)+x)"), "SELECT (T1.A1 + 3) / 22 AS x FROM A AS T1");
+  OPT_EXPECT_EQ(TranslateExpression("A(3*(2*x-1+5*x)+x)"), "SELECT DISTINCT (T0.A1 + 3) / 22 AS x FROM A AS T0");
 }
 
 TEST_F(TranslationTest, ParameterVariableTerms5) {
   // Like-term collection merges (T0.A1 - 1) - 1 to T0.A1 - 2
-  OPT_EXPECT_EQ(TranslateExpression("B(x+1,x-1)"), "SELECT T0.A1 - 1 AS x FROM B AS T0 WHERE T0.A2 = (T0.A1 - 1) - 1");
+  OPT_EXPECT_EQ(TranslateExpression("B(x+1,x-1)"),
+                "SELECT DISTINCT T0.A1 - 1 AS x FROM B AS T0 WHERE T0.A2 = (T0.A1 - 1) - 1");
 }
 
 // DuckDB: N/A — pinned SQL selects T2.A3 from a two-column subquery; not executable in any strict SQL engine.
@@ -774,17 +1081,16 @@ TEST_F(TranslationTest, ParameterVariableTerms6) {
   auto sql = GetSQLFromExpr("B(x+1,x,y)", default_edb_map);
   ASSERT_TRUE(sql);
   EXPECT_EQ(sql->ToString(),
-            "WITH E0(_x0, x, y) AS (SELECT T2.A1 AS A1, T2.A2 AS A2, T2.A3 AS A3 FROM (SELECT T1.A1 AS A1, T1.A2 AS "
-            "A2 FROM B AS T1) AS T2) SELECT T5.x, T5.y FROM (SELECT T3._x0, T3.x, T3.y FROM (SELECT T0.A1 AS _x0, "
-            "T0.A2 AS x, T0.A3 AS y FROM B AS T0) AS T3, (SELECT E0._x0, E0.x FROM E0 WHERE E0._x0 = E0.x + 1) AS T4 "
-            "WHERE T3.x = T4.x AND T3._x0 = T4._x0) AS T5");
+            "WITH E0(_x0, x, y) AS (SELECT T2.A1 AS A1, T2.A2 AS A2, T2.A3 AS A3 FROM (SELECT T1.A1 AS A1, T1.A2 AS A2 "
+            "FROM B AS T1) AS T2) SELECT DISTINCT T5.x AS x, T5.y AS y FROM (SELECT T3._x0 AS _x0, T3.x AS x, T3.y AS "
+            "y FROM (SELECT T0.A1 AS _x0, T0.A2 AS x, T0.A3 AS y FROM B AS T0) AS T3, (SELECT E0._x0, E0.x FROM E0 "
+            "WHERE E0._x0 = E0.x + 1) AS T4 WHERE T3.x = T4.x AND T3._x0 = T4._x0) AS T5");
 }
 
 TEST_F(TranslationTest, ParameterVariableTerms7) {
-  OPT_EXPECT_EQ(
-      TranslateExpression("B(x+1,B[x])"),
-      "SELECT T1.A1 AS x FROM B AS T0, B AS T1, B AS T5 WHERE T1.A1 = (T5.A1 - 1) AND T0.A2 = T1.A2 AND T0.A1 "
-      "= (T5.A1 - 1) + 1");
+  OPT_EXPECT_EQ(TranslateExpression("B(x+1,B[x])"),
+                "SELECT DISTINCT T1.A1 AS x FROM B AS T0, B AS T1, B AS T2 WHERE T1.A1 = (T2.A1 - 1) AND T0.A2 = T1.A2 "
+                "AND T0.A1 = (T2.A1 - 1) + 1");
 }
 
 // Self-join detection via canonical form: T0.A1 = 22*(T2.A1+3)/22 + -3 is algebraically T0.A1 = T2.A1.
@@ -826,10 +1132,9 @@ TEST_F(TranslationTest, FailedParameterVariableTerms4) {
 }
 
 TEST_F(TranslationTest, ExpressionAsTermRewriterBindingsBody) {
-  OPT_EXPECT_EQ(
-      TranslateExpression("[x in A, y in A]: x+y+1"),
-      "SELECT T1.A1 AS A1, T0.A1 AS A2, (T2.A1 + 1) + T5.A1 AS A3 FROM A AS T0, A AS T1, A AS T2, A AS T5 WHERE "
-      "((T2.A1 + 1) + T5.A1) = T1.A1 + T0.A1 + 1");
+  OPT_EXPECT_EQ(TranslateExpression("[x in A, y in A]: x+y+1"),
+                "SELECT T2.A1 AS A1, T3.A1 AS A2, (T0.A1 + 1) + T1.A1 AS A3 FROM A AS T0, A AS T1, A AS T2, A AS T3 "
+                "WHERE ((T0.A1 + 1) + T1.A1) = T2.A1 + T3.A1 + 1");
 }
 
 TEST_F(TranslationTest, Program) {
@@ -855,7 +1160,7 @@ TEST_F(TranslationTest, NamedAttributesExistential) {
   default_edb_map["R"] = RelationInfo({"student_id", "course_id"});
   default_edb_map["S"] = RelationInfo({"course_id"});
   OPT_EXPECT_EQ(TranslateFormula("exists ((y in S) | R(x, y))"),
-                "SELECT T0.student_id AS x FROM R AS T0, S AS T2 WHERE T0.course_id = T2.course_id");
+                "SELECT DISTINCT T0.student_id AS x FROM R AS T0, S AS T1 WHERE T0.course_id = T1.course_id");
 }
 
 TEST_F(TranslationTest, NamedAttributesPartialApplication) {
@@ -896,19 +1201,18 @@ TEST_F(TranslationTest, NamedAttributesBindingFormula) {
 
 TEST_F(TranslationTest, CompositionRelation) {
   OPT_EXPECT_EQ(TranslateExpression("(x, y): exists((z) | B(x, z) and E(z, y))"),
-                "SELECT T0.A1 AS A1, T1.A2 AS A2 FROM B AS T0, E AS T1 WHERE T0.A2 = T1.A1");
+                "SELECT DISTINCT T0.A1 AS A1, T1.A2 AS A2 FROM B AS T0, E AS T1 WHERE T0.A2 = T1.A1");
 }
 
 TEST_F(TranslationTest, SelfComposition) {
   OPT_EXPECT_EQ(TranslateExpression("(x, y): exists((z) | B(x, z) and B(z, y))"),
-                "SELECT T0.A1 AS A1, T1.A2 AS A2 FROM B AS T0, B AS T1 WHERE T0.A2 = T1.A1");
+                "SELECT DISTINCT T0.A1 AS A1, T1.A2 AS A2 FROM B AS T0, B AS T1 WHERE T0.A2 = T1.A1");
 }
 
 TEST_F(TranslationTest, FirstTransitivityComposition) {
-  OPT_EXPECT_EQ(
-      TranslateExpression("(x, y): B(x, y) or exists((z) | B(x, z) and B(z, y))"),
-      "SELECT T6.x AS A1, T6.y AS A2 FROM (SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0 UNION SELECT T1.A1 AS x, "
-      "T2.A2 AS y FROM B AS T1, B AS T2 WHERE T1.A2 = T2.A1) AS T6");
+  OPT_EXPECT_EQ(TranslateExpression("(x, y): B(x, y) or exists((z) | B(x, z) and B(z, y))"),
+                "SELECT T0.A2 AS A2, T0.A1 AS A1 FROM B AS T0 UNION SELECT DISTINCT T2.A2 AS A2, T1.A1 AS A1 FROM B AS "
+                "T1, B AS T2 WHERE T1.A2 = T2.A1");
 }
 
 TEST_F(TranslationTest, SimpleReferenceDefinition) {
@@ -917,18 +1221,17 @@ TEST_F(TranslationTest, SimpleReferenceDefinition) {
 }
 
 TEST_F(TranslationTest, ExistentialNotBoundingAllVariables) {
-  OPT_EXPECT_EQ(TranslateFormula("exists((y) | A(x) and D(y))"), "SELECT T0.A1 AS x FROM A AS T0, D AS T1");
+  OPT_EXPECT_EQ(TranslateFormula("exists((y) | A(x) and D(y))"), "SELECT DISTINCT T0.A1 AS x FROM A AS T0, D AS T1");
 }
 
 TEST_F(TranslationTest, RecursiveDefinition) {
   default_edb_map["A"] = RelationInfo(1);
   default_edb_map["B"] = RelationInfo(1);
   default_edb_map["C"] = RelationInfo(1);
-  OPT_EXPECT_EQ(
-      TranslateDefinition("def Q {(x) : B(x) or exists ((y) | Q(y) and C(y))}"),
-      "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE R0(A1) AS (SELECT DISTINCT T0.A1 AS x FROM B AS T0, E0 WHERE "
-      "T0.A1 = E0.x UNION SELECT DISTINCT E0.x FROM R0 AS T1, C AS T2, E0 WHERE T1.A1 = T2.A1), E0(x) AS (SELECT "
-      "T6.A1 AS A1 FROM B AS T6) SELECT DISTINCT R0.A1 AS A1 FROM R0);");
+  OPT_EXPECT_EQ(TranslateDefinition("def Q {(x) : B(x) or exists ((y) | Q(y) and C(y))}"),
+                "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE R0(A1) AS (SELECT DISTINCT T0.A1 AS x FROM B AS T0, E0 "
+                "WHERE T0.A1 = E0.x UNION SELECT DISTINCT E0.x FROM R0 AS T2, C AS T3, E0 WHERE T2.A1 = T3.A1), E0(x) "
+                "AS (SELECT T1.A1 AS A1 FROM B AS T1) SELECT DISTINCT R0.A1 AS A1 FROM R0);");
 }
 
 TEST_F(TranslationTest, WeirdEdgeCase1) {
@@ -961,10 +1264,103 @@ TEST_F(TranslationTest, WeirdEdgeCase1) {
 TEST_F(TranslationTest, BindingEquality) { OPT_EXPECT_EQ(TranslateExpression("(x): x = 1"), "SELECT 1 AS A1"); }
 
 TEST_F(TranslationTest, EdgeCase1) {
-  OPT_EXPECT_EQ(
-      TranslateExpression("(x,y,z): B(x,y+1) and z = x-y"),
-      "SELECT T0.A1 AS A1, T0.A2 - 1 AS A2, T11.A1 + ((T13.A2 - 1) * -1) AS A3 FROM B AS T0, B AS T11, B AS T13 "
-      "WHERE (T11.A1 + ((T13.A2 - 1) * -1)) = T0.A1 - (T0.A2 - 1)");
+  OPT_EXPECT_EQ(TranslateExpression("(x,y,z): B(x,y+1) and z = x-y"),
+                "SELECT DISTINCT T0.A1 AS A1, T0.A2 - 1 AS A2, T1.A1 + ((T2.A2 - 1) * -1) AS A3 FROM B AS T0, B AS T1, "
+                "B AS T2 WHERE (T1.A1 + ((T2.A2 - 1) * -1)) = T0.A1 - (T0.A2 - 1)");
+}
+
+TEST_F(TranslationTest, GeneratedTableAliasesAreDensePerStatement) {
+  const std::string sql = TranslateFormula("forall ((y in A) | B(x, y))");
+  std::regex alias_re(R"(\b([TEIR])(\d+)\b)");
+  std::map<char, std::set<int>> by_prefix;
+  for (std::sregex_iterator it(sql.begin(), sql.end(), alias_re), end; it != end; ++it) {
+    by_prefix[(*it)[1].str()[0]].insert(std::stoi((*it)[2].str()));
+  }
+  for (const auto& [prefix, ids] : by_prefix) {
+    ASSERT_FALSE(ids.empty());
+    for (int i = 0; i <= *ids.rbegin(); ++i) {
+      EXPECT_TRUE(ids.count(i)) << "missing generated alias " << prefix << i << " in:\n" << sql;
+    }
+  }
+}
+
+TEST(TpchQ11AggregateThreshold, RewrittenResultGroupsByPart) {
+  auto tpch = ::rel2sql::testing::LoadTpchEdbForDuckDb(RepoDataPath("benchmarks/TPCH/rel/tpch_edb.edb"));
+  const std::string program = RunTpchRewrite(11);
+  ASSERT_FALSE(program.empty());
+  auto sql = GetSQLRel(program, tpch.relations);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  const auto result_pos = out.find("VIEW result AS");
+  ASSERT_NE(result_pos, std::string::npos) << out;
+  const std::string result_sql = out.substr(result_pos);
+  EXPECT_NE(result_sql.find("GROUP BY"), std::string::npos) << result_sql.substr(0, 500);
+  EXPECT_EQ(result_sql.find("WHERE (SUM("), std::string::npos) << result_sql.substr(0, 500);
+}
+
+TEST(TpchQ17ScalarDiv, MinimalSumOverSeven) {
+  auto tpch = ::rel2sql::testing::LoadTpchEdbForDuckDb(RepoDataPath("benchmarks/TPCH/rel/tpch_edb.edb"));
+  const std::string rel = R"(
+def result { sum[[o, num, p]:
+    l_extendedprice[o, num] where l_partkey(o, num, p)
+] / 7 }
+)";
+  auto sql = GetSQLRel(rel, tpch.relations);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  const auto result_pos = out.find("VIEW result AS");
+  ASSERT_NE(result_pos, std::string::npos) << out;
+  const std::string result_sql = out.substr(result_pos);
+  EXPECT_NE(result_sql.find("SUM("), std::string::npos) << result_sql;
+  EXPECT_NE(result_sql.find("/ 7"), std::string::npos) << result_sql;
+  EXPECT_EQ(result_sql.find("WHERE ((SUM("), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_EQ(result_sql.find("E5("), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_EQ(result_sql.find("A1 = 'Brand#23'"), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_EQ(result_sql.find("A1 = 'MED BOX'"), std::string::npos) << result_sql.substr(0, 800);
+}
+
+TEST(TpchQ17ScalarDiv, ResultIsSumOverSeven) {
+  auto tpch = ::rel2sql::testing::LoadTpchEdbForDuckDb(RepoDataPath("benchmarks/TPCH/rel/tpch_edb.edb"));
+  const std::string program = RunTpchRewrite(17);
+  ASSERT_FALSE(program.empty());
+  auto sql = GetSQLRel(program, tpch.relations);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  const auto result_pos = out.find("VIEW result AS");
+  ASSERT_NE(result_pos, std::string::npos) << out;
+  const std::string result_sql = out.substr(result_pos);
+  EXPECT_NE(result_sql.find("SUM("), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_NE(result_sql.find("/ 7"), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_EQ(result_sql.find("WHERE ((SUM("), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_EQ(result_sql.find("A1 = 'Brand#23'"), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_EQ(result_sql.find("A1 = 'MED BOX'"), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_NE(result_sql.find("A2 = 'Brand#23'"), std::string::npos) << result_sql.substr(0, 800);
+  EXPECT_NE(result_sql.find("A2 = 'MED BOX'"), std::string::npos) << result_sql.substr(0, 800);
+}
+
+TEST(TpchQ12PartialAppFlatten, RewrittenProgramHasNoDanglingBindingRefs) {
+  auto tpch = ::rel2sql::testing::LoadTpchEdbForDuckDb(RepoDataPath("benchmarks/TPCH/rel/tpch_edb.edb"));
+  const std::string program = RunTpchRewrite(12);
+  ASSERT_FALSE(program.empty());
+  auto sql = GetSQLRel(program, tpch.relations);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  EXPECT_EQ(out.find("T128.o"), std::string::npos) << out.substr(out.find("selected_lineitems"), 600);
+  EXPECT_EQ(out.find("T150.o"), std::string::npos) << out.substr(out.find("high_line"), 400);
+  const auto sl_pos = out.find("VIEW selected_lineitems AS");
+  ASSERT_NE(sl_pos, std::string::npos) << out;
+  const std::string sl_sql = out.substr(sl_pos, out.find("VIEW high_line AS") - sl_pos);
+  EXPECT_NE(sl_sql.find("lower AS"), std::string::npos) << sl_sql.substr(0, 800);
+  EXPECT_NE(sl_sql.find("upper AS"), std::string::npos) << sl_sql.substr(0, 800);
+  EXPECT_NE(sl_sql.find(".A3 <"), std::string::npos) << sl_sql.substr(0, 800);
+  EXPECT_NE(sl_sql.find("<= T"), std::string::npos) << sl_sql.substr(0, 800);
+  const auto hl_pos = out.find("VIEW high_line AS");
+  ASSERT_NE(hl_pos, std::string::npos) << out;
+  const std::string hl_sql = out.substr(hl_pos, out.find("VIEW low_line AS") - hl_pos);
+  EXPECT_EQ(hl_sql.find("WHERE T4.A3 = T4.A3"), std::string::npos) << hl_sql.substr(0, 600);
+  EXPECT_NE(hl_sql.find("shipmode"), std::string::npos) << hl_sql.substr(0, 600);
+  const auto result_pos = out.find("VIEW result AS");
+  ASSERT_NE(result_pos, std::string::npos) << out;
 }
 
 }  // namespace rel2sql
@@ -1165,6 +1561,57 @@ TEST(SelfJoinOptimizationTest, MultiColumnSelfJoin) {
   if (!::testing::Test::HasFailure()) {
     ::rel2sql::testing::AssertExecutesInDuckDB(result, rel2sql::CreateDefaultEDBMap());
   }
+}
+
+TEST(TpchQ18TranslationTest, FinalSortUsesRankedReverseSort) {
+  const std::string rel = R"(def unsorted_result { (a,b,c,d,e,f): R(a,b,c,d,e,f) }
+  def inside_rev_sort { [a]: reverse_sort[unsorted_result[a]] }
+  def final_sort { reverse_sort[inside_rev_sort] }
+  def result { (i,x,y,z,u,v,w): final_sort(i,x,_,y,z,u,v,w) and i <= 100 })";
+  rel2sql::RelationMap edb;
+  edb["R"] = rel2sql::RelationInfo(6);
+  auto context = rel2sql::BuildContextFromProgram(rel, edb);
+  auto program = std::dynamic_pointer_cast<rel2sql::RelProgram>(context.Root());
+  ASSERT_NE(program, nullptr);
+  const auto* final_sort_def = rel2sql::FindDef(*program, "final_sort");
+  ASSERT_NE(final_sort_def, nullptr);
+  ASSERT_NE(final_sort_def->body, nullptr);
+  ASSERT_FALSE(final_sort_def->body->exprs.empty());
+  const auto* order = dynamic_cast<const rel2sql::RelBuiltinOrderExpr*>(final_sort_def->body->exprs[0].get());
+  ASSERT_NE(order, nullptr) << final_sort_def->body->exprs[0]->ToString();
+  EXPECT_EQ(order->kind, rel2sql::RelBuiltinOrderKind::SortDesc);
+  EXPECT_GE(order->arity, 8u);
+  EXPECT_TRUE(context.IsIDB("inside_rev_sort"));
+  EXPECT_GE(context.GetArity("inside_rev_sort"), 6);
+
+  rel2sql::Translator translator(context);
+  auto sql = translator.Translate();
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  EXPECT_NE(out.find("ROW_NUMBER()"), std::string::npos) << out;
+  EXPECT_NE(out.find("CREATE OR REPLACE VIEW final_sort"), std::string::npos);
+}
+
+TEST(TpchQ18TranslationTest, RewrittenQ18FinalSortHasRowNumber) {
+  const std::string rel = rel2sql::RunShellCapture(
+      ("python3 " + rel2sql::RepoDataPath("scripts/tpch_rewrite.py") + " 18 2>/dev/null").c_str());
+  ASSERT_FALSE(rel.empty());
+  auto edb = rel2sql::testing::LoadTpchEdbFromFile(rel2sql::RepoDataPath("benchmarks/TPCH/rel/tpch_edb.edb"));
+  ASSERT_FALSE(edb.map.empty());
+  auto context = rel2sql::BuildContextFromProgram(rel, edb);
+  auto program = std::dynamic_pointer_cast<rel2sql::RelProgram>(context.Root());
+  ASSERT_NE(program, nullptr);
+  const auto* final_sort_def = rel2sql::FindDef(*program, "final_sort");
+  ASSERT_NE(final_sort_def, nullptr);
+  const auto* order = dynamic_cast<const rel2sql::RelBuiltinOrderExpr*>(final_sort_def->body->exprs[0].get());
+  ASSERT_NE(order, nullptr) << final_sort_def->body->exprs[0]->ToString();
+  EXPECT_GE(order->arity, 8u) << "inside_rev_sort arity=" << context.GetArity("inside_rev_sort");
+  EXPECT_GE(context.GetArity("inside_rev_sort"), 6);
+
+  auto sql = GetSQLRel(rel, edb);
+  ASSERT_NE(sql, nullptr);
+  const std::string out = sql->ToString();
+  EXPECT_NE(out.find("ROW_NUMBER()"), std::string::npos) << out.substr(out.find("final_sort"), 500);
 }
 
 TEST(SelfJoinOptimizationTest, PartialSelfJoin) {

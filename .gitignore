@@ -47,9 +47,7 @@ packages/rel2sql-wasm/dist/
 packages/rel2sql-wasm/*.tgz
 
 # Queries
-*.rel
 !examples/manual-formula-suite.rel
-*.sql
 
 # Generated for clangd (also often listed in ~/.git/info/exclude)
 compile_commands.json
@@ -59,4 +57,14 @@ compile_commands.json
 
 .db/
 
+# Local environment (see .env.example; loaded by Task via dotenv)
 .env
+
+# Generated rel2sql TPC-H translations (see benchmarks/TPCH/out/README.md)
+benchmarks/TPCH/out/sql/
+benchmarks/TPCH/out/rel/
+benchmarks/TPCH/out/err/
+benchmarks/TPCH/out/explain/
+
+# Local TPC-H DuckDB files (see benchmarks/TPCH/data/README.md)
+benchmarks/TPCH/data/*.duckdb

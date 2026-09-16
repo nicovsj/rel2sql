@@ -1,0 +1,67 @@
+/*
+-- $ID$
+-- TPC-H/TPC-R Important Stock Identification Query (Q11)
+-- Functional Query Definition
+-- Approved February 1998
+*/
+
+/*
+
+The Important Stock Identification Query finds, from scanning the available
+stock of suppliers in a given nation, all the parts that represent a significant
+percentage of the total value of all available parts. The query displays the
+part number and the value of those parts in descending order of value.
+
+*/
+
+/*
+:x
+:o
+select
+    ps_partkey,
+    sum(ps_supplycost * ps_availqty) as value
+from
+    partsupp,
+    supplier,
+    nation
+where
+    ps_suppkey = s_suppkey
+    and s_nationkey = n_nationkey
+    and n_name = '@@1'
+group by
+    ps_partkey having
+        sum(ps_supplycost * ps_availqty) > (
+            select
+                sum(ps_supplycost * ps_availqty) * @@2
+            from
+                partsupp,
+                supplier,
+                nation
+            where
+                ps_suppkey = s_suppkey
+                and s_nationkey = n_nationkey
+                and n_name = '@@1'
+        )
+order by
+    value desc;
+:n -1
+*/
+
+@inline
+def threshold[]:
+    parse_decimal[64, 4, "@@2"] * sum[[part, supplier]:
+        ps_supplycost[part, supplier] * ps_availqty[part, supplier] where
+        ( ( supplier.s_nationkey ).n_name ) = "@@1"
+    ]
+
+// @vectorized : it is fine to put @vectorized here, however, this is commented out because
+// we skip the join-tree optimization for cheap queries, and at SF001 this skipping might
+// causes an exception to be thrown.
+def result(part, v):
+    v > threshold and
+    v = sum[[supplier]:
+        ps_supplycost[part, supplier] * ps_availqty[part, supplier] where
+        ( s_nationkey[supplier].n_name ) = "@@1"
+    ]
+
+//MD: `ORDER BY VALUE DESC` is missing

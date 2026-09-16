@@ -25,7 +25,7 @@ void ExpressionVisitor::Visit(Term& term) { term.Accept(*this); }
 
 //
 
-void ExpressionVisitor::Visit(Alias& _) {}
+void ExpressionVisitor::Visit(AliasClause& _) {}
 
 void ExpressionVisitor::Visit(Source& source) {
   Visit(*source.sourceable);
@@ -58,6 +58,18 @@ void ExpressionVisitor::Visit(Operation& operation) {
 void ExpressionVisitor::Visit(ParenthesisTerm& parenthesis_term) { Visit(*parenthesis_term.term); }
 
 void ExpressionVisitor::Visit(Function& function) { Visit(*function.arg); }
+
+void ExpressionVisitor::Visit(DateExtractTerm& date_extract_term) {
+  if (date_extract_term.arg) Visit(*date_extract_term.arg);
+}
+
+void ExpressionVisitor::Visit(SubstringTerm& substring_term) {
+  if (substring_term.str) Visit(*substring_term.str);
+  if (substring_term.start) Visit(*substring_term.start);
+  if (substring_term.len) Visit(*substring_term.len);
+}
+
+void ExpressionVisitor::Visit(VerbatimTerm&) {}
 
 void ExpressionVisitor::Visit(TermSelectable& term_selectable) { Visit(*term_selectable.term); }
 
@@ -115,6 +127,10 @@ void ExpressionVisitor::Visit(Select& select) {
 
   if (select.group_by) {
     Visit(*select.group_by.value());
+  }
+
+  for (const auto& ob : select.order_by) {
+    Visit(*ob.term);
   }
 }
 
