@@ -115,26 +115,30 @@ std::shared_ptr<Expression> FlattenerOptimizer::TryFlattenUnionSubquery(const st
   }
 }
 
-bool FlattenerOptimizer::CanFlattenSubquery(const std::shared_ptr<Source>& source) {
+bool FlattenerOptimizer::CanFlattenSubquery(const std::shared_ptr<Source>& source, bool outer_can_absorb_distinct) {
   if (source->is_cte) return false;
   if (source->inhibit_subquery_flatten) return false;
   auto select_subquery = std::dynamic_pointer_cast<Select>(source->sourceable);
   if (!select_subquery) return false;
   if (select_subquery->ctes_are_recursive) return false;
   if (select_subquery->group_by.has_value()) return false;
+  // DISTINCT collapses duplicate rows before the outer query sees them, and inlining the
+  // subquery's sources into the parent drops that. Only safe where the caller can move the dedup
+  // up to itself (see TryFlattenSubquery).
+  if (select_subquery->is_distinct && !outer_can_absorb_distinct) return false;
   // A scalar (ungrouped) aggregate subquery — e.g. `SELECT MAX(x) FROM t` with no GROUP
   // BY — computes one value over its own, independent FROM. Flattening would merge that
   // FROM into the outer query and substitute the bare aggregate call in its place, turning
   // an independent aggregation into a correlated one (and producing invalid SQL, since an
   // aggregate function can't appear bare outside a SELECT/HAVING list).
-  if (HasAggregateColumn(select_subquery)) return false;
+  if (HasAggregateColumn(*select_subquery)) return false;
   // Subqueries with FROM: flatten by inlining inner sources
   if (select_subquery->from.has_value()) return true;
   // Constant-only subqueries (no FROM): flatten by inlining the constant
   return CanFlattenConstantSubquery(source);
 }
 
-bool FlattenerOptimizer::HasAggregateColumn(const std::shared_ptr<Select>& select) {
+bool FlattenerOptimizer::HasAggregateColumn(const Select& select) {
   std::function<bool(const std::shared_ptr<Term>&)> term_has_aggregate =
       [&](const std::shared_ptr<Term>& term) -> bool {
     if (!term) return false;
@@ -147,7 +151,7 @@ bool FlattenerOptimizer::HasAggregateColumn(const std::shared_ptr<Select>& selec
     }
     return false;
   };
-  for (const auto& column : select->columns) {
+  for (const auto& column : select.columns) {
     auto term_selectable = std::dynamic_pointer_cast<TermSelectable>(column);
     if (term_selectable && term_has_aggregate(term_selectable->term)) return true;
   }
@@ -229,13 +233,24 @@ bool FlattenerOptimizer::TryFlattenSubquery(Select& select_statement) {
   std::vector<std::shared_ptr<Source>> new_sources;
   bool flattened = false;
 
+  // A DISTINCT subquery can still be inlined as long as this select is free to discard duplicates
+  // too: the duplicates inlining reintroduces are identical on every column the subquery exposed,
+  // so deduplicating one level up collapses exactly the same rows. Anything that reads
+  // multiplicity before that dedup -- an aggregate, GROUP BY, or LIMIT -- rules it out, and there
+  // the subquery has to stay nested to keep its own DISTINCT.
+  const bool outer_can_absorb_distinct = !select_statement.group_by.has_value() &&
+                                         !select_statement.limit_value.has_value() &&
+                                         !HasAggregateColumn(select_statement);
+
   for (auto& source : from_statement.sources) {
-    if (!CanFlattenSubquery(source)) {
+    if (!CanFlattenSubquery(source, outer_can_absorb_distinct)) {
       new_sources.push_back(source);
       continue;
     }
 
     auto select_subquery = std::dynamic_pointer_cast<Select>(source->sourceable);
+    // Inlining drops the subquery's own DISTINCT, so carry it up to this select.
+    if (select_subquery->is_distinct) select_statement.is_distinct = true;
     const std::string old_alias = source->Alias();
     auto term_map = BuildTermMap(select_subquery);
 

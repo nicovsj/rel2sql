@@ -3937,7 +3937,11 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelExistenti
   auto from =
       condition ? std::make_shared<sql::ast::From>(sources, condition) : std::make_shared<sql::ast::From>(sources);
 
-  auto select = std::make_shared<sql::ast::Select>(select_columns, from);
+  // `exists((y) | F(x, y))` denotes the set of x, so the bound variables have to be projected
+  // away *and* deduplicated: without DISTINCT this yields one row per witness y, and a caller
+  // that joins it (a sibling conjunct, say) then sees x repeated once per witness — silently
+  // multiplying any count over it (TPC-H Q4 counted qualifying lineitems instead of orders).
+  auto select = std::make_shared<sql::ast::Select>(select_columns, from, /*is_distinct=*/true);
   node->sql_expression = select;
   return node;
 }
