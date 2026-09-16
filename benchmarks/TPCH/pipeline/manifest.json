@@ -35,8 +35,8 @@
       "translate": "ok"
     },
     "13": {
-      "compare_local": "known_bug",
-      "compare_local_note": "verified by hand against SF0.01 real data (2026-09-15): wrong \u2014 the same c_count value appears multiple times with different custdist counts (e.g. c_count=2 appears as both 2 and 30 and 32), which shouldn't happen for a proper count-of-counts aggregation. 32 rows returned matches the reference's row count, so this was masked by a naive row-count check. Consistent with the previously-suspected (never confirmed) reverse_sort binding-order issue.",
+      "compare_local": "verified",
+      "compare_local_note": "verified against SF0.01 real data (2026-09-16): exact match, all 32 rows, and in the reference's order (ignoring the leading rank column). The translator was never at fault here -- unsorted_result's (c_count, custdist) set already matched the reference exactly. The query source was: 13.rel was the only sorted query defining unsorted_result in the keyed form `[custdist]: count[...]`, which puts the aggregate value second, while the reverse_sort chain sorts on the leading column and result's binding expects the sort key there. Every sibling (Q2, Q3, Q5, Q16, Q18, Q21) puts its sort key first; 13.rel now does too, which fixes both the column order and the ordering.",
       "execute_empty": "ok",
       "rewrite": "ok",
       "translate": "ok"

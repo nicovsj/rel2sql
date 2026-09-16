@@ -1346,3 +1346,39 @@ now reproduce the reference's revenue-descending order exactly.
 
 **Still open**: Q13 only — its count-of-counts repeats the same c_count with differing custdist,
 which is not a ranking problem.
+
+## Round 14 (2026-09-16) — Q13: the bug was in the query, not the translator
+
+**Symptom**: Q13 returned 32 rows, the right count, but only 2 of them appeared in the reference.
+The manifest had recorded it as a count-of-counts bug ("the same c_count appears with different
+custdist values"), which pointed at the aggregation.
+
+**Diagnosis**: the aggregation was perfect. `unsorted_result`'s (c_count, custdist) set matched the
+reference's 32 pairs *exactly*, left-outer-join emulation and `NOT LIKE` filter included. Comparing
+our `result` against the reference with its last two columns swapped matched exactly too, which
+placed the fault in the projection, not the arithmetic.
+
+**Root cause**: in `13.rel`, not in the translator. Every other sorted query puts its sort key in
+the first column of `unsorted_result` -- Q3 `revenue`, Q5 `v`, Q16 `supplier_cnt`, Q18 `totalprice`,
+Q21 `numwait` -- because the `inside_rev_sort` / `final_sort` chain sorts on the leading column and
+`result` binds `final_sort(i, <sort key>, _, rest...)`. Q13 was the only one written in the keyed
+form:
+
+```
+def unsorted_result[custdist]: count[(customer_key): temp(customer_key, custdist)]
+```
+
+which expands to (key, value) and so puts the aggregate — the custdist being sorted on — *second*.
+The result binding then read the two columns in the opposite order from their meaning, and the
+ranking sorted by c_count rather than custdist. The naming inside the query made this easy to miss:
+`custdist` is used for the per-customer order count, which is TPC-H's c_count, while the count of
+customers is what TPC-H calls custdist.
+
+**Fix**: `13.rel` now defines `unsorted_result(cust_dist, c_count)` with the sort key first, like
+its six siblings. The `result` line is unchanged and becomes correct as written. This is a change to
+a benchmark input rather than to rel2sql, which is worth flagging — it is justified here because the
+translator provably produced what the query asked for, and because the query disagreed with its own
+reference SQL while every sibling agreed with theirs.
+
+**Impact**: **all 22 TPC-H queries now match the reference exactly on real SF0.01 data**, and Q13
+matches in the reference's order as well, not merely as a set. Full suite green.
