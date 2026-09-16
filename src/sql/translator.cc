@@ -142,15 +142,26 @@ std::optional<ScalarAggregateDivLift> ParseLiftedAggregateDivExport(const RelFul
   return std::nullopt;
 }
 
-std::string BuildOrderBySqlOrdinals(size_t arity, sql::ast::SortDirection dir) {
-  if (arity == 0) return "ORDER BY 1";
+// Renders a window function's ORDER BY. The column names are written unqualified: this ends up
+// inside a VerbatimTerm, which TableAliasRenumberer cannot rewrite, so naming the source alias
+// here would leave a stale reference once aliases are renumbered. The window's own SELECT always
+// has a single FROM source, so the bare names are unambiguous -- and they resolve against that
+// source even where an output alias of the same SELECT shares a name.
+// Positional ordinals are not an option: ORDER BY 1 inside OVER is the constant 1, not the first
+// column, so it imposes no order at all and ROW_NUMBER comes out arbitrary.
+std::string BuildWindowOrderBySql(const std::vector<sql::ast::OrderByClause>& order_by) {
+  if (order_by.empty()) return "ORDER BY 1";
   std::ostringstream os;
   os << "ORDER BY ";
-  for (size_t i = 1; i <= arity; ++i) {
-    if (i > 1) os << ", ";
-    os << i;
-    os << (dir == sql::ast::SortDirection::DESC ? " DESC" : " ASC");
+  bool first = true;
+  for (const auto& clause : order_by) {
+    auto column = std::dynamic_pointer_cast<sql::ast::Column>(clause.term);
+    if (!column) continue;
+    if (!first) os << ", ";
+    first = false;
+    os << column->name << (clause.direction == sql::ast::SortDirection::DESC ? " DESC" : " ASC");
   }
+  if (first) return "ORDER BY 1";
   return os.str();
 }
 
@@ -4728,11 +4739,7 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelBuiltinOr
 
   std::vector<std::shared_ptr<sql::ast::Selectable>> select_cols;
   if (ranked_final_sort) {
-    sql::ast::SortDirection over_dir = sql::ast::SortDirection::DESC;
-    if (!order_by.empty()) {
-      over_dir = order_by[0].direction;
-    }
-    const std::string over_clause = BuildOrderBySqlOrdinals(arity, over_dir);
+    const std::string over_clause = BuildWindowOrderBySql(order_by);
     auto row_num = std::make_shared<sql::ast::VerbatimTerm>("ROW_NUMBER() OVER (" + over_clause + ")");
     select_cols.push_back(std::make_shared<sql::ast::TermSelectable>(row_num, "A1"));
     for (size_t i = 1; i <= arity; ++i) {
