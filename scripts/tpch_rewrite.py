@@ -44,7 +44,10 @@ PARAMS: dict[int, list[object]] = {
     8: ["BRAZIL", "AMERICA", "ECONOMY ANODIZED STEEL"],
     9: ["green"],
     10: ["1993-10-01", "1994-01-01"],
-    11: ["GERMANY", 0.0001],
+    # Q11's threshold fraction is the one scale-factor-dependent parameter (spec: 0.0001/SF).
+    # 0.01 is the SF 0.01 value, matching both the comparison dataset (tpch_sf001.duckdb) and
+    # benchmarks/TPCH/sql/q11.sql, which hardcodes the same 0.01.
+    11: ["GERMANY", 0.01],
     12: ["MAIL", "SHIP", "1994-01-01", "1995-01-01"],
     13: ["special", "requests"],
     14: ["1995-09-01", "1995-10-01"],
