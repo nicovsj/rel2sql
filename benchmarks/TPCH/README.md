@@ -34,6 +34,7 @@ and that part is addressable. See [`rel/REWRITING.md`](rel/REWRITING.md).
 | [`sql/`](sql/) | Reference TPC-H SQL, `q1.sql` … `q22.sql`. **The source of truth.** |
 | [`rel/queries/`](rel/queries/) | Original hand-written Rel queries |
 | [`rel/ai-rewrites/`](rel/ai-rewrites/) | Rel queries rewritten from the reference SQL (see below) |
+| [`rel/official/`](rel/official/) | The same queries **already rewritten** — feed straight to `rel2sql_bin` |
 | [`rel/tpch_common_defs.rel`](rel/tpch_common_defs.rel) | Shared `@inline` helpers, prepended to queries that reference them |
 | [`rel/tpch_edb.edb`](rel/tpch_edb.edb) | Base-relation arities handed to `rel2sql_bin -e` |
 | [`rel/REWRITING.md`](rel/REWRITING.md) | **How to write Rel that translates to fast SQL**, with measurements |
@@ -55,6 +56,47 @@ the reference SQL rather than derived from `rel/queries/`. They exist to test ho
 of the gap is the translator versus how the Rel was written. They are validated to
 return the same values as the reference, and are **not** used by the pipeline tests.
 
+## `rel/official/` — queries rel2sql accepts as-is
+
+Everything in `rel/queries/` and `rel/ai-rewrites/` is written in full Rel and has
+to go through [`scripts/tpch_rewrite.py`](../../scripts/tpch_rewrite.py) before the
+translator will take it. That step strips `@inline` / `@vectorized`, substitutes the
+`@@N` parameters, rewrites `a.b.c` field access into nested applications, caps decimal
+precision, renames `mean` to `average`, wraps def bodies in braces, and prepends any
+shared helpers the query references.
+
+`rel/official/` is the result of that step, checked in. No preprocessing, no parameter
+substitution, no helper file:
+
+```sh
+bazel build --config=default //:rel2sql_bin
+bazel-bin/rel2sql_bin -e benchmarks/TPCH/rel/tpch_edb.edb \
+    -f benchmarks/TPCH/rel/official/6.rel
+```
+
+That is the whole contract: **hand any file in this directory to `rel2sql_bin -f` and
+you get the correct translation.** All 22 are verified that way — fed to the CLI
+exactly as they sit on disk, then executed and compared against the reference SQL.
+
+These files are generated, and say so in their header. Edit
+[`rel/ai-rewrites/`](rel/ai-rewrites/) and regenerate:
+
+```sh
+task tpch:ai:official          # regenerate rel/official from rel/ai-rewrites
+task tpch:ai:official:check    # verify it is in sync AND still matches the reference
+```
+
+The generator's only change beyond `tpch_rewrite.py`'s output is cosmetic — that script
+leaves a def's body on the same line as its opening brace. Each file is checked to
+translate to **byte-identical SQL** before and after the reformatting, so `official/`
+cannot silently drift from the queries it came from. `official:check` fails if a file is
+stale, so a forgotten regeneration is caught rather than shipped.
+
+Two things fall out of these queries being self-contained: none of them need
+[`rel/tpch_common_defs.rel`](rel/tpch_common_defs.rel) (each defines what it uses), and
+none contain `@@N`, annotations, or dot access. They are also the easiest place to read
+what the translator is actually being asked to do, without mentally running the rewriter.
+
 ## Running things
 
 Build the databases first (both are gitignored and large):
@@ -71,6 +113,7 @@ task tpch:emit-sql                                   # translate rel/queries -> 
 TPCH_DUCKDB_PATH=$PWD/benchmarks/TPCH/data/tpch_sf001.duckdb \
   task tpch:full-db-run -- --compare --all           # 22/22 value comparison
 task tpch:ai:check                                   # same gate for rel/ai-rewrites
+task tpch:ai:official:check                          # rel/official, fed to rel2sql as-is
 ```
 
 ### Timing
