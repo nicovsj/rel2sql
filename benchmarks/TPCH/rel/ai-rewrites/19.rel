@@ -1,0 +1,36 @@
+// Q19 -- Discounted Revenue
+//   three independent (brand, container, quantity, size) branches, OR'd together.
+//   Container / shipmode lists are set literals: an OR of equalities over a bound
+//   variable expands into a UNION of the whole relation, once per branch.
+
+def air_modes { "AIR"; "AIR REG" }
+def small_container { "SM CASE"; "SM BOX"; "SM PACK"; "SM PKG" }
+def medium_container { "MED BAG"; "MED BOX"; "MED PKG"; "MED PACK" }
+def large_container { "LG CASE"; "LG BOX"; "LG PACK"; "LG PKG" }
+
+def shipped_ok(o, l):
+    exists((sm) | l_shipmode(o, l, sm) and air_modes(sm)) and
+    l_shipinstruct(o, l, "DELIVER IN PERSON")
+
+def branch1(o, l): shipped_ok(o, l) and exists((p, c, q, sz) |
+    l_partkey(o, l, p) and p_brand(p, "@@1") and
+    p_container(p, c) and small_container(c) and
+    l_quantity(o, l, q) and @@4 <= q and q <= @@4 + 10 and
+    p_size(p, sz) and 1 <= sz and sz <= 5)
+
+def branch2(o, l): shipped_ok(o, l) and exists((p, c, q, sz) |
+    l_partkey(o, l, p) and p_brand(p, "@@2") and
+    p_container(p, c) and medium_container(c) and
+    l_quantity(o, l, q) and @@5 <= q and q <= @@5 + 10 and
+    p_size(p, sz) and 1 <= sz and sz <= 10)
+
+def branch3(o, l): shipped_ok(o, l) and exists((p, c, q, sz) |
+    l_partkey(o, l, p) and p_brand(p, "@@3") and
+    p_container(p, c) and large_container(c) and
+    l_quantity(o, l, q) and @@6 <= q and q <= @@6 + 10 and
+    p_size(p, sz) and 1 <= sz and sz <= 15)
+
+def selected(o, l): branch1(o, l) or branch2(o, l) or branch3(o, l)
+
+def result[]: sum[(o, l, v):
+    selected(o, l) and v = l_extendedprice[o, l] * (1 - l_discount[o, l])]

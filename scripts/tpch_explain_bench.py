@@ -255,7 +255,17 @@ def clear_query_output_dir(out_dir: pathlib.Path) -> None:
         shutil.rmtree(out_dir)
 
 
-def ensure_translated_sql(query: int, *, duckdb: str, timeout_sec: float | None) -> pathlib.Path:
+def ensure_translated_sql(
+    query: int, *, duckdb: str, timeout_sec: float | None, gen_sql_dir: pathlib.Path | None = None
+) -> pathlib.Path:
+    # With an explicit directory (e.g. the ai-rewrites' translated SQL) we never fall back to
+    # tpch_emit_sql.sh: that script only knows how to regenerate benchmarks/TPCH/out/sql, so
+    # emitting there and reading here would silently benchmark the wrong query.
+    if gen_sql_dir is not None:
+        path = gen_sql_dir / f"q{query}.sql"
+        if not path.is_file():
+            raise FileNotFoundError(f"Missing translated SQL {path}")
+        return path
     path = GEN_SQL_DIR / f"q{query}.sql"
     if path.is_file():
         return path
@@ -503,6 +513,13 @@ def main() -> int:
     ap.add_argument("--graphviz", action="store_true", help="Write GRAPHVIZ plans for median runs")
     ap.add_argument("--out-root", type=pathlib.Path, default=OUT_EXPLAIN, help="Output root directory")
     ap.add_argument(
+        "--gen-sql-dir",
+        type=pathlib.Path,
+        default=None,
+        help="Read the gen arm's q<N>.sql from here instead of benchmarks/TPCH/out/sql "
+        "(e.g. translated ai-rewrites). Never regenerates: a missing file is an error.",
+    )
+    ap.add_argument(
         "--query-timeout-sec",
         type=float,
         default=300.0,
@@ -540,7 +557,9 @@ def main() -> int:
             continue
 
         try:
-            gen_path = ensure_translated_sql(query, duckdb=args.duckdb, timeout_sec=query_timeout)
+            gen_path = ensure_translated_sql(
+                query, duckdb=args.duckdb, timeout_sec=query_timeout, gen_sql_dir=args.gen_sql_dir
+            )
         except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             print(f"Q{query}: {e}", file=sys.stderr)
             failures += 1

@@ -58,38 +58,42 @@ def container_size{ (:small, "SM CASE"); (:small, "SM BOX"); (:small, "SM PACK")
     (:medium, "MED BAG"); (:medium, "MED BOX"); (:medium, "MED PKG"); (:medium, "MED PACK");
     (:large, "LG CASE"); (:large, "LG BOX"); (:large, "LG PACK"); (:large, "LG PKG") }
 
+def air_modes { "AIR"; "AIR REG" }
 @inline
-def ship_mode(o, l, shipmode):
-    l_shipmode(o, l, shipmode) and (shipmode = "AIR" or shipmode = "AIR REG")
+def ship_mode(o, l):
+    exists((sm) | l_shipmode(o, l, sm) and air_modes(sm))
 
 @inline
 def ship_instruction(o, l): l_shipinstruct(o, l, "DELIVER IN PERSON")
 
-@inline def sub_query1(o, l, pk, container, shipmode):
+@inline def sub_query1(o, l, pk, container):
     l_partkey(o, l, pk) and
     p_brand(pk, "@@1") and
     p_container(pk, container) and container_size(:small, container) and
-    @@4 <= l_quantity[o, l] and l_quantity[o, l] <= @@4 + 10 and 1 <= ( pk.p_size ) <= 5 and
-    ship_mode(o, l, shipmode) and ship_instruction(o, l)
+    exists((qty, psz) | l_quantity(o, l, qty) and @@4 <= qty and qty <= @@4 + 10
+        and p_size(pk, psz) and 1 <= psz and psz <= 5) and
+    ship_mode(o, l) and ship_instruction(o, l)
 
-@inline def sub_query2(o, l, pk, container, shipmode):
+@inline def sub_query2(o, l, pk, container):
     l_partkey(o, l, pk) and
     p_brand(pk, "@@2") and
     p_container(pk, container) and container_size(:medium, container) and
-    @@5 <= l_quantity[o, l] and l_quantity[o, l] <= @@5 + 10 and 1 <= ( pk.p_size ) <= 10 and
-    ship_mode(o, l, shipmode) and ship_instruction(o, l)
+    exists((qty, psz) | l_quantity(o, l, qty) and @@5 <= qty and qty <= @@5 + 10
+        and p_size(pk, psz) and 1 <= psz and psz <= 10) and
+    ship_mode(o, l) and ship_instruction(o, l)
 
-@inline def sub_query3(o, l, pk, container, shipmode):
+@inline def sub_query3(o, l, pk, container):
     l_partkey(o, l, pk) and
     p_brand(pk, "@@3") and
     p_container(pk, container) and container_size(:large, container) and
-    @@6 <= l_quantity[o, l] and l_quantity[o, l] <= @@6 + 10 and 1 <= ( pk.p_size ) <= 15 and
-    ship_mode(o, l, shipmode) and ship_instruction(o, l)
+    exists((qty, psz) | l_quantity(o, l, qty) and @@6 <= qty and qty <= @@6 + 10
+        and p_size(pk, psz) and 1 <= psz and psz <= 15) and
+    ship_mode(o, l) and ship_instruction(o, l)
 
-@inline def inner_query(o, l): exists((pk, container, shipmode) |
-    (sub_query1(o, l, pk, container, shipmode) or
-    sub_query2(o, l, pk, container, shipmode) or
-   sub_query3(o, l, pk, container, shipmode)))
+@inline def inner_query(o, l): exists((pk, container) |
+    (sub_query1(o, l, pk, container) or
+    sub_query2(o, l, pk, container) or
+   sub_query3(o, l, pk, container)))
 
 // @vectorized : it is fine to put @vectorized here, however, this is commented out because
 // we skip the join-tree optimization for cheap queries, and at SF001 this skipping might

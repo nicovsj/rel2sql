@@ -1,0 +1,23 @@
+// Q3 -- Shipping Priority
+//   top 10 unshipped orders of a market segment by revenue.
+//   LIMIT 10 genuinely binds, so the double reverse_sort gives a rank; the rank
+//   is projected away so the output matches the reference's four columns.
+
+@inline def target_date[]: parse_date["@@2", "Y-m-d"]
+
+def sel(ok, lk):
+    exists((ck) | o_custkey(ok, ck) and c_mktsegment(ck, "@@1")) and
+    exists((od) | o_orderdate(ok, od) and od < target_date) and
+    exists((sd) | l_shipdate(ok, lk, sd) and sd > target_date)
+
+def revenue[ok]: sum[(lk, rev):
+    sel(ok, lk) and rev = l_extendedprice[ok, lk] * (1 - l_discount[ok, lk])]
+
+def unsorted(rev, od, ok, sp):
+    revenue(ok, rev) and o_orderdate(ok, od) and o_shippriority(ok, sp)
+
+def inside_rev_sort[rev]: reverse_sort[unsorted[rev]]
+def final_sort[]: reverse_sort[inside_rev_sort]
+
+def result(ok, rev, od, sp): exists((i, i1) |
+    final_sort(i, rev, i1, od, ok, sp) and i <= 10)

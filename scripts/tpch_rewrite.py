@@ -358,12 +358,57 @@ def wrap_def_bodies(text: str) -> str:
 # --------------------------------------------------------------------------
 
 
-def rewrite(query_num: int, include_defs: bool = True) -> str:
-    query_path = QUERIES_DIR / f"{query_num}.rel"
+_DEF_START = re.compile(r"^(?:@\w+[^\n]*\n)*def\s+(\w+)", re.MULTILINE)
+
+
+def split_common_defs(text: str) -> tuple[str, list[tuple[str, str]]]:
+    """Split the shared defs file into its header comment and (name, source) blocks."""
+    starts = [(m.start(), m.group(1)) for m in _DEF_START.finditer(text)]
+    if not starts:
+        return text, []
+    header = text[: starts[0][0]]
+    blocks: list[tuple[str, str]] = []
+    for i, (offset, name) in enumerate(starts):
+        end = starts[i + 1][0] if i + 1 < len(starts) else len(text)
+        blocks.append((name, text[offset:end]))
+    return header, blocks
+
+
+def select_common_defs(query_text: str, defs_text: str) -> str:
+    """Return only the shared defs the query transitively references.
+
+    The defs are `@inline` in Rel, so the engine never materialises the unused
+    ones.  rel2sql strips the annotation and emits a `CREATE VIEW` per def, so
+    prepending all of them makes every query pay to build eight views it may
+    never read (across the 22 queries that is 213 of 645 table scans).  Keeping
+    only the reachable ones preserves the translation of the defs that are used.
+    """
+    header, blocks = split_common_defs(defs_text)
+    by_name = dict(blocks)
+    keep: set[str] = set()
+    frontier = [query_text]
+    while frontier:
+        source = frontier.pop()
+        for name, block in blocks:
+            if name in keep:
+                continue
+            if re.search(rf"\b{re.escape(name)}\b", source):
+                keep.add(name)
+                frontier.append(block)
+    if not keep:
+        return ""
+    return header + "".join(block for name, block in blocks if name in keep)
+
+
+def rewrite(query_num: int, include_defs: bool = True, queries_dir: pathlib.Path | None = None) -> str:
+    query_path = (queries_dir or QUERIES_DIR) / f"{query_num}.rel"
+    query_text = query_path.read_text()
     parts: list[str] = []
     if include_defs:
-        parts.append(COMMON_DEFS.read_text())
-    parts.append(query_path.read_text())
+        selected = select_common_defs(query_text, COMMON_DEFS.read_text())
+        if selected:
+            parts.append(selected)
+    parts.append(query_text)
     text = "\n".join(parts)
     text = strip_annotations(text)
     text = substitute_params(text, query_num)
@@ -381,12 +426,18 @@ def main(argv: list[str]) -> int:
     p.add_argument(
         "--list-params", action="store_true", help="Print the parameter mapping for the query and exit"
     )
+    p.add_argument(
+        "--queries-dir",
+        type=pathlib.Path,
+        default=None,
+        help="Read <query>.rel from this directory instead of benchmarks/TPCH/rel/queries",
+    )
     args = p.parse_args(argv)
     if args.list_params:
         for i, v in enumerate(PARAMS.get(args.query, []), start=1):
             print(f"@@{i} = {v!r}")
         return 0
-    sys.stdout.write(rewrite(args.query, include_defs=not args.no_defs))
+    sys.stdout.write(rewrite(args.query, include_defs=not args.no_defs, queries_dir=args.queries_dir))
     return 0
 
 

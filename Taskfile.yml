@@ -195,6 +195,43 @@ tasks:
     cmds:
       - python3 scripts/tpch_explain_summary_csv.py
 
+  # ai-rewrites: benchmarks/TPCH/rel/ai-rewrites, hand-written from the reference SQL
+  tpch:ai:emit-sql:
+    desc: Translate ai-rewrites Rel to benchmarks/TPCH/out/ai-sql
+    cmds:
+      - bazel build --config=default //:rel2sql_bin
+      - scripts/ai_rewrite_emit_sql.sh {{.CLI_ARGS}}
+
+  tpch:ai:check:
+    desc: Validate ai-rewrites against the reference SQL (default DB is SF0.01)
+    cmds:
+      - bazel build --config=default //:rel2sql_bin
+      - python3 scripts/ai_rewrite_check.py {{.CLI_ARGS}}
+
+  tpch:ai:bench3:
+    desc: "EXPLAIN ANALYZE ref vs current vs ai-rewrites with ratios (TPCH_DUCKDB_PATH, default SF1)"
+    cmds:
+      - bazel build --config=default //:rel2sql_bin
+      - scripts/ai_rewrite_emit_sql.sh
+      - |
+        export TPCH_DUCKDB_PATH="${TPCH_DUCKDB_PATH:-$(pwd)/benchmarks/TPCH/data/tpch_sf100.duckdb}"
+        test -f "$TPCH_DUCKDB_PATH" || { echo "Missing $TPCH_DUCKDB_PATH — run: task tpch:build-db:sf1" >&2; exit 1; }
+        python3 scripts/tpch_three_arm_bench.py {{.CLI_ARGS}}
+
+  tpch:ai:explain-bench:
+    desc: "EXPLAIN ANALYZE ref vs ai-rewrites (writes out/explain-ai; TPCH_DUCKDB_PATH, default SF1)"
+    cmds:
+      # Not `task: tpch:ai:emit-sql` -- a called task inherits CLI_ARGS, so the bench's own
+      # flags would be handed to the emit script as query numbers.
+      - bazel build --config=default //:rel2sql_bin
+      - scripts/ai_rewrite_emit_sql.sh
+      - |
+        export TPCH_DUCKDB_PATH="${TPCH_DUCKDB_PATH:-$(pwd)/benchmarks/TPCH/data/tpch_sf100.duckdb}"
+        test -f "$TPCH_DUCKDB_PATH" || { echo "Missing $TPCH_DUCKDB_PATH — run: task tpch:build-db:sf1" >&2; exit 1; }
+        python3 scripts/tpch_explain_bench.py \
+          --gen-sql-dir "$(pwd)/benchmarks/TPCH/out/ai-sql" \
+          --out-root "$(pwd)/benchmarks/TPCH/out/explain-ai" {{.CLI_ARGS}}
+
   # Utility tasks
   clean:
     desc: Clean Bazel build artifacts

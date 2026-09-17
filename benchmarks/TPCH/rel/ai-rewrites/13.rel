@@ -1,0 +1,15 @@
+// Q13 -- Customer Distribution
+//   histogram of customers by how many non-"special requests" orders they have.
+//   The left outer join is a two-column union: customers with no matching order
+//   contribute a count of 0.
+
+def matched_order(c, o): o_custkey(o, c) and not like_match(raw"%@@1%@@2%", o_comment[o])
+
+def cust_count[c]: count[(o): matched_order(c, o)]
+
+def c_count(c, n):
+    cust_count(c, n)
+    or
+    (customer(c) and not exists((n2) | cust_count(c, n2)) and n = 0)
+
+def result[n]: count[(c): c_count(c, n)]

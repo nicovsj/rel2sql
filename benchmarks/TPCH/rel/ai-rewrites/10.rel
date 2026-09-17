@@ -1,0 +1,28 @@
+// Q10 -- Returned Item Reporting
+//   top 20 customers by revenue from returned lineitems in a quarter.
+
+@inline def lower[]: parse_date["@@1", "Y-m-d"]
+@inline def upper[]: date_add[parse_date["@@1", "Y-m-d"], ^Month[3]]
+
+def returned_rev(o, num, c, v):
+    o_custkey(o, c) and
+    l_returnflag(o, num, "R") and
+    exists((od) | o_orderdate(o, od) and lower <= od and od < upper) and
+    v = l_extendedprice[o, num] * (1 - l_discount[o, num])
+
+def cust_rev[c]: sum[(o, num, v): returned_rev(o, num, c, v)]
+
+def unsorted(rev, c): cust_rev(c, rev)
+def inside_rev_sort[rev]: reverse_sort[unsorted[rev]]
+def final_sort[]: reverse_sort[inside_rev_sort]
+
+def top(c, rev): exists((i, i1) | final_sort(i, rev, i1, c) and i <= 20)
+
+def result(c, name, rev, acctbal, nname, addr, phone, comment):
+    top(c, rev) and
+    c_name(c, name) and
+    c_acctbal(c, acctbal) and
+    n_name(c_nationkey[c], nname) and
+    c_address(c, addr) and
+    c_phone(c, phone) and
+    c_comment(c, comment)
