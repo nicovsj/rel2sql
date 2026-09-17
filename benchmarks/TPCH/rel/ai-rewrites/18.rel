@@ -1,0 +1,11 @@
+// Q18 -- Large Volume Customer
+//   orders whose total quantity exceeds a threshold, with customer details.
+//   The per-order total is its own def and is reused for both the filter and the
+//   reported quantity, so the aggregate is built once.
+
+def order_qty[o]: sum[(num, q): l_quantity(o, num, q)]
+
+def result(name, c, o, od, price, qty):
+    order_qty(o, qty) and qty > @@1 and
+    o_custkey(o, c) and c_name(c, name) and
+    o_orderdate(o, od) and o_totalprice(o, price)

@@ -1,0 +1,17 @@
+// Q16 -- Parts/Supplier Relationship
+//   how many distinct suppliers can supply each (brand, type, size) combination,
+//   excluding one brand, one type prefix, and suppliers with complaints.
+//   `type` is a reserved word in the grammar, hence `ptyp`.
+
+def wanted_size { @@3; @@4; @@5; @@6; @@7; @@8; @@9; @@10 }
+
+def complaint_supplier(s): like_match(raw"%Customer%Complaints%", s_comment[s])
+
+def sel(p, s, brand, ptyp, size):
+    partsupp(p, s) and
+    p_brand(p, brand) and not (brand = "@@1") and
+    p_type(p, ptyp) and not like_match(raw"@@2%", ptyp) and
+    p_size(p, size) and wanted_size(size) and
+    not complaint_supplier(s)
+
+def result[brand, ptyp, size]: count[(s): exists((p) | sel(p, s, brand, ptyp, size))]

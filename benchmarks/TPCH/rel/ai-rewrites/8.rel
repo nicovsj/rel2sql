@@ -1,0 +1,28 @@
+// Q8 -- National Market Share
+//   share of one nation's volume within a region, by order year.
+//   The zero-fill (reference: CASE WHEN ... ELSE 0) is done on the two-column
+//   result rather than inside the volume relation: a union whose branches bind a
+//   literal misaligns the output columns.
+
+def all_vol(o, num, yr, v):
+    exists((p, s, c, n1, n2, r, od) |
+        l_partkey(o, num, p) and p_type(p, "@@3") and
+        l_suppkey(o, num, s) and s_nationkey(s, n2) and
+        o_custkey(o, c) and c_nationkey(c, n1) and
+        n_regionkey(n1, r) and r_name(r, "@@2") and
+        o_orderdate(o, od) and
+        parse_date["1995-01-01", "Y-m-d"] <= od and od <= parse_date["1996-12-31", "Y-m-d"]) and
+    yr = date_year[o_orderdate[o]] and
+    v = l_extendedprice[o, num] * (1 - l_discount[o, num])
+
+def nation_row(o, num):
+    exists((s, n2) | l_suppkey(o, num, s) and s_nationkey(s, n2) and n_name(n2, "@@1"))
+
+def nation_total[yr]: sum[(o, num, v): all_vol(o, num, yr, v) and nation_row(o, num)]
+def all_total[yr]: sum[(o, num, v): all_vol(o, num, yr, v)]
+def share[yr]: nation_total[yr] / all_total[yr]
+
+def result(yr, s):
+    share(yr, s)
+    or
+    (all_total(yr, _) and not exists((x) | nation_total(yr, x)) and s = 0)

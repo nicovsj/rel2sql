@@ -1,0 +1,15 @@
+// Q11 -- Important Stock Identification
+//   parts whose total stock value in a nation exceeds a fraction of the overall total.
+//   The global total is its own def: an aggregate inside an arithmetic expression
+//   gets re-derived once per operand position and joined on the aggregate value.
+
+def german_ps(p, s, v):
+    partsupp(p, s) and
+    exists((n) | s_nationkey(s, n) and n_name(n, "@@1")) and
+    v = ps_supplycost[p, s] * ps_availqty[p, s]
+
+def part_value[p]: sum[(s, v): german_ps(p, s, v)]
+def total_value[]: sum[(p, s, v): german_ps(p, s, v)]
+def threshold[]: total_value * @@2
+
+def result(p, v): part_value(p, v) and v > threshold

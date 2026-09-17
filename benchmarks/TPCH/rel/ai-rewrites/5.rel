@@ -1,0 +1,17 @@
+// Q5 -- Local Supplier Volume
+//   revenue by nation where customer and supplier share a nation in the given region.
+
+def qualifying(o, num, name, v):
+    exists((c, s, n, r, od) |
+        o_custkey(o, c) and
+        l_suppkey(o, num, s) and
+        c_nationkey(c, n) and
+        s_nationkey(s, n) and
+        n_name(n, name) and
+        n_regionkey(n, r) and
+        r_name(r, "@@1") and
+        o_orderdate(o, od) and
+        parse_date["@@2", "Y-m-d"] <= od and od < parse_date["@@3", "Y-m-d"]) and
+    v = l_extendedprice[o, num] * (1 - l_discount[o, num])
+
+def result[name]: sum[(o, num, v): qualifying(o, num, name, v)]

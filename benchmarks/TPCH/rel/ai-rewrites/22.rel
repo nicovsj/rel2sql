@@ -1,0 +1,25 @@
+// Q22 -- Global Sales Opportunity
+//   customers in selected country codes, with above-average positive balance and
+//   no orders, aggregated by country code.
+//   `cntry` is a functional def used as a relation; writing the equivalent
+//   `cc = substring[c_phone[c], 1, 2]` as a body conjunct makes the translator
+//   emit the same source alias twice.
+
+def wanted_code { "@@1"; "@@2"; "@@3"; "@@4"; "@@5"; "@@6"; "@@7" }
+
+def cntry[c]: substring[c_phone[c], 1, 2]
+
+def in_scope(c): wanted_code(cntry[c])
+
+def avg_bal[]: average[(c, b): in_scope(c) and c_acctbal(c, b) and b > 0.00]
+
+def no_orders(c): customer(c) and not exists((o) | o_custkey(o, c))
+
+def sel(c, b):
+    in_scope(c) and
+    c_acctbal(c, b) and b > avg_bal and
+    no_orders(c)
+
+def result[cc]: (
+    count[(c): exists((b) | sel(c, b) and cntry(c, cc))],
+    sum[(c, b): sel(c, b) and cntry(c, cc)])

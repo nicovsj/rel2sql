@@ -1,0 +1,14 @@
+// Q17 -- Small-Quantity-Order Revenue
+//   revenue from lineitems of a given part whose quantity is below 20% of that
+//   part's average quantity.
+
+def target_part(p): p_brand(p, "@@1") and p_container(p, "@@2")
+
+def part_avg[p]: average[(o, num, q): l_partkey(o, num, p) and l_quantity(o, num, q)]
+
+def selected(o, num):
+    exists((p, q) |
+        l_partkey(o, num, p) and target_part(p) and
+        l_quantity(o, num, q) and q < 0.2 * part_avg[p])
+
+def result[]: sum[(o, num, v): selected(o, num) and v = l_extendedprice[o, num]] / 7.0
