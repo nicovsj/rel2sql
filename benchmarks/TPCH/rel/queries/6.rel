@@ -43,8 +43,9 @@ where
 // we skip the join-tree optimization for cheap queries, and at SF001 this skipping might
 // causes an exception to be thrown.
 def result[]: sum[(o, num, v):
-    lower_shipdate <= l_shipdate[o, num] < upper_shipdate
-    and lower_discount <= l_discount[o, num] <= upper_discount
-    and l_quantity[o, num] < @@3
+    exists((sd, disc, qty) |
+        l_shipdate(o, num, sd) and lower_shipdate <= sd and sd < upper_shipdate
+        and l_discount(o, num, disc) and lower_discount <= disc and disc <= upper_discount
+        and l_quantity(o, num, qty) and qty < @@3)
     and v = l_extendedprice[o, num] * l_discount[o, num]
 ]
