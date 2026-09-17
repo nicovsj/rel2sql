@@ -208,6 +208,19 @@ tasks:
       - bazel build --config=default //:rel2sql_bin
       - python3 scripts/ai_rewrite_check.py {{.CLI_ARGS}}
 
+  tpch:ai:official:
+    desc: Regenerate benchmarks/TPCH/rel/official (ready-for-rel2sql form of ai-rewrites)
+    cmds:
+      - bazel build --config=default //:rel2sql_bin
+      - python3 scripts/tpch_official_emit.py {{.CLI_ARGS}}
+
+  tpch:ai:official:check:
+    desc: Verify official/ is in sync with ai-rewrites and still matches the reference SQL
+    cmds:
+      - bazel build --config=default //:rel2sql_bin
+      - python3 scripts/tpch_official_emit.py --check
+      - python3 scripts/ai_rewrite_check.py --official {{.CLI_ARGS}}
+
   tpch:ai:bench3:
     desc: "EXPLAIN ANALYZE ref vs current vs ai-rewrites with ratios (TPCH_DUCKDB_PATH, default SF1)"
     cmds:

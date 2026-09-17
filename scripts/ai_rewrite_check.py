@@ -7,10 +7,15 @@ copy of the comparison DB -> compare against benchmarks/TPCH/sql/q<n>.sql.
 The comparison mirrors RunCompare in tpch_pipeline_lib.cc: order-insensitive,
 column names ignored, 1e-6 absolute tolerance on numbers.
 
+With --official the source is benchmarks/TPCH/rel/official instead, and the
+rewrite step is skipped: those files are fed to rel2sql exactly as they sit on
+disk, which is the property that directory exists to guarantee.
+
 Usage:
   scripts/ai_rewrite_check.py            # all queries present in ai-rewrites/
   scripts/ai_rewrite_check.py 6 19       # just these
   scripts/ai_rewrite_check.py --sql 6    # also dump the generated SQL
+  scripts/ai_rewrite_check.py --official # official/, straight into rel2sql
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 AI_DIR = ROOT / "benchmarks/TPCH/rel/ai-rewrites"
+OFFICIAL_DIR = ROOT / "benchmarks/TPCH/rel/official"
 REF_SQL = ROOT / "benchmarks/TPCH/sql"
 EDB = ROOT / "benchmarks/TPCH/rel/tpch_edb.edb"
 BIN = ROOT / "bazel-bin/rel2sql_bin"
@@ -78,19 +84,27 @@ def duckdb(db: pathlib.Path, script: str):
     return run(["duckdb", str(db), "-noheader", "-list", "-init", "/dev/null"], input=script)
 
 
-def check(q: int, db: pathlib.Path, dump_sql: bool) -> tuple[bool, str, int]:
-    rel_src = AI_DIR / f"{q}.rel"
-    if not rel_src.exists():
-        return False, "no ai-rewrite file", 0
-
-    rw = run([sys.executable, str(ROOT / "scripts/tpch_rewrite.py"), str(q), "--queries-dir", str(AI_DIR)])
-    if rw.returncode != 0:
-        return False, "rewrite failed: " + rw.stderr.strip()[:200], 0
+def check(q: int, db: pathlib.Path, dump_sql: bool, official: bool = False) -> tuple[bool, str, int]:
+    if official:
+        # The point of official/ is that nothing runs before rel2sql, so this path
+        # deliberately skips tpch_rewrite.py and feeds the file to the CLI as-is.
+        rel_src = OFFICIAL_DIR / f"{q}.rel"
+        if not rel_src.exists():
+            return False, "no official file", 0
+        rel_text = rel_src.read_text()
+    else:
+        rel_src = AI_DIR / f"{q}.rel"
+        if not rel_src.exists():
+            return False, "no ai-rewrite file", 0
+        rw = run([sys.executable, str(ROOT / "scripts/tpch_rewrite.py"), str(q), "--queries-dir", str(AI_DIR)])
+        if rw.returncode != 0:
+            return False, "rewrite failed: " + rw.stderr.strip()[:200], 0
+        rel_text = rw.stdout
 
     with tempfile.TemporaryDirectory() as td:
         tdp = pathlib.Path(td)
         relf = tdp / f"q{q}.rel"
-        relf.write_text(rw.stdout)
+        relf.write_text(rel_text)
         tr = run([str(BIN), "-e", str(EDB), "-f", str(relf)])
         if tr.returncode != 0:
             msg = (tr.stderr or tr.stdout).strip().splitlines()
@@ -124,16 +138,19 @@ def main(argv):
     ap.add_argument("queries", nargs="*", type=int)
     ap.add_argument("--db", type=pathlib.Path, default=DEFAULT_DB)
     ap.add_argument("--sql", action="store_true", help="print generated SQL")
+    ap.add_argument("--official", action="store_true",
+                    help="check benchmarks/TPCH/rel/official, fed to rel2sql with no rewrite step")
     a = ap.parse_args(argv)
 
-    qs = a.queries or sorted(int(p.stem) for p in AI_DIR.glob("*.rel"))
+    src_dir = OFFICIAL_DIR if a.official else AI_DIR
+    qs = a.queries or sorted(int(p.stem) for p in src_dir.glob("*.rel"))
     if not qs:
-        print("no queries in", AI_DIR)
+        print("no queries in", src_dir)
         return 1
 
     ok = 0
     for q in qs:
-        passed, msg, nsrc = check(q, a.db, a.sql)
+        passed, msg, nsrc = check(q, a.db, a.sql, official=a.official)
         print(f"Q{q:<3} {'PASS' if passed else 'FAIL':4}  sources={nsrc:<3}  {msg}")
         ok += passed
     print(f"\n{ok}/{len(qs)} pass")
