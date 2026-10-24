@@ -70,12 +70,11 @@ void ScopeValidator::Visit(Select& select) {
       if (source) from_aliases.insert(source->Alias());
     }
   }
-  auto saved_from_aliases = std::move(current_from_aliases_);
-  current_from_aliases_ = std::move(from_aliases);
+  from_scope_stack_.push_back(std::move(from_aliases));
 
   ExpressionVisitor::Visit(select);
 
-  current_from_aliases_ = std::move(saved_from_aliases);
+  from_scope_stack_.pop_back();
   PopCtes();
 }
 
@@ -97,14 +96,19 @@ void ScopeValidator::Visit(Column& column) {
   const auto& source = column.source.value();
   const std::string alias = source->Alias();
 
-  if (current_from_aliases_.count(alias) || IsCteVisible(alias)) {
+  const bool in_from_scope =
+      std::any_of(from_scope_stack_.begin(), from_scope_stack_.end(),
+                  [&](const std::unordered_set<std::string>& scope) { return scope.count(alias); });
+  if (in_from_scope || IsCteVisible(alias)) {
     CheckColumnName(column, *source);
     return;
   }
 
+  std::unordered_set<std::string> visible;
+  for (const auto& scope : from_scope_stack_) visible.insert(scope.begin(), scope.end());
   throw TranslationException(fmt::format("ScopeValidator: column '{}.{}' references an alias not visible here. "
                                          "Visible FROM sources: [{}].",
-                                         alias, column.name, JoinNames(current_from_aliases_)),
+                                         alias, column.name, JoinNames(visible)),
                              ErrorCode::DANGLING_COLUMN_REFERENCE);
 }
 

@@ -648,14 +648,14 @@ TEST_F(TranslationTest, BindingFormula1) {
 TEST_F(TranslationTest, BindingFormula2) {
   OPT_EXPECT_EQ(
       TranslateExpression("(x): {B[1]}(x) or B(x,1)"),
-      "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1 UNION SELECT T3.A1 AS A1 FROM B AS T3 WHERE T3.A2 = 1");
+      "SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1 UNION SELECT T1.A1 AS A1 FROM B AS T1 WHERE T1.A2 = 1");
 }
 
 TEST_F(TranslationTest, BindingFormula3) {
   OPT_EXPECT_EQ(
       TranslateExpression("(x) : {B[1]; B[3]}(x)"),
-      "SELECT T4.A1 AS A1 FROM (SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1 UNION SELECT T2.A2 AS A1 FROM B AS "
-      "T2 WHERE T2.A1 = 3) AS T4");
+      "SELECT T2.A1 AS A1 FROM (SELECT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1 UNION SELECT T1.A2 AS A1 FROM B AS "
+      "T1 WHERE T1.A1 = 3) AS T2");
 }
 
 TEST_F(TranslationTest, BindingFormula4) {
@@ -693,8 +693,8 @@ TEST_F(TranslationTest, MultipleDefs1) {
 TEST_F(TranslationTest, MultipleDefs2) {
   OPT_EXPECT_EQ(TranslateProgram("def R {(1, 2); (3, 4)} \n def S {R[1]} \n def T {R[3]}"),
                 "CREATE OR REPLACE VIEW R AS (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (3, 4)) AS "
-                "T0(A1, A2));\n\nCREATE OR REPLACE VIEW S AS (SELECT DISTINCT T1.A2 AS A1 FROM R AS T1 WHERE T1.A1 = "
-                "1);\n\nCREATE OR REPLACE VIEW T AS (SELECT DISTINCT T3.A2 AS A1 FROM R AS T3 WHERE T3.A1 = 3);");
+                "T0(A1, A2));\n\nCREATE OR REPLACE VIEW S AS (SELECT DISTINCT T0.A2 AS A1 FROM R AS T0 WHERE T0.A1 = "
+                "1);\n\nCREATE OR REPLACE VIEW T AS (SELECT DISTINCT T0.A2 AS A1 FROM R AS T0 WHERE T0.A1 = 3);");
 }
 
 TEST_F(TranslationTest, MultipleDefs3) {
@@ -759,7 +759,7 @@ TEST_F(TranslationTest, RecursiveDisjunctTooManyCallsRejected) {
 
 TEST_F(TranslationTest, FullApplicationOnExpression2) {
   OPT_EXPECT_EQ(TranslateExpression("{ (x,y) : B(x,y) } where B(1,2) "),
-                "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, B AS T2 WHERE T2.A1 = 1 AND T2.A2 = 2");
+                "SELECT T0.A1 AS A1, T0.A2 AS A2 FROM B AS T0, B AS T1 WHERE T1.A1 = 1 AND T1.A2 = 2");
 }
 
 TEST_F(TranslationTest, FullApplicationOnExpression3) {
@@ -770,15 +770,15 @@ TEST_F(TranslationTest, FullApplicationOnExpression4) {
   OPT_EXPECT_EQ(
       TranslateDefinition("def Q { B[1] ; B[2] }"),
       "CREATE OR REPLACE VIEW Q AS (SELECT DISTINCT T0.A2 AS A1 FROM B AS T0 WHERE T0.A1 = 1 UNION SELECT DISTINCT "
-      "T2.A2 AS A1 FROM B AS T2 WHERE T2.A1 = 2);");
+      "T1.A2 AS A1 FROM B AS T1 WHERE T1.A1 = 2);");
 }
 
 TEST_F(TranslationTest, FullApplicationOnExpression5) {
   OPT_EXPECT_EQ(
       TranslateExpression("{B[y];E[y]} where y > 1}"),
-      "WITH E0(y) AS (SELECT T2.A1 AS A1 FROM B AS T2 UNION SELECT T5.A1 AS A1 FROM E AS T5) SELECT T8.y, T8.A1 "
-      "FROM (SELECT T0.A1 AS y, T0.A2 AS A1 FROM B AS T0 UNION SELECT T1.A1 AS y, T1.A2 AS A1 FROM E AS T1) AS T8, "
-      "E0 WHERE T8.y = E0.y AND E0.y > 1");
+      "WITH E0(y) AS (SELECT T0.A1 AS A1 FROM B AS T0 UNION SELECT T1.A1 AS A1 FROM E AS T1) SELECT T4.y AS y, T4.A1 "
+      "FROM (SELECT T2.A1 AS y, T2.A2 AS A1 FROM B AS T2 UNION SELECT T3.A1 AS y, T3.A2 AS A1 FROM E AS T3) AS T4, "
+      "E0 WHERE T4.y = E0.y AND E0.y > 1");
 }
 
 TEST_F(TranslationTest, FullApplicationOnExpression6) {
@@ -792,8 +792,7 @@ TEST_F(TranslationTest, FullApplicationOnExpression7) {
 }
 
 TEST_F(TranslationTest, FullApplication7) {
-  OPT_EXPECT_EQ(TranslateFormula("{1}(x)"),
-                "SELECT T1.A1 AS x FROM (SELECT DISTINCT T0.A1 AS A1 FROM (VALUES (1)) AS T0(A1)) AS T1");
+  OPT_EXPECT_EQ(TranslateFormula("{1}(x)"), "SELECT DISTINCT T0.A1 AS x FROM (VALUES (1)) AS T0(A1)");
 }
 
 TEST_F(TranslationTest, FullApplication8) {
@@ -982,8 +981,7 @@ TEST_F(TranslationTest, PartialApplicationOnExpression1) {
 // DuckDB: N/A — literal tuple subqueries lack A1/A2 column names expected by the projection.
 TEST_F(TranslationTest, PartialApplicationOnExpression2) {
   OPT_EXPECT_EQ(TranslateExpression("{(1,2);(3,4)}[1]"),
-                "SELECT T1.A2 AS A1 FROM (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (3, 4)) AS "
-                "T0(A1, A2)) AS T1 WHERE T1.A1 = 1");
+                "SELECT DISTINCT T0.A2 AS A1 FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2) WHERE T0.A1 = 1");
 }
 
 TEST_F(TranslationTest, FullApplicationOnExpression1) {

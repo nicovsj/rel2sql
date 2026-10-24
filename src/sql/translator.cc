@@ -4207,6 +4207,12 @@ std::shared_ptr<RelFormula> Translator::Visit(const std::shared_ptr<RelUniversal
       std::vector<std::shared_ptr<sql::ast::Condition>>{std::make_shared<sql::ast::Exists>(middle_select)},
       sql::ast::LogicalOp::NOT);
 
+  // A closed forall (no free variables) is a proposition. An empty select list prints as
+  // `SELECT FROM`, which is not SQL; a constant row keeps the NOT EXISTS filter as a scalar.
+  if (select_columns.empty()) {
+    select_columns.push_back(make_select_one());
+  }
+
   auto outer_from = std::make_shared<sql::ast::From>(std::vector<std::shared_ptr<sql::ast::Source>>{subquery_outer},
                                                      outer_not_exists);
   auto select = std::make_shared<sql::ast::Select>(select_columns, outer_from);
