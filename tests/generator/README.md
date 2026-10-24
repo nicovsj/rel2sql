@@ -2,6 +2,18 @@
 
 Deterministic, node-budgeted Rel program generation for correctness testing.
 
+## Paper artifact
+
+Tag `vldb-2026-artifact` is the VLDB paper snapshot. [`corpus/v1/`](corpus/v1/) holds the 2446 programs accepted by both the Rel engine and the translation, each with the canonical instance and the recorded Rel answer. `mismatches.jsonl` holds the programs that were not compared: 2263 empty Rel results and 2 Rel failures.
+
+Replaying the translations against those answers needs only DuckDB:
+
+```sh
+task test:corpus
+```
+
+Producing the Rel answers again requires the RelationalAI engine (`task corpus:build`). A fresh build replaces this snapshot.
+
 ## Regenerating programs
 
 Programs are derived at runtime from:
@@ -111,7 +123,7 @@ julia tests/generator/run_rel_snippet.jl program.rl
 
 ## Golden corpus
 
-Directory: [`corpus/v1/`](corpus/v1/) (local build output; **not** checked into git — regenerate with `task corpus:build`)
+Directory: [`corpus/v1/`](corpus/v1/), checked in as the paper snapshot. `task corpus:build -- --fresh` replaces it.
 
 | File | Purpose |
 |------|---------|

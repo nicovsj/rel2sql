@@ -1,5 +1,16 @@
 # TPC-H benchmark
 
+## Paper artifact
+
+Tag `vldb-2026-artifact` is the VLDB paper snapshot. The hand-written Rel and the reference SQL are in this directory. Value comparison of all 22 queries:
+
+```sh
+task tpch:build-db
+task tpch:full-db-run -- --compare --all
+```
+
+Scale-factor 1 timings are reported in this file. The DuckDB databases are built locally and are not in git.
+
 Two questions about the Rel → SQL translator, asked over the 22 standard TPC-H queries:
 
 1. **Is the translated SQL correct?** Does it return the same values as the reference

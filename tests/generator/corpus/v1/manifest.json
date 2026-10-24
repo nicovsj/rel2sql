@@ -1,0 +1,7 @@
+{
+  "case_count": 2446,
+  "corpus_version": 1,
+  "edb_map": "default",
+  "generator_fingerprint": "rel2sql-generator-v1-20250616c",
+  "shard_count": 17
+}

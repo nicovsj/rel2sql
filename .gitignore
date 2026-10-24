@@ -75,5 +75,7 @@ benchmarks/TPCH/data/*.duckdb
 .rel_engine.log
 .corpus_build.log
 
-# Local corpus build output (regenerate with task corpus:build; not versioned)
-tests/generator/corpus/
+# Local corpus builds stay unversioned. corpus/v1 is the paper snapshot.
+tests/generator/corpus/*
+!tests/generator/corpus/v1/
+!tests/generator/corpus/v1/**
