@@ -17,7 +17,16 @@ std::unordered_map<std::string, std::shared_ptr<Term>> BuildTermMapFromUnionMemb
   for (auto& column : member->columns) {
     auto term_selectable = std::dynamic_pointer_cast<TermSelectable>(column);
     if (!term_selectable) continue;
-    std::string aliased_column_name = term_selectable->Alias();
+    std::string aliased_column_name;
+    if (term_selectable->HasAlias()) {
+      aliased_column_name = term_selectable->Alias();
+    } else if (auto col_term = std::dynamic_pointer_cast<Column>(term_selectable->term)) {
+      aliased_column_name = col_term->name;
+    } else if (term_selectable->term) {
+      aliased_column_name = term_selectable->term->ToString();
+    } else {
+      continue;
+    }
     column_map[aliased_column_name] = term_selectable->term;
   }
   return column_map;
@@ -55,7 +64,7 @@ std::shared_ptr<Expression> FlattenerOptimizer::TryFlattenUnionSubquery(const st
   const std::string source_alias = source->Alias();
 
   // Check that all outer columns reference only the source.
-  std::unordered_map<std::string, std::string> outer_to_subquery_column;
+  std::vector<std::pair<std::string, std::string>> outer_to_subquery_column;
   for (auto& col : select->columns) {
     auto term_sel = std::dynamic_pointer_cast<TermSelectable>(col);
     if (!term_sel) return nullptr;  // Wildcard or other - skip
@@ -66,7 +75,7 @@ std::shared_ptr<Expression> FlattenerOptimizer::TryFlattenUnionSubquery(const st
     if (!column_term->source || column_term->source.value()->Alias() != source_alias) return nullptr;
 
     std::string outer_alias = term_sel->HasAlias() ? term_sel->Alias() : column_term->name;
-    outer_to_subquery_column[outer_alias] = column_term->name;
+    outer_to_subquery_column.emplace_back(outer_alias, column_term->name);
   }
 
   if (outer_to_subquery_column.empty()) return nullptr;
@@ -80,7 +89,7 @@ std::shared_ptr<Expression> FlattenerOptimizer::TryFlattenUnionSubquery(const st
     auto member_term_map = BuildTermMapFromUnionMember(member_select);
 
     std::vector<std::shared_ptr<Selectable>> new_columns;
-    for (auto& [outer_alias, subquery_col] : outer_to_subquery_column) {
+    for (const auto& [outer_alias, subquery_col] : outer_to_subquery_column) {
       auto it = member_term_map.find(subquery_col);
       if (it == member_term_map.end()) return nullptr;
 

@@ -17,6 +17,18 @@ struct DuckDbResultSet {
   std::vector<std::vector<std::string>> rows;
 };
 
+// Double-quotes and escapes `id` for use as a DuckDB identifier.
+std::string SqlQuoteIdent(const std::string& id);
+
+// Runs `sql` on `con`, failing the current GoogleTest test if it errors.
+void RunQueryOrFail(duckdb_connection con, const std::string& sql, const char* ctx);
+
+// Creates empty base tables for every EDB in `edb` on `con`. Returns false and sets
+// `error_out` on failure.
+bool ApplyEdbDdl(duckdb_connection con, const RelationMap& edb, std::string* error_out,
+                 const std::unordered_set<std::string>* varchar_value_relations = nullptr,
+                 const std::unordered_set<std::string>* date_value_relations = nullptr);
+
 // Parse `tpch_edb.edb` lines: `relation_name arity` (comments and blanks skipped).
 RelationMap LoadTpchEdbFromFile(const std::string& path);
 

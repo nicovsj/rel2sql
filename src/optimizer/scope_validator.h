@@ -12,9 +12,10 @@ namespace rel2sql {
 namespace sql::ast {
 
 // Walks a translated (and optimized) SQL AST and verifies every Column reference actually
-// resolves within its enclosing scope: the alias it names must be a FROM source or visible
-// CTE at that point in the tree, and — where the referenced source is transparent enough to
-// introspect — the column name itself must be one of that source's own exposed columns.
+// resolves within its enclosing scope: the alias it names must be a FROM source of this
+// Select or an enclosing one (correlated subqueries), or a visible CTE, and — where the
+// referenced source is transparent enough to introspect — the column name itself must be
+// one of that source's own exposed columns.
 //
 // This exists because several optimizer passes (CTEInliner, FlattenerOptimizer, ...) rewrite
 // Column nodes by string-matching against a source's alias, and a bug in one of those rewrites
@@ -47,11 +48,10 @@ class ScopeValidator : public ExpressionVisitor {
   bool IsCteVisible(const std::string& alias) const;
   void CheckColumnName(const Column& column, const Source& source) const;
 
-  // The FROM-source aliases visible to whichever Select's own columns/WHERE/GROUP
-  // BY/ORDER BY are currently being visited. Table aliases are not visible to nested
-  // subqueries, so this is simply saved and restored around each Select visit rather than
-  // accumulated.
-  std::unordered_set<std::string> current_from_aliases_;
+  // FROM-source aliases of the Select currently being visited, then of each enclosing
+  // Select. Nested queries may correlate to an ancestor's sources (the NOT EXISTS
+  // encoding of forall does); an alias that appears in none of these scopes is dangling.
+  std::vector<std::unordered_set<std::string>> from_scope_stack_;
 
   // CTE names are visible to the whole subtree under the Select/Union/UnionAll that
   // introduced them, so this accumulates as a stack of per-level name sets rather than a
