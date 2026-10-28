@@ -263,6 +263,25 @@ struct RelStringTerm : RelTerm {
   std::vector<std::shared_ptr<RelNode>> Children() const override;
 };
 
+enum class RelFunction { DateYear, Substring };
+
+// A built-in scalar function applied to terms, e.g. `date_year[od]` or `substring[phone, 1, 2]` inside a
+// comparison. TermRewriter produces it from a `RelExprAsTerm` whose built-in takes only variables and
+// constants, so that the comparison can compute the value from its variables' columns instead of joining a
+// relation of all the function's results.
+struct RelFunctionTerm : RelTerm {
+  RelFunction function;
+  std::vector<std::shared_ptr<RelTerm>> args;
+
+  RelFunctionTerm(RelFunction function, std::vector<std::shared_ptr<RelTerm>> args)
+      : function(function), args(std::move(args)) {}
+
+  std::shared_ptr<RelNode> DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) override;
+
+  std::string ToString() const override;
+  std::vector<std::shared_ptr<RelNode>> Children() const override;
+};
+
 // =============================================================================
 // Arguments
 // =============================================================================
@@ -371,10 +390,6 @@ struct RelConjunction : RelFormula {
 struct RelDisjunction : RelFormula {
   std::shared_ptr<RelFormula> lhs;
   std::shared_ptr<RelFormula> rhs;
-  // Set by RecursionVisitor for recognized recursive IDB bodies so SafetyInferrer uses UnionWith on
-  // this disjunction (post-order visits disjunctions before the parent RelFormulaAbstraction, so a
-  // stack there would not see recursive context).
-  bool use_union_branch_safety = false;
 
   RelDisjunction(std::shared_ptr<RelFormula> lhs, std::shared_ptr<RelFormula> rhs)
       : lhs(std::move(lhs)), rhs(std::move(rhs)) {}

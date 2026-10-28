@@ -48,6 +48,7 @@ struct RelOpTerm;
 struct RelParenthesisTerm;
 struct RelExprAsTerm;
 struct RelStringTerm;
+struct RelFunctionTerm;
 struct RelWildcardParam;
 struct RelExprApplParam;
 struct RelIDApplBase;
@@ -112,6 +113,7 @@ class BaseRelVisitor {
   virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelParenthesisTerm>& node);
   virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelExprAsTerm>& node);
   virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelStringTerm>& node);
+  virtual std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelFunctionTerm>& node);
 
   // Appl params
   virtual std::shared_ptr<RelApplParam> Visit(const std::shared_ptr<RelWildcardParam>& node);

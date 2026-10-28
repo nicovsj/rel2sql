@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
 
 namespace rel2sql {
 
@@ -54,9 +55,18 @@ RelationMap LoadEdbFile(const std::string& path) {
       throw std::runtime_error("LoadEdbFile: malformed line " + std::to_string(line_no) + " in \"" + path +
                                "\": expected \"<name> <arity>\"");
     }
-    std::string extra;
-    if (iss >> extra) {
-      throw std::runtime_error("LoadEdbFile: extra tokens on line " + std::to_string(line_no) + " in \"" + path + "\"");
+    // Optional key declarations follow the arity: `key <col> ...`, with 1-based column positions.
+    std::vector<std::vector<int>> keys;
+    std::string token;
+    while (iss >> token) {
+      if (token == "key") {
+        keys.emplace_back();
+      } else if (!keys.empty() && AllDigits(token)) {
+        keys.back().push_back(std::stoi(token) - 1);
+      } else {
+        throw std::runtime_error("LoadEdbFile: extra tokens on line " + std::to_string(line_no) + " in \"" + path +
+                                 "\"");
+      }
     }
     if (!AllDigits(arity_str)) {
       throw std::runtime_error("LoadEdbFile: bad arity on line " + std::to_string(line_no) + " in \"" + path + "\"");
@@ -69,7 +79,16 @@ RelationMap LoadEdbFile(const std::string& path) {
     if (out.has(name)) {
       throw std::runtime_error("LoadEdbFile: duplicate relation \"" + name + "\" in \"" + path + "\"");
     }
+    for (const auto& key : keys) {
+      for (int col : key) {
+        if (col < 0 || col >= arity) {
+          throw std::runtime_error("LoadEdbFile: key column out of range on line " + std::to_string(line_no) +
+                                   " in \"" + path + "\"");
+        }
+      }
+    }
     out[name] = RelationInfo(arity);
+    out[name].keys = std::move(keys);
   }
   return out;
 }

@@ -4,8 +4,11 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <map>
+#include <optional>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
 
 #include "rel_ast/bound_set.h"
@@ -334,7 +337,11 @@ std::optional<std::pair<std::string, std::unique_ptr<Domain>>> InferDomainFromCo
 class SafetyComputeVisitor : public BaseRelVisitor {
  public:
   using BaseRelVisitor::Visit;
-  explicit SafetyComputeVisitor(RelContextBuilder* container) : container_(container) {}
+  // `recursive_call_bounds` gives the bounds of each recursive call inside its own definition (see
+  // SafetyInferrer::ComputeRecursiveInvariants), in place of the bound by the recursive relation itself.
+  SafetyComputeVisitor(RelContextBuilder* container,
+                       const std::unordered_map<const RelNode*, BoundSet>* recursive_call_bounds)
+      : container_(container), recursive_call_bounds_(recursive_call_bounds) {}
 
   std::shared_ptr<RelProgram> Visit(const std::shared_ptr<RelProgram>& node) override {
     // RelProgram does not compute safety from children; it just contains defs.
@@ -413,6 +420,12 @@ class SafetyComputeVisitor : public BaseRelVisitor {
   }
 
   std::shared_ptr<RelFormula> Visit(const std::shared_ptr<RelFullApplication>& node) override {
+    if (recursive_call_bounds_) {
+      if (auto it = recursive_call_bounds_->find(node.get()); it != recursive_call_bounds_->end()) {
+        node->safety = it->second;
+        return node;
+      }
+    }
     if (auto* id_base = dynamic_cast<RelIDApplBase*>(node->base.get())) {
       ComputeIDApplicationSafety(*node, node->params, id_base->id);
     } else if (auto* abs_base = dynamic_cast<RelExprApplBase*>(node->base.get())) {
@@ -446,11 +459,7 @@ class SafetyComputeVisitor : public BaseRelVisitor {
             "is not supported yet when (a,b) != (1,0).",
             SourceLocation(0, 0));
       }
-      if (node->use_union_branch_safety) {
-        node->safety = node->lhs->safety.UnionWith(node->rhs->safety);
-      } else {
-        node->safety = node->lhs->safety.MergeWith(node->rhs->safety);
-      }
+      node->safety = node->lhs->safety.MergeWith(node->rhs->safety);
     }
     return node;
   }
@@ -651,7 +660,62 @@ class SafetyComputeVisitor : public BaseRelVisitor {
   }
 
   RelContextBuilder* container_;
+  const std::unordered_map<const RelNode*, BoundSet>* recursive_call_bounds_;
 };
+
+// Operands of a column bound, as unary domains keyed by their text: projections of relations, or constants.
+using ColumnOperands = std::map<std::string, std::unique_ptr<Domain>>;
+
+// Adds to `out` the operands of column `column` of `domain`. Returns false when the column involves anything other
+// than projections of relations distinct from `recursive_name` and constants (an arithmetic operation, or the
+// translation of an expression), whose union is then not a valid invariant bound.
+bool CollectColumnOperands(const Domain* domain, size_t column, const std::string& recursive_name,
+                           ColumnOperands& out) {
+  if (auto* constant = dynamic_cast<const ConstantDomain*>(domain)) {
+    out[constant->ToString()] = constant->Clone();
+    return true;
+  }
+  if (auto* defined = dynamic_cast<const DefinedDomain*>(domain)) {
+    if (defined->table_name == recursive_name) return false;
+    std::unique_ptr<Domain> operand = defined->table_arity == 1
+                                          ? defined->Clone()
+                                          : std::make_unique<Projection>(std::vector<size_t>{column}, defined->Clone());
+    const std::string key = operand->ToString();
+    out[key] = std::move(operand);
+    return true;
+  }
+  if (auto* projection = dynamic_cast<const Projection*>(domain)) {
+    if (column >= projection->projected_indices.size() || !projection->domain) return false;
+    return CollectColumnOperands(projection->domain.get(), projection->projected_indices[column], recursive_name, out);
+  }
+  if (auto* union_domain = dynamic_cast<const DomainUnion*>(domain)) {
+    return CollectColumnOperands(union_domain->lhs.get(), column, recursive_name, out) &&
+           CollectColumnOperands(union_domain->rhs.get(), column, recursive_name, out);
+  }
+  return false;
+}
+
+// Operands of a bound for `var` in `safety` whose column is a union of allowed operands, or nullopt if none is.
+std::optional<ColumnOperands> ColumnOperandsForVariable(const BoundSet& safety, const std::string& var,
+                                                        const std::string& recursive_name) {
+  for (const Bound& bound : safety.SortedBounds()) {
+    if (bound.HasNonTrivialAffine() || !bound.domain) continue;
+    auto it = std::find(bound.variables.begin(), bound.variables.end(), var);
+    if (it == bound.variables.end()) continue;
+    ColumnOperands operands;
+    const size_t column = static_cast<size_t>(it - bound.variables.begin());
+    if (CollectColumnOperands(bound.domain.get(), column, recursive_name, operands)) return operands;
+  }
+  return std::nullopt;
+}
+
+std::unique_ptr<Domain> UnionOfOperands(const ColumnOperands& operands) {
+  std::unique_ptr<Domain> result;
+  for (const auto& [key, operand] : operands) {
+    result = result ? std::make_unique<DomainUnion>(std::move(result), operand->Clone()) : operand->Clone();
+  }
+  return result;
+}
 
 }  // namespace
 
@@ -659,8 +723,7 @@ SafetyInferrer::SafetyInferrer(RelContextBuilder* container) : container_(contai
 
 void SafetyInferrer::Run(std::shared_ptr<RelNode> root) {
   std::vector<std::shared_ptr<RelNode>> nodes = CollectNodesPostOrder(root);
-  RunSafetyFixpoint(nodes);
-  ApplyRecursiveCallSafetyInheritance(root);
+  ComputeRecursiveInvariants(root, nodes);
   for (const auto& node : nodes) {
     ComputeSafetyFromChildren(node);
   }
@@ -696,68 +759,144 @@ void SafetyInferrer::RunSafetyFixpoint(const std::vector<std::shared_ptr<RelNode
   }
 }
 
-void SafetyInferrer::ApplyRecursiveCallSafetyInheritance(std::shared_ptr<RelNode> root) {
-  auto prog = std::dynamic_pointer_cast<RelProgram>(root);
-  if (!prog) return;
+namespace {
 
-  for (const auto& def : prog->defs) {
-    if (!def || !def->body || def->body->exprs.empty()) continue;
-    auto bf = std::dynamic_pointer_cast<RelFormulaAbstraction>(def->body->exprs[0]);
-    if (!bf || !bf->is_recursive || bf->recursive_definition_name != def->name) continue;
+// A linearly recursive definition `def Q {(x1, ..., xn): F}` and the bounds of its columns.
+struct RecursiveDefinition {
+  std::string name;
+  std::shared_ptr<RelFormulaAbstraction> body;
+  std::vector<std::string> head_vars;
+  std::vector<std::shared_ptr<RelFormula>> base_disjuncts;
+  // Each recursive call in the body, with the variable passed for each column ("" when not a variable).
+  std::vector<std::pair<const RelNode*, std::vector<std::string>>> calls;
+  // Bound of each column of Q, as a union of operands; nullopt when the column has none.
+  std::vector<std::optional<ColumnOperands>> columns;
+};
 
-    auto meta = container_->GetRecursionMetadata(def->name);
-    if (!meta) continue;
+// Upper bound on the iterations; each one that does not stop adds an operand to a column or drops a column, and
+// there are finitely many operands.
+constexpr int kMaxInvariantIterations = 64;
 
-    BoundSet base_safety;
-    bool have_base = false;
-    for (const auto& nu : meta->non_recursive_disjuncts) {
-      if (!nu || nu->exprs.empty()) continue;
-      auto gf = std::dynamic_pointer_cast<RelFormula>(nu->exprs[0]);
-      if (!gf) continue;
-      if (!have_base) {
-        base_safety = gf->safety;
-        have_base = true;
-      } else {
-        base_safety = base_safety.MergeWith(gf->safety);
+}  // namespace
+
+// Bounds the columns of each linearly recursive relation Q by an inductive invariant: unions of projections of
+// other relations and constants, containing every tuple of Q. Inside the body of Q, the recursive call is bounded
+// by these unions instead of by Q itself, so no variable bound in the body mentions Q (which would be a second
+// reference to the recursive CTE, and, when it reaches the base case, a reference to Q before it exists).
+//
+// The invariant is computed by iteration. It starts from the bounds of the base case, which contain the first
+// stage of the fixpoint of Q. Then, assuming the current column bounds for the recursive call, the bounds of the
+// body are computed again, and any new operand of a head variable's bound is added to its column. A column whose
+// bound involves anything else (Q, arithmetic) is dropped. When no column changes, a tuple derived from tuples
+// within the column bounds is again within them, so by induction on the stages of the fixpoint, every tuple of Q
+// is within them.
+void SafetyInferrer::ComputeRecursiveInvariants(const std::shared_ptr<RelNode>& root,
+                                                const std::vector<std::shared_ptr<RelNode>>& nodes) {
+  recursive_call_bounds_.clear();
+  std::vector<RecursiveDefinition> definitions;
+  if (auto prog = std::dynamic_pointer_cast<RelProgram>(root)) {
+    for (const auto& def : prog->defs) {
+      if (!def || !def->body || def->body->exprs.empty()) continue;
+      auto body = std::dynamic_pointer_cast<RelFormulaAbstraction>(def->body->exprs[0]);
+      if (!body || !body->is_recursive || body->recursive_definition_name != def->name || !body->formula) continue;
+      auto meta = container_->GetRecursionMetadata(def->name);
+      if (!meta) continue;
+
+      RecursiveDefinition definition;
+      definition.name = def->name;
+      definition.body = body;
+      for (const auto& b : body->bindings) {
+        if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) definition.head_vars.push_back(vb->id);
       }
-    }
-
-    std::vector<std::string> head_vars;
-    for (const auto& b : bf->bindings) {
-      if (auto* vb = dynamic_cast<RelVarBinding*>(b.get())) {
-        head_vars.push_back(vb->id);
-      }
-    }
-    const int arity = static_cast<int>(head_vars.size());
-
-    for (const auto& br : meta->recursive_disjuncts) {
-      if (!have_base) break;
-      auto call = std::dynamic_pointer_cast<RelFullApplication>(br.recursive_call);
-      if (!call) continue;
-      auto* idb = dynamic_cast<RelIDApplBase*>(call->base.get());
-      if (!idb || idb->id != def->name) continue;
-      if (arity <= 0 || static_cast<int>(call->params.size()) != arity) continue;
-
-      std::unordered_map<std::string, std::string> rename;
-      bool ok = true;
-      for (int i = 0; i < arity; ++i) {
-        auto expr = call->params[static_cast<size_t>(i)] ? call->params[static_cast<size_t>(i)]->GetExpr() : nullptr;
-        auto* term = dynamic_cast<RelIDTerm*>(expr.get());
-        if (!term || !container_->IsVar(term->id)) {
-          ok = false;
-          break;
+      for (const auto& base : meta->non_recursive_disjuncts) {
+        if (!base || base->exprs.empty()) continue;
+        if (auto formula = std::dynamic_pointer_cast<RelFormula>(base->exprs[0])) {
+          definition.base_disjuncts.push_back(formula);
         }
-        rename[head_vars[static_cast<size_t>(i)]] = term->id;
       }
-      if (!ok) continue;
-
-      call->safety = call->safety.UnionWith(base_safety.Renamed(rename));
+      for (const auto& branch : meta->recursive_disjuncts) {
+        auto call = std::dynamic_pointer_cast<RelFullApplication>(branch.recursive_call);
+        if (!call) continue;
+        std::vector<std::string> args;
+        for (const auto& param : call->params) {
+          auto* term = dynamic_cast<RelIDTerm*>(param ? param->GetExpr().get() : nullptr);
+          args.push_back(term && container_->IsVar(term->id) ? term->id : "");
+        }
+        definition.calls.emplace_back(call.get(), std::move(args));
+        // Until the column bounds are known, the recursive call bounds nothing.
+        recursive_call_bounds_[call.get()] = BoundSet();
+      }
+      definitions.push_back(std::move(definition));
     }
   }
+
+  auto run_from_scratch = [&]() {
+    for (const auto& node : nodes) node->safety = BoundSet();
+    RunSafetyFixpoint(nodes);
+  };
+  run_from_scratch();
+  if (definitions.empty()) return;
+
+  // Start from the base case, whose tuples form the first stage of the fixpoint.
+  for (auto& definition : definitions) {
+    BoundSet base;
+    for (size_t i = 0; i < definition.base_disjuncts.size(); ++i) {
+      base = i == 0 ? definition.base_disjuncts[i]->safety : base.MergeWith(definition.base_disjuncts[i]->safety);
+    }
+    for (const auto& var : definition.head_vars) {
+      definition.columns.push_back(ColumnOperandsForVariable(base, var, definition.name));
+    }
+  }
+
+  auto set_call_bounds = [&]() {
+    for (const auto& definition : definitions) {
+      for (const auto& [call, args] : definition.calls) {
+        std::unordered_set<Bound> bounds;
+        for (size_t j = 0; j < args.size() && j < definition.columns.size(); ++j) {
+          if (args[j].empty() || !definition.columns[j]) continue;
+          bounds.insert(Bound({args[j]}, UnionOfOperands(*definition.columns[j])));
+        }
+        recursive_call_bounds_[call] = BoundSet(std::move(bounds));
+      }
+    }
+  };
+
+  bool stable = false;
+  for (int iteration = 0; iteration < kMaxInvariantIterations && !stable; ++iteration) {
+    set_call_bounds();
+    run_from_scratch();
+    stable = true;
+    for (auto& definition : definitions) {
+      for (size_t j = 0; j < definition.columns.size(); ++j) {
+        auto& column = definition.columns[j];
+        if (!column) continue;
+        auto derived =
+            ColumnOperandsForVariable(definition.body->formula->safety, definition.head_vars[j], definition.name);
+        if (!derived) {
+          column.reset();
+          stable = false;
+          continue;
+        }
+        for (auto& [key, operand] : *derived) {
+          if (column->count(key)) continue;
+          (*column)[key] = std::move(operand);
+          stable = false;
+        }
+      }
+    }
+  }
+  if (!stable) {
+    // Not reached in practice; without an invariant, the recursive calls bound nothing.
+    for (auto& definition : definitions) {
+      for (auto& column : definition.columns) column.reset();
+    }
+  }
+  set_call_bounds();
+  run_from_scratch();
 }
 
 void SafetyInferrer::ComputeSafetyFromChildren(const std::shared_ptr<RelNode>& node) {
-  SafetyComputeVisitor compute_visitor(container_);
+  SafetyComputeVisitor compute_visitor(container_, &recursive_call_bounds_);
   compute_visitor.Visit(node);
 }
 

@@ -46,6 +46,17 @@ class SelfJoinOptimizer : public BaseOptimizer {
 
   bool EliminateRedundantSelfJoins(Select& select);
 
+  /**
+   * Removes a group of table sources of a SELECT DISTINCT that maps onto other sources of the same tables, as in
+   * the minimization of conjunctive queries. Unlike EliminateRedundantSelfJoins, the sources of the group need not
+   * be joined with their images on every column they use: a column used only in equalities may be equated with a
+   * column of another source of the group, as long as the images of the two columns are equal too. This removes the
+   * copy of a join that the translation of a comparison between two variables adds, e.g. the second
+   * `A ⋈ B` in `A T0, B T1, A T2, B T3 WHERE T0.k = T1.k AND T2.k = T3.k AND T0.v = T2.v AND T1.v = T3.v`.
+   * Returns true if a group was removed.
+   */
+  bool EliminateRedundantSourceGroup(Select& select);
+
   SourcesByIdentifier GroupSourcesByIdentifier(const std::vector<std::shared_ptr<Source>>& sources,
                                                const Select& select);
 

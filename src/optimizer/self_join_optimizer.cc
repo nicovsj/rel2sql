@@ -1,5 +1,9 @@
 #include "self_join_optimizer.h"
 
+#include <functional>
+#include <map>
+#include <optional>
+#include <set>
 #include <sstream>
 #include <vector>
 
@@ -59,6 +63,138 @@ void SelfJoinOptimizer::Visit(Select& select) {
   }
   // Then try to eliminate redundant self-joins
   EliminateRedundantSelfJoins(select);
+  while (EliminateRedundantSourceGroup(select)) {
+  }
+}
+
+namespace {
+
+// Every Column node under a SELECT, including those in subqueries, which may refer to the outer sources.
+class ColumnCollector : public ExpressionVisitor {
+ public:
+  using ExpressionVisitor::Visit;
+  void Visit(Column& column) override { columns.push_back(&column); }
+  std::vector<Column*> columns;
+};
+
+constexpr std::size_t kMaxSourceGroupSize = 4;
+
+}  // namespace
+
+bool SelfJoinOptimizer::EliminateRedundantSourceGroup(Select& select) {
+  if (!select.is_distinct || select.group_by.has_value() || !select.from.has_value()) return false;
+  auto& from = *select.from.value();
+  if (!from.where.has_value()) return false;
+
+  std::unordered_map<std::string, std::shared_ptr<Source>> tables;  // alias -> table source of this FROM
+  for (const auto& source : from.sources) {
+    if (std::dynamic_pointer_cast<Table>(source->sourceable)) tables[source->Alias()] = source;
+  }
+  if (tables.size() < 2) return false;
+
+  // Top-level equalities between two columns, and the classes of columns they make equal.
+  std::vector<std::shared_ptr<Condition>> conjuncts;
+  if (auto logical = std::dynamic_pointer_cast<LogicalCondition>(from.where.value())) {
+    if (logical->op != LogicalOp::AND) return false;
+    conjuncts = logical->conditions;
+  } else {
+    conjuncts = {from.where.value()};
+  }
+  std::vector<std::pair<ColumnId, ColumnId>> equalities;
+  std::unordered_set<const Column*> equality_columns;
+  std::vector<std::shared_ptr<ComparisonCondition>> equality_conditions;
+  for (const auto& conjunct : conjuncts) {
+    auto cmp = std::dynamic_pointer_cast<ComparisonCondition>(conjunct);
+    if (!cmp || cmp->op != CompOp::EQ) continue;
+    auto lhs = std::dynamic_pointer_cast<Column>(cmp->lhs);
+    auto rhs = std::dynamic_pointer_cast<Column>(cmp->rhs);
+    if (!lhs || !rhs || !lhs->source || !rhs->source) continue;
+    equalities.push_back({{lhs->source.value()->Alias(), lhs->name}, {rhs->source.value()->Alias(), rhs->name}});
+    equality_columns.insert(lhs.get());
+    equality_columns.insert(rhs.get());
+    equality_conditions.push_back(cmp);
+  }
+  if (equalities.empty()) return false;
+  auto classes = ComputeColumnEquivalenceClasses(equality_conditions);
+  auto equivalent = [&](const ColumnId& a, const ColumnId& b) {
+    if (a == b) return true;
+    auto ia = classes.column_to_class.find(a);
+    auto ib = classes.column_to_class.find(b);
+    return ia != classes.column_to_class.end() && ib != classes.column_to_class.end() && ia->second == ib->second;
+  };
+
+  // The columns of each table source used outside the top-level equalities: their values must be kept.
+  ColumnCollector collector;
+  collector.Visit(select);
+  std::unordered_map<std::string, std::set<std::string>> kept_columns;
+  for (const Column* column : collector.columns) {
+    if (!column->source || equality_columns.count(column)) continue;
+    const std::string alias = column->source.value()->Alias();
+    if (tables.count(alias)) kept_columns[alias].insert(column->name);
+  }
+
+  auto table_name = [&](const std::string& alias) {
+    return std::dynamic_pointer_cast<Table>(tables.at(alias)->sourceable)->name;
+  };
+  using Mapping = std::map<std::string, std::string>;  // removed alias -> alias of its image
+  auto image = [](const Mapping& h, const ColumnId& col) {
+    auto it = h.find(col.first);
+    return it == h.end() ? col : ColumnId{it->second, col.second};
+  };
+
+  // Returns the first condition the mapping breaks: the equality, if any, so that the search can extend the group
+  // by the source on its other side; std::nullopt if the mapping is valid.
+  struct Violation {
+    std::optional<std::pair<ColumnId, ColumnId>> equality;
+  };
+  auto check = [&](const Mapping& h) -> std::optional<Violation> {
+    for (const auto& [removed, target] : h) {
+      if (h.count(target)) return Violation{};
+      if (auto it = kept_columns.find(removed); it != kept_columns.end()) {
+        for (const auto& col : it->second) {
+          if (!equivalent({removed, col}, {target, col})) return Violation{};
+        }
+      }
+    }
+    for (const auto& eq : equalities) {
+      if (!h.count(eq.first.first) && !h.count(eq.second.first)) continue;
+      if (!equivalent(image(h, eq.first), image(h, eq.second))) return Violation{eq};
+    }
+    return std::nullopt;
+  };
+
+  std::function<std::optional<Mapping>(const Mapping&)> search = [&](const Mapping& h) -> std::optional<Mapping> {
+    auto violation = check(h);
+    if (!violation) return h;
+    if (!violation->equality || h.size() >= kMaxSourceGroupSize) return std::nullopt;
+    // Extend the group by the source of the equality outside it, mapped onto any other source of its table.
+    const auto& [a, b] = *violation->equality;
+    const std::string& outside = h.count(a.first) ? b.first : a.first;
+    if (h.count(outside) || !tables.count(outside)) return std::nullopt;
+    for (const auto& [alias, _] : tables) {
+      if (alias == outside || h.count(alias) || table_name(alias) != table_name(outside)) continue;
+      Mapping extended = h;
+      extended[outside] = alias;
+      if (auto found = search(extended)) return found;
+    }
+    return std::nullopt;
+  };
+
+  for (const auto& [removed, _] : tables) {
+    for (const auto& [target, __] : tables) {
+      if (removed == target || table_name(removed) != table_name(target)) continue;
+      auto found = search({{removed, target}});
+      if (!found) continue;
+      for (const auto& [old_alias, new_alias] : *found) {
+        SourceReplacer replacer(old_alias, tables.at(new_alias));
+        base_expr_->Accept(replacer);
+      }
+      RedundancyReplacer redundancy_replacer;
+      base_expr_->Accept(redundancy_replacer);
+      return true;
+    }
+  }
+  return false;
 }
 
 bool SelfJoinOptimizer::EliminateRedundantSelfJoins(Select& select) {

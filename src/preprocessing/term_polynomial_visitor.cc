@@ -161,4 +161,12 @@ std::shared_ptr<RelTerm> TermPolynomialVisitor::Visit(const std::shared_ptr<RelE
   throw std::logic_error("TermPolynomialVisitor: RelExprAsTerm leaked past TermRewriter");
 }
 
+std::shared_ptr<RelTerm> TermPolynomialVisitor::Visit(const std::shared_ptr<RelFunctionTerm>& node) {
+  for (const auto& arg : node->args) {
+    if (arg) Visit(arg);
+  }
+  MarkInvalid(node.get());  // not a linear term
+  return node;
+}
+
 }  // namespace rel2sql

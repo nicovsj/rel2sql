@@ -192,6 +192,8 @@ SuiteConfig ParseConfig(const std::string& s, size_t& i) {
       config.node_budget = static_cast<size_t>(ParseJsonNumber(s, i));
     else if (key == "profile")
       config.profile = ParseProfile(s, i);
+    else if (key == "variant")
+      config.variant = static_cast<uint64_t>(ParseJsonNumber(s, i));
     else if (key == "profile_name")
       SkipValue(s, i);
     else
@@ -457,19 +459,22 @@ std::vector<std::string> ListShardFileNames(const std::filesystem::path& corpus_
 
 }  // namespace
 
-std::filesystem::path CorpusV1Root() {
+std::filesystem::path CorpusRoot(int version) {
+  const std::string dir = "v" + std::to_string(version);
   if (auto test_srcdir = std::getenv("TEST_SRCDIR")) {
     const std::filesystem::path base(test_srcdir);
-    const std::filesystem::path candidate = base / "_main" / "tests" / "generator" / "corpus" / "v1";
+    const std::filesystem::path candidate = base / "_main" / "tests" / "generator" / "corpus" / dir;
     if (std::filesystem::exists(candidate)) return candidate;
-    const std::filesystem::path alt = base / "tests" / "generator" / "corpus" / "v1";
+    const std::filesystem::path alt = base / "tests" / "generator" / "corpus" / dir;
     if (std::filesystem::exists(alt)) return alt;
   }
   if (auto root = FindRepoRoot(std::filesystem::current_path())) {
-    return *root / "tests" / "generator" / "corpus" / "v1";
+    return *root / "tests" / "generator" / "corpus" / dir;
   }
-  return std::filesystem::current_path() / "tests" / "generator" / "corpus" / "v1";
+  return std::filesystem::current_path() / "tests" / "generator" / "corpus" / dir;
 }
+
+std::filesystem::path CorpusV1Root() { return CorpusRoot(1); }
 
 std::filesystem::path CorpusManifestPath() { return CorpusV1Root() / "manifest.json"; }
 
@@ -550,6 +555,7 @@ std::string SerializeCorpusCaseLine(const CorpusCase& corpus_case) {
   os << ",\"program_index\":" << corpus_case.config.program_index;
   os << ",\"node_budget\":" << corpus_case.config.node_budget;
   os << ",\"profile\":" << SerializeProfile(corpus_case.config.profile);
+  if (corpus_case.config.variant > 0) os << ",\"variant\":" << corpus_case.config.variant;
   os << "}";
   os << ",\"program\":\"" << JsonEscape(corpus_case.program) << "\"";
   os << ",\"output_def\":\"" << JsonEscape(corpus_case.output_def) << "\"";

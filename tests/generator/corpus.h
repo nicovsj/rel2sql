@@ -31,6 +31,8 @@ struct CorpusManifest {
   std::vector<std::string> shards;
 };
 
+// tests/generator/corpus/v{version}, in the runfiles or the source tree.
+std::filesystem::path CorpusRoot(int version);
 std::filesystem::path CorpusV1Root();
 std::filesystem::path CorpusManifestPath();
 

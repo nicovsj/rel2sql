@@ -971,56 +971,96 @@ std::string GenProductBody(Rng& rng, size_t /*budget*/, const RelationMap& schem
   return "(x, y): " + FormatApp(left, {"x"}) + " and " + FormatApp(right, {"y"});
 }
 
-std::optional<std::string> PickBinaryEdb(Rng& rng, const RelationMap& edb_map) {
+std::vector<std::string> CallableNamesWithArity(const RelationMap& schema, int arity,
+                                                const std::unordered_set<std::string>& callable) {
   std::vector<std::string> names;
-  for (const auto& kv : edb_map.map) {
-    if (kv.second.arity == 2) names.push_back(kv.first);
+  for (const auto& candidate : CallableRelationsWithMaxArity(schema, arity, callable)) {
+    if (candidate.arity == arity) names.push_back(candidate.name);
   }
-  if (names.empty()) return std::nullopt;
   std::sort(names.begin(), names.end());
-  return names[rng.Uniform(names.size())];
+  return names;
 }
 
-std::string GenRecursiveBody(const std::string& self_name, const std::string& base_rel) {
-  return "(x, y): " + base_rel + "(x, y) or exists((z) | " + base_rel + "(x, z) and " + self_name + "(z, y))";
+// Linear recursion in one of two shapes, reachability and transitive closure:
+//   (x): Base(x) or exists((y) | Step(x, y) and Self(y) [and filter])
+//   (x, y): Base(x, y) or exists((z) | Step(x, z) and Self(z, y) [and filter])
+// Every value comes from a relation, so the fixpoint is reached on a finite instance. The filter is a comparison
+// with a constant or a negated unary atom. The defs in `required` fill the Base, Step, or negated-atom positions
+// that fit their arity; there is no body when one of them fits none.
+std::optional<DefBodyResult> GenRecursiveDefBody(Rng& rng, const std::string& self, const RelationMap& schema,
+                                                 const GeneratorProfile& profile,
+                                                 const std::unordered_set<std::string>& callable,
+                                                 const std::vector<std::string>& required) {
+  const int arity = rng.UniformInt(1, 2);
+  std::optional<std::string> base;
+  std::optional<std::string> step;
+  std::optional<std::string> negated;
+  for (const auto& dep : required) {
+    const auto it = schema.map.find(dep);
+    if (it == schema.map.end()) return std::nullopt;
+    const int dep_arity = it->second.arity;
+    if (dep_arity == arity && !base) {
+      base = dep;
+    } else if (dep_arity == 2 && !step) {
+      step = dep;
+    } else if (dep_arity == 1 && !negated) {
+      negated = dep;
+    } else {
+      return std::nullopt;
+    }
+  }
+  auto pick = [&](int pick_arity) -> std::optional<std::string> {
+    const auto names = CallableNamesWithArity(schema, pick_arity, callable);
+    if (names.empty()) return std::nullopt;
+    return names[rng.Uniform(names.size())];
+  };
+  if (!base) base = pick(arity);
+  if (!step) step = pick(2);
+  if (!base || !step) return std::nullopt;
+
+  const std::vector<std::string> head = arity == 1 ? std::vector<std::string>{"x"} : std::vector<std::string>{"x", "y"};
+  const std::string link = arity == 1 ? "y" : "z";
+  std::vector<std::string> self_args = {link};
+  if (arity == 2) self_args.push_back("y");
+  const std::vector<std::string> step_args =
+      rng.CoinFlip() ? std::vector<std::string>{"x", link} : std::vector<std::string>{link, "x"};
+
+  std::vector<std::string> step_vars = head;
+  step_vars.push_back(link);
+  std::string filter;
+  if (!negated && profile.allow_negation && rng.CoinFlip()) negated = pick(1);
+  if (negated) {
+    filter = "not " + FormatApp(*negated, {step_vars[rng.Uniform(step_vars.size())]});
+  } else if (profile.allow_comparisons && rng.CoinFlip()) {
+    filter = step_vars[rng.Uniform(step_vars.size())] + " " + kComparators[rng.Uniform(kComparators.size())] + " " +
+             std::to_string(rng.UniformInt(1, 5));
+  }
+
+  std::ostringstream body;
+  body << "(" << head[0] << (arity == 2 ? ", y" : "") << "): " << FormatApp(*base, head) << " or exists((" << link
+       << ") | " << FormatApp(*step, step_args) << " and " << FormatApp(self, self_args);
+  if (!filter.empty()) body << " and " << filter;
+  body << ")";
+  return DefBodyResult{body.str(), arity};
 }
 
 std::string MakeIdbName(int index) { return "Gen" + std::to_string(index); }
 
-GeneratedProgram TryGenerateOnce(const SuiteConfig& config, uint64_t attempt) {
-  Rng rng(ProgramGenerationSeed(config.seed, config.program_index, config.node_budget, attempt));
-
-  RelationMap schema = config.edb_map;
-
-  std::vector<size_t> body_budgets(1, 1);
-  const size_t overhead = 1;
-  size_t formula_budget = config.node_budget > overhead ? config.node_budget - overhead : 1;
-  formula_budget = std::max(formula_budget, size_t{1});
-  const size_t extra = formula_budget - 1;
-  for (size_t i = 0; i < extra; ++i) {
-    body_budgets[0]++;
-  }
-
-  std::ostringstream program;
-
-  std::unordered_set<std::string> callable_relations;
-  for (const auto& kv : config.edb_map.map) callable_relations.insert(kv.first);
-
-  const std::string name = MakeIdbName(0);
-
+DefBodyResult GenDefBody(Rng& rng, size_t body_budget, const RelationMap& schema, const SuiteConfig& config,
+                         const std::unordered_set<std::string>& callable_relations) {
   std::string body;
   int arity = 1;
 
-  const std::vector<BodyKind> kinds = CollectBodyKinds(config.profile, body_budgets[0]);
+  const std::vector<BodyKind> kinds = CollectBodyKinds(config.profile, body_budget);
   const BodyKind kind = kinds[rng.Uniform(kinds.size())];
   switch (kind) {
     case BodyKind::kExtensional:
       arity = rng.UniformInt(1, 3);
-      body = GenExtensionalBody(rng, body_budgets[0], arity);
+      body = GenExtensionalBody(rng, body_budget, arity);
       break;
     case BodyKind::kJoinProduct:
       arity = 2;
-      body = GenProductBody(rng, body_budgets[0], schema, config.edb_map);
+      body = GenProductBody(rng, body_budget, schema, config.edb_map);
       break;
     case BodyKind::kProductExpr:
       if (auto product_expr = GenProductExprDefBody(rng, schema, config.profile)) {
@@ -1028,8 +1068,7 @@ GeneratedProgram TryGenerateOnce(const SuiteConfig& config, uint64_t attempt) {
         arity = product_expr->arity;
       } else {
         arity = rng.UniformInt(1, 3);
-        body =
-            GenIntensionalBody(rng, body_budgets[0], arity, schema, config.edb_map, config.profile, callable_relations);
+        body = GenIntensionalBody(rng, body_budget, arity, schema, config.edb_map, config.profile, callable_relations);
       }
       break;
     case BodyKind::kUnionExpr:
@@ -1038,19 +1077,17 @@ GeneratedProgram TryGenerateOnce(const SuiteConfig& config, uint64_t attempt) {
         arity = union_expr->arity;
       } else {
         arity = rng.UniformInt(1, 3);
-        body =
-            GenIntensionalBody(rng, body_budgets[0], arity, schema, config.edb_map, config.profile, callable_relations);
+        body = GenIntensionalBody(rng, body_budget, arity, schema, config.edb_map, config.profile, callable_relations);
       }
       break;
     case BodyKind::kForallBody:
       if (auto forall_body =
-              GenForallDefBody(rng, body_budgets[0], schema, config.edb_map, config.profile, callable_relations)) {
+              GenForallDefBody(rng, body_budget, schema, config.edb_map, config.profile, callable_relations)) {
         body = forall_body->body;
         arity = forall_body->arity;
       } else {
         arity = rng.UniformInt(1, 2);
-        body =
-            GenIntensionalBody(rng, body_budgets[0], arity, schema, config.edb_map, config.profile, callable_relations);
+        body = GenIntensionalBody(rng, body_budget, arity, schema, config.edb_map, config.profile, callable_relations);
       }
       break;
     case BodyKind::kPartialExpr:
@@ -1059,8 +1096,7 @@ GeneratedProgram TryGenerateOnce(const SuiteConfig& config, uint64_t attempt) {
         arity = partial->arity;
       } else {
         arity = rng.UniformInt(1, 3);
-        body =
-            GenIntensionalBody(rng, body_budgets[0], arity, schema, config.edb_map, config.profile, callable_relations);
+        body = GenIntensionalBody(rng, body_budget, arity, schema, config.edb_map, config.profile, callable_relations);
       }
       break;
     case BodyKind::kAggregateExpr:
@@ -1069,8 +1105,7 @@ GeneratedProgram TryGenerateOnce(const SuiteConfig& config, uint64_t attempt) {
         arity = aggregate->arity;
       } else {
         arity = rng.UniformInt(1, 3);
-        body =
-            GenIntensionalBody(rng, body_budgets[0], arity, schema, config.edb_map, config.profile, callable_relations);
+        body = GenIntensionalBody(rng, body_budget, arity, schema, config.edb_map, config.profile, callable_relations);
       }
       break;
     case BodyKind::kBindingExpr:
@@ -1079,8 +1114,7 @@ GeneratedProgram TryGenerateOnce(const SuiteConfig& config, uint64_t attempt) {
         arity = binding->arity;
       } else {
         arity = rng.UniformInt(1, 3);
-        body =
-            GenIntensionalBody(rng, body_budgets[0], arity, schema, config.edb_map, config.profile, callable_relations);
+        body = GenIntensionalBody(rng, body_budget, arity, schema, config.edb_map, config.profile, callable_relations);
       }
       break;
     case BodyKind::kWhereExpr:
@@ -1089,25 +1123,85 @@ GeneratedProgram TryGenerateOnce(const SuiteConfig& config, uint64_t attempt) {
         arity = where->arity;
       } else {
         arity = rng.UniformInt(1, 3);
-        body =
-            GenIntensionalBody(rng, body_budgets[0], arity, schema, config.edb_map, config.profile, callable_relations);
+        body = GenIntensionalBody(rng, body_budget, arity, schema, config.edb_map, config.profile, callable_relations);
       }
       break;
     case BodyKind::kIntensional:
     default:
       arity = rng.UniformInt(1, 3);
-      body =
-          GenIntensionalBody(rng, body_budgets[0], arity, schema, config.edb_map, config.profile, callable_relations);
+      body = GenIntensionalBody(rng, body_budget, arity, schema, config.edb_map, config.profile, callable_relations);
       break;
   }
+  return {body, arity};
+}
 
-  program << "def " << name << " {" << body << "}";
-  schema[name] = RelationInfo(arity);
+// Draws for a body of a def until it mentions every def it must depend on.
+constexpr int kMaxDependencyDraws = 32;
+
+// With recursion allowed, a def is recursive with probability 1/kRecursiveDefOneIn: recursion is exercised, but
+// most programs stay non-recursive.
+constexpr size_t kRecursiveDefOneIn = 4;
+
+// Dependency graph over Gen0..Gen{n-1}, with Gen{n-1} the output: every other def gets a parent among the later
+// defs, which must use it. Parents have larger indices, so following parents from any def reaches the output.
+std::vector<std::vector<int>> GenDependencyGraph(Rng& rng, int def_count) {
+  std::vector<std::vector<int>> required(static_cast<size_t>(def_count));
+  for (int child = 0; child + 1 < def_count; ++child) {
+    const int parent = rng.UniformInt(child + 1, def_count - 1);
+    required[static_cast<size_t>(parent)].push_back(child);
+  }
+  return required;
+}
+
+GeneratedProgram TryGenerateOnce(const SuiteConfig& config, uint64_t attempt) {
+  Rng rng(ProgramGenerationSeed(config.seed, config.program_index, config.node_budget, attempt));
+
+  RelationMap schema = config.edb_map;
+
+  // Only draw the number of defs when several are allowed, so single-def programs stay as before.
+  const int def_count = config.profile.max_defs > 1 ? rng.UniformInt(1, config.profile.max_defs) : 1;
+  const auto required = GenDependencyGraph(rng, def_count);
+  const size_t overhead = static_cast<size_t>(def_count);
+  const size_t formula_budget = config.node_budget > overhead ? config.node_budget - overhead : 1;
+  const size_t body_budget = std::max(formula_budget / static_cast<size_t>(def_count), size_t{1});
+
+  std::ostringstream program;
+
+  std::unordered_set<std::string> callable_relations;
+  for (const auto& kv : config.edb_map.map) callable_relations.insert(kv.first);
+
+  for (int i = 0; i < def_count; ++i) {
+    const auto& deps = required[static_cast<size_t>(i)];
+    std::vector<std::string> dep_names;
+    for (int dep : deps) dep_names.push_back(MakeIdbName(dep));
+    // Decided once per def: drawing it again for every body would favour recursive bodies, which always use the
+    // required defs. Drawn only when recursion is allowed, so other profiles draw the same programs as before.
+    const bool recursive_def = config.profile.allow_recursion && rng.Uniform(kRecursiveDefOneIn) == 0;
+    std::optional<DefBodyResult> def_body;
+    for (int draw = 0; draw < kMaxDependencyDraws && !def_body; ++draw) {
+      std::optional<DefBodyResult> recursive;
+      if (recursive_def) {
+        recursive = GenRecursiveDefBody(rng, MakeIdbName(i), schema, config.profile, callable_relations, dep_names);
+      }
+      auto candidate = recursive ? *recursive : GenDefBody(rng, body_budget, schema, config, callable_relations);
+      const bool uses_all = std::all_of(deps.begin(), deps.end(),
+                                        [&](int dep) { return IdentifierAppearsIn(candidate.body, MakeIdbName(dep)); });
+      if (uses_all) def_body = candidate;
+    }
+    // Returning no program makes this attempt fail the well-formedness check, so the caller draws another.
+    if (!def_body) return {};
+
+    const std::string name = MakeIdbName(i);
+    if (i > 0) program << "\n";
+    program << "def " << name << " {" << def_body->body << "}";
+    schema[name] = RelationInfo(def_body->arity);
+    callable_relations.insert(name);
+  }
 
   GeneratedProgram result;
   result.source = program.str();
   result.schema = schema;
-  result.output_def = name;
+  result.output_def = MakeIdbName(def_count - 1);
   return result;
 }
 
@@ -1170,6 +1264,22 @@ bool ProgramContainsStaticallyFalseComparison(const std::string& source) {
 
 std::optional<std::string> ProgramOutputDefName(const std::string& source) { return OutputDefNameFromSource(source); }
 
+bool ProgramMixesIntegersAndFloats(const std::string& source) {
+  // `average` is the only float the generator produces (constants are integers, and terms use +, -, *). Inside
+  // its own def the average is only output; once another def uses that def, it can meet integers.
+  const auto names = OrderedProgramDefNames(source);
+  for (const auto& name : names) {
+    const auto body = ExtractDefBody(source, name);
+    if (!body || !IdentifierAppearsIn(*body, "average")) continue;
+    for (const auto& other : names) {
+      if (other == name) continue;
+      const auto other_body = ExtractDefBody(source, other);
+      if (other_body && IdentifierAppearsIn(*other_body, name)) return true;
+    }
+  }
+  return false;
+}
+
 bool ProgramHasConnectedDependencyGraph(const std::string& source) {
   const auto output_name = OutputDefNameFromSource(source);
   if (!output_name || !ExtractDefBody(source, *output_name)) return false;
@@ -1208,13 +1318,21 @@ bool ProgramHasConnectedDependencyGraph(const std::string& source) {
   return true;
 }
 
-bool VerifyProgram(const std::string& source, const RelationMap& edb_map) {
+bool IsWellFormedProgram(const std::string& source, const RelationMap& edb_map) {
   if (ContainsStaticallyFalseComparison(source)) return false;
   if (!OutputDefNameFromSource(source)) return false;
   if (!ProgramHasConnectedDependencyGraph(source)) return false;
   if (!CheckForallBindingsHaveDomains(source)) return false;
   try {
-    if (!FullApplicationsMatchArity(source, edb_map)) return false;
+    return FullApplicationsMatchArity(source, edb_map);
+  } catch (...) {
+    return false;
+  }
+}
+
+bool VerifyProgram(const std::string& source, const RelationMap& edb_map) {
+  if (!IsWellFormedProgram(source, edb_map)) return false;
+  try {
     auto sql = GetSQLRel(source, edb_map);
     return sql != nullptr;
   } catch (...) {
@@ -1226,7 +1344,7 @@ bool QuantifierBindingsAreUsed(const std::string& source) { return CheckQuantifi
 
 bool ForallBindingsHaveDomains(const std::string& source) { return CheckForallBindingsHaveDomains(source); }
 
-GeneratedProgram GenerateProgram(const SuiteConfig& config) {
+GeneratedProgram GenerateProgram(const SuiteConfig& config, bool require_translation) {
   if (config.node_budget < 2) {
     throw GenerationException("node_budget must be at least 2");
   }
@@ -1234,9 +1352,12 @@ GeneratedProgram GenerateProgram(const SuiteConfig& config) {
     throw GenerationException("edb_map must not be empty");
   }
 
-  for (uint64_t attempt = 0; attempt < kMaxVerifyAttempts; ++attempt) {
+  const uint64_t first_attempt = config.variant * kMaxVerifyAttempts;
+  for (uint64_t attempt = first_attempt; attempt < first_attempt + kMaxVerifyAttempts; ++attempt) {
     auto candidate = TryGenerateOnce(config, attempt);
-    if (VerifyProgram(candidate.source, config.edb_map)) {
+    const bool ok = require_translation ? VerifyProgram(candidate.source, config.edb_map)
+                                        : IsWellFormedProgram(candidate.source, config.edb_map);
+    if (ok) {
       return candidate;
     }
   }

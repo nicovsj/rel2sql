@@ -1,5 +1,7 @@
 #include "generator/corpus_case_config.h"
 
+#include <algorithm>
+#include <cctype>
 #include <sstream>
 #include <stdexcept>
 
@@ -61,6 +63,18 @@ std::vector<ProfilePreset> CorpusProfilePresets() {
           {"aggregates", AggregatesCorpusProfile()}};
 }
 
+std::vector<ProfilePreset> CorpusV2ProfilePresets() {
+  std::vector<ProfilePreset> presets;
+  for (auto preset : CorpusProfilePresets()) {
+    preset.name += "_rules";
+    preset.profile.max_defs = kCorpusV2MaxDefs;
+    // Only the full profile has recursion, and only in some of its defs (see kRecursiveDefOneIn).
+    preset.profile.allow_recursion = preset.name == "full_rules";
+    presets.push_back(preset);
+  }
+  return presets;
+}
+
 std::vector<uint64_t> CorpusBuildSeeds() { return {1, 7, 42, 99}; }
 
 std::vector<size_t> CorpusBuildProgramIndices() {
@@ -78,14 +92,16 @@ size_t CorpusBuildGridSlotCount() {
 }
 
 std::optional<GeneratorProfile> ProfileByName(const std::string& name) {
-  for (const auto& preset : CorpusProfilePresets()) {
-    if (preset.name == name) return preset.profile;
+  for (const auto& presets : {CorpusProfilePresets(), CorpusV2ProfilePresets()}) {
+    for (const auto& preset : presets) {
+      if (preset.name == name) return preset.profile;
+    }
   }
   return std::nullopt;
 }
 
 std::optional<ParsedCaseId> ParseCaseId(const std::string& case_id) {
-  // s{seed}_i{index}_b{budget}_p{profile}
+  // s{seed}_i{index}_b{budget}_p{profile}, optionally followed by _v{variant}
   if (case_id.empty() || case_id[0] != 's') return std::nullopt;
 
   ParsedCaseId out;
@@ -106,6 +122,13 @@ std::optional<ParsedCaseId> ParseCaseId(const std::string& case_id) {
     out.node_budget = static_cast<size_t>(std::stoull(case_id.substr(pos, p_pos - pos)));
 
     out.profile_name = case_id.substr(p_pos + 2);
+    const size_t v_pos = out.profile_name.rfind("_v");
+    if (v_pos != std::string::npos && v_pos + 2 < out.profile_name.size() &&
+        std::all_of(out.profile_name.begin() + static_cast<std::ptrdiff_t>(v_pos + 2), out.profile_name.end(),
+                    [](unsigned char c) { return std::isdigit(c); })) {
+      out.variant = std::stoull(out.profile_name.substr(v_pos + 2));
+      out.profile_name.resize(v_pos);
+    }
     if (out.profile_name.empty() || !ProfileByName(out.profile_name)) return std::nullopt;
   } catch (...) {
     return std::nullopt;
@@ -120,12 +143,15 @@ SuiteConfig SuiteConfigFromCaseId(const ParsedCaseId& parsed) {
   config.node_budget = parsed.node_budget;
   config.edb_map = CreateDefaultEDBMap();
   config.profile = ProfileByName(parsed.profile_name).value();
+  config.variant = parsed.variant;
   return config;
 }
 
-std::string MakeCaseId(uint64_t seed, size_t program_index, size_t node_budget, const std::string& profile_name) {
+std::string MakeCaseId(uint64_t seed, size_t program_index, size_t node_budget, const std::string& profile_name,
+                       uint64_t variant) {
   std::ostringstream os;
   os << "s" << seed << "_i" << program_index << "_b" << node_budget << "_p" << profile_name;
+  if (variant > 0) os << "_v" << variant;
   return os.str();
 }
 

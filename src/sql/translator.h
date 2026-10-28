@@ -70,6 +70,7 @@ class Translator : public BaseRelVisitor {
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelIDTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelNumTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelOpTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelFunctionTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelParenthesisTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelStringTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelExprAsTerm>& node) override;
@@ -119,6 +120,9 @@ class Translator : public BaseRelVisitor {
   // Build SELECT with GROUP BY and aggregate (for partial application of aggregate functions, e.g. sum[A]).
   std::shared_ptr<sql::ast::Select> VisitAggregateRel(const std::shared_ptr<RelExpr>& expr,
                                                       sql::ast::AggregateFunction function, bool count_all = false);
+  // Aggregate query without GROUP BY that returns no row when its input is empty, as in Rel.
+  std::shared_ptr<sql::ast::Select> UngroupedAggregateSelect(
+      const std::vector<std::shared_ptr<sql::ast::Selectable>>& select_cols, std::shared_ptr<sql::ast::From> from);
   // `sum[[x, y]: expr where F]` — bindings are aggregated away; GROUP BY abs->free_variables.
   std::shared_ptr<sql::ast::Select> VisitAggregateBindingsExpr(const std::shared_ptr<RelExprAbstraction>& abs,
                                                                sql::ast::AggregateFunction function,
@@ -194,6 +198,8 @@ class Translator : public BaseRelVisitor {
 
   // `o_year = date_year[o_orderdate[ok]]`: project key + year from the EDB row (avoids broken CTE flattening).
   bool TryEmitDateYearPartialAppComparison(const std::shared_ptr<RelComparison>& node);
+  // `x = t` defining the variable x from the other variables of t: selects t AS x over a cover of those.
+  bool TryEmitDefiningEquality(const std::shared_ptr<RelComparison>& node);
 
   struct DateYearPartialAppBinding {
     std::string year_var;

@@ -37,10 +37,6 @@ std::shared_ptr<RelExpr> RecursionVisitor::Visit(const std::shared_ptr<RelFormul
   node->is_recursive = true;
   node->recursive_definition_name = current_q_;
 
-  if (node->formula) {
-    RegisterUnionSafetyDisjunctions(node->formula);
-  }
-
   if (current_q_.empty()) return node;
 
   for (const auto& g : match.base_disjuncts) {
@@ -69,13 +65,13 @@ std::shared_ptr<RelFormula> RecursionVisitor::Visit(const std::shared_ptr<RelFul
   return node;
 }
 
-bool RecursionVisitor::IsRecursiveID(const std::string& id) const {
+bool RecursionVisitor::DependsOn(const std::string& from, const std::string& target) const {
   std::unordered_set<std::string> visited;
   std::unordered_set<std::string> rec_stack;
   std::stack<std::string> stack;
 
-  stack.push(id);
-  rec_stack.insert(id);
+  stack.push(from);
+  rec_stack.insert(from);
 
   while (!stack.empty()) {
     std::string current = stack.top();
@@ -87,7 +83,7 @@ bool RecursionVisitor::IsRecursiveID(const std::string& id) const {
     auto info = container_->GetRelationInfo(current);
     if (info) {
       for (const auto& dep : info->dependencies) {
-        if (dep == id) return true;
+        if (dep == target) return true;
         if (!visited.count(dep) && !rec_stack.count(dep)) {
           stack.push(dep);
           rec_stack.insert(dep);
@@ -152,13 +148,15 @@ std::unordered_set<std::string> RecursionVisitor::CollectIDs(const std::shared_p
   return ids;
 }
 
-bool RecursionVisitor::OnlyEDBsOrNonRecursiveIDBs(const std::unordered_set<std::string>& ids,
-                                                  const std::string& current_q) const {
+bool RecursionVisitor::OnlyEDBsOrIDBsIndependentOf(const std::unordered_set<std::string>& ids,
+                                                   const std::string& current_q) const {
   for (const auto& id : ids) {
     if (id == current_q) return false;
     if (container_->IsEDB(id)) continue;
     if (container_->IsIDB(id)) {
-      if (IsRecursiveID(id)) return false;
+      // An IDB that depends on Q would make the recursion mutual. Any other IDB, recursive or not, is a view
+      // computed before Q, and can be used like an EDB.
+      if (DependsOn(id, current_q)) return false;
       continue;
     }
     return false;
@@ -223,7 +221,7 @@ bool RecursionVisitor::CheckRecursionPattern(const std::shared_ptr<RelFormula>& 
       }
       auto g_ids = CollectIDs(d);
       if (g_ids.count(current_q_)) return false;
-      if (!OnlyEDBsOrNonRecursiveIDBs(g_ids, current_q_)) return false;
+      if (!OnlyEDBsOrIDBsIndependentOf(g_ids, current_q_)) return false;
       match.base_disjuncts.push_back(d);
     } else if (auto exists = std::dynamic_pointer_cast<RelExistential>(d)) {
       RecursiveBranchMatch branch;
@@ -285,7 +283,7 @@ bool RecursionVisitor::CheckFlatRecursiveBranch(const std::shared_ptr<RelFormula
 
   auto f_ids = CollectIDs(f_part);
   if (f_ids.count(q)) return false;
-  if (!OnlyEDBsOrNonRecursiveIDBs(f_ids, q)) return false;
+  if (!OnlyEDBsOrIDBsIndependentOf(f_ids, q)) return false;
 
   std::set<std::string> outer_names;
   for (const auto& b : outer_bindings) {
@@ -338,7 +336,7 @@ bool RecursionVisitor::CheckExistsPattern(const std::shared_ptr<RelExistential>&
 
   auto f_ids = CollectIDs(f_part);
   if (f_ids.count(q)) return false;
-  if (!OnlyEDBsOrNonRecursiveIDBs(f_ids, q)) return false;
+  if (!OnlyEDBsOrIDBsIndependentOf(f_ids, q)) return false;
 
   std::set<std::string> w_vars;
   for (const auto& param : q_call->params) {
@@ -384,37 +382,6 @@ void RecursionVisitor::CollectOrDisjuncts(const std::shared_ptr<RelFormula>& for
     return;
   }
   disjuncts.push_back(formula);
-}
-
-void RecursionVisitor::RegisterUnionSafetyDisjunctions(const std::shared_ptr<RelFormula>& formula) {
-  if (!formula) return;
-  if (auto d = std::dynamic_pointer_cast<RelDisjunction>(formula)) {
-    d->use_union_branch_safety = true;
-    RegisterUnionSafetyDisjunctions(d->lhs);
-    RegisterUnionSafetyDisjunctions(d->rhs);
-    return;
-  }
-  if (auto c = std::dynamic_pointer_cast<RelConjunction>(formula)) {
-    RegisterUnionSafetyDisjunctions(c->lhs);
-    RegisterUnionSafetyDisjunctions(c->rhs);
-    return;
-  }
-  if (auto n = std::dynamic_pointer_cast<RelNegation>(formula)) {
-    RegisterUnionSafetyDisjunctions(n->formula);
-    return;
-  }
-  if (auto p = std::dynamic_pointer_cast<RelParen>(formula)) {
-    RegisterUnionSafetyDisjunctions(p->formula);
-    return;
-  }
-  if (auto e = std::dynamic_pointer_cast<RelExistential>(formula)) {
-    RegisterUnionSafetyDisjunctions(e->formula);
-    return;
-  }
-  if (auto u = std::dynamic_pointer_cast<RelUniversal>(formula)) {
-    RegisterUnionSafetyDisjunctions(u->formula);
-    return;
-  }
 }
 
 void RecursionVisitor::FindAndPatternParts(const std::shared_ptr<RelFormula>& formula, const std::string& q,

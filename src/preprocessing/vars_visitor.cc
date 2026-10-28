@@ -65,6 +65,17 @@ std::shared_ptr<RelTerm> VariablesVisitor::Visit(const std::shared_ptr<RelExprAs
   throw std::logic_error("VariablesVisitor: RelExprAsTerm leaked past TermRewriter");
 }
 
+std::shared_ptr<RelTerm> VariablesVisitor::Visit(const std::shared_ptr<RelFunctionTerm>& node) {
+  node->variables.clear();
+  node->free_variables.clear();
+  for (const auto& arg : node->args) {
+    if (!arg) continue;
+    Visit(arg);
+    node->VariablesInplaceUnion(*arg);
+  }
+  return node;
+}
+
 std::shared_ptr<RelTerm> VariablesVisitor::Visit(const std::shared_ptr<RelStringTerm>& node) {
   node->variables.clear();
   node->free_variables.clear();

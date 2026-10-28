@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "anti_join_optimizer.h"
 #include "base_optimizer.h"
 #include "canonical_form_visitor.h"
 #include "constant_optimizer.h"
@@ -13,6 +14,7 @@
 #include "cte_redundancy_optimizer.h"
 #include "expression_simplifier_optimizer.h"
 #include "flattener_optimizer.h"
+#include "key_optimizer.h"
 #include "self_join_optimizer.h"
 #include "sql_ast/expr_visitor.h"
 #include "sql_ast/sql_ast.h"
@@ -33,6 +35,10 @@ class ValidatingOptimizer : public BaseOptimizer {
  public:
   using BaseOptimizer::Visit;
 
+  ValidatingOptimizer() = default;
+
+  explicit ValidatingOptimizer(KeyOptimizer::KeyMap keys) : keys_(std::move(keys)) {}
+
   // Optimizes the expression. May return a different expression when e.g. a
   // Select wrapping a Union is flattened to the Union directly.
   std::shared_ptr<Expression> Optimize(std::shared_ptr<Expression> expr) {
@@ -46,6 +52,14 @@ class ValidatingOptimizer : public BaseOptimizer {
       }
     }
     Visit(*expr);
+    AntiJoinOptimizer anti_join_optimizer;
+    anti_join_optimizer.Visit(*expr);
+    ValidateAndReport(*expr, "anti_join_optimizer");
+    if (!keys_.empty()) {
+      KeyOptimizer key_optimizer(keys_);
+      key_optimizer.Visit(*expr);
+      ValidateAndReport(*expr, "key_optimizer");
+    }
     TableAliasRenumberer::Renumber(*expr);
     ValidateAndReport(*expr, "table_alias_renumberer");
     return expr;
@@ -116,6 +130,7 @@ class ValidatingOptimizer : public BaseOptimizer {
   }
 
  private:
+  KeyOptimizer::KeyMap keys_;
   CTERedundancyOptimizer cte_redundancy_optimizer_;
   CTEInliner cte_inliner_;
   CanonicalFormVisitor canonical_form_visitor_;

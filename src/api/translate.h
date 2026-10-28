@@ -27,6 +27,19 @@ inline std::unique_ptr<rel_parser::RelParser> GetParser(std::string_view input) 
   return parser;
 }
 
+/** The keys declared in an EDB map, by column name, as the optimizer takes them. */
+inline sql::ast::KeyOptimizer::KeyMap DeclaredKeys(const rel2sql::RelationMap& edb_map) {
+  sql::ast::KeyOptimizer::KeyMap keys;
+  for (const auto& [name, info] : edb_map) {
+    for (const auto& key : info.keys) {
+      std::vector<std::string> columns;
+      for (int col : key) columns.push_back(info.AttributeName(col));
+      keys[name].push_back(std::move(columns));
+    }
+  }
+  return keys;
+}
+
 inline std::shared_ptr<sql::ast::Expression> GetSQLFromRelContext(const RelContext& context) {
   auto root = context.Root();
 
@@ -47,7 +60,7 @@ inline std::shared_ptr<sql::ast::Expression> GetSQLRel(std::string_view input,
   auto context = builder.Process(root);
   auto sql = GetSQLFromRelContext(context);
   if (!sql) return nullptr;
-  sql::ast::Optimizer optimizer;
+  sql::ast::Optimizer optimizer(DeclaredKeys(edb_map));
   return optimizer.Optimize(sql);
 }
 

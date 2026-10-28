@@ -30,6 +30,8 @@ struct RelationInfo {
   std::vector<std::string> attribute_names;
   int arity;
   std::vector<std::string> dependencies;
+  // Declared keys, as 0-based column positions: no two tuples of the relation agree on all the columns of a key.
+  std::vector<std::vector<int>> keys;
 
   RelationInfo() = default;
 

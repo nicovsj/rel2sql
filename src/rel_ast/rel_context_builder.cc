@@ -16,6 +16,7 @@
 #include "preprocessing/vars_visitor.h"
 #include "rel_ast/rel_context.h"
 #include "rewriter/binding_rewriter.h"
+#include "rewriter/negated_comparison_rewriter.h"
 #include "rewriter/term_rewriter.h"
 #include "rewriter/wildcard_rewriter.h"
 
@@ -207,6 +208,9 @@ std::shared_ptr<RelNode> RelContextBuilder::RunPipeline(std::shared_ptr<RelNode>
 
   WildcardRewriter underscore_rewriter(this);
   root = underscore_rewriter.Visit(root);
+
+  NegatedComparisonRewriter negated_comparison_rewriter;
+  root = negated_comparison_rewriter.Visit(root);
 
   IDsVisitor ids_visitor2(this);
   ids_visitor2.Visit(root);

@@ -9,6 +9,11 @@ CORPUS_V1_FILES = glob(
     allow_empty = True,
 )
 
+CORPUS_V2_FILES = glob(
+    ["generator/corpus/v2/**"],
+    allow_empty = True,
+)
+
 cc_library(
     name = "test_common",
     srcs = [
@@ -184,6 +189,21 @@ cc_test(
     name = "test_corpus_correctness",
     srcs = ["test_corpus_correctness.cc"],
     data = CORPUS_V1_FILES,
+    tags = ["manual"],
+    deps = [
+        ":corpus",
+        ":rel_program_generator",
+        ":test_common",
+        "//:rel2sql",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "test_corpus_v2_correctness",
+    srcs = ["test_corpus_correctness.cc"],
+    data = CORPUS_V2_FILES,
+    local_defines = ["REL2SQL_CORPUS_VERSION=2"],
     tags = ["manual"],
     deps = [
         ":corpus",

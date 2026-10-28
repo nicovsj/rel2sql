@@ -19,6 +19,36 @@ bool IsSimpleExpr(const std::shared_ptr<RelExpr>& expr) {
   return false;
 }
 
+std::shared_ptr<RelTerm> AsSimpleTerm(const std::shared_ptr<RelExpr>& expr) {
+  if (auto* literal = dynamic_cast<RelLiteral*>(expr.get())) {
+    // Built-in arguments are parsed as literals; as terms they are constants.
+    return std::make_shared<RelNumTerm>(literal->value);
+  }
+  auto term = std::dynamic_pointer_cast<RelTerm>(expr);
+  return term && IsSimpleExpr(term) ? term : nullptr;
+}
+
+// `date_year[v]` and `substring[v, c1, c2]` over variables and constants stay terms, which the comparison computes
+// from the columns of their variables. Lifting them into an atom `{date_year[v]}(z)` would need a relation of all
+// their results, joined back on v.
+std::shared_ptr<RelFunctionTerm> ScalarFunctionTerm(const std::shared_ptr<RelExpr>& inner) {
+  if (auto date = std::dynamic_pointer_cast<RelBuiltinDateExpr>(inner)) {
+    if (date->op != RelBuiltinDateOp::ExtractYear || date->args.size() != 1) return nullptr;
+    auto arg = AsSimpleTerm(date->args[0]);
+    if (!arg) return nullptr;
+    return std::make_shared<RelFunctionTerm>(RelFunction::DateYear, std::vector<std::shared_ptr<RelTerm>>{arg});
+  }
+  if (auto sub = std::dynamic_pointer_cast<RelBuiltinSubstringExpr>(inner)) {
+    auto str = AsSimpleTerm(sub->str);
+    auto start = AsSimpleTerm(sub->start);
+    auto len = AsSimpleTerm(sub->len);
+    if (!str || !start || !len) return nullptr;
+    return std::make_shared<RelFunctionTerm>(RelFunction::Substring,
+                                             std::vector<std::shared_ptr<RelTerm>>{str, start, len});
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 std::string TermRewriter::FreshVarName() { return std::format("_x{}", fresh_var_counter_++); }
@@ -195,6 +225,11 @@ std::shared_ptr<RelFormula> TermRewriter::Visit(const std::shared_ptr<RelCompari
   std::function<void(std::shared_ptr<RelTerm>&)> walk = [&](std::shared_ptr<RelTerm>& term) {
     if (!term) return;
     if (auto eat = std::dynamic_pointer_cast<RelExprAsTerm>(term)) {
+      if (auto fn = ScalarFunctionTerm(eat->inner)) {
+        fn->ctx = eat->ctx;
+        term = std::move(fn);
+        return;
+      }
       auto z = FreshVarName();
       lifted.emplace_back(z, eat->inner);
       auto id = std::make_shared<RelIDTerm>(z);

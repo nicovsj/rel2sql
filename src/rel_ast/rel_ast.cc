@@ -223,6 +223,28 @@ std::string RelStringTerm::ToString() const { return "\"" + value + "\""; }
 
 std::vector<std::shared_ptr<RelNode>> RelStringTerm::Children() const { return {}; }
 
+std::shared_ptr<RelNode> RelFunctionTerm::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
+  auto t = visitor.Visit(std::dynamic_pointer_cast<RelFunctionTerm>(self));
+  return std::static_pointer_cast<RelNode>(t);
+}
+
+std::string RelFunctionTerm::ToString() const {
+  std::string out = function == RelFunction::DateYear ? "date_year[" : "substring[";
+  for (size_t i = 0; i < args.size(); ++i) {
+    if (i > 0) out += ", ";
+    out += args[i] ? args[i]->ToString() : "?";
+  }
+  return out + "]";
+}
+
+std::vector<std::shared_ptr<RelNode>> RelFunctionTerm::Children() const {
+  std::vector<std::shared_ptr<RelNode>> children;
+  for (const auto& arg : args) {
+    if (arg) children.push_back(arg);
+  }
+  return children;
+}
+
 std::shared_ptr<RelNode> RelBoolean::DispatchVisit(BaseRelVisitor& visitor, std::shared_ptr<RelNode> self) {
   return visitor.Visit(std::dynamic_pointer_cast<RelBoolean>(self));
 }

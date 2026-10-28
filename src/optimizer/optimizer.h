@@ -3,6 +3,7 @@
 
 #include <memory>
 
+#include "anti_join_optimizer.h"
 #include "base_optimizer.h"
 #include "canonical_form_visitor.h"
 #include "constant_optimizer.h"
@@ -10,6 +11,7 @@
 #include "cte_redundancy_optimizer.h"
 #include "expression_simplifier_optimizer.h"
 #include "flattener_optimizer.h"
+#include "key_optimizer.h"
 #include "scope_validator.h"
 #include "select_column_rebinder.h"
 #include "self_join_optimizer.h"
@@ -24,6 +26,11 @@ class Optimizer : public BaseOptimizer {
  public:
   using BaseOptimizer::Visit;
 
+  Optimizer() = default;
+
+  // Keys declared for the base relations, by relation name and column name; see KeyOptimizer.
+  explicit Optimizer(KeyOptimizer::KeyMap keys) : keys_(std::move(keys)) {}
+
   // Optimizes the expression. May return a different expression when e.g. a
   // Select wrapping a Union is flattened to the Union directly.
   std::shared_ptr<Expression> Optimize(std::shared_ptr<Expression> expr) {
@@ -36,6 +43,12 @@ class Optimizer : public BaseOptimizer {
       }
     }
     Visit(*expr);
+    AntiJoinOptimizer anti_join_optimizer;
+    anti_join_optimizer.Visit(*expr);
+    if (!keys_.empty()) {
+      KeyOptimizer key_optimizer(keys_);
+      key_optimizer.Visit(*expr);
+    }
     TableAliasRenumberer::Renumber(*expr);
     RebindDanglingSelectColumns(*expr);
     ScopeValidator::Validate(*expr);
@@ -68,6 +81,7 @@ class Optimizer : public BaseOptimizer {
   }
 
  private:
+  KeyOptimizer::KeyMap keys_;
   CTERedundancyOptimizer cte_redundancy_optimizer_;
   CTEInliner cte_inliner_;
   CanonicalFormVisitor canonical_form_visitor_;

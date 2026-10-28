@@ -68,6 +68,31 @@ TEST(GeneratedCorrectnessTest, RejectsArityMismatchApplications) {
   EXPECT_FALSE(VerifyProgram(bad, CreateDefaultEDBMap()));
 }
 
+TEST(GeneratedCorrectnessTest, DetectsIntegersMeetingFloats) {
+  // Rel distinguishes the integer 3 from the float 3.0; once a def computing an average is used by another def,
+  // its value can meet integers.
+  EXPECT_TRUE(ProgramMixesIntegersAndFloats(
+      "def Gen0 {average[A]}\ndef Gen1 {(x, y): B(x, y) or exists((z) | H(x, z) and Gen1(z, y) and not Gen0(x))}"));
+  EXPECT_TRUE(ProgramMixesIntegersAndFloats(
+      "def Gen0 {average[A]}\ndef Gen1 {(x): Gen0(x) or exists((y) | B(y, x) and Gen1(y))}"));
+  // An average that is only output, or not used by another def, meets no integer.
+  EXPECT_FALSE(ProgramMixesIntegersAndFloats("def Gen0 {average[A]}"));
+  EXPECT_FALSE(ProgramMixesIntegersAndFloats("def Gen0 {(x): A(x)}\ndef Gen1 {average[Gen0]}"));
+}
+
+TEST(GeneratedCorrectnessTest, CorpusV2ProgramsReachEveryDefFromTheOutput) {
+  for (const auto& preset : CorpusV2ProfilePresets()) {
+    for (size_t index = 0; index < 32; ++index) {
+      for (size_t budget : {6, 10, 16}) {
+        SuiteConfig config = MakeConfig(1, index, budget, preset.profile);
+        SCOPED_TRACE(preset.name + " index=" + std::to_string(index) + " budget=" + std::to_string(budget));
+        const auto program = GenerateProgram(config, /*require_translation=*/false);
+        EXPECT_TRUE(ProgramHasConnectedDependencyGraph(program.source)) << program.source;
+      }
+    }
+  }
+}
+
 TEST(GeneratedCorrectnessTest, OutputDefHasConnectedDependencyGraph) {
   const auto profile = FullCorpusProfile();
   for (size_t index = 0; index < kCorpusBuildProgramIndexCount; ++index) {

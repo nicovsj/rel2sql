@@ -110,9 +110,10 @@ std::string RepoDataPath(const std::string& relative) {
 // String equality only (see per-test comment for why DuckDB is skipped).
 #define OPT_EXPECT_EQ_NO_DUCKDB(actual_expr, expected_str) EXPECT_EQ((actual_expr), (expected_str))
 
-static std::string ApplyValidatingOptimizer(std::shared_ptr<sql::ast::Expression> sql) {
+static std::string ApplyValidatingOptimizer(std::shared_ptr<sql::ast::Expression> sql,
+                                            sql::ast::KeyOptimizer::KeyMap keys = {}) {
   if (!sql) return "";
-  sql::ast::ValidatingOptimizer optimizer;
+  sql::ast::ValidatingOptimizer optimizer(std::move(keys));
   try {
     sql = optimizer.Optimize(sql);
   } catch (const std::runtime_error& e) {
@@ -147,7 +148,7 @@ class TranslationTest : public ::testing::Test {
   }
 
   std::string TranslateProgram(const std::string& input) {
-    return ApplyValidatingOptimizer(GetUnoptimizedSQLRel(input, default_edb_map));
+    return ApplyValidatingOptimizer(GetUnoptimizedSQLRel(input, default_edb_map), DeclaredKeys(default_edb_map));
   }
 
   std::string TranslateDefinition(const std::string& input) {
@@ -325,23 +326,31 @@ TEST_F(TranslationTest, PartialApplicationSharingVariables4) {
 }
 
 TEST_F(TranslationTest, AggregateExpression1) {
-  OPT_EXPECT_EQ(TranslateExpression("sum[A]"),
-                "SELECT SUM(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1");
+  OPT_EXPECT_EQ(
+      TranslateExpression("sum[A]"),
+      "SELECT T2.A1 AS A1 FROM (SELECT SUM(T1.A1) AS A1, COUNT(1) AS N FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS "
+      "T0) AS T1) AS T2 WHERE T2.N > 0");
 }
 
 TEST_F(TranslationTest, AggregateExpression2) {
-  OPT_EXPECT_EQ(TranslateExpression("average[A]"),
-                "SELECT AVG(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1");
+  OPT_EXPECT_EQ(
+      TranslateExpression("average[A]"),
+      "SELECT T2.A1 AS A1 FROM (SELECT AVG(T1.A1) AS A1, COUNT(1) AS N FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS "
+      "T0) AS T1) AS T2 WHERE T2.N > 0");
 }
 
 TEST_F(TranslationTest, AggregateExpression3) {
-  OPT_EXPECT_EQ(TranslateExpression("min[A]"),
-                "SELECT MIN(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1");
+  OPT_EXPECT_EQ(
+      TranslateExpression("min[A]"),
+      "SELECT T2.A1 AS A1 FROM (SELECT MIN(T1.A1) AS A1, COUNT(1) AS N FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS "
+      "T0) AS T1) AS T2 WHERE T2.N > 0");
 }
 
 TEST_F(TranslationTest, AggregateExpression4) {
-  OPT_EXPECT_EQ(TranslateExpression("max[A]"),
-                "SELECT MAX(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1");
+  OPT_EXPECT_EQ(
+      TranslateExpression("max[A]"),
+      "SELECT T2.A1 AS A1 FROM (SELECT MAX(T1.A1) AS A1, COUNT(1) AS N FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS "
+      "T0) AS T1) AS T2 WHERE T2.N > 0");
 }
 
 TEST_F(TranslationTest, AggregateExpression5) {
@@ -357,13 +366,17 @@ TEST_F(TranslationTest, AggregatePartialApplicationAverage) {
 }
 
 TEST_F(TranslationTest, AggregateExpressionCount) {
-  OPT_EXPECT_EQ(TranslateExpression("count[A]"),
-                "SELECT COUNT(1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1");
+  OPT_EXPECT_EQ(
+      TranslateExpression("count[A]"),
+      "SELECT T2.A1 AS A1 FROM (SELECT COUNT(1) AS A1, COUNT(1) AS N FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS "
+      "T0) AS T1) AS T2 WHERE T2.N > 0");
 }
 
 TEST_F(TranslationTest, AggregateExpressionMeanAlias) {
-  OPT_EXPECT_EQ(TranslateExpression("mean[A]"),
-                "SELECT AVG(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1");
+  OPT_EXPECT_EQ(
+      TranslateExpression("mean[A]"),
+      "SELECT T2.A1 AS A1 FROM (SELECT AVG(T1.A1) AS A1, COUNT(1) AS N FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS "
+      "T0) AS T1) AS T2 WHERE T2.N > 0");
 }
 
 TEST_F(TranslationTest, BuiltinSortAsc) {
@@ -581,15 +594,15 @@ TEST_F(TranslationTest, ChainedComparison) {
 // Partial application as a comparison operand: aggregate vs. constant.
 TEST_F(TranslationTest, ComparisonPartialAppl) {
   OPT_EXPECT_EQ(TranslateProgram("def output { (x): A(x) and sum[A] > 0 }"),
-                "SELECT DISTINCT T0.A1 AS A1 FROM A AS T0, (SELECT SUM(T2.A1) AS A1 FROM (SELECT DISTINCT T1.A1 AS "
-                "A1 FROM A AS T1) AS T2) AS T3 WHERE T3.A1 > 0;");
+                "SELECT DISTINCT T0.A1 AS A1 FROM A AS T0, (SELECT SUM(T2.A1) AS A1, COUNT(1) AS N FROM (SELECT "
+                "DISTINCT T1.A1 AS A1 FROM A AS T1) AS T2) AS T3 WHERE T3.A1 > 0 AND T3.N > 0;");
 }
 
 // Partial application on lhs of `!=` (Q21 idiom: `l_suppkey[…] != v`).
 TEST_F(TranslationTest, ComparisonNotEqualPartialAppl) {
   OPT_EXPECT_EQ(TranslateProgram("def output { (x): A(x) and sum[A] != 5 }"),
-                "SELECT DISTINCT T0.A1 AS A1 FROM A AS T0, (SELECT SUM(T2.A1) AS A1 FROM (SELECT DISTINCT T1.A1 AS "
-                "A1 FROM A AS T1) AS T2) AS T3 WHERE T3.A1 != 5;");
+                "SELECT DISTINCT T0.A1 AS A1 FROM A AS T0, (SELECT SUM(T2.A1) AS A1, COUNT(1) AS N FROM (SELECT "
+                "DISTINCT T1.A1 AS A1 FROM A AS T1) AS T2) AS T3 WHERE T3.A1 != 5 AND T3.N > 0;");
 }
 
 // Partial application as operand of arithmetic inside an equality.
@@ -619,7 +632,8 @@ TEST_F(TranslationTest, OpTermTwoPartialApps) {
 // not as a term-wrapped expression (which would otherwise change downstream translation).
 TEST_F(TranslationTest, RegressionTopLevelPartialApplStaysPartial) {
   OPT_EXPECT_EQ(TranslateProgram("def output { sum[A] }"),
-                "SELECT DISTINCT SUM(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM A AS T0) AS T1;");
+                "SELECT DISTINCT T2.A1 AS A1 FROM (SELECT SUM(T1.A1) AS A1, COUNT(1) AS N FROM (SELECT DISTINCT "
+                "T0.A1 AS A1 FROM A AS T0) AS T1) AS T2 WHERE T2.N > 0;");
 }
 
 TEST_F(TranslationTest, RelationalAbstraction1) {
@@ -739,12 +753,9 @@ TEST_F(TranslationTest, TransitiveClosure) {
                 "DISTINCT R0.A1 AS A1, R0.A2 AS A2 FROM R0);");
 }
 
-// DuckDB: N/A — emitted view body references columns not produced by inner subqueries (strict binders reject).
-TEST_F(TranslationTest, FlatRecursiveUnaryPredicate) {
-  auto expr = GetUnoptimizedSQLRel("def Q {(x): A(x) or (E(x,y) and Q(y))}", default_edb_map);
-  ASSERT_TRUE(expr);
-  std::string sql = expr->ToString();
-  EXPECT_NE(sql.find("WITH RECURSIVE"), std::string::npos) << sql;
+// y occurs in one disjunct only, and is not in the head: the first disjunct leaves it unbounded.
+TEST_F(TranslationTest, FlatRecursiveUnaryPredicateWithUnboundVariableRejected) {
+  EXPECT_THROW(GetUnoptimizedSQLRel("def Q {(x): A(x) or (E(x,y) and Q(y))}", default_edb_map), TranslationException);
 }
 
 // DuckDB: N/A — negative test; emitted SQL is intentionally not a valid recursive program.
@@ -855,18 +866,16 @@ TEST_F(TranslationTest, InferrableVariableConjunction1) {
 }
 
 TEST_F(TranslationTest, InferrableVariableConjunction2) {
-  OPT_EXPECT_EQ(TranslateExpression("x = y + 1 and A(x)"), "SELECT T0.A1 AS x, T0.A1 - 1 AS y FROM A AS T0");
+  OPT_EXPECT_EQ(TranslateExpression("x = y + 1 and A(x)"), "SELECT (T0.A1 - 1) + 1 AS x, T0.A1 - 1 AS y FROM A AS T0");
 }
 
 TEST_F(TranslationTest, InferrableVariableConjunction3) {
-  OPT_EXPECT_EQ(TranslateExpression("x = 2 * y - 3 and A(y)"),
-                "SELECT (T0.A1 - 1.5) / 0.5 AS x, T0.A1 AS y FROM A AS T0");
+  OPT_EXPECT_EQ(TranslateExpression("x = 2 * y - 3 and A(y)"), "SELECT 2 * T0.A1 - 3 AS x, T0.A1 AS y FROM A AS T0");
 }
 
 TEST_F(TranslationTest, InferrableVariableMultivariate) {
   OPT_EXPECT_EQ(TranslateExpression("z = x + y + 1 and B(x, y)"),
-                "SELECT T0.A1 AS x, T0.A2 AS y, (T1.A2 + 1) + T2.A1 AS z FROM B AS T0, B AS T1, B AS T2 WHERE ((T1.A2 "
-                "+ 1) + T2.A1) = T0.A1 + T0.A2 + 1");
+                "SELECT T0.A1 AS x, T0.A2 AS y, T0.A1 + T0.A2 + 1 AS z FROM B AS T0");
 }
 
 TEST_F(TranslationTest, NegativeLiteral1) {
@@ -899,12 +908,12 @@ TEST_F(TranslationTest, DisjunctionFormula3) {
 
 TEST_F(TranslationTest, NegationFormula1) {
   OPT_EXPECT_EQ(TranslateFormula("A(x) and not D(x)"),
-                "SELECT T0.A1 AS x FROM A AS T0 WHERE T0.A1 NOT IN (SELECT DISTINCT * FROM D AS T1)");
+                "SELECT T0.A1 AS x FROM A AS T0 WHERE NOT EXISTS (SELECT 1 FROM D AS T1 WHERE T1.A1 = T0.A1)");
 }
 
 TEST_F(TranslationTest, NegationFormula2) {
   OPT_EXPECT_EQ(TranslateFormula("not A(x) and D(x)"),
-                "SELECT T0.A1 AS x FROM D AS T0 WHERE T0.A1 NOT IN (SELECT DISTINCT * FROM A AS T1)");
+                "SELECT T0.A1 AS x FROM D AS T0 WHERE NOT EXISTS (SELECT 1 FROM A AS T1 WHERE T1.A1 = T0.A1)");
 }
 
 TEST_F(TranslationTest, NegationFormula3) {
@@ -916,15 +925,15 @@ TEST_F(TranslationTest, NegationFormula3) {
 
 TEST_F(TranslationTest, NegationFormula4) {
   OPT_EXPECT_EQ(TranslateFormula("A(x) and D(y) and not D(x) and not A(y)"),
-                "SELECT T0.A1 AS x, T1.A1 AS y FROM A AS T0, D AS T1 WHERE T0.A1 NOT IN (SELECT DISTINCT * FROM D AS "
-                "T2) AND T1.A1 NOT IN (SELECT DISTINCT * FROM A AS T3)");
+                "SELECT T0.A1 AS x, T1.A1 AS y FROM A AS T0, D AS T1 WHERE NOT EXISTS (SELECT 1 FROM D AS T2 WHERE "
+                "T2.A1 = T0.A1) AND NOT EXISTS (SELECT 1 FROM A AS T3 WHERE T3.A1 = T1.A1)");
 }
 
 // not H(y,x) must test (y,x) against H, not alphabetically ordered (x,y).
 TEST_F(TranslationTest, NegationSwappedBinaryArgs) {
   OPT_EXPECT_EQ(TranslateFormula("B(x,y) and not H(y,x)"),
-                "SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0 WHERE (T0.A2, T0.A1) NOT IN (SELECT DISTINCT * FROM H "
-                "AS T1)");
+                "SELECT T0.A1 AS x, T0.A2 AS y FROM B AS T0 WHERE NOT EXISTS (SELECT 1 FROM H AS T1 WHERE T1.A1 = "
+                "T0.A2 AND T1.A2 = T0.A1)");
 }
 
 TEST_F(TranslationTest, NestedQuantifiers1) {
@@ -991,14 +1000,14 @@ TEST_F(TranslationTest, FullApplicationOnExpression1) {
 TEST_F(TranslationTest, AggregateExpression6) {
   OPT_EXPECT_EQ(
       TranslateExpression("sum[{(1,2);(3,4)}]"),
-      "SELECT SUM(T1.A2) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS A2 FROM (VALUES (1, 2), (3, 4)) AS "
-      "T0(A1, A2)) AS T1");
+      "SELECT T2.A1 AS A1 FROM (SELECT SUM(T1.A2) AS A1, COUNT(1) AS N FROM (SELECT DISTINCT T0.A1 AS A1, T0.A2 AS "
+      "A2 FROM (VALUES (1, 2), (3, 4)) AS T0(A1, A2)) AS T1) AS T2 WHERE T2.N > 0");
 }
 
 TEST_F(TranslationTest, AggregateExpression7) {
   OPT_EXPECT_EQ(TranslateExpression("max[{(1);(2);(3)}]"),
-                "SELECT MAX(T1.A1) AS A1 FROM (SELECT DISTINCT T0.A1 AS A1 FROM (VALUES (1), (2), (3)) AS T0(A1)) AS "
-                "T1");
+                "SELECT T2.A1 AS A1 FROM (SELECT MAX(T1.A1) AS A1, COUNT(1) AS N FROM (SELECT DISTINCT T0.A1 AS A1 "
+                "FROM (VALUES (1), (2), (3)) AS T0(A1)) AS T1) AS T2 WHERE T2.N > 0");
 }
 
 TEST_F(TranslationTest, RelationalAbstraction2) {
@@ -1098,7 +1107,7 @@ TEST_F(TranslationTest, ParameterVariableTerms4) {
 TEST_F(TranslationTest, ParameterVariableTerms5) {
   // Like-term collection merges (T0.A1 - 1) - 1 to T0.A1 - 2
   OPT_EXPECT_EQ(TranslateExpression("B(x+1,x-1)"),
-                "SELECT DISTINCT T0.A1 - 1 AS x FROM B AS T0 WHERE T0.A2 = (T0.A1 - 1) - 1");
+                "SELECT DISTINCT T0.A1 - 1 AS x FROM B AS T0 WHERE T0.A2 = ((T0.A1 - 1) - 1)");
 }
 
 // DuckDB: N/A — pinned SQL selects T2.A3 from a two-column subquery; not executable in any strict SQL engine.
@@ -1115,8 +1124,8 @@ TEST_F(TranslationTest, ParameterVariableTerms6) {
 
 TEST_F(TranslationTest, ParameterVariableTerms7) {
   OPT_EXPECT_EQ(TranslateExpression("B(x+1,B[x])"),
-                "SELECT DISTINCT T1.A1 AS x FROM B AS T0, B AS T1, B AS T2 WHERE T1.A1 = (T2.A1 - 1) AND T0.A2 = T1.A2 "
-                "AND T0.A1 = (T2.A1 - 1) + 1");
+                "SELECT DISTINCT T1.A1 AS x FROM B AS T0, B AS T1, B AS T2 WHERE T1.A1 = (T2.A1 - 1) AND T0.A1 = "
+                "((T2.A1 - 1) + 1) AND T0.A2 = T1.A2");
 }
 
 // Self-join detection via canonical form: T0.A1 = 22*(T2.A1+3)/22 + -3 is algebraically T0.A1 = T2.A1.
@@ -1159,8 +1168,7 @@ TEST_F(TranslationTest, FailedParameterVariableTerms4) {
 
 TEST_F(TranslationTest, ExpressionAsTermRewriterBindingsBody) {
   OPT_EXPECT_EQ(TranslateExpression("[x in A, y in A]: x+y+1"),
-                "SELECT T2.A1 AS A1, T3.A1 AS A2, (T0.A1 + 1) + T1.A1 AS A3 FROM A AS T0, A AS T1, A AS T2, A AS T3 "
-                "WHERE ((T0.A1 + 1) + T1.A1) = T2.A1 + T3.A1 + 1");
+                "SELECT T0.A1 AS A1, T1.A1 AS A2, T0.A1 + T1.A1 + 1 AS A3 FROM A AS T0, A AS T1");
 }
 
 TEST_F(TranslationTest, Program) {
@@ -1278,6 +1286,31 @@ TEST_F(TranslationTest, ConjunctionOfExistentialsWithSameBoundName) {
   ::rel2sql::testing::AssertExecutesInDuckDB(sql, default_edb_map);
 }
 
+TEST_F(TranslationTest, AggregateOfEmptyRelationIsEmpty) {
+  // In Rel, aggregating the empty relation gives the empty relation; SQL without GROUP BY gives one row
+  // (NULL, or 0 for COUNT) unless the translation filters it out.
+  for (const std::string op : {"sum", "average", "min", "max", "count"}) {
+    const std::string sql = TranslateExpression(op + "[A]");
+    ASSERT_FALSE(sql.empty()) << op;
+
+    testing::DuckDbConnection db;
+    testing::ApplyEdbDdl(db.con, default_edb_map);
+    const auto row_count = [&]() {
+      duckdb_result result;
+      memset(&result, 0, sizeof(result));
+      EXPECT_EQ(duckdb_query(db.con, sql.c_str(), &result), DuckDBSuccess) << duckdb_result_error(&result) << "\nSQL:\n"
+                                                                           << sql;
+      const auto rows = duckdb_row_count(&result);
+      duckdb_destroy_result(&result);
+      return rows;
+    };
+    EXPECT_EQ(row_count(), 0) << op << "\n" << sql;
+
+    testing::RunQueryOrFail(db.con, "INSERT INTO \"A\" VALUES (2), (5)", "INSERT");
+    EXPECT_EQ(row_count(), 1) << op << "\n" << sql;
+  }
+}
+
 TEST_F(TranslationTest, UnionPartialAppsWhenOneBranchIsEmpty) {
   // Union branches are independent: an empty B[10] must not zero out rows from B[2].
   default_edb_map["B"] = RelationInfo(2);
@@ -1296,14 +1329,223 @@ TEST_F(TranslationTest, UnionPartialAppsWhenOneBranchIsEmpty) {
   duckdb_destroy_result(&result);
 }
 
-TEST_F(TranslationTest, RecursiveDefinition) {
-  default_edb_map["A"] = RelationInfo(1);
+// Runs `script` (the translation of a program) on DuckDB after `inserts`, and returns the row count of `relation`.
+size_t RowCountAfterScript(const RelationMap& edb, const std::string& inserts, const std::string& script,
+                           const std::string& relation) {
+  testing::DuckDbConnection db;
+  testing::ApplyEdbDdl(db.con, edb);
+  testing::RunSqlOrScript(db.con, inserts);
+  testing::RunSqlOrScript(db.con, script);
+  duckdb_result result;
+  memset(&result, 0, sizeof(result));
+  const std::string query = "SELECT * FROM " + relation;
+  EXPECT_EQ(duckdb_query(db.con, query.c_str(), &result), DuckDBSuccess) << duckdb_result_error(&result) << "\nSQL:\n"
+                                                                         << script;
+  const size_t rows = duckdb_row_count(&result);
+  duckdb_destroy_result(&result);
+  return rows;
+}
+
+// Rows of `query` on `con`, each as its values joined by "|", sorted.
+std::vector<std::string> SortedRows(duckdb_connection con, const std::string& query) {
+  std::string error;
+  auto result = testing::ExecuteQueryOnConnection(con, query, &error);
+  EXPECT_TRUE(error.empty()) << error << "\nSQL:\n" << query;
+  std::vector<std::string> rows;
+  for (const auto& row : result.rows) {
+    std::string joined;
+    for (size_t i = 0; i < row.size(); ++i) joined += (i ? "|" : "") + row[i];
+    rows.push_back(joined);
+  }
+  std::sort(rows.begin(), rows.end());
+  return rows;
+}
+
+size_t CountOccurrences(const std::string& text, const std::string& needle) {
+  size_t count = 0;
+  for (size_t pos = text.find(needle); pos != std::string::npos; pos = text.find(needle, pos + 1)) ++count;
+  return count;
+}
+
+TEST_F(TranslationTest, DefiningEqualityIsComputedFromBoundColumns) {
+  // v = p * d defines v from p and d, which L binds: v is computed from L's columns, not ranged over the
+  // product of all values of p and all values of d (two more copies of L, joined on nothing).
+  default_edb_map["L"] = RelationInfo(3);
+  const std::string sql = TranslateProgram("def output {(o, v): exists((p, d) | L(o, p, d) and v = p * d)}");
+  ASSERT_FALSE(sql.empty());
+  EXPECT_EQ(CountOccurrences(sql, "FROM L AS"), 1) << sql;
+
+  testing::DuckDbConnection db;
+  testing::RunQueryOrFail(db.con, "CREATE TABLE \"L\" (A1 INTEGER, A2 INTEGER, A3 INTEGER)", "CREATE");
+  testing::RunQueryOrFail(db.con, "INSERT INTO \"L\" VALUES (1, 2, 3), (2, 5, 7)", "INSERT");
+  EXPECT_EQ(SortedRows(db.con, sql), (std::vector<std::string>{"1|6", "2|35"})) << sql;
+}
+
+TEST_F(TranslationTest, DateYearOfBoundVariable) {
+  // date_year[d] with d a variable bound by O: the year is computed from O's column.
+  default_edb_map["O"] = RelationInfo(2);
+  const std::string sql = TranslateProgram("def output {(o, y): exists((d) | O(o, d) and y = date_year[d])}");
+  ASSERT_FALSE(sql.empty());
+  EXPECT_EQ(CountOccurrences(sql, "FROM O AS"), 1) << sql;
+
+  testing::DuckDbConnection db;
+  testing::RunQueryOrFail(db.con, "CREATE TABLE \"O\" (A1 INTEGER, A2 DATE)", "CREATE");
+  testing::RunQueryOrFail(db.con, "INSERT INTO \"O\" VALUES (1, DATE '1995-03-01'), (2, DATE '1996-07-04')", "INSERT");
+  EXPECT_EQ(SortedRows(db.con, sql), (std::vector<std::string>{"1|1995", "2|1996"})) << sql;
+}
+
+TEST_F(TranslationTest, SubstringOfBoundVariableKeepsItsRow) {
+  // substring[ph, 1, 2] with ph bound by C, filtered by W: each code stays with the customer whose phone it
+  // comes from (a relation of all phones' codes, joined back on nothing, would pair every customer with every
+  // code in W).
+  default_edb_map["C"] = RelationInfo(2);
+  default_edb_map["W"] = RelationInfo(1);
+  const std::string sql =
+      TranslateProgram("def output {(c, cc): exists((ph) | C(c, ph) and cc = substring[ph, 1, 2] and W(cc))}");
+  ASSERT_FALSE(sql.empty());
+
+  testing::DuckDbConnection db;
+  testing::RunQueryOrFail(db.con, "CREATE TABLE \"C\" (A1 INTEGER, A2 VARCHAR)", "CREATE");
+  testing::RunQueryOrFail(db.con, "CREATE TABLE \"W\" (A1 VARCHAR)", "CREATE");
+  testing::RunQueryOrFail(db.con, "INSERT INTO \"C\" VALUES (1, '13-555'), (2, '31-777'), (3, '13-999')", "INSERT");
+  testing::RunQueryOrFail(db.con, "INSERT INTO \"W\" VALUES ('13')", "INSERT");
+  EXPECT_EQ(SortedRows(db.con, sql), (std::vector<std::string>{"1|13", "3|13"})) << sql;
+}
+
+TEST_F(TranslationTest, ComparisonOfTwoVariablesDoesNotCopyTheirJoin) {
+  // r > c ranges (c, r) over the join of CD and RD that binds them. That copy of the join, equated with the body's
+  // CD and RD on c and r only, maps onto them and is removed: without the key, it would pair each line with every
+  // line of the same dates (TPC-H Q21).
+  default_edb_map["CD"] = RelationInfo(3);
+  default_edb_map["RD"] = RelationInfo(3);
+  const std::string sql =
+      TranslateProgram("def output {(o, n): exists((c, r) | CD(o, n, c) and RD(o, n, r) and r > c)}");
+  ASSERT_FALSE(sql.empty());
+  EXPECT_EQ(CountOccurrences(sql, " CD AS "), 1) << sql;
+  EXPECT_EQ(CountOccurrences(sql, " RD AS "), 1) << sql;
+
+  testing::DuckDbConnection db;
+  testing::RunQueryOrFail(db.con, "CREATE TABLE \"CD\" (A1 INTEGER, A2 INTEGER, A3 INTEGER)", "CREATE");
+  testing::RunQueryOrFail(db.con, "CREATE TABLE \"RD\" (A1 INTEGER, A2 INTEGER, A3 INTEGER)", "CREATE");
+  testing::RunQueryOrFail(db.con, "INSERT INTO \"CD\" VALUES (1, 1, 10), (1, 2, 20), (2, 1, 10)", "INSERT");
+  testing::RunQueryOrFail(db.con, "INSERT INTO \"RD\" VALUES (1, 1, 15), (1, 2, 5), (2, 1, 20)", "INSERT");
+  EXPECT_EQ(SortedRows(db.con, sql), (std::vector<std::string>{"1|1", "2|1"})) << sql;
+}
+
+TEST_F(TranslationTest, NegatedEqualityIsAFilter) {
+  // not (s1 = s2) holds for the same values as s1 != s2: a filter, not an anti-join against the pairs of equal
+  // values of the bound of s1 and s2.
+  default_edb_map["S"] = RelationInfo(3);
+  const std::string sql =
+      TranslateProgram("def output {(o, n): exists((m, s1, s2) | S(o, n, s1) and S(o, m, s2) and not (s1 = s2))}");
+  ASSERT_FALSE(sql.empty());
+  EXPECT_EQ(CountOccurrences(sql, "NOT IN"), 0) << sql;
+  EXPECT_EQ(CountOccurrences(sql, " S AS "), 2) << sql;
+
+  testing::DuckDbConnection db;
+  testing::RunQueryOrFail(db.con, "CREATE TABLE \"S\" (A1 INTEGER, A2 INTEGER, A3 INTEGER)", "CREATE");
+  testing::RunQueryOrFail(db.con, "INSERT INTO \"S\" VALUES (1, 1, 7), (1, 2, 8), (2, 1, 7), (2, 2, 7)", "INSERT");
+  EXPECT_EQ(SortedRows(db.con, sql), (std::vector<std::string>{"1|1", "1|2"})) << sql;
+}
+
+TEST_F(TranslationTest, DeclaredKeysDropDistinctWhenOutputDeterminesTheRows) {
+  // k determines the tuple of R, hence v, which determines the tuple of S: the rows of the join are distinct on
+  // (k, w). Without (k), they are not.
+  default_edb_map["R"] = RelationInfo(2);
+  default_edb_map["R"].keys = {{0}};
+  default_edb_map["S"] = RelationInfo(2);
+  default_edb_map["S"].keys = {{0}};
+  const std::string keyed = TranslateProgram("def output {(k, w): exists((v) | R(k, v) and S(v, w))}");
+  const std::string projected = TranslateProgram("def output {(w): exists((k, v) | R(k, v) and S(v, w))}");
+  ASSERT_FALSE(keyed.empty());
+  ASSERT_FALSE(projected.empty());
+  EXPECT_EQ(CountOccurrences(keyed, "DISTINCT"), 0) << keyed;
+  EXPECT_EQ(CountOccurrences(projected, "DISTINCT"), 1) << projected;
+
+  testing::DuckDbConnection db;
+  testing::RunQueryOrFail(db.con, "CREATE TABLE \"R\" (A1 INTEGER, A2 INTEGER)", "CREATE");
+  testing::RunQueryOrFail(db.con, "CREATE TABLE \"S\" (A1 INTEGER, A2 INTEGER)", "CREATE");
+  testing::RunQueryOrFail(db.con, "INSERT INTO \"R\" VALUES (1, 10), (2, 10), (3, 20)", "INSERT");
+  testing::RunQueryOrFail(db.con, "INSERT INTO \"S\" VALUES (10, 5), (20, 5)", "INSERT");
+  EXPECT_EQ(SortedRows(db.con, keyed), (std::vector<std::string>{"1|5", "2|5", "3|5"})) << keyed;
+  EXPECT_EQ(SortedRows(db.con, projected), (std::vector<std::string>{"5"})) << projected;
+}
+
+TEST_F(TranslationTest, NegationIsACorrelatedNotExists) {
+  // In L(o, s) and not exists(... L(o, s2) ... s != s2), the negated formula is checked for each row of L only. The
+  // copies of L that bound its free variables o and s map onto the outer L and are removed.
+  default_edb_map["L"] = RelationInfo(2);
+  default_edb_map["Late"] = RelationInfo(2);
+  const std::string sql =
+      TranslateProgram("def output {(o, s): L(o, s) and not exists((s2) | L(o, s2) and Late(o, s2) and not (s = s2))}");
+  ASSERT_FALSE(sql.empty());
+  EXPECT_EQ(CountOccurrences(sql, "NOT IN"), 0) << sql;
+  EXPECT_EQ(CountOccurrences(sql, "NOT EXISTS"), 1) << sql;
+  EXPECT_EQ(CountOccurrences(sql, " L AS "), 2) << sql;
+
+  testing::DuckDbConnection db;
+  testing::RunQueryOrFail(db.con, "CREATE TABLE \"L\" (A1 INTEGER, A2 INTEGER)", "CREATE");
+  testing::RunQueryOrFail(db.con, "CREATE TABLE \"Late\" (A1 INTEGER, A2 INTEGER)", "CREATE");
+  testing::RunQueryOrFail(db.con, "INSERT INTO \"L\" VALUES (1, 1), (1, 2), (2, 1), (2, 2), (3, 1)", "INSERT");
+  testing::RunQueryOrFail(db.con, "INSERT INTO \"Late\" VALUES (1, 1), (2, 1), (2, 2)", "INSERT");
+  EXPECT_EQ(SortedRows(db.con, sql), (std::vector<std::string>{"1|1", "3|1"})) << sql;
+}
+
+TEST_F(TranslationTest, RecursiveDefinitionWithRecursiveBaseCase) {
+  // Gen1's base case is another recursive relation: Gen1 is still recursive (not mutually), and its recursive
+  // CTE must be referenced under its renumbered alias, after the CTEs it reads.
+  default_edb_map["D"] = RelationInfo(1);
+  default_edb_map["E"] = RelationInfo(2);
+  const std::string sql = TranslateProgram(
+      "def Gen0 {(x): D(x) or exists((y) | E(x, y) and Gen0(y))}\n"
+      "def Gen1 {(x): Gen0(x) or exists((y) | E(x, y) and Gen1(y) and not A(x))}");
+  ASSERT_FALSE(sql.empty());
+  EXPECT_NE(sql.find("VIEW Gen1 AS (WITH RECURSIVE"), std::string::npos) << sql;
+  // Gen0 = {1, 2}; Gen1 adds 3, which is not in A, through E(3, 2).
+  EXPECT_EQ(RowCountAfterScript(default_edb_map,
+                                "INSERT INTO \"D\" VALUES (1); INSERT INTO \"E\" VALUES (2, 1), (3, 2);"
+                                "INSERT INTO \"A\" VALUES (2);",
+                                sql, "Gen1"),
+            3)
+      << sql;
+}
+
+TEST_F(TranslationTest, RecursiveDisjunctNotBoundedByBaseCase) {
+  // In the recursive disjunct, x ranges over H, not over the base case Gen0: bounding it by Gen0 (whose first
+  // column is D) would make `not D(x)` always false there, and lose (5, 7).
+  default_edb_map["D"] = RelationInfo(1);
+  default_edb_map["G"] = RelationInfo(1);
+  default_edb_map["H"] = RelationInfo(2);
+  const std::string sql = TranslateProgram(
+      "def Gen0 {(x, y): D(x) and G(y)}\n"
+      "def Gen1 {(x, y): Gen0(x, y) or exists((z) | H(x, z) and Gen1(z, y) and not D(x))}");
+  ASSERT_FALSE(sql.empty());
+  EXPECT_EQ(RowCountAfterScript(default_edb_map,
+                                "INSERT INTO \"D\" VALUES (1); INSERT INTO \"G\" VALUES (7);"
+                                "INSERT INTO \"H\" VALUES (5, 1);",
+                                sql, "Gen1"),
+            2)
+      << sql;
+}
+
+TEST_F(TranslationTest, RecursiveDisjunctFilterBoundedByInvariant) {
+  // The filter y > 2 needs a bound for y; it must not read the recursive CTE a second time. The invariant
+  // bounds y by the second column of E.
+  default_edb_map["E"] = RelationInfo(2);
+  const std::string sql =
+      TranslateDefinition("def TC {(x, y): E(x, y) or exists((z) | E(x, z) and TC(z, y) and y > 2)}");
+  ASSERT_FALSE(sql.empty());
+  // The three edges, and (1, 3), (2, 4), (1, 4).
+  EXPECT_EQ(RowCountAfterScript(default_edb_map, "INSERT INTO \"E\" VALUES (1, 2), (2, 3), (3, 4);", sql, "TC"), 6)
+      << sql;
+}
+
+// x is unconstrained in the recursive disjunct: as soon as B and C intersect, Q contains every value. Bounding x
+// by B there, as the base case does, would make the translation return B.
+TEST_F(TranslationTest, RecursiveDefinitionWithUnboundHeadVariableRejected) {
   default_edb_map["B"] = RelationInfo(1);
   default_edb_map["C"] = RelationInfo(1);
-  OPT_EXPECT_EQ(TranslateDefinition("def Q {(x) : B(x) or exists ((y) | Q(y) and C(y))}"),
-                "CREATE OR REPLACE VIEW Q AS (WITH RECURSIVE R0(A1) AS (SELECT DISTINCT T0.A1 AS x FROM B AS T0, E0 "
-                "WHERE T0.A1 = E0.x UNION SELECT DISTINCT E0.x FROM R0 AS T2, C AS T3, E0 WHERE T2.A1 = T3.A1), E0(x) "
-                "AS (SELECT T1.A1 AS A1 FROM B AS T1) SELECT DISTINCT R0.A1 AS A1 FROM R0);");
+  EXPECT_THROW(TranslateDefinition("def Q {(x) : B(x) or exists ((y) | Q(y) and C(y))}"), TranslationException);
 }
 
 TEST_F(TranslationTest, WeirdEdgeCase1) {
@@ -1337,8 +1579,7 @@ TEST_F(TranslationTest, BindingEquality) { OPT_EXPECT_EQ(TranslateExpression("(x
 
 TEST_F(TranslationTest, EdgeCase1) {
   OPT_EXPECT_EQ(TranslateExpression("(x,y,z): B(x,y+1) and z = x-y"),
-                "SELECT DISTINCT T0.A1 AS A1, T0.A2 - 1 AS A2, T1.A1 + ((T2.A2 - 1) * -1) AS A3 FROM B AS T0, B AS T1, "
-                "B AS T2 WHERE (T1.A1 + ((T2.A2 - 1) * -1)) = T0.A1 - (T0.A2 - 1)");
+                "SELECT DISTINCT T0.A1 AS A1, T0.A2 - 1 AS A2, T0.A1 - (T0.A2 - 1) AS A3 FROM B AS T0");
 }
 
 TEST_F(TranslationTest, GeneratedTableAliasesAreDensePerStatement) {

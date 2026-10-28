@@ -186,9 +186,11 @@ class AliasApplier {
   void ApplySource(Source& source);
   void ApplySources(const std::vector<std::shared_ptr<Source>>& sources);
   void QueueRename(const std::shared_ptr<AliasClause>& alias);
+  void QueueTableRename(Table& table);
 
   const std::unordered_map<std::string, std::string>& rename_map_;
   std::vector<std::pair<std::shared_ptr<AliasClause>, std::string>> pending_renames_;
+  std::vector<std::pair<Table*, std::string>> pending_table_renames_;
 };
 
 void AliasApplier::QueueRename(const std::shared_ptr<AliasClause>& alias) {
@@ -198,6 +200,14 @@ void AliasApplier::QueueRename(const std::shared_ptr<AliasClause>& alias) {
   pending_renames_.emplace_back(alias, it->second);
 }
 
+void AliasApplier::QueueTableRename(Table& table) {
+  // A recursive CTE is referenced from its own body by a Table named after the CTE's generated R alias.
+  if (table.name.empty() || table.name[0] != 'R') return;
+  auto it = rename_map_.find(table.name);
+  if (it == rename_map_.end() || it->second == table.name) return;
+  pending_table_renames_.emplace_back(&table, it->second);
+}
+
 void AliasApplier::CommitRenames() {
   for (auto& [alias_ptr, new_name] : pending_renames_) {
     if (alias_ptr) {
@@ -205,6 +215,10 @@ void AliasApplier::CommitRenames() {
     }
   }
   pending_renames_.clear();
+  for (auto& [table, new_name] : pending_table_renames_) {
+    table->name = new_name;
+  }
+  pending_table_renames_.clear();
 }
 
 void AliasApplier::ApplySource(Source& source) {
@@ -223,6 +237,10 @@ void AliasApplier::ApplySources(const std::vector<std::shared_ptr<Source>>& sour
 void AliasApplier::Apply(Sourceable& sourceable) {
   if (auto* select = dynamic_cast<Select*>(&sourceable)) {
     Apply(*select);
+    return;
+  }
+  if (auto* table = dynamic_cast<Table*>(&sourceable)) {
+    QueueTableRename(*table);
     return;
   }
   if (auto* union_expr = dynamic_cast<Union*>(&sourceable)) {

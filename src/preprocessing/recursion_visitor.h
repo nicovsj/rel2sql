@@ -41,9 +41,11 @@ class RecursionVisitor : public BaseRelVisitor {
   std::string current_q_;
   RelContextBuilder* container_;
 
-  bool IsRecursiveID(const std::string& id) const;
+  // True when `from` reaches `target` through one or more dependency edges.
+  bool DependsOn(const std::string& from, const std::string& target) const;
   std::unordered_set<std::string> CollectIDs(const std::shared_ptr<RelFormula>& formula) const;
-  bool OnlyEDBsOrNonRecursiveIDBs(const std::unordered_set<std::string>& ids, const std::string& current_q) const;
+  // True when every id is an EDB, or an IDB that does not depend on current_q.
+  bool OnlyEDBsOrIDBsIndependentOf(const std::unordered_set<std::string>& ids, const std::string& current_q) const;
   bool VariablesFromBindingOrQuantification(const std::set<std::string>& vars,
                                             const std::vector<std::shared_ptr<RelBinding>>& outer_bindings,
                                             const std::vector<std::shared_ptr<RelBinding>>& quant_bindings) const;
@@ -60,7 +62,6 @@ class RecursionVisitor : public BaseRelVisitor {
                           std::vector<std::shared_ptr<RelFormula>>& disjuncts) const;
   void FindAndPatternParts(const std::shared_ptr<RelFormula>& formula, const std::string& q,
                            std::shared_ptr<RelFullApplication>& q_call, std::shared_ptr<RelFormula>& f_part) const;
-  void RegisterUnionSafetyDisjunctions(const std::shared_ptr<RelFormula>& formula);
 };
 
 }  // namespace rel2sql

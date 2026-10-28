@@ -1,5 +1,6 @@
 // One-off debug binary: print a generated Rel program, translated SQL, fixture, and both result sets.
 // Usage: bazel run //tests:print_generated_case -- [seed] [program_index] [node_budget] [--program-only]
+//        [--max-defs N] [--recursion]
 
 #include <iostream>
 #include <sstream>
@@ -81,17 +82,24 @@ int main(int argc, char** argv) {
   uint64_t seed = 1;
   size_t program_index = 0;
   size_t node_budget = 6;
+  int max_defs = 1;
   std::vector<std::string> positional;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
-    if (arg == "--program-only") continue;
+    if (arg == "--program-only" || arg == "--recursion") continue;
+    if (arg == "--max-defs" && i + 1 < argc) {
+      max_defs = std::stoi(argv[++i]);
+      continue;
+    }
     positional.push_back(arg);
   }
   if (positional.size() > 0) seed = std::stoull(positional[0]);
   if (positional.size() > 1) program_index = static_cast<size_t>(std::stoull(positional[1]));
   if (positional.size() > 2) node_budget = static_cast<size_t>(std::stoull(positional[2]));
 
-  const auto config = MakeConfig(seed, program_index, node_budget);
+  auto config = MakeConfig(seed, program_index, node_budget);
+  config.profile.max_defs = max_defs;
+  config.profile.allow_recursion = HasFlag(argc, argv, "--recursion");
   const auto program = GenerateProgram(config);
   const auto fixture = DataFixture::CreateCanonical(config.edb_map);
 

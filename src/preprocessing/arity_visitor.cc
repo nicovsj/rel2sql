@@ -242,6 +242,14 @@ std::shared_ptr<RelTerm> ArityVisitor::Visit(const std::shared_ptr<RelOpTerm>& n
   return node;
 }
 
+std::shared_ptr<RelTerm> ArityVisitor::Visit(const std::shared_ptr<RelFunctionTerm>& node) {
+  for (const auto& arg : node->args) {
+    if (arg) Visit(arg);
+  }
+  node->arity = 1;
+  return node;
+}
+
 std::shared_ptr<RelTerm> ArityVisitor::Visit(const std::shared_ptr<RelParenthesisTerm>& node) {
   if (node->term) Visit(node->term);
   node->arity = node->term ? node->term->arity : 0;

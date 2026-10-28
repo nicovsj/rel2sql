@@ -11,8 +11,14 @@
 #include "generator/sql_executor.h"
 #include "test_common.h"
 
+#ifndef REL2SQL_CORPUS_VERSION
+#define REL2SQL_CORPUS_VERSION 1
+#endif
+
 namespace rel2sql::generator {
 namespace {
+
+constexpr int kCorpusVersion = REL2SQL_CORPUS_VERSION;
 
 std::string FormatResultSet(const ResultSet& rs) {
   std::ostringstream os;
@@ -39,15 +45,17 @@ void RunCorpusCase(const CorpusCase& corpus_case) {
 
   const auto fixture = DataFixtureFromCorpus(corpus_case);
   const auto sql_result = SqlExecutor::RunProgram(sql->ToString(), fixture, corpus_case.output_def);
-  EXPECT_EQ(sql_result, corpus_case.expected) << "case " << corpus_case.id << "\nProgram:\n"
-                                              << corpus_case.program << "\nSQL:\n"
-                                              << sql->ToString() << "\nExpected:\n"
-                                              << FormatResultSet(corpus_case.expected) << "\nActual:\n"
-                                              << FormatResultSet(sql_result);
+  // An empty Rel answer has no columns, so only its rows are compared.
+  const bool equal = corpus_case.expected.rows.empty() ? sql_result.rows.empty() : sql_result == corpus_case.expected;
+  EXPECT_TRUE(equal) << "case " << corpus_case.id << "\nProgram:\n"
+                     << corpus_case.program << "\nSQL:\n"
+                     << sql->ToString() << "\nExpected:\n"
+                     << FormatResultSet(corpus_case.expected) << "\nActual:\n"
+                     << FormatResultSet(sql_result);
 }
 
 std::vector<std::string> ShardNamesForTests() {
-  const auto corpus_root = CorpusV1Root();
+  const auto corpus_root = CorpusRoot(kCorpusVersion);
   const auto manifest_path = corpus_root / "manifest.json";
   if (!std::filesystem::exists(manifest_path)) {
     return {};
@@ -59,12 +67,13 @@ std::vector<std::string> ShardNamesForTests() {
 }  // namespace
 
 TEST(CorpusCorrectnessTest, ManifestFingerprintMatches) {
-  const auto manifest_path = CorpusManifestPath();
+  const auto manifest_path = CorpusRoot(kCorpusVersion) / "manifest.json";
   if (!std::filesystem::exists(manifest_path)) {
     GTEST_SKIP() << "corpus not built yet";
   }
   const auto manifest = LoadManifest(manifest_path);
-  EXPECT_EQ(manifest.generator_fingerprint, kCorpusGeneratorFingerprint);
+  EXPECT_EQ(manifest.generator_fingerprint,
+            kCorpusVersion == 1 ? kCorpusGeneratorFingerprint : kCorpusV2GeneratorFingerprint);
   EXPECT_GE(manifest.case_count, 1u);
   EXPECT_FALSE(manifest.shards.empty());
 }
@@ -72,7 +81,7 @@ TEST(CorpusCorrectnessTest, ManifestFingerprintMatches) {
 class CorpusShardTest : public ::testing::TestWithParam<std::string> {};
 
 TEST_P(CorpusShardTest, SqlMatchesGolden) {
-  const auto corpus_root = CorpusV1Root();
+  const auto corpus_root = CorpusRoot(kCorpusVersion);
   const auto shard_path = corpus_root / GetParam();
   ASSERT_TRUE(std::filesystem::exists(shard_path)) << shard_path;
 

@@ -164,6 +164,8 @@ class Source : public Expression {
   /// When true, FlattenerOptimizer does not inline this subquery (used e.g. for a second copy of
   /// F◦ in universal quantification so it stays a distinct correlated alias).
   bool inhibit_subquery_flatten = false;
+  /// The CTE of a recursive definition. A WITH RECURSIVE list prints it after the other CTEs, which it may read.
+  bool is_recursive_cte = false;
   // Optional: set when Source is a CTE created from a Bound. Used for deduplication
   // at conjunction level. Two CTEs with same bound_hash and def_columns are equivalent.
   std::optional<std::size_t> bound_hash;
@@ -320,9 +322,18 @@ inline void Query::PrintCTEs(std::ostream& os) const {
     if (ctes_are_recursive) {
       os << "RECURSIVE ";
     }
-    for (size_t i = 0; i < ctes.size(); i++) {
-      os << ctes[i]->Declaration() << " AS " << ctes[i]->Definition();
-      if (i < ctes.size() - 1) {
+    // A CTE can only read the ones listed before it. The bounds of a recursive definition's body are lifted
+    // into the same list as its CTE, so the recursive CTEs go last.
+    std::vector<std::shared_ptr<Source>> ordered;
+    for (const auto& cte : ctes) {
+      if (!cte->is_recursive_cte) ordered.push_back(cte);
+    }
+    for (const auto& cte : ctes) {
+      if (cte->is_recursive_cte) ordered.push_back(cte);
+    }
+    for (size_t i = 0; i < ordered.size(); i++) {
+      os << ordered[i]->Declaration() << " AS " << ordered[i]->Definition();
+      if (i < ordered.size() - 1) {
         os << ", ";
       } else {
         os << " ";

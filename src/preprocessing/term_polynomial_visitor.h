@@ -20,6 +20,7 @@ class TermPolynomialVisitor : public BaseRelVisitor {
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelNumTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelIDTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelOpTerm>& node) override;
+  std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelFunctionTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelParenthesisTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelStringTerm>& node) override;
   std::shared_ptr<RelTerm> Visit(const std::shared_ptr<RelExprAsTerm>& node) override;
