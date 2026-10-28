@@ -80,8 +80,11 @@ def main() -> int:
         "# Consumed by: rel2sql_bin -e benchmarks/TPCH/rel/tpch_edb.edb",
         "",
     ]
+    entities = names_unary | {"partsupp", "lineitem"}
     for name, ar in rows:
-        lines.append(f"{name} {ar}")
+        # An entity relation is keyed by all its columns, an attribute relation by the key of its entity.
+        key_size = ar if name in entities else ar - 1
+        lines.append(f"{name} {ar} key " + " ".join(str(i) for i in range(1, key_size + 1)))
     lines.append("")
     OUT.write_text("\n".join(lines))
 

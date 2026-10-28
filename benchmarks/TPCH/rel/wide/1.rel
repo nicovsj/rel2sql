@@ -1,0 +1,20 @@
+// Q1 -- Pricing Summary Report, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+@inline def upper_shipdate[]: parse_date["1998-09-02", "Y-m-d"]
+
+def groups(o, num, flag, status, qty, price, disc, revenue, charge):
+    exists((tax, sd) |
+        w_lineitem(o, _, _, num, qty, price, disc, tax, flag, status, sd, _, _, _, _, _) and
+        sd <= upper_shipdate and
+        revenue = price * (1 - disc) and
+        charge = price * (1 - disc) * (1 + tax))
+
+def result[flag, status]: (
+    sum[(o, num, v): groups(o, num, flag, status, v, _, _, _, _)],
+    sum[(o, num, v): groups(o, num, flag, status, _, v, _, _, _)],
+    sum[(o, num, v): groups(o, num, flag, status, _, _, _, v, _)],
+    sum[(o, num, v): groups(o, num, flag, status, _, _, _, _, v)],
+    average[(o, num, v): groups(o, num, flag, status, v, _, _, _, _)],
+    average[(o, num, v): groups(o, num, flag, status, _, v, _, _, _)],
+    average[(o, num, v): groups(o, num, flag, status, _, _, v, _, _)],
+    count[(o, num): groups(o, num, flag, status, _, _, _, _, _)])

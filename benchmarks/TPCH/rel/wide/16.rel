@@ -1,0 +1,16 @@
+// Q16 -- Parts/Supplier Relationship, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def wanted_size { @@3; @@4; @@5; @@6; @@7; @@8; @@9; @@10 }
+
+def complaint_supplier(s): exists((cmt) |
+    w_supplier(s, _, _, _, _, _, cmt) and like_match(raw"%Customer%Complaints%", cmt))
+
+def sel(p, s, brand, ptyp, size):
+    w_partsupp(p, s, _, _, _) and
+    w_part(p, _, _, brand, ptyp, size, _, _, _) and
+    not (brand = "@@1") and
+    not like_match(raw"@@2%", ptyp) and
+    wanted_size(size) and
+    not complaint_supplier(s)
+
+def result[brand, ptyp, size]: count[(s): exists((p) | sel(p, s, brand, ptyp, size))]

@@ -1,0 +1,15 @@
+// Q7 -- Volume Shipping, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def wanted_pair { ("@@1", "@@2"); ("@@2", "@@1") }
+
+def shipping(o, num, sname, cname, yr, v):
+    exists((s, c, sn, cn, sd, price, disc) |
+        w_lineitem(o, _, s, num, _, price, disc, _, _, _, sd, _, _, _, _, _) and
+        parse_date["1995-01-01", "Y-m-d"] <= sd and sd <= parse_date["1996-12-31", "Y-m-d"] and
+        w_supplier(s, _, _, sn, _, _, _) and w_nation(sn, sname, _, _) and
+        w_orders(o, c, _, _, _, _, _, _, _) and w_customer(c, _, _, cn, _, _, _, _) and w_nation(cn, cname, _, _) and
+        wanted_pair(sname, cname) and
+        yr = date_year[sd] and
+        v = price * (1 - disc))
+
+def result[sname, cname, yr]: sum[(o, num, v): shipping(o, num, sname, cname, yr, v)]

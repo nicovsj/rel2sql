@@ -1,0 +1,16 @@
+// Q20 -- Potential Part Promotion, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def forest_part(p): exists((name) | w_part(p, name, _, _, _, _, _, _, _) and like_match(raw"@@1%", name))
+
+def shipped_qty[p, s]: sum[(o, l, q): exists((sd) |
+    w_lineitem(o, p, s, l, q, _, _, _, _, _, sd, _, _, _, _, _) and
+    parse_date["1994-01-01", "Y-m-d"] <= sd and
+    sd < parse_date["1995-01-01", "Y-m-d"])]
+
+def excess_supplier(s): exists((p, avail) |
+    w_partsupp(p, s, avail, _, _) and forest_part(p) and
+    avail > 0.5 * shipped_qty[p, s])
+
+def result(name, addr): exists((s, n) |
+    excess_supplier(s) and
+    w_supplier(s, name, addr, n, _, _, _) and w_nation(n, "@@3", _, _))

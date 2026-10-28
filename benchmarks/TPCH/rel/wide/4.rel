@@ -1,0 +1,10 @@
+// Q4 -- Order Priority Checking, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def late_order(o): exists((num, cd, rd) | w_lineitem(o, _, _, num, _, _, _, _, _, _, _, cd, rd, _, _, _) and cd < rd)
+
+def selected_order(o, prio): exists((od) |
+    w_orders(o, _, _, _, od, prio, _, _, _) and
+    parse_date["@@1", "Y-m-d"] <= od and od < parse_date["@@2", "Y-m-d"]) and
+    late_order(o)
+
+def result[prio]: count[(o): selected_order(o, prio)]

@@ -1,0 +1,12 @@
+// Q17 -- Small-Quantity-Order Revenue, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def target_part(p): w_part(p, _, _, "@@1", _, _, "@@2", _, _)
+
+def part_avg[p]: average[(o, num, q): w_lineitem(o, p, _, num, q, _, _, _, _, _, _, _, _, _, _, _)]
+
+def selected(o, num, price): exists((p, q) |
+    w_lineitem(o, p, _, num, q, price, _, _, _, _, _, _, _, _, _, _) and
+    target_part(p) and
+    q < 0.2 * part_avg[p])
+
+def result[]: sum[(o, num, v): selected(o, num, v)] / 7.0

@@ -1,11 +1,18 @@
 // Q18 -- Large Volume Customer
 //   orders whose total quantity exceeds a threshold, with customer details.
-//   The per-order total is its own def and is reused for both the filter and the
-//   reported quantity, so the aggregate is built once.
+//   Follows the reference query: the orders above the threshold (its IN subquery), then the sum of
+//   the quantities of their line items again (its outer GROUP BY over the join with lineitem).
 
 def order_qty[o]: sum[(num, q): l_quantity(o, num, q)]
+def large_order(o): exists((total) | order_qty(o, total) and total > @@1)
 
-def result(name, c, o, od, price, qty):
-    order_qty(o, qty) and qty > @@1 and
+def selected[name, c, o, od, price]: sum[(num, q):
+    large_order(o) and
     o_custkey(o, c) and c_name(c, name) and
-    o_orderdate(o, od) and o_totalprice(o, price)
+    o_orderdate(o, od) and o_totalprice(o, price) and
+    l_quantity(o, num, q)]
+
+def unsorted(price, od, o, c, name, qty): selected(name, c, o, od, price, qty)
+def inside_rev_sort[price]: reverse_sort[unsorted[price]]
+def final_sort[]: reverse_sort[inside_rev_sort]
+def result(name, c, o, od, price, qty): exists((i, i1) | final_sort(i, price, i1, od, o, c, name, qty) and i <= 100)

@@ -7,7 +7,7 @@
 // functional form `l_extendedprice[o, num]` because arithmetic over relationally
 // bound variables makes the translator re-derive its operands.
 
-@inline def upper_shipdate[]: date_subtract[parse_date["1998-12-01", "Y-m-d"], ^Day[@@1]]
+@inline def upper_shipdate[]: parse_date["1998-09-02", "Y-m-d"]
 
 def groups(o, num, flag, status, qty, price, disc, revenue, charge):
     l_returnflag(o, num, flag) and

@@ -1,0 +1,21 @@
+// Q10 -- Returned Item Reporting, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+@inline def lower[]: parse_date["1993-10-01", "Y-m-d"]
+@inline def upper[]: parse_date["1994-01-01", "Y-m-d"]
+
+def returned_rev(o, num, c, v): exists((od, price, disc) |
+    w_orders(o, c, _, _, od, _, _, _, _) and lower <= od and od < upper and
+    w_lineitem(o, _, _, num, _, price, disc, _, "R", _, _, _, _, _, _, _) and
+    v = price * (1 - disc))
+
+def cust_rev[c]: sum[(o, num, v): returned_rev(o, num, c, v)]
+
+def unsorted(rev, c): cust_rev(c, rev)
+def inside_rev_sort[rev]: reverse_sort[unsorted[rev]]
+def final_sort[]: reverse_sort[inside_rev_sort]
+def top(c, rev): exists((i, i1) | final_sort(i, rev, i1, c) and i <= 20)
+
+def result(c, name, rev, acctbal, nname, addr, phone, comment):
+    top(c, rev) and
+    exists((n) | w_customer(c, name, addr, n, phone, acctbal, _, comment) and
+        w_nation(n, nname, _, _))

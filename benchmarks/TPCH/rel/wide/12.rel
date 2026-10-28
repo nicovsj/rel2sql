@@ -1,0 +1,17 @@
+// Q12 -- Shipping Modes and Order Priority, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def selected_shipmode { "@@1"; "@@2" }
+def urgent_prio { "1-URGENT"; "2-HIGH" }
+
+def sel(o, num, mode): exists((sd, cd, rd) |
+    w_lineitem(o, _, _, num, _, _, _, _, _, _, sd, cd, rd, _, mode, _) and
+    selected_shipmode(mode) and
+    cd < rd and sd < cd and
+    parse_date["@@3", "Y-m-d"] <= rd and rd < parse_date["@@4", "Y-m-d"])
+
+def high_prio(o): exists((p) | w_orders(o, _, _, _, _, p, _, _, _) and urgent_prio(p))
+
+def high_count[mode]: count[(o, num): sel(o, num, mode) and high_prio(o)]
+def total_count[mode]: count[(o, num): sel(o, num, mode)]
+
+def result[mode]: (high_count[mode], total_count[mode] - high_count[mode])

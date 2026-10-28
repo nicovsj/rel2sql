@@ -1,0 +1,23 @@
+// Q2 -- Minimum Cost Supplier, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def europe_supplier(s): exists((n, r) |
+    w_supplier(s, _, _, n, _, _, _) and w_nation(n, _, r, _) and w_region(r, "@@3", _))
+
+def eu_cost(p, s, c): w_partsupp(p, s, _, c, _) and europe_supplier(s)
+
+def min_cost[p]: min[(s, c): eu_cost(p, s, c)]
+
+def target_part(p, mfgr): exists((ptype) |
+    w_part(p, _, mfgr, _, ptype, @@1, _, _, _) and like_match(raw"%@@2", ptype))
+
+def unsorted(acctbal, nname, sname, p, mfgr, addr, phone, comment): exists((s, c, n) |
+    target_part(p, mfgr) and
+    eu_cost(p, s, c) and c = min_cost[p] and
+    w_supplier(s, sname, addr, n, phone, acctbal, comment) and
+    w_nation(n, nname, _, _))
+
+def inside_rev_sort[acctbal]: reverse_sort[unsorted[acctbal]]
+def final_sort[]: reverse_sort[inside_rev_sort]
+
+def result(acctbal, sname, nname, p, mfgr, addr, phone, comment): exists((i, i1) |
+    final_sort(i, acctbal, i1, nname, sname, p, mfgr, addr, phone, comment) and i <= 100)

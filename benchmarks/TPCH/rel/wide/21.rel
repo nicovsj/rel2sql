@@ -1,0 +1,18 @@
+// Q21 -- Suppliers Who Kept Orders Waiting, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def late(o, num, s): exists((cd, rd) | w_lineitem(o, _, s, num, _, _, _, _, _, _, _, cd, rd, _, _, _) and rd > cd)
+
+def has_other_supplier(o, num): exists((num2, s1, s2) |
+    w_lineitem(o, _, s1, num, _, _, _, _, _, _, _, _, _, _, _, _) and w_lineitem(o, _, s2, num2, _, _, _, _, _, _, _, _, _, _, _, _) and not (s1 = s2))
+
+def other_late(o, num, num2): exists((s1, s2) |
+    w_lineitem(o, _, s1, num, _, _, _, _, _, _, _, _, _, _, _, _) and late(o, num2, s2) and not (s1 = s2))
+
+def waiting(o, num, s):
+    late(o, num, s) and
+    w_orders(o, _, "F", _, _, _, _, _, _) and
+    has_other_supplier(o, num) and
+    not exists((num2) | other_late(o, num, num2)) and
+    exists((n) | w_supplier(s, _, _, n, _, _, _) and w_nation(n, "@@1", _, _))
+
+def result[name]: count[(o, num): exists((s) | waiting(o, num, s) and w_supplier(s, name, _, _, _, _, _))]

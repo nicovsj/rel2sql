@@ -1,0 +1,30 @@
+// Q19 -- Discounted Revenue, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def air_modes { "AIR"; "AIR REG" }
+def small_container { "SM CASE"; "SM BOX"; "SM PACK"; "SM PKG" }
+def medium_container { "MED BAG"; "MED BOX"; "MED PKG"; "MED PACK" }
+def large_container { "LG CASE"; "LG BOX"; "LG PACK"; "LG PKG" }
+
+def item(o, l, p, q, price, disc): exists((sm) |
+    w_lineitem(o, p, _, l, q, price, disc, _, _, _, _, _, _, "DELIVER IN PERSON", sm, _) and
+    air_modes(sm))
+
+def branch1(o, l, price, disc): exists((p, c, q, sz) |
+    item(o, l, p, q, price, disc) and
+    w_part(p, _, _, "@@1", _, sz, c, _, _) and small_container(c) and
+    @@4 <= q and q <= @@4 + 10 and 1 <= sz and sz <= 5)
+
+def branch2(o, l, price, disc): exists((p, c, q, sz) |
+    item(o, l, p, q, price, disc) and
+    w_part(p, _, _, "@@2", _, sz, c, _, _) and medium_container(c) and
+    @@5 <= q and q <= @@5 + 10 and 1 <= sz and sz <= 10)
+
+def branch3(o, l, price, disc): exists((p, c, q, sz) |
+    item(o, l, p, q, price, disc) and
+    w_part(p, _, _, "@@3", _, sz, c, _, _) and large_container(c) and
+    @@6 <= q and q <= @@6 + 10 and 1 <= sz and sz <= 15)
+
+def selected(o, l, price, disc):
+    branch1(o, l, price, disc) or branch2(o, l, price, disc) or branch3(o, l, price, disc)
+
+def result[]: sum[(o, l, v): exists((price, disc) | selected(o, l, price, disc) and v = price * (1 - disc))]

@@ -9,8 +9,8 @@ def shipped_qty[p, s]: sum[(o, l, q):
     l_partkey(o, l, p) and
     l_suppkey(o, l, s) and
     exists((sd) | l_shipdate(o, l, sd) and
-        parse_date["@@2", "Y-m-d"] <= sd and
-        sd < date_add[parse_date["@@2", "Y-m-d"], ^Year[1]]) and
+        parse_date["1994-01-01", "Y-m-d"] <= sd and
+        sd < parse_date["1995-01-01", "Y-m-d"]) and
     l_quantity(o, l, q)]
 
 def excess_supplier(s): exists((p) |

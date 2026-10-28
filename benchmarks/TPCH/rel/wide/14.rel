@@ -1,0 +1,14 @@
+// Q14 -- Promotion Effect, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def rev(o, num, p, v): exists((sd, price, disc) |
+    w_lineitem(o, p, _, num, _, price, disc, _, _, _, sd, _, _, _, _, _) and
+    parse_date["@@1", "Y-m-d"] <= sd and sd < parse_date["@@2", "Y-m-d"] and
+    v = price * (1 - disc))
+
+def promo_rev(o, num, v): exists((p, ptype) |
+    rev(o, num, p, v) and w_part(p, _, _, _, ptype, _, _, _, _) and like_match(raw"PROMO%", ptype))
+
+def promo_total[]: sum[(o, num, v): promo_rev(o, num, v)]
+def all_total[]: sum[(o, num, v): exists((p) | rev(o, num, p, v))]
+
+def result[]: 100.00 * promo_total / all_total

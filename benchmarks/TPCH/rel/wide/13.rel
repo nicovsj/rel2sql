@@ -1,0 +1,13 @@
+// Q13 -- Customer Distribution, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def matched_order(c, o): exists((cmt) |
+    w_orders(o, c, _, _, _, _, _, _, cmt) and not like_match(raw"%@@1%@@2%", cmt))
+
+def cust_count[c]: count[(o): matched_order(c, o)]
+
+def c_count(c, n):
+    cust_count(c, n)
+    or
+    (w_customer(c, _, _, _, _, _, _, _) and not exists((n2) | cust_count(c, n2)) and n = 0)
+
+def result[n]: count[(c): c_count(c, n)]

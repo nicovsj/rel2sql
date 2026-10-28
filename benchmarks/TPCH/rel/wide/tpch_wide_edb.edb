@@ -1,0 +1,11 @@
+# Wide TPC-H relations: one relation per TPC-H table, with the table's columns in order.
+# Consumed by: rel2sql_bin -e benchmarks/TPCH/rel/wide/tpch_wide_edb.edb -f benchmarks/TPCH/rel/wide/<N>.rel
+
+w_lineitem 16 key 1 4
+w_orders 9 key 1
+w_customer 8 key 1
+w_part 9 key 1
+w_partsupp 5 key 1 2
+w_supplier 7 key 1
+w_nation 4 key 1
+w_region 3 key 1

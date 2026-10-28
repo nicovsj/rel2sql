@@ -25,4 +25,4 @@ def share[yr]: nation_total[yr] / all_total[yr]
 def result(yr, s):
     share(yr, s)
     or
-    (all_total(yr, _) and not exists((x) | nation_total(yr, x)) and s = 0)
+    (all_total(yr, _) and not exists((x) | nation_total(yr, x)) and s = 0.0)

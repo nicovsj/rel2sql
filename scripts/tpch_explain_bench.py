@@ -23,6 +23,7 @@ import json
 import math
 import os
 import pathlib
+import re
 import shutil
 import statistics
 import subprocess
@@ -497,6 +498,16 @@ def default_explainable_queries(manifest_path: pathlib.Path = DEFAULT_MANIFEST) 
     )
 
 
+def strip_unlimited_order_by(sql: str) -> str:
+    """The query without its final ORDER BY, unless a LIMIT follows it."""
+    if re.search(r"\bLIMIT\b", sql, re.IGNORECASE):
+        return sql
+    match = list(re.finditer(r"\bORDER\s+BY\b", sql, re.IGNORECASE))
+    if not match:
+        return sql
+    return sql[: match[-1].start()].rstrip() + ";\n"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
@@ -530,11 +541,17 @@ def main() -> int:
             "single EXPLAIN ANALYZE -- size it up if you raise --runs. 0 disables the timeout."
         ),
     )
+    ap.add_argument(
+        "--unordered-ref",
+        action="store_true",
+        help="Drop the final ORDER BY of a reference query that has no LIMIT. Rel relations are sets, so the "
+        "translations do not sort, and the reference would otherwise pay for a sort the translation skips.",
+    )
     args = ap.parse_args()
     query_timeout = args.query_timeout_sec if args.query_timeout_sec > 0 else None
 
     db_env = os.environ.get("TPCH_DUCKDB_PATH", "")
-    db_path = (args.db or pathlib.Path(db_env) if db_env else None)
+    db_path = args.db or (pathlib.Path(db_env) if db_env else None)
     if db_path is None:
         print("Set TPCH_DUCKDB_PATH or pass --db", file=sys.stderr)
         return 1
@@ -566,6 +583,8 @@ def main() -> int:
             continue
 
         ref_sql = ref_path.read_text()
+        if args.unordered_ref:
+            ref_sql = strip_unlimited_order_by(ref_sql)
         gen_script = gen_path.read_text()
 
         out_dir = args.out_root / f"q{query}"

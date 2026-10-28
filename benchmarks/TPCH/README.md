@@ -2,7 +2,10 @@
 
 ## Paper artifact
 
-Tag `vldb-2026-artifact` is the VLDB paper snapshot. The hand-written Rel and the reference SQL are in this directory. Value comparison of all 22 queries:
+Tag `vldb-2027-artifact` is the VLDB paper snapshot. The TPC-H experiment of the paper (Section 6.2) uses the
+queries over wide relations: see [`rel/wide/README.md`](rel/wide/README.md) for how to reproduce it. The older
+tag `vldb-2026-artifact` is the snapshot of an earlier version. The hand-written Rel and the reference SQL are in
+this directory. Value comparison of all 22 queries:
 
 ```sh
 task tpch:build-db

@@ -1,0 +1,14 @@
+// Q5 -- Local Supplier Volume, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def qualifying(o, num, name, v):
+    exists((c, s, n, r, od, price, disc) |
+        w_orders(o, c, _, _, od, _, _, _, _) and
+        parse_date["@@2", "Y-m-d"] <= od and od < parse_date["@@3", "Y-m-d"] and
+        w_lineitem(o, _, s, num, _, price, disc, _, _, _, _, _, _, _, _, _) and
+        w_customer(c, _, _, n, _, _, _, _) and
+        w_supplier(s, _, _, n, _, _, _) and
+        w_nation(n, name, r, _) and
+        w_region(r, "@@1", _) and
+        v = price * (1 - disc))
+
+def result[name]: sum[(o, num, v): qualifying(o, num, name, v)]

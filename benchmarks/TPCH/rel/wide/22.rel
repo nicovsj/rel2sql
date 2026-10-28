@@ -1,0 +1,16 @@
+// Q22 -- Global Sales Opportunity, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def wanted_code { "@@1"; "@@2"; "@@3"; "@@4"; "@@5"; "@@6"; "@@7" }
+
+def cust(c, cc, b): exists((phone) |
+    w_customer(c, _, _, _, phone, b, _, _) and cc = substring[phone, 1, 2] and wanted_code(cc))
+
+def avg_bal[]: average[(c, b): exists((cc) | cust(c, cc, b)) and b > 0.00]
+
+def sel(c, cc, b):
+    cust(c, cc, b) and b > avg_bal and
+    not exists((o) | w_orders(o, c, _, _, _, _, _, _, _))
+
+def result[cc]: (
+    count[(c): exists((b) | sel(c, cc, b))],
+    sum[(c, b): sel(c, cc, b)])

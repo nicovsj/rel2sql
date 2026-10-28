@@ -1,8 +1,8 @@
 // Q10 -- Returned Item Reporting
 //   top 20 customers by revenue from returned lineitems in a quarter.
 
-@inline def lower[]: parse_date["@@1", "Y-m-d"]
-@inline def upper[]: date_add[parse_date["@@1", "Y-m-d"], ^Month[3]]
+@inline def lower[]: parse_date["1993-10-01", "Y-m-d"]
+@inline def upper[]: parse_date["1994-01-01", "Y-m-d"]
 
 def returned_rev(o, num, c, v):
     o_custkey(o, c) and

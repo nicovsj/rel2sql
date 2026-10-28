@@ -3,6 +3,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
@@ -350,6 +351,11 @@ CompareResult RunCompare(int query, const std::string& translated_sql, const std
     r.message = "reference SQL: " + err;
     return r;
   }
+  // Rel has no NULL: aggregating the empty relation gives the empty relation, where SQL returns one row of NULLs
+  // (Q17 at scale factor 0.01 selects no part). NULLs are read as empty strings, so drop the all-empty rows.
+  std::erase_if(ref_rs.rows, [](const std::vector<std::string>& row) {
+    return !row.empty() && std::all_of(row.begin(), row.end(), [](const std::string& v) { return v.empty(); });
+  });
   r.ref_rows = ref_rs.rows.size();
 
   DropLeadingColumns(gen_rs, drop_leading_gen_columns);

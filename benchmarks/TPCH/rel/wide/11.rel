@@ -1,0 +1,12 @@
+// Q11 -- Important Stock Identification, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def german_ps(p, s, v): exists((n, cost, qty) |
+    w_partsupp(p, s, qty, cost, _) and
+    w_supplier(s, _, _, n, _, _, _) and w_nation(n, "@@1", _, _) and
+    v = cost * qty)
+
+def part_value[p]: sum[(s, v): german_ps(p, s, v)]
+def total_value[]: sum[(p, s, v): german_ps(p, s, v)]
+def threshold[]: total_value * @@2
+
+def result(p, v): part_value(p, v) and v > threshold

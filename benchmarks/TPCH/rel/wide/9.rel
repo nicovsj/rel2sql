@@ -1,0 +1,13 @@
+// Q9 -- Product Type Profit Measure, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def profit(o, num, name, yr, v):
+    exists((s, p, n, od, pname, qty, price, disc, cost) |
+        w_lineitem(o, p, s, num, qty, price, disc, _, _, _, _, _, _, _, _, _) and
+        w_part(p, pname, _, _, _, _, _, _, _) and like_match(raw"%@@1%", pname) and
+        w_supplier(s, _, _, n, _, _, _) and w_nation(n, name, _, _) and
+        w_partsupp(p, s, _, cost, _) and
+        w_orders(o, _, _, _, od, _, _, _, _) and
+        yr = date_year[od] and
+        v = price * (1 - disc) - cost * qty)
+
+def result[name, yr]: sum[(o, num, v): profit(o, num, name, yr, v)]

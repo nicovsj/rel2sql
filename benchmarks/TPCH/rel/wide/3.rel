@@ -1,0 +1,19 @@
+// Q3 -- Shipping Priority, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+@inline def target_date[]: parse_date["@@2", "Y-m-d"]
+
+def sel(ok, lk, v): exists((ck, od, sd, price, disc) |
+    w_orders(ok, ck, _, _, od, _, _, _, _) and od < target_date and
+    w_customer(ck, _, _, _, _, _, "@@1", _) and
+    w_lineitem(ok, _, _, lk, _, price, disc, _, _, _, sd, _, _, _, _, _) and sd > target_date and
+    v = price * (1 - disc))
+
+def revenue[ok]: sum[(lk, rev): sel(ok, lk, rev)]
+
+def unsorted(rev, od, ok, sp): revenue(ok, rev) and w_orders(ok, _, _, _, od, _, _, sp, _)
+
+def inside_rev_sort[rev]: reverse_sort[unsorted[rev]]
+def final_sort[]: reverse_sort[inside_rev_sort]
+
+def result(ok, rev, od, sp): exists((i, i1) |
+    final_sort(i, rev, i1, od, ok, sp) and i <= 10)

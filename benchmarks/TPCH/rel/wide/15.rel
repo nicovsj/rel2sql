@@ -1,0 +1,13 @@
+// Q15 -- Top Supplier, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def rev(o, num, s, v): exists((sd, price, disc) |
+    w_lineitem(o, _, s, num, _, price, disc, _, _, _, sd, _, _, _, _, _) and
+    parse_date["@@1", "Y-m-d"] <= sd and sd < parse_date["@@2", "Y-m-d"] and
+    v = price * (1 - disc))
+
+def total_revenue[s]: sum[(o, num, v): rev(o, num, s, v)]
+def max_revenue[]: max[(s, v): total_revenue(s, v)]
+
+def result(s, name, addr, phone, v):
+    total_revenue(s, v) and v = max_revenue and
+    w_supplier(s, name, addr, _, phone, _, _)

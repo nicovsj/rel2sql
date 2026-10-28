@@ -1,0 +1,11 @@
+// Q6 -- Forecasting Revenue Change, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+@inline def lower_shipdate[]: parse_date["1994-01-01", "Y-m-d"]
+@inline def upper_shipdate[]: parse_date["1995-01-01", "Y-m-d"]
+
+def result[]: sum[(o, num, v): exists((sd, disc, qty, price) |
+    w_lineitem(o, _, _, num, qty, price, disc, _, _, _, sd, _, _, _, _, _) and
+    lower_shipdate <= sd and sd < upper_shipdate and
+    0.05 <= disc and disc <= 0.07 and
+    qty < @@3 and
+    v = price * disc)]

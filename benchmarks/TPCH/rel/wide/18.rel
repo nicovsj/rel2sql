@@ -1,0 +1,17 @@
+// Q18 -- Large Volume Customer, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+// Follows the reference query: the orders above the threshold (its IN subquery), then the sum of
+// the quantities of their line items again (its outer GROUP BY over the join with lineitem).
+def order_qty[o]: sum[(num, q): w_lineitem(o, _, _, num, q, _, _, _, _, _, _, _, _, _, _, _)]
+def large_order(o): exists((total) | order_qty(o, total) and total > @@1)
+
+def selected[name, c, o, od, price]: sum[(num, q):
+    large_order(o) and
+    w_orders(o, c, _, price, od, _, _, _, _) and
+    w_customer(c, name, _, _, _, _, _, _) and
+    w_lineitem(o, _, _, num, q, _, _, _, _, _, _, _, _, _, _, _)]
+
+def unsorted(price, od, o, c, name, qty): selected(name, c, o, od, price, qty)
+def inside_rev_sort[price]: reverse_sort[unsorted[price]]
+def final_sort[]: reverse_sort[inside_rev_sort]
+def result(name, c, o, od, price, qty): exists((i, i1) | final_sort(i, price, i1, od, o, c, name, qty) and i <= 100)

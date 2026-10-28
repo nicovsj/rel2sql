@@ -5,13 +5,13 @@
 // Ranges use the relational form so each attribute is scanned once; the product
 // keeps the functional form so its operands carry the (o, num) key.
 
-@inline def lower_shipdate[]: parse_date["@@1", "Y-m-d"]
-@inline def upper_shipdate[]: date_add[parse_date["@@1", "Y-m-d"], ^Year[1]]
+@inline def lower_shipdate[]: parse_date["1994-01-01", "Y-m-d"]
+@inline def upper_shipdate[]: parse_date["1995-01-01", "Y-m-d"]
 
 def result[]: sum[(o, num, v):
     exists((sd, disc, qty) |
         l_shipdate(o, num, sd) and lower_shipdate <= sd and sd < upper_shipdate and
-        l_discount(o, num, disc) and @@2 - 0.01 <= disc and disc <= @@2 + 0.01 and
+        l_discount(o, num, disc) and 0.05 <= disc and disc <= 0.07 and
         l_quantity(o, num, qty) and qty < @@3)
     and v = l_extendedprice[o, num] * l_discount[o, num]
 ]

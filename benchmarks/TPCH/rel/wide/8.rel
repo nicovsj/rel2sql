@@ -1,0 +1,22 @@
+// Q8 -- National Market Share, over the wide relations (one relation per TPC-H table, see
+// tpch_wide_edb.edb). Each entity occurrence is a single atom binding the attributes it uses.
+def all_vol(o, num, s, yr, v):
+    exists((p, c, n1, r, od, price, disc) |
+        w_lineitem(o, p, s, num, _, price, disc, _, _, _, _, _, _, _, _, _) and
+        w_part(p, _, _, _, "@@3", _, _, _, _) and
+        w_orders(o, c, _, _, od, _, _, _, _) and
+        parse_date["1995-01-01", "Y-m-d"] <= od and od <= parse_date["1996-12-31", "Y-m-d"] and
+        w_customer(c, _, _, n1, _, _, _, _) and w_nation(n1, _, r, _) and w_region(r, "@@2", _) and
+        yr = date_year[od] and
+        v = price * (1 - disc))
+
+def nation_supplier(s): exists((n2) | w_supplier(s, _, _, n2, _, _, _) and w_nation(n2, "@@1", _, _))
+
+def nation_total[yr]: sum[(o, num, v): exists((s) | all_vol(o, num, s, yr, v) and nation_supplier(s))]
+def all_total[yr]: sum[(o, num, v): exists((s) | all_vol(o, num, s, yr, v))]
+def share[yr]: nation_total[yr] / all_total[yr]
+
+def result(yr, s):
+    share(yr, s)
+    or
+    (all_total(yr, _) and not exists((x) | nation_total(yr, x)) and s = 0.0)
