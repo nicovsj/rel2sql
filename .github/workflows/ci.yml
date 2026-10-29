@@ -1,4 +1,4 @@
-name: CI - Package Consume Test
+name: CI
 
 on:
   pull_request:
@@ -9,6 +9,18 @@ permissions:
   contents: read
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bazelisk
+        uses: bazelbuild/setup-bazelisk@v3
+
+      - name: Run Bazel tests (native)
+        run: bazel test //... --config=default --test_output=errors
+
   package-consume:
     runs-on: ubuntu-latest
     steps:
