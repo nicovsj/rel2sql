@@ -79,3 +79,5 @@ benchmarks/TPCH/data/*.duckdb
 tests/generator/corpus/*
 !tests/generator/corpus/v1/
 !tests/generator/corpus/v1/**
+.rel_engine.log.old
+__pycache__/
