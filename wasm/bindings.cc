@@ -19,6 +19,9 @@ std::string translate_rel2sql_with_relation_map(const std::string& input, const 
   return rel2sql::Translate(input, relation_map);
 }
 
+// Declares a key of a relation, as 0-based column positions.
+void add_relation_key(rel2sql::RelationInfo& info, const std::vector<int>& columns) { info.keys.push_back(columns); }
+
 // Test function to verify the library is working
 bool test_rel2sql() {
   std::string result = rel2sql::Translate("def output {1}");
@@ -41,13 +44,15 @@ bool test_rel2sql_with_relation_map() {
 EMSCRIPTEN_BINDINGS(rel2sql_module) {
   // Register std::vector<std::string> as StringVector for JavaScript
   emscripten::register_vector<std::string>("StringVector");
+  emscripten::register_vector<int>("IntVector");
 
   // Expose EDBInfo struct to JavaScript - only with std::vector<std::string> constructor
   emscripten::class_<rel2sql::RelationInfo>("RelationInfo")
       .constructor<std::vector<std::string>>()
       .function("arity", &rel2sql::RelationInfo::Arity)
       .function("hasCustomNamedAttributes", &rel2sql::RelationInfo::HasCustomNamedAttributes)
-      .function("getAttributeName", &rel2sql::RelationInfo::AttributeName);
+      .function("getAttributeName", &rel2sql::RelationInfo::AttributeName)
+      .function("addKey", &add_relation_key);
 
   // Expose EDBMap to JavaScript
   emscripten::class_<rel2sql::RelationMap>("RelationMap")
