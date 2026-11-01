@@ -4,8 +4,9 @@ set -e
 # Get version type from first argument or default to patch
 VERSION_TYPE=${1:-patch}
 
-# Get the latest tag or default to v0.0.0
-LATEST_TAG=$(git tag --sort=-version:refname | head -n 1 || echo "v0.0.0")
+# Get the latest version tag (v1.9.1; not other tags such as vldb-2027-artifact) or default to v0.0.0
+LATEST_TAG=$(git tag --list 'v[0-9]*' --sort=-version:refname | head -n 1)
+LATEST_TAG=${LATEST_TAG:-v0.0.0}
 echo "Latest tag: $LATEST_TAG"
 
 # Extract version number (remove 'v' prefix)

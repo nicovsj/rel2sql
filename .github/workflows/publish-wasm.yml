@@ -3,7 +3,8 @@ name: Publish WASM to GitHub Packages
 on:
   push:
     tags:
-      - 'v*'
+      # Version tags only (v1.9.1), not other tags that start with v (vldb-2027-artifact).
+      - 'v[0-9]*'
 
 permissions:
   contents: read
