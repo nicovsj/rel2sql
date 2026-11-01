@@ -3663,11 +3663,13 @@ bool Translator::TryEmitDefiningEquality(const std::shared_ptr<RelComparison>& n
     if (var != defined && !node->safety.bound_variables.count(var)) return false;
   }
 
-  // A cover of the other variables, from bounds that do not mention the defined variable.
+  // A cover of the other variables, from bounds that do not mention the defined variable. SortedBounds() refers into
+  // the cover, so it must outlive the loop.
+  const BoundSet cover = node->safety.SmallCover();
   std::vector<std::shared_ptr<sql::ast::Source>> cte_sources;
   std::vector<std::pair<std::shared_ptr<sql::ast::Source>, std::set<std::string>>> cte_source_var_pairs;
   std::unordered_map<std::string, std::shared_ptr<sql::ast::Source>> free_var_sources;
-  for (const Bound& bound : node->safety.SmallCover().SortedBounds()) {
+  for (const Bound& bound : cover.SortedBounds()) {
     if (!bound.domain) continue;
     if (std::find(bound.variables.begin(), bound.variables.end(), defined) != bound.variables.end()) continue;
     bool relevant = false;

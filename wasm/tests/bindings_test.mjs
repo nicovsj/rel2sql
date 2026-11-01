@@ -48,6 +48,25 @@ describe("WASM Bindings Contract Tests", () => {
       assert.strictEqual(typeof result, "string");
       assert(result.length > 0);
     });
+
+    test("translateWithRelationMap uses declared keys", () => {
+      const translate = withKey => {
+        const map = new Module.RelationMap();
+        const vec = new Module.StringVector();
+        vec.push_back("A1");
+        vec.push_back("A2");
+        const relationInfo = new Module.RelationInfo(vec);
+        if (withKey) {
+          const key = new Module.IntVector();
+          key.push_back(0);
+          relationInfo.addKey(key);
+        }
+        map.set("R", relationInfo);
+        return Module.translateWithRelationMap("def output { (x, y): R(x, y) }", map);
+      };
+      assert.match(translate(false), /DISTINCT/);
+      assert.doesNotMatch(translate(true), /DISTINCT/);
+    });
   });
 
   describe("RelationMap Class", () => {

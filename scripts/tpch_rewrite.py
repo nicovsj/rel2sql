@@ -134,6 +134,8 @@ def cap_decimal_precision(text: str, max_precision: int = DUCKDB_DECIMAL_MAX_PRE
 # The TPC-H queries use these forms only inside parenthesised groups, so we
 # repeatedly apply two replacements until the file stabilises.
 
+BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+LINE_COMMENT_RE = re.compile(r"//[^\n]*")
 DOT_AFTER_BRACKETS_RE = re.compile(r"(\]\s*)\.([A-Za-z_][A-Za-z0-9_]*)")
 DOT_AFTER_PAREN_RE = re.compile(r"\)\s*\.([A-Za-z_][A-Za-z0-9_]*)")
 DOT_AFTER_IDENT_RE = re.compile(
@@ -232,6 +234,14 @@ def _rewrite_ident_dot(text: str) -> tuple[str, bool]:
 
 
 def rewrite_dot_access(text: str) -> str:
+    # Comments are set aside first, so that file names like `tpch_wide_edb.edb` stay as they are.
+    comments: list[str] = []
+
+    def stash(m: re.Match[str]) -> str:
+        comments.append(m.group(0))
+        return f"\0{len(comments) - 1}\0"
+
+    text = LINE_COMMENT_RE.sub(stash, BLOCK_COMMENT_RE.sub(stash, text))
     # Apply repeatedly until no rule fires.
     for _ in range(64):
         changed = False
@@ -243,7 +253,7 @@ def rewrite_dot_access(text: str) -> str:
         changed |= c
         if not changed:
             break
-    return text
+    return re.sub(r"\0(\d+)\0", lambda m: comments[int(m.group(1))], text)
 
 
 # Section 1j (sugar): wrap each def body in `{ ... }` so it matches the grammar's
@@ -251,9 +261,6 @@ def rewrite_dot_access(text: str) -> str:
 #                     shorthand forms `def f[x]: expr`, `def f(x): formula`,
 #                     and `def f[]: expr`; the grammar only accepts braced defs.
 # --------------------------------------------------------------------------
-
-BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
-LINE_COMMENT_RE = re.compile(r"//[^\n]*")
 
 
 def _strip_comments_for_scan(text: str) -> str:
@@ -296,6 +303,17 @@ def _matching_close(text: str, open_idx: int, open_ch: str) -> int:
     raise ValueError(f"unbalanced {open_ch} starting at {open_idx}")
 
 
+def _braced(head: str, body: str) -> str:
+    """`head { body }`, on one line when the body is a single line without a trailing comment.
+
+    The blank lines after the body are kept."""
+    stripped = body.rstrip()
+    newlines = "\n" * max(1, body[len(stripped) :].count("\n"))
+    if "\n" not in stripped.strip() and "//" not in stripped:
+        return f"{head} {{{stripped} }}{newlines}"
+    return f"{head} {{{stripped}\n}}{newlines}"
+
+
 def wrap_def_bodies(text: str) -> str:
     """Rewrite shorthand `def NAME[x]: body` to `def NAME { [x]: body }`."""
     scan = _strip_comments_for_scan(text)
@@ -326,7 +344,7 @@ def wrap_def_bodies(text: str) -> str:
             # `def NAME: body` -> `def NAME { body }`
             colon_pos = rest.find(":")
             body = rest[colon_pos + 1 :]
-            pieces.append(f"{text[start:head_end]} {{{body.rstrip()}\n}}\n")
+            pieces.append(_braced(text[start:head_end], body))
             cursor = body_end
             continue
         # kind is `[` or `(`
@@ -345,11 +363,9 @@ def wrap_def_bodies(text: str) -> str:
         # Empty bindings -> drop them entirely.
         inner_bindings = bindings_segment[1:-1].strip()
         if inner_bindings == "":
-            pieces.append(f"{text[start:head_end]} {{{body.rstrip()}\n}}\n")
+            pieces.append(_braced(text[start:head_end], body))
         else:
-            pieces.append(
-                f"{text[start:head_end]} {{ {bindings_segment}:{body.rstrip()}\n}}\n"
-            )
+            pieces.append(_braced(text[start:head_end], f" {bindings_segment}:{body}"))
         cursor = body_end
     pieces.append(text[cursor:])
     return "".join(pieces)
